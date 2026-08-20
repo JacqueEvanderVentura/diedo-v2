@@ -1,0 +1,13 @@
+# Runtime dependencies for CPython 3.14.
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+mangum==0.21.0
+
+# Configuration and API schemas.
+pydantic==2.13.4
+pydantic-settings==2.15.0
+
+# PostgreSQL and migrations.
+sqlalchemy==2.0.52
+alembic==1.19.1
+psycopg[binary]==3.3.4

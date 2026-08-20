@@ -1,0 +1,19 @@
+---
+description: Enforce the shared backend and API contract from docs/backend/GLOBAL.md
+alwaysApply: true
+---
+
+# Read GLOBAL.md first
+
+For work that touches the backend, HTTP API, PostgreSQL schema, migrations, tests,
+Postman artifacts, or deployment, read the full
+[`docs/backend/GLOBAL.md`](../../docs/backend/GLOBAL.md) before designing or changing behavior.
+
+- JSON uses `camelCase`; Python and PostgreSQL use `snake_case`.
+- API errors use a consistent body with `message` and optional `parameter`.
+- Pydantic API schemas and SQLAlchemy persistence models remain separate.
+- Every schema change requires a reviewed Alembic migration.
+- New behavior requires automated coverage and the backend quality gate.
+- Secrets never belong in code, logs, fixtures, or tracked environment files.
+
+If a task-specific document conflicts with `GLOBAL.md`, `GLOBAL.md` wins.

@@ -1,0 +1,31 @@
+---
+description: Run Ruff, mypy, pytest, and migration checks before finishing backend changes
+globs: backend/**/*.py
+alwaysApply: false
+---
+
+# Backend quality gate
+
+When you edit files under `backend/`, run the local checks before ending the task.
+
+From `backend/`:
+
+```bash
+python -m ruff check app tests --fix
+python -m ruff format app tests
+python -m ruff check app tests
+python -m ruff format --check app tests
+python -m mypy app
+python -m pytest --cov=app --cov-report=term-missing --cov-fail-under=90
+```
+
+When PostgreSQL is available:
+
+```bash
+python -m alembic upgrade head
+python -m alembic check
+```
+
+- Match CI: [`.github/workflows/backend-ci.yml`](../../.github/workflows/backend-ci.yml).
+- Full contract: [`docs/backend/GLOBAL.md`](../../docs/backend/GLOBAL.md).
+- Do not replace PostgreSQL integration checks with SQLite.

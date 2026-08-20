@@ -1,0 +1,23 @@
+---
+description: User-facing API copy and prose conventions
+alwaysApply: true
+---
+
+# Prose and API tone
+
+## Hyphens
+
+Do not use em dashes or en dashes in user-facing API messages, documentation, or notification
+copy. Use a normal ASCII hyphen, a comma, a period, or a line break.
+
+## Error messages
+
+- Write concise, actionable messages.
+- Do not expose stack traces, SQL, internal IDs, secrets, or infrastructure details.
+- Use the standard error envelope from `docs/backend/GLOBAL.md`.
+- Name invalid request fields through `parameter` using their public `camelCase` name.
+
+## Documentation
+
+Prefer direct language and concrete examples. Avoid filler, vague warnings, and unexplained
+acronyms.
