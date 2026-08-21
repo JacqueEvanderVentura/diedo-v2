@@ -1,0 +1,109 @@
+import { useState, useRef, useEffect } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { Menu, Search, Store, ChevronDown, Check, PowerOff } from 'lucide-react'
+import { toast } from 'sonner'
+import { BRANCHES } from '@/data/products'
+import { usePosStore } from '@/stores/posStore'
+import { useUiStore } from '@/stores/uiStore'
+import { cn } from '@/lib/utils'
+
+function BranchSelector() {
+  const branchId = usePosStore((s) => s.branchId)
+  const setBranch = usePosStore((s) => s.setBranch)
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const current = BRANCHES.find((b) => b.id === branchId) || BRANCHES[0]
+
+  useEffect(() => {
+    function onClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [])
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        data-testid="pos-branch-selector"
+        className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+      >
+        <Store className="h-4 w-4 text-slate-400" />
+        <span className="hidden sm:inline">{current.name}</span>
+        <ChevronDown className={cn('h-4 w-4 text-slate-400 transition-transform', open && 'rotate-180')} />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.15 }}
+            className="absolute right-0 top-full z-40 mt-2 w-56 overflow-hidden rounded-xl border border-slate-100 bg-white p-1.5 shadow-xl"
+          >
+            {BRANCHES.map((b) => (
+              <button
+                key={b.id}
+                onClick={() => {
+                  setBranch(b.id)
+                  setOpen(false)
+                }}
+                data-testid={`pos-branch-${b.id}`}
+                className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                {b.name}
+                {branchId === b.id && <Check className="h-4 w-4 text-blue-600" />}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+export function PosTopBar({ query, onQueryChange }) {
+  const toggleSidebar = useUiStore((s) => s.toggleSidebar)
+
+  return (
+    <header className="flex shrink-0 flex-col gap-3 border-b border-slate-100 bg-white/85 p-4 backdrop-blur-md sm:flex-row sm:items-center sm:gap-4 sm:px-6">
+      <div className="flex items-center gap-3">
+        <button
+          onClick={toggleSidebar}
+          data-testid="pos-menu-toggle"
+          className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 lg:hidden"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <div className="hidden sm:block">
+          <h1 className="font-heading text-lg font-bold tracking-tight text-slate-900">Terminal POS</h1>
+          <p className="text-xs text-slate-400">Punto de Venta</p>
+        </div>
+      </div>
+
+      <div className="relative flex-1">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <input
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          placeholder="Buscar productos, SKUs o códigos..."
+          data-testid="pos-search"
+          className="w-full rounded-xl border-0 bg-slate-50 py-3 pl-10 pr-4 text-sm text-slate-700 ring-1 ring-inset ring-transparent placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-600"
+        />
+      </div>
+
+      <div className="flex items-center gap-2">
+        <BranchSelector />
+        <button
+          onClick={() => toast('Cierre de caja (próximamente)')}
+          data-testid="pos-close-register"
+          className="inline-flex items-center gap-2 rounded-xl bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100"
+        >
+          <PowerOff className="h-4 w-4" />
+          <span className="hidden sm:inline">Cerrar Caja</span>
+        </button>
+      </div>
+    </header>
+  )
+}

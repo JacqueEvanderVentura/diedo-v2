@@ -1,0 +1,39 @@
+// Diedo / Vilma AI — Design tokens (single source of truth)
+:root {
+  // Brand
+  --brand: #2563eb;
+  --brand-hover: #1d4ed8;
+  --brand-light: #eff6ff;
+  --brand-accent: #3b82f6;
+
+  // Surfaces
+  --bg: #f8fafc;
+  --card: #ffffff;
+  --sidebar: #ffffff;
+  --border: #e2e8f0;
+  --border-soft: #f1f5f9;
+
+  // Text
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-tertiary: #94a3b8;
+  --price: #2563eb;
+
+  // Status
+  --success: #10b981;
+  --success-bg: #d1fae5;
+  --warning: #f59e0b;
+  --warning-bg: #fef3c7;
+  --danger: #ef4444;
+  --danger-bg: #fee2e2;
+
+  // Shape
+  --radius-sm: 0.5rem;
+  --radius: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+
+  // Elevation
+  --shadow-soft: 0 2px 12px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 6px 24px rgba(15, 23, 42, 0.06);
+}

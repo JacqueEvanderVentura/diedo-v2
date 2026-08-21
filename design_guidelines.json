@@ -1,0 +1,155 @@
+{
+  "project_name": "Diedo / Vilma AI ERP & POS",
+  "theme": "light",
+  "language": "es",
+  "currency": "DOP$",
+  "typography": {
+    "headings": {
+      "font_family": "Outfit, sans-serif",
+      "weights": ["500", "600", "700"],
+      "usage": "h1-h6, dashboard KPI numbers, POS total amounts. Always use 'tracking-tight'."
+    },
+    "body": {
+      "font_family": "Inter, sans-serif",
+      "weights": ["400", "500"],
+      "usage": "Paragraphs, lists, UI labels, SKUs, forms."
+    },
+    "hierarchy": {
+      "h1": "text-3xl sm:text-4xl font-bold font-['Outfit'] tracking-tight text-slate-900",
+      "h2": "text-2xl sm:text-3xl font-semibold font-['Outfit'] tracking-tight text-slate-800",
+      "h3": "text-xl sm:text-2xl font-semibold font-['Outfit'] tracking-tight text-slate-800",
+      "kpi_value": "text-4xl font-bold font-['Outfit'] text-slate-900",
+      "body": "text-sm sm:text-base font-['Inter'] text-slate-600",
+      "caption": "text-xs font-medium font-['Inter'] text-slate-400 tracking-wider uppercase"
+    }
+  },
+  "colors": {
+    "brand": {
+      "primary": "#2563eb", 
+      "primary_hover": "#1d4ed8",
+      "primary_light": "#eff6ff",
+      "accent": "#3b82f6"
+    },
+    "surface": {
+      "background": "#f8fafc",
+      "card": "#ffffff",
+      "sidebar": "#ffffff",
+      "border": "#e2e8f0"
+    },
+    "text": {
+      "primary": "#0f172a",
+      "secondary": "#64748b",
+      "tertiary": "#94a3b8",
+      "price": "#2563eb"
+    },
+    "status": {
+      "success": "#10b981",
+      "success_bg": "#d1fae5",
+      "warning": "#f59e0b",
+      "warning_bg": "#fef3c7",
+      "danger": "#ef4444",
+      "danger_bg": "#fee2e2"
+    }
+  },
+  "layouts": {
+    "global": {
+      "app_container": "bg-slate-50 min-h-screen text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex"
+    },
+    "pos_terminal": {
+      "desktop": "flex h-screen overflow-hidden bg-slate-50",
+      "main_content": "flex-1 flex flex-col h-full overflow-hidden",
+      "top_bar": "h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-10",
+      "products_area": "flex-1 overflow-y-auto p-6",
+      "sticky_cart_sidebar": "w-[360px] xl:w-[420px] bg-white border-l border-slate-200 flex flex-col h-full shrink-0 shadow-[-4px_0_24px_rgba(0,0,0,0.02)] z-20",
+      "cart_header": "p-6 border-b border-slate-100 shrink-0",
+      "cart_items_list": "flex-1 overflow-y-auto p-4 space-y-3",
+      "cart_footer": "p-6 border-t border-slate-100 bg-slate-50/50 shrink-0",
+      "mobile": "Mobile uses a standard stacked layout with the cart operating as a fixed bottom sheet or full-screen drawer triggered by a FAB."
+    },
+    "dashboard": {
+      "container": "p-6 sm:p-8 max-w-[1600px] mx-auto w-full",
+      "kpi_grid": "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8",
+      "main_grid": "grid grid-cols-1 lg:grid-cols-3 gap-8",
+      "chart_section": "lg:col-span-2 space-y-8"
+    }
+  },
+  "components": {
+    "cards": {
+      "base": "bg-white rounded-2xl border border-slate-100 shadow-sm",
+      "interactive": "bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-blue-100 transition-all duration-200 cursor-pointer group"
+    },
+    "pos_product_card": {
+      "container": "relative bg-white rounded-2xl p-5 border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1 group flex flex-col h-full",
+      "badge": "absolute top-3 right-3 bg-blue-50 text-blue-700 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider",
+      "sku": "text-xs font-medium text-slate-400 mb-1",
+      "title": "text-sm font-semibold text-slate-800 line-clamp-2 mb-3 leading-snug group-hover:text-blue-600 transition-colors",
+      "price": "mt-auto text-lg font-bold font-['Outfit'] text-blue-600"
+    },
+    "category_bubbles": {
+      "container": "flex overflow-x-auto pb-4 gap-3 scrollbar-hide snap-x",
+      "bubble": "shrink-0 snap-start whitespace-nowrap px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-200 border cursor-pointer",
+      "active": "bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-200",
+      "inactive": "bg-white text-slate-600 border-slate-200 hover:border-blue-200 hover:bg-blue-50"
+    },
+    "cart_item": {
+      "container": "flex gap-4 p-3 bg-white border border-slate-100 rounded-xl",
+      "details": "flex-1 min-w-0",
+      "title": "text-sm font-medium text-slate-800 truncate",
+      "price": "text-sm font-bold text-slate-900 mt-1",
+      "stepper": "flex items-center gap-3 bg-slate-50 rounded-lg p-1 border border-slate-100",
+      "stepper_btn": "w-7 h-7 flex items-center justify-center rounded bg-white shadow-sm text-slate-600 hover:text-blue-600 transition-colors"
+    },
+    "buttons": {
+      "primary": "inline-flex items-center justify-center rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-sm shadow-blue-200 hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 transition-all duration-200 disabled:opacity-50 disabled:pointer-events-none active:scale-[0.98]",
+      "secondary": "inline-flex items-center justify-center rounded-xl bg-white px-6 py-3 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-inset ring-slate-200 hover:bg-slate-50 transition-all duration-200 disabled:opacity-50 disabled:pointer-events-none active:scale-[0.98]",
+      "danger": "inline-flex items-center justify-center rounded-xl bg-red-50 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-100 transition-colors"
+    },
+    "inputs": {
+      "base": "block w-full rounded-xl border-0 py-3 px-4 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 transition-shadow bg-white",
+      "search": "pl-10"
+    }
+  },
+  "motion": {
+    "list_stagger": {
+      "initial": { "opacity": 0, "y": 10 },
+      "animate": { "opacity": 1, "y": 0 },
+      "transition": { "duration": 0.2, "staggerChildren": 0.05 }
+    },
+    "card_hover": "Transform cards on hover via Tailwind `hover:-translate-y-1 hover:shadow-md transition-all duration-300`",
+    "cart_item_add": "Scale up slightly and fade in. Use framer-motion `<motion.div layout initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}>`"
+  },
+  "accessibility": {
+    "data_test_ids": "MANDATORY. Every interactive element must have a kebab-case role-based `data-testid` (e.g., `pos-checkout-btn`, `cart-item-qty-increase`).",
+    "contrast": "Ensure text contrast meets WCAG AA standards. Gray-400 is strictly for disabled states or large icons; use Gray-500 or Gray-600 for secondary text.",
+    "focus_rings": "Always provide visible focus states: `focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2`"
+  },
+  "instructions_to_main_agent": [
+    "CRITICAL: Use pure React+Vite with .js/.jsx files (NO TypeScript, NO .tsx).",
+    "CRITICAL: The POS screen MUST use the 2-column layout exactly as defined in `layouts.pos_terminal`. Do NOT place the cart at the bottom of the page on desktop. It must be a sticky right sidebar ~400px wide.",
+    "CRITICAL: Currency is DOP$ (Dominican Peso). Always prefix prices with DOP$. Example: DOP$ 1,500.00.",
+    "CRITICAL: Language is Spanish. All UI text, placeholders, and error messages must be in Spanish.",
+    "CRITICAL: Use Zustand for state management (Cart state, Auth state, UI sidebar toggle).",
+    "CRITICAL: Category filters must be horizontal scroll bubbles, NOT <select> dropdowns.",
+    "CRITICAL: Ensure empty states (Empty cart, no appointments, no alerts) look designed and friendly, never broken.",
+    "CRITICAL: Implement Lenis for smooth scrolling globally.",
+    "CRITICAL: Use Shadcn/UI primitives for advanced interactions (Dialog, Select, Popover) but override styles to match this theme's rounded-xl, light aesthetic. For basic cards/buttons, use the Tailwind classes defined here.",
+    "CRITICAL: DO NOT use complete transparent backgrounds for headers or sidebars. Use bg-white or backdrop-blur."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. In frontend design, this creates what users call the 'AI slop' aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur).",
+    "You MUST NOT apply universal transition. Eg: transition: all. This results in breaking transforms. Always add transitions for specific interactive elements like button, input excluding transforms.",
+    "You MUST NOT center align the app container, ie do not add .App { text-align: center; } in the css file. This disrupts the human natural reading flow of text.",
+    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style.",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯 etc for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, parallax effects, and entrance animations. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Subtle grain textures, noise overlays, custom cursors, selection states, and loading animations: separates good from extraordinary.",
+    "Main agent relies on these image URLs. Missing categories (especially sponsor logos) = main agent will use placeholder text which is FORBIDDEN",
+    "Prioritize using pre-existing components from src/components/ui when applicable",
+    "Use sonner for toasts"
+  ]
+}

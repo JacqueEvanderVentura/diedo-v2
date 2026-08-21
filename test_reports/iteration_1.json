@@ -1,0 +1,35 @@
+{
+  "summary": "Frontend-only E2E testing (no backend) of Diedo/Vilma AI FASE 1 on the external preview URL. Covered: root redirect to /dashboard, sidebar navigation (Vista General <-> Terminal POS, desktop + mobile drawer), dashboard period filters with KPI/chart recompute, POS product grid, category bubbles, search by name/SKU, add-to-cart + toast, qty steppers (inc/dec/dec-to-0/trash), discount input (incl. clamp 0-100), customer selector + search, branch selector, payment tabs, Transferencia inline validation, checkout success + cart clear, Imprimir/Descargar/Gasto mock actions, Gasto modal inline validation, Limpiar, empty state + disabled Cobrar, sold-out product disabled, 'Sin resultados' empty state, cart persistence after reload, desktop sticky RIGHT cart sidebar layout verification, and mobile (390px) FAB + bottom-sheet drawer. Result: all 14 requested flows PASS. No JS page errors. Only cosmetic/minor issues found.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "CartDrawer / CartPanel header (mobile 390px)", "issue": "The drawer close (X) button is absolutely positioned at top-right and overlaps the CartPanel header actions — the 'Limpiar' button is clipped/covered ('Lim...' visible under the X), making it hard/impossible to tap on mobile.", "selector": "[data-testid=\"pos-cart-drawer-close\"] over [data-testid=\"cart-clear\"]", "priority": "MEDIUM"},
+      {"component": "ExpenseModal toast", "issue": "Success toast shows unformatted amount: 'Gasto registrado: TEST_Compra insumos · DOP$ 500' instead of formatDOP style 'DOP$ 500.00' used everywhere else.", "selector": "[data-sonner-toast]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard (all viewports)", "issues": ["Recharts console warning repeated on every render: 'The width(-1) and height(-1) of chart should be greater than 0...' — ResponsiveContainer measures a zero/negative-size parent on first paint (add minHeight/explicit height to the chart wrapper). Chart still renders correctly."]},
+      {"screen": "Dashboard (mobile 390px)", "issues": ["Period filter pills wrap to two lines ('Esta semana', 'Este mes') making the segmented control uneven in height — consider smaller text/horizontal scroll."]},
+      {"screen": "POS cart (desktop)", "issues": ["With a 100% discount the Total becomes DOP$ 0.00 and 'Cobrar · DOP$ 0.00' remains enabled — business rule may want to block a zero-value sale (informational)."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Fix mobile cart drawer close-button overlap with the 'Limpiar' action in the CartPanel header (e.g., add right padding to header on mobile or move the close button).",
+    "Format the Gasto success toast amount with formatDOP.",
+    "Silence/fix Recharts ResponsiveContainer width/height(-1) warning by giving the chart container an explicit height/minHeight."
+  ],
+  "critical_code_review_comments": [
+    "CartPanel is rendered twice on mobile (CartSidebar is display:none but mounted, CartDrawer mounts on open) — duplicate data-testids exist in the DOM when the drawer is open; automated tests must filter by visibility. Consider rendering only one instance based on viewport.",
+    "posStore.getSubtotal/getTotal are store methods returning fresh values; components subscribe to `items` so re-render works, but selecting derived getters (e.g. usePosStore(s => s.getItemCount())) recomputes each render — fine now, watch for perf later.",
+    "posStore persists items/discount/customer but not transferProof/paymentMethod-proof pairing; after reload with 'transferencia' persisted, the proof is null and checkout correctly blocks — acceptable, just noting."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (no backend)", "frontend": "100% of requested flows passed (14/14), 2 cosmetic issues"},
+  "seed_data_creation": "None (all data is mock). Test expense 'TEST_Compra insumos' was only a toast, not persisted.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "N/A - no authentication in app",
+  "context_for_next_testing_agent": "Always run localStorage.clear() before POS tests (posStore persists the cart under key 'diedo-pos'). Selector caution: '[data-testid^=\"pos-product-\"]' also matches 'pos-product-grid' (counts are off by one). On mobile, both CartSidebar (hidden) and CartDrawer contain the same testids — use visible-scoped locators. Verified prices are formatted 'DOP$ 1,200.00', ITBIS 18%, and the desktop cart is a real right-side sticky sidebar (x=1520, width=400 at 1920px).",
+  "rca_of_the_issue": "No functional defects found. Mobile drawer overlap RCA: CartDrawer places an absolutely positioned close button at right-4/top-4 over the CartPanel header row which already contains 'Item' and 'Limpiar' buttons, with no reserved padding."
+}
