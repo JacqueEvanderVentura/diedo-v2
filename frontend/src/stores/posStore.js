@@ -17,7 +17,7 @@ const SEED_RECEIVABLES = [
   { id: 'cxc-seed-3', saleId: 'sale-seed-3', customer: { id: 'c3', name: 'Ana Cristina Vargas' }, amount: 700, method: 'cxc', reference: 'CXC-0007', status: 'paid', createdAt: daysAgo(2), paidAt: daysAgo(1), paidMethod: 'efectivo', items: [{ name: '1 Sesión rostro', qty: 1, price: 700 }] },
 ]
 
-// POS store — cart + caja (register) + expenses + receivables (CxC). Persisted.
+// POS store — cart + caja (register) + expenses + receivables (CxC) + customers. Persisted.
 export const usePosStore = create(
   persist(
     (set, get) => ({
@@ -25,7 +25,9 @@ export const usePosStore = create(
       branchId: 'charm-dn',
       items: [],
       customer: DEFAULT_CUSTOMER,
-      discountPct: 0,
+      customers: CUSTOMERS,
+      discountMode: 'pct', // 'pct' | 'amount'
+      discountValue: 0,
       taxPct: 18,
       paymentMethod: 'efectivo',
       transferProof: null,
@@ -35,7 +37,7 @@ export const usePosStore = create(
       // ---- caja (register) ----
       register: { open: true, openedAt: now(), openingCash: 2000, closedAt: null },
       cashSales: 0,
-      expenses: [], // { id, concept, amount, createdAt }
+      expenses: [],
       sales: [],
       receivables: SEED_RECEIVABLES,
       lastCloseSummary: null,
@@ -43,7 +45,9 @@ export const usePosStore = create(
       // ---- cart actions ----
       setBranch: (branchId) => set({ branchId }),
       setCustomer: (customer) => set({ customer }),
-      setDiscountPct: (discountPct) => set({ discountPct: Math.max(0, Math.min(100, Number(discountPct) || 0)) }),
+      addCustomer: (customer) => set((s) => ({ customers: [customer, ...s.customers], customer })),
+      setDiscountMode: (discountMode) => set({ discountMode }),
+      setDiscountValue: (v) => set({ discountValue: Math.max(0, Number(v) || 0) }),
       setPaymentMethod: (paymentMethod) => set({ paymentMethod, transferProof: paymentMethod === 'transferencia' ? get().transferProof : null }),
       setTransferProof: (transferProof) => set({ transferProof }),
       setPaymentReference: (paymentReference) => set({ paymentReference }),
@@ -61,7 +65,7 @@ export const usePosStore = create(
       incItem: (id) => set((state) => ({ items: state.items.map((i) => (i.id === id ? { ...i, qty: i.qty + 1 } : i)) })),
       decItem: (id) => set((state) => ({ items: state.items.map((i) => (i.id === id ? { ...i, qty: i.qty - 1 } : i)).filter((i) => i.qty > 0) })),
       removeItem: (id) => set((state) => ({ items: state.items.filter((i) => i.id !== id) })),
-      clearCart: () => set({ items: [], discountPct: 0, customer: DEFAULT_CUSTOMER, transferProof: null, paymentReference: '' }),
+      clearCart: () => set({ items: [], discountMode: 'pct', discountValue: 0, customer: DEFAULT_CUSTOMER, transferProof: null, paymentReference: '' }),
 
       // ---- caja actions ----
       openRegister: (openingCash) =>
@@ -78,7 +82,6 @@ export const usePosStore = create(
       addExpense: ({ concept, amount }) =>
         set((s) => ({ expenses: [{ id: genId('exp'), concept, amount: Number(amount) || 0, createdAt: now() }, ...s.expenses] })),
 
-      // Records a sale; efectivo increases cash, receivable methods create a pending CxC.
       recordSale: ({ total, method, customer, reference, items }) => {
         const id = genId('sale')
         set((s) => {
@@ -108,7 +111,17 @@ export const usePosStore = create(
 
       // ---- selectors ----
       getSubtotal: () => get().items.reduce((sum, i) => sum + i.price * i.qty, 0),
-      getDiscountAmount: () => (get().getSubtotal() * get().discountPct) / 100,
+      getDiscountAmount: () => {
+        const sub = get().getSubtotal()
+        if (get().discountMode === 'amount') return Math.min(sub, Math.max(0, get().discountValue))
+        const pct = Math.min(100, Math.max(0, get().discountValue))
+        return (sub * pct) / 100
+      },
+      getDiscountPct: () => {
+        const sub = get().getSubtotal()
+        if (get().discountMode === 'amount') return sub > 0 ? Math.min(100, (Math.min(sub, get().discountValue) / sub) * 100) : 0
+        return Math.min(100, Math.max(0, get().discountValue))
+      },
       getTaxAmount: () => {
         const base = get().getSubtotal() - get().getDiscountAmount()
         return (base * get().taxPct) / 100
@@ -129,7 +142,9 @@ export const usePosStore = create(
         branchId: s.branchId,
         items: s.items,
         customer: s.customer,
-        discountPct: s.discountPct,
+        customers: s.customers,
+        discountMode: s.discountMode,
+        discountValue: s.discountValue,
         paymentMethod: s.paymentMethod,
         register: s.register,
         cashSales: s.cashSales,

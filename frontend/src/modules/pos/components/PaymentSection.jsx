@@ -24,6 +24,10 @@ export function PaymentSection({ error }) {
   const fileRef = useRef(null)
 
   const isReceivable = ['transferencia', 'link', 'cxc'].includes(paymentMethod)
+  const isTransfer = paymentMethod === 'transferencia'
+  // Transfer validity: proof OR reference (one of two).
+  const transferMissing = isTransfer && !transferProof && !paymentReference.trim()
+  const showRefError = isTransfer && error && transferMissing
 
   return (
     <div data-testid="pos-payment-section">
@@ -55,20 +59,29 @@ export function PaymentSection({ error }) {
         </p>
       )}
 
-      {/* Reference / voucher number — always available */}
-      <div className="relative mt-2.5">
-        <Hash className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      {isTransfer && (
+        <p className="mt-2 text-[11px] font-medium text-slate-400">
+          Ingresa el <span className="font-semibold text-slate-500">N° de referencia</span> <span className="font-bold">o</span> sube el comprobante (una de las dos).
+        </p>
+      )}
+
+      {/* Reference / voucher number */}
+      <div className="relative mt-2">
+        <Hash className={cn('pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2', showRefError ? 'text-red-400' : 'text-slate-400')} />
         <input
           value={paymentReference}
           onChange={(e) => setPaymentReference(e.target.value)}
           placeholder={REF_LABELS[paymentMethod]}
           data-testid="pos-payment-reference"
-          className="w-full rounded-xl border-0 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-800 ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600"
+          className={cn(
+            'w-full rounded-xl border-0 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-800 ring-1 ring-inset placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600',
+            showRefError ? 'ring-red-300' : 'ring-slate-200'
+          )}
         />
       </div>
 
-      {paymentMethod === 'transferencia' && (
-        <div className="mt-2.5">
+      {isTransfer && (
+        <div className="mt-2">
           <input
             ref={fileRef}
             type="file"
@@ -80,26 +93,37 @@ export function PaymentSection({ error }) {
               if (f) setTransferProof({ name: f.name })
             }}
           />
-          <button
-            onClick={() => fileRef.current?.click()}
-            data-testid="pos-transfer-upload"
-            className={cn(
-              'flex w-full items-center gap-3 rounded-xl border border-dashed p-2.5 text-left text-sm transition-colors',
-              transferProof
-                ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                : error
-                  ? 'border-red-300 bg-red-50 text-red-600'
-                  : 'border-slate-300 bg-slate-50 text-slate-500 hover:border-blue-300 hover:bg-blue-50'
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => fileRef.current?.click()}
+              data-testid="pos-transfer-upload"
+              className={cn(
+                'flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-dashed p-2.5 text-left text-sm transition-colors',
+                transferProof
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                  : showRefError
+                    ? 'border-red-300 bg-red-50 text-red-600'
+                    : 'border-slate-300 bg-slate-50 text-slate-500 hover:border-blue-300 hover:bg-blue-50'
+              )}
+            >
+              {transferProof ? <CheckCircle2 className="h-5 w-5 shrink-0" /> : <Upload className="h-5 w-5 shrink-0" />}
+              <span className="min-w-0 flex-1 truncate font-medium">
+                {transferProof ? transferProof.name : 'Subir comprobante'}
+              </span>
+            </button>
+            {transferProof && (
+              <button
+                onClick={() => setTransferProof(null)}
+                data-testid="pos-transfer-remove"
+                className="shrink-0 rounded-lg px-2 py-2 text-xs font-semibold text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+              >
+                Quitar
+              </button>
             )}
-          >
-            {transferProof ? <CheckCircle2 className="h-5 w-5 shrink-0" /> : <Upload className="h-5 w-5 shrink-0" />}
-            <span className="truncate font-medium">
-              {transferProof ? transferProof.name : 'Subir comprobante de transferencia'}
-            </span>
-          </button>
-          {error && !transferProof && (
+          </div>
+          {showRefError && (
             <p className="mt-1.5 text-xs font-medium text-red-500" data-testid="pos-transfer-error">
-              Adjunta el comprobante para continuar.
+              Ingresa el N° de referencia o sube el comprobante.
             </p>
           )}
         </div>

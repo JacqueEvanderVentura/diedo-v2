@@ -1,15 +1,27 @@
 import { useState, useRef, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Users, ChevronRight, Search, Check } from 'lucide-react'
-import { CUSTOMERS } from '@/data/customers'
+import { Users, ChevronRight, Search, Check, UserPlus } from 'lucide-react'
+import { toast } from 'sonner'
 import { usePosStore } from '@/stores/posStore'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/utils'
+
+const genId = () => `cust-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 
 export function CustomerSelector() {
   const customer = usePosStore((s) => s.customer)
   const setCustomer = usePosStore((s) => s.setCustomer)
+  const customers = usePosStore((s) => s.customers)
+  const addCustomer = usePosStore((s) => s.addCustomer)
+
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [modalOpen, setModalOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [err, setErr] = useState('')
   const ref = useRef(null)
 
   useEffect(() => {
@@ -20,9 +32,23 @@ export function CustomerSelector() {
     return () => document.removeEventListener('mousedown', onClick)
   }, [])
 
-  const filtered = CUSTOMERS.filter((c) =>
-    c.name.toLowerCase().includes(query.trim().toLowerCase())
-  )
+  const filtered = customers.filter((c) => c.name.toLowerCase().includes(query.trim().toLowerCase()))
+
+  const openCreate = () => {
+    setOpen(false)
+    setModalOpen(true)
+  }
+
+  const submitCreate = () => {
+    if (!name.trim()) return setErr('Ingresa el nombre del cliente.')
+    const c = { id: genId(), name: name.trim(), phone: phone.trim() || null }
+    addCustomer(c) // also sets as current customer
+    toast.success(`Cliente "${c.name}" creado y seleccionado`)
+    setName('')
+    setPhone('')
+    setErr('')
+    setModalOpen(false)
+  }
 
   return (
     <div className="relative" ref={ref}>
@@ -50,6 +76,18 @@ export function CustomerSelector() {
             transition={{ duration: 0.15 }}
             className="absolute left-0 right-0 top-full z-40 mt-2 overflow-hidden rounded-xl border border-slate-100 bg-white shadow-xl"
           >
+            {/* First option: create new */}
+            <button
+              onClick={openCreate}
+              data-testid="pos-customer-create"
+              className="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-3 text-left transition-colors hover:bg-blue-50"
+            >
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white">
+                <UserPlus className="h-4 w-4" />
+              </div>
+              <span className="text-sm font-semibold text-blue-700">Crear nuevo cliente</span>
+            </button>
+
             <div className="border-b border-slate-100 p-2">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -63,7 +101,7 @@ export function CustomerSelector() {
                 />
               </div>
             </div>
-            <div className="max-h-56 overflow-y-auto scrollbar-thin p-1.5">
+            <div className="max-h-52 overflow-y-auto scrollbar-thin p-1.5">
               {filtered.length === 0 ? (
                 <p className="px-3 py-4 text-center text-sm text-slate-400">Sin coincidencias</p>
               ) : (
@@ -90,6 +128,41 @@ export function CustomerSelector() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Create customer modal */}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Nuevo cliente" testId="pos-customer-modal">
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Nombre</label>
+            <Input
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value)
+                setErr('')
+              }}
+              placeholder="Ej. Juan Pérez"
+              data-testid="new-customer-name"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Teléfono (opcional)</label>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="809-000-0000" data-testid="new-customer-phone" />
+          </div>
+          {err && (
+            <p className="text-sm font-medium text-red-500" data-testid="new-customer-error">
+              {err}
+            </p>
+          )}
+          <div className="flex gap-3 pt-1">
+            <Button variant="secondary" className="flex-1" onClick={() => setModalOpen(false)} data-testid="new-customer-cancel">
+              Cancelar
+            </Button>
+            <Button className="flex-1" onClick={submitCreate} data-testid="new-customer-save">
+              Crear y seleccionar
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

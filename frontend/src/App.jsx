@@ -8,8 +8,10 @@ export default function App() {
     <>
       <AppRoutes />
       <Toaster
-        position="top-right"
+        position="top-center"
         richColors
+        expand={false}
+        visibleToasts={1}
         toastOptions={{
           style: {
             borderRadius: '0.75rem',

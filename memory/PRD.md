@@ -47,6 +47,14 @@ Navbar + Dashboard + POS Terminal, with the POS cart as a sticky RIGHT sidebar (
 - Pending-CxC badges in sidebar + POS top bar; caja/CxC shortcuts in POS top bar.
 - Verified by testing agent: iteration_3 (12/12 scenarios). Fixed surfaced logic: row "Marcar cobrado" no longer inflates cash for non-cash methods; markReceivablePaid guards double-pay; CxC table date/layout polish.
 
+## POS polish round (2026-06) — DONE (verified iteration_4/5, 100%)
+- Toasts no longer stack (top-center, single visible).
+- Discount can be entered as AMOUNT (DOP$) or PERCENT with automatic conversion + helper.
+- Transfer proof upload no longer overflows the cart (CartPanel root w-full/min-w-0 + aside overflow-hidden + truncated filename + Quitar).
+- Transfer requires EITHER photo proof OR reference number (one of two, not both).
+- Customer selector: first option 'Crear nuevo cliente' opens a modal, creates + auto-selects (posStore.customers + addCustomer).
+- Modal closes on Escape.
+
 ## Backlog (future phases)
 - P1 Fase 2: `/pos/caja` (cierre de caja real), `/pos/cuentas-por-cobrar`. Real "Item manual" in cart; real print/download.
 - P1 Fase 3: `/inventarios` + catálogo/config items.

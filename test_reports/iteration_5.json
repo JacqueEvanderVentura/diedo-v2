@@ -1,0 +1,22 @@
+{
+  "summary": "Targeted frontend re-test of FIX 3 (long transfer-proof filename must not overflow cart UI) plus regressions on transfer validation, single-toast behavior and Modal Escape close. All items PASS. FIX 3 verified at 1920px and 1024px: sidebar width stayed 400px / 360px (was ~866px in iteration_4), filename truncated (span clientWidth 258/218 vs scrollWidth 725 -> ellipsis active), upload button stays inside sidebar, totals + 'Cobrar' button fully on screen (btn box x=1537 w=367 @1920, x=681 w=327 @1024). 'Quitar' (pos-transfer-remove) resets label to 'Subir comprobante'. Transfer checkout blocks with pos-transfer-error when both proof and reference are empty; reference-only and proof-only each allow checkout producing 'Cuenta por cobrar generada' with exactly ONE visible toast. Escape closes both pos-customer-modal and cxc-detail-modal. Zero JS console errors across all runs.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "CartPanel root 'w-full min-w-0' + CartSidebar aside 'overflow-hidden' + upload span 'min-w-0 flex-1 truncate' correctly resolve the flex min-content blowout; keep min-w-0 if the layout is refactored.",
+    "Optional: add a data-testid on cxc rows' clickable name is present (cxc-detail-{id}); route is /pos/cuentas-por-cobrar (not /cxc) — note for future test scripts."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped)", "frontend": "100% (7/7 checks)"},
+  "seed_data_creation": "Two transfer/CxC sales generated via POS checkout (reference REF-QA-001 and long-filename proof) in localStorage only.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "FIX 3 is CLOSED. Verified with Playwright measuring pos-cart-sidebar bounding box before/after uploading a 96-char filename at 1920 and 1024. CxC page route is /pos/cuentas-por-cobrar; detail modal opens via [data-testid^='cxc-detail-']; 'Nuevo cliente' requires clicking pos-customer-selector first to reveal pos-customer-create. Product testid pos-product-p1 works; toasts use [data-visible='true'].",
+  "rca_of_the_issue": "Previous failure: CartPanel root was a flex item of the aside without min-w-0/w-full, so the long filename's min-content width propagated up and expanded the sidebar to ~866px. Patch (w-full min-w-0 on the panel, overflow-hidden on the aside, truncate on the filename span) fixes it; re-verified."
+}

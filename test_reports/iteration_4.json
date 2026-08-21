@@ -1,0 +1,29 @@
+{
+  "summary": "Frontend-only Playwright testing of the 5 POS bug fixes plus regression (desktop 1920x1080 and 1024px). FIX 1 (single toast), FIX 2 (discount amount/percent), FIX 4 (transfer requires proof OR reference), FIX 5 (create + auto-select customer) all PASS. FIX 3 (long transfer filename truncation) FAILS: uploading a long filename expands CartPanel from 390px to 866px, overflowing outside the 400px cart sidebar (content pushed off-screen). Regression (add-to-cart, qty steppers, subtotal/ITBIS 18%/Total math, categories, search, Efectivo checkout, CxC creation, /pos/caja open+close, /pos/cuentas-por-cobrar filters, Marcar cobrado, detail modal) all pass. Zero JS console errors across all runs.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PaymentSection / CartPanel (FIX 3)", "issue": "With a long transfer filename (e.g. 'comprobante_de_transferencia_banco_popular_dominicano_muy_largo_nombre_de_archivo_2026_test_qa.png') the truncate does NOT take effect: CartPanel root width grows 390px -> 866px and overflows the 400px aside (panel right edge 2387px at 1920 viewport). Payment buttons, totals and 'Cobrar' get pushed off-screen. Same at 1024px (panel 866px). Short filenames are fine. RCA: CartPanel root <div class='flex h-full min-h-0 flex-col bg-white'> is a flex item of <aside class='...lg:flex w-[360px] xl:w-[400px]'> with no min-w-0/w-full, so its min-content width (long filename) wins; the inner min-w-0/flex-1/truncate never applies. Verified fix: add 'w-full min-w-0' to CartPanel root (patched live -> width back to 399px and filename truncated correctly), or add overflow-hidden to the aside.", "selector": "[data-testid='pos-transfer-upload'] inside [data-testid='pos-cart-sidebar']", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Modal (CxC detail, Nuevo cliente)", "issues": ["Modal does not close on Escape key (no keydown handler in /app/frontend/src/components/ui/Modal.jsx) — minor a11y/UX gap"]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "FIX 3: add 'w-full min-w-0' to the CartPanel root div (/app/frontend/src/modules/pos/components/CartPanel.jsx line 76) so the long-filename truncation actually works and the cart sidebar stops overflowing; re-verify at 1024px and 1920px.",
+    "Optional: add Escape-key close to /app/frontend/src/components/ui/Modal.jsx."
+  ],
+  "critical_code_review_comments": [
+    "Truncation must be guaranteed at every level of the flex chain: any flex item wrapping truncated text needs min-w-0 (CartPanel root is the missing link).",
+    "posStore.clearCart resets discountMode to 'pct' and customer to DEFAULT_CUSTOMER — intentional, but note that a just-created customer is dropped from the cart after checkout (customers list is retained)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (no backend)", "frontend": "4/5 fixes pass + regression 100%"},
+  "seed_data_creation": "Created client-side customer 'TEST_QA Cliente' (809-555-1234) and a few sales/receivables in localStorage; localStorage.clear() resets everything.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Verified evidence: FIX1 sonner keeps 3 nodes in DOM but only 1 has data-visible='true' (opacity 1) => single-toast requirement met; assert on data-visible not node count. FIX2 with subtotal 11,100: %10 -> 'Descuento (10.0%)', helper 'Ahorro de DOP$ 1,110.00', total 11,788.20; DOP$340 -> helper 'Equivale a 3.1% de descuento', tax 1,936.80, total 12,696.80. FIX4: empty ref + no proof -> pos-transfer-error and blocked; ref-only and proof-only each succeed with 'Cuenta por cobrar generada'. FIX5 modal + auto-select + dropdown listing OK. Selectors: search = [data-testid='pos-search'] (not pos-search-input); CxC filters = cxc-filter-pending/paid/all; some product cards are disabled (AGOTADO) — use pos-product-p1.",
+  "rca_of_the_issue": "FIX 3 regression persists because the truncation fix was applied only inside PaymentSection (min-w-0 flex-1 on the upload button/span). The overflow originates one level up: CartPanel's root flex container has no min-w-0/w-full inside the flex aside, so the container itself expands to the intrinsic width of the long filename before truncation can kick in. Injecting minWidth:0 + width:100% on the CartPanel root at runtime restored 399px width and correct ellipsis truncation."
+}
