@@ -9,6 +9,7 @@ from fastapi.responses import RedirectResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.router import api_router
+from app.api.routers import development
 from app.config import settings
 from app.core.cors import parse_cors_origins
 from app.core.errors import (
@@ -58,6 +59,9 @@ def create_app() -> FastAPI:
     application.add_middleware(AccessLogMiddleware)
     application.add_middleware(CorrelationIdMiddleware)
     application.include_router(api_router)
+
+    if settings.app_env in {"development", "test"}:
+        application.include_router(development.router)
 
     if settings.docs_enabled:
 

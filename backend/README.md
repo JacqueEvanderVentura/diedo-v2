@@ -44,6 +44,7 @@ Copy-Item .env.example .env
 docker compose up -d
 python -m alembic upgrade head
 python -m alembic check
+python -m app.scripts.bootstrap_local
 ```
 
 The local database listens on port `5433` to avoid colliding with a PostgreSQL installation on the
@@ -57,6 +58,7 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 - Liveness: `GET http://localhost:8000/health`
 - Database readiness: `GET http://localhost:8000/health/ready`
+- Local foundation status: `GET http://localhost:8000/dev/foundation`
 - Swagger UI: `http://localhost:8000/swagger/index.html`
 - OpenAPI JSON: `http://localhost:8000/swagger.json`
 
@@ -78,4 +80,6 @@ The same checks run in GitHub Actions against a PostgreSQL service container.
 ## Architecture
 
 Read [`../docs/backend/GLOBAL.md`](../docs/backend/GLOBAL.md) before adding domain modules, routes,
-tables, or migrations. Hosting and managed database infrastructure are intentionally deferred.
+tables, or migrations. The implemented physical boundary and deferred business modules are documented
+in [`../docs/backend/FOUNDATION_SCHEMA.md`](../docs/backend/FOUNDATION_SCHEMA.md). Hosting and managed
+database infrastructure are intentionally deferred.

@@ -12,3 +12,5 @@ La infraestructura de hosting y la base de datos administrada se definiran en un
 Para desarrollo local se incluye PostgreSQL mediante Docker Compose.
 
 Consulta [`backend/README.md`](backend/README.md) para instalar y ejecutar la API.
+El limite fisico ya implementado y los modulos de negocio aplazados estan descritos en
+[`docs/backend/FOUNDATION_SCHEMA.md`](docs/backend/FOUNDATION_SCHEMA.md).
