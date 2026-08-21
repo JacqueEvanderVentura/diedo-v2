@@ -4,15 +4,18 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { formatDOP } from '@/lib/format'
+import { usePosStore } from '@/stores/posStore'
 
 export function ExpenseModal({ open, onClose }) {
   const [concept, setConcept] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState('')
+  const addExpense = usePosStore((s) => s.addExpense)
 
   const submit = () => {
     if (!concept.trim()) return setError('Ingresa un concepto para el gasto.')
     if (!amount || Number(amount) <= 0) return setError('Ingresa un monto válido.')
+    addExpense({ concept: concept.trim(), amount: Number(amount) })
     toast.success(`Gasto registrado: ${concept} · ${formatDOP(amount)}`)
     setConcept('')
     setAmount('')

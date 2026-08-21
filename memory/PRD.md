@@ -28,15 +28,24 @@ Navbar + Dashboard + POS Terminal, with the POS cart as a sticky RIGHT sidebar (
 - No alert(): toasts, skeletons, empty states, inline validations. data-testid on all interactive elements.
 
 ## Implemented (2026-06 / Fase 1) — DONE
-- Vite scaffold, Tailwind+SCSS, self-hosted Inter/Outfit woff2, Lenis, framer-motion, sonner, recharts.
-- Router `/`→`/dashboard`, `/dashboard`, `/pos`, placeholders for future modules.
-- Layout: collapsible Sidebar (desktop) + mobile drawer, Navbar.
-- Dashboard fully built (KPIs, chart, stock alerts, activity, appointments empty state, period filter persisted).
-- POS fully built (grid, category filter, search, add-to-cart, qty steppers, discount, ITBIS 18%, customer & branch
-  selectors, payment tabs + transfer upload validation, checkout clears cart, Imprimir/Descargar/Gasto mocks, mobile FAB+drawer).
-- Stores: uiStore, dashboardStore, posStore (all persisted where relevant).
-- Verified by testing agent: 14/14 frontend flows PASS. Minor fixes applied (mobile drawer close overlap,
-  Gasto toast DOP$ format, chart height warning, mobile filter scroll).
+- Vite scaffold, Tailwind+SCSS, self-hosted Inter/Outfit woff2, framer-motion, sonner, recharts (Lenis removed — it broke internal scroll).
+- Router `/`→`/dashboard`, `/dashboard`, `/pos`, `/pos/caja`, `/pos/cuentas-por-cobrar`, placeholders for future modules.
+- Layout: expandable grouped Sidebar (brand "Diedo App / Admin Console", logout, pending-CxC badge) + mobile drawer, Navbar.
+- Dashboard (KPIs, chart, stock alerts, activity, appointments empty state, persisted period filter).
+- POS (grid, category filter, search, add-to-cart, qty steppers, discount, ITBIS 18%, customer & branch selectors,
+  5 payment methods incl. Link/Cta.Cobrar + reference/voucher input + transfer upload validation, checkout, mobile FAB+drawer).
+- Stores: uiStore, dashboardStore, posStore (persisted).
+- Verified by testing agent: iteration_1 (14/14), iteration_2 (4 bug fixes: scroll/Lenis, grouped sidebar, compact cart footer, payment reference).
+
+## Implemented (2026-06 / Fase 2) — DONE
+- **/pos/caja**: open/close register, opening cash, shift stats (efectivo inicial, ventas efectivo, gastos, efectivo en caja),
+  shift expenses list, last-close summary. Cash math: efectivo en caja = inicial + ventas efectivo − gastos.
+- **/pos/cuentas-por-cobrar**: summary (total pendiente + count), filters (Pendientes/Cobradas/Todas), table,
+  "Marcar cobrado" (row → confirmado, no cash impact), detail modal (Confirmar pago / Cobrar en efectivo → suma a caja).
+- posStore extended (register, expenses, sales, receivables, seed) + actions (openRegister/closeRegister/addExpense/recordSale/markReceivablePaid).
+  `RECEIVABLE_METHODS = transferencia|link|cxc` generate a pending CxC at checkout; efectivo credits the drawer; checkout blocked if caja closed.
+- Pending-CxC badges in sidebar + POS top bar; caja/CxC shortcuts in POS top bar.
+- Verified by testing agent: iteration_3 (12/12 scenarios). Fixed surfaced logic: row "Marcar cobrado" no longer inflates cash for non-cash methods; markReceivablePaid guards double-pay; CxC table date/layout polish.
 
 ## Backlog (future phases)
 - P1 Fase 2: `/pos/caja` (cierre de caja real), `/pos/cuentas-por-cobrar`. Real "Item manual" in cart; real print/download.

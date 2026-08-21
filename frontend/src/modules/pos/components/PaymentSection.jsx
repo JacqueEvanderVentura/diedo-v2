@@ -1,15 +1,17 @@
 import { useRef } from 'react'
-import { Banknote, CreditCard, ArrowLeftRight, Upload, CheckCircle2, Hash } from 'lucide-react'
+import { Banknote, CreditCard, ArrowLeftRight, Link2, Clock, Upload, CheckCircle2, Hash } from 'lucide-react'
 import { PAYMENT_METHODS } from '@/data/products'
 import { usePosStore } from '@/stores/posStore'
 import { cn } from '@/lib/utils'
 
-const ICONS = { Banknote, CreditCard, ArrowLeftRight }
+const ICONS = { Banknote, CreditCard, ArrowLeftRight, Link2, Clock }
 
 const REF_LABELS = {
   efectivo: 'N° de referencia (opcional)',
   tarjeta: 'N° de comprobante / voucher',
   transferencia: 'N° de referencia de transferencia',
+  link: 'N° de referencia del link',
+  cxc: 'N° de referencia (opcional)',
 }
 
 export function PaymentSection({ error }) {
@@ -20,6 +22,8 @@ export function PaymentSection({ error }) {
   const paymentReference = usePosStore((s) => s.paymentReference)
   const setPaymentReference = usePosStore((s) => s.setPaymentReference)
   const fileRef = useRef(null)
+
+  const isReceivable = ['transferencia', 'link', 'cxc'].includes(paymentMethod)
 
   return (
     <div data-testid="pos-payment-section">
@@ -35,9 +39,7 @@ export function PaymentSection({ error }) {
               data-testid={`pos-payment-${m.id}`}
               className={cn(
                 'flex flex-col items-center gap-1 rounded-xl border p-2.5 text-[11px] font-semibold transition-[background-color,color,border-color] duration-200',
-                active
-                  ? 'border-blue-600 bg-blue-50 text-blue-700'
-                  : 'border-slate-200 bg-white text-slate-500 hover:border-blue-200'
+                active ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-500 hover:border-blue-200'
               )}
             >
               <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
@@ -46,6 +48,12 @@ export function PaymentSection({ error }) {
           )
         })}
       </div>
+
+      {isReceivable && (
+        <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] font-medium text-amber-700">
+          Genera una <span className="font-bold">cuenta por cobrar</span> hasta confirmar el pago.
+        </p>
+      )}
 
       {/* Reference / voucher number — always available */}
       <div className="relative mt-2.5">

@@ -10,7 +10,7 @@ import {
   Wallet,
   Percent,
 } from 'lucide-react'
-import { usePosStore } from '@/stores/posStore'
+import { usePosStore, RECEIVABLE_METHODS } from '@/stores/posStore'
 import { formatDOP } from '@/lib/format'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -31,6 +31,10 @@ export function CartPanel({ onCheckoutDone }) {
   const getTaxAmount = usePosStore((s) => s.getTaxAmount)
   const getTotal = usePosStore((s) => s.getTotal)
   const taxPct = usePosStore((s) => s.taxPct)
+  const register = usePosStore((s) => s.register)
+  const recordSale = usePosStore((s) => s.recordSale)
+  const customer = usePosStore((s) => s.customer)
+  const paymentReference = usePosStore((s) => s.paymentReference)
 
   const [payError, setPayError] = useState(false)
   const [expenseOpen, setExpenseOpen] = useState(false)
@@ -45,12 +49,22 @@ export function CartPanel({ onCheckoutDone }) {
 
   const handleCheckout = () => {
     if (empty) return
+    if (!register.open) {
+      toast.error('Abre la caja para poder cobrar')
+      return
+    }
     if (paymentMethod === 'transferencia' && !transferProof) {
       setPayError(true)
       return
     }
     setPayError(false)
-    toast.success(`Venta cobrada · ${formatDOP(getTotal())}`)
+    const total = getTotal()
+    recordSale({ total, method: paymentMethod, customer, reference: paymentReference, items })
+    if (RECEIVABLE_METHODS.includes(paymentMethod)) {
+      toast.success(`Cuenta por cobrar generada · ${formatDOP(total)}`)
+    } else {
+      toast.success(`Venta cobrada · ${formatDOP(total)}`)
+    }
     clearCart()
     onCheckoutDone?.()
   }

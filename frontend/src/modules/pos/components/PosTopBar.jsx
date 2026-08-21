@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Menu, Search, Store, ChevronDown, Check, PowerOff } from 'lucide-react'
-import { toast } from 'sonner'
+import { Menu, Search, Store, ChevronDown, Check, Lock, Unlock, ReceiptText } from 'lucide-react'
 import { BRANCHES } from '@/data/products'
 import { usePosStore } from '@/stores/posStore'
 import { useUiStore } from '@/stores/uiStore'
@@ -65,6 +65,9 @@ function BranchSelector() {
 
 export function PosTopBar({ query, onQueryChange }) {
   const toggleSidebar = useUiStore((s) => s.toggleSidebar)
+  const navigate = useNavigate()
+  const registerOpen = usePosStore((s) => s.register.open)
+  const pendingCxc = usePosStore((s) => s.receivables.filter((r) => r.status === 'pending').length)
 
   return (
     <header className="flex shrink-0 flex-col gap-3 border-b border-slate-100 bg-white/85 p-4 backdrop-blur-md sm:flex-row sm:items-center sm:gap-4 sm:px-6">
@@ -95,13 +98,34 @@ export function PosTopBar({ query, onQueryChange }) {
 
       <div className="flex items-center gap-2">
         <BranchSelector />
+
         <button
-          onClick={() => toast('Cierre de caja (próximamente)')}
-          data-testid="pos-close-register"
-          className="inline-flex items-center gap-2 rounded-xl bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100"
+          onClick={() => navigate('/pos/cuentas-por-cobrar')}
+          data-testid="pos-cxc-shortcut"
+          className="relative inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:border-blue-200 hover:text-blue-600"
         >
-          <PowerOff className="h-4 w-4" />
-          <span className="hidden sm:inline">Cerrar Caja</span>
+          <ReceiptText className="h-4 w-4" />
+          <span className="hidden md:inline">Por Cobrar</span>
+          {pendingCxc > 0 && (
+            <span
+              data-testid="pos-cxc-badge"
+              className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white"
+            >
+              {pendingCxc}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => navigate('/pos/caja')}
+          data-testid="pos-caja-shortcut"
+          className={cn(
+            'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors',
+            registerOpen ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
+          )}
+        >
+          {registerOpen ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
+          <span className="hidden sm:inline">{registerOpen ? 'Cerrar Caja' : 'Abrir Caja'}</span>
         </button>
       </div>
     </header>

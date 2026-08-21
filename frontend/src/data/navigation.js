@@ -8,8 +8,8 @@ export const NAV_GROUPS = [
     icon: 'ShoppingCart',
     children: [
       { label: 'Punto de Venta', to: '/pos' },
-      { label: 'Caja', to: '/pos/caja', soon: true },
-      { label: 'Cuentas por Cobrar', to: '/pos/cuentas-por-cobrar', soon: true },
+      { label: 'Caja', to: '/pos/caja' },
+      { label: 'Cuentas por Cobrar', to: '/pos/cuentas-por-cobrar' },
     ],
   },
   { id: 'agenda', label: 'Agenda', to: '/agenda', icon: 'CalendarDays', soon: true },

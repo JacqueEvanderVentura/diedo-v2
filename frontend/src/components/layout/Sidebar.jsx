@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { NAV_GROUPS } from '@/data/navigation'
 import { useUiStore } from '@/stores/uiStore'
+import { usePosStore } from '@/stores/posStore'
 import { CURRENT_USER } from '@/data/dashboard'
 
 function isGroupActive(group, pathname) {
@@ -54,6 +55,7 @@ function GroupItem({ group, collapsed, open, onToggle, onNavigate }) {
   const navigate = useNavigate()
   const location = useLocation()
   const active = isGroupActive(group, location.pathname)
+  const pendingCxc = usePosStore((s) => s.receivables.filter((r) => r.status === 'pending').length)
 
   if (collapsed) {
     return (
@@ -112,6 +114,14 @@ function GroupItem({ group, collapsed, open, onToggle, onNavigate }) {
                   }
                 >
                   <span className="flex-1 truncate">{c.label}</span>
+                  {c.to === '/pos/cuentas-por-cobrar' && pendingCxc > 0 && (
+                    <span
+                      data-testid="nav-cxc-badge"
+                      className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white"
+                    >
+                      {pendingCxc}
+                    </span>
+                  )}
                   {c.soon && (
                     <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-400">
                       Pronto

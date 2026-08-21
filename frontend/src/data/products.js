@@ -39,4 +39,6 @@ export const PAYMENT_METHODS = [
   { id: 'efectivo', name: 'Efectivo', icon: 'Banknote' },
   { id: 'tarjeta', name: 'Tarjeta', icon: 'CreditCard' },
   { id: 'transferencia', name: 'Transferencia', icon: 'ArrowLeftRight' },
+  { id: 'link', name: 'Link', icon: 'Link2' },
+  { id: 'cxc', name: 'Cta. Cobrar', icon: 'Clock' },
 ]
