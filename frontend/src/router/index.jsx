@@ -20,7 +20,7 @@ export function AppRoutes() {
         path="/pos"
         element={<PosPage />}
       />
-      {['/inventarios', '/crm/clientes', '/agenda', '/finanzas/gastos', '/reportes', '/configuracion'].map((p) => (
+      {['/inventarios', '/crm', '/crm/clientes', '/crm/pipeline', '/crm/seguimientos', '/agenda', '/finanzas/gastos', '/finanzas/ingresos', '/reportes', '/configuracion', '/pos/caja', '/pos/cuentas-por-cobrar'].map((p) => (
         <Route
           key={p}
           path={p}

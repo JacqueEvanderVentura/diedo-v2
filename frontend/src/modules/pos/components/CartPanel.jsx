@@ -5,7 +5,6 @@ import {
   ShoppingCart,
   Plus,
   Trash2,
-  Clock,
   Printer,
   Download,
   Wallet,
@@ -62,12 +61,10 @@ export function CartPanel({ onCheckoutDone }) {
   }
 
   return (
-    <div className="flex h-full flex-col bg-white">
+    <div className="flex h-full min-h-0 flex-col bg-white">
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-slate-100 py-5 pl-5 pr-16 lg:pr-5">
-        <div className="flex items-center gap-2">
-          <h2 className="font-heading text-lg font-bold tracking-tight text-slate-900">Carrito Actual</h2>
-        </div>
+      <div className="flex shrink-0 items-center justify-between border-b border-slate-100 py-4 pl-5 pr-16 lg:pr-5">
+        <h2 className="font-heading text-lg font-bold tracking-tight text-slate-900">Carrito Actual</h2>
         <div className="flex items-center gap-1">
           <button
             onClick={() => toast('Item manual (próximamente)')}
@@ -86,18 +83,16 @@ export function CartPanel({ onCheckoutDone }) {
         </div>
       </div>
 
-      {/* Scroll area: customer + items */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin p-4">
-        <div className="mb-4">
-          <CustomerSelector />
-        </div>
+      {/* Scroll area: customer + items + discount + payment + secondary */}
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto scrollbar-thin p-4">
+        <CustomerSelector />
 
         {empty ? (
           <EmptyState
             icon={ShoppingCart}
             title="Carrito vacío"
             description="Agrega productos o servicios desde la izquierda para iniciar una venta."
-            className="py-16"
+            className="py-10"
           />
         ) : (
           <div className="space-y-3">
@@ -108,53 +103,75 @@ export function CartPanel({ onCheckoutDone }) {
             </AnimatePresence>
           </div>
         )}
+
+        {!empty && (
+          <>
+            {/* Discount */}
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
+              <label className="flex items-center gap-1.5 text-sm font-medium text-slate-500">
+                <Percent className="h-4 w-4" /> Descuento
+              </label>
+              <div className="relative w-24">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={discountPct || ''}
+                  onChange={(e) => setDiscountPct(e.target.value)}
+                  placeholder="0"
+                  data-testid="cart-discount-input"
+                  className="w-full rounded-lg border-0 bg-white py-2 pl-3 pr-7 text-right text-sm font-semibold text-slate-800 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-inset focus:ring-blue-600"
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">%</span>
+              </div>
+            </div>
+
+            <PaymentSection error={payError} />
+
+            {/* Secondary actions */}
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={() => mockAction('Ticket impreso')}
+                data-testid="pos-print"
+                className="flex flex-col items-center gap-1 rounded-xl border border-slate-200 bg-white py-2.5 text-[11px] font-semibold text-slate-500 transition-colors hover:border-blue-200 hover:text-blue-600"
+              >
+                <Printer className="h-4 w-4" /> Imprimir
+              </button>
+              <button
+                onClick={() => mockAction('Ticket descargado')}
+                data-testid="pos-download"
+                className="flex flex-col items-center gap-1 rounded-xl border border-slate-200 bg-white py-2.5 text-[11px] font-semibold text-slate-500 transition-colors hover:border-blue-200 hover:text-blue-600"
+              >
+                <Download className="h-4 w-4" /> Descargar
+              </button>
+              <button
+                onClick={() => setExpenseOpen(true)}
+                data-testid="pos-expense-open"
+                className="flex flex-col items-center gap-1 rounded-xl border border-slate-200 bg-white py-2.5 text-[11px] font-semibold text-slate-500 transition-colors hover:border-blue-200 hover:text-blue-600"
+              >
+                <Wallet className="h-4 w-4" /> Gasto
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Footer: totals + payment + CTA (always visible) */}
-      <div className="shrink-0 space-y-4 border-t border-slate-100 bg-slate-50/60 p-5">
-        {/* Discount */}
-        <div className="flex items-center justify-between gap-3">
-          <label className="flex items-center gap-1.5 text-sm font-medium text-slate-500">
-            <Percent className="h-4 w-4" /> Descuento
-          </label>
-          <div className="relative w-24">
-            <input
-              type="number"
-              min="0"
-              max="100"
-              value={discountPct || ''}
-              onChange={(e) => setDiscountPct(e.target.value)}
-              placeholder="0"
-              data-testid="cart-discount-input"
-              className="w-full rounded-lg border-0 bg-white py-2 pl-3 pr-7 text-right text-sm font-semibold text-slate-800 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-inset focus:ring-blue-600"
-            />
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">
-              %
-            </span>
-          </div>
-        </div>
-
-        {/* Totals */}
-        <div className="space-y-1.5 text-sm">
+      {/* Footer: totals + CTA (always visible) */}
+      <div className="shrink-0 space-y-3 border-t border-slate-100 bg-slate-50/70 p-4">
+        <div className="space-y-1 text-sm">
           <div className="flex justify-between text-slate-500">
             <span>Subtotal</span>
-            <span className="font-medium text-slate-700" data-testid="cart-subtotal">
-              {formatDOP(getSubtotal())}
-            </span>
+            <span className="font-medium text-slate-700" data-testid="cart-subtotal">{formatDOP(getSubtotal())}</span>
           </div>
           {discountPct > 0 && (
             <div className="flex justify-between text-emerald-600">
               <span>Descuento ({discountPct}%)</span>
-              <span className="font-medium" data-testid="cart-discount-amount">
-                −{formatDOP(getDiscountAmount())}
-              </span>
+              <span className="font-medium" data-testid="cart-discount-amount">−{formatDOP(getDiscountAmount())}</span>
             </div>
           )}
           <div className="flex justify-between text-slate-500">
             <span>ITBIS ({taxPct}%)</span>
-            <span className="font-medium text-slate-700" data-testid="cart-tax">
-              {formatDOP(getTaxAmount())}
-            </span>
+            <span className="font-medium text-slate-700" data-testid="cart-tax">{formatDOP(getTaxAmount())}</span>
           </div>
           <div className="flex items-center justify-between border-t border-slate-200 pt-2">
             <span className="font-heading text-base font-bold text-slate-900">Total</span>
@@ -164,42 +181,9 @@ export function CartPanel({ onCheckoutDone }) {
           </div>
         </div>
 
-        <PaymentSection error={payError} />
-
-        <Button
-          size="lg"
-          className="w-full"
-          onClick={handleCheckout}
-          disabled={empty}
-          data-testid="pos-checkout-btn"
-        >
+        <Button size="lg" className="w-full" onClick={handleCheckout} disabled={empty} data-testid="pos-checkout-btn">
           <Wallet className="h-4 w-4" /> Cobrar {!empty && `· ${formatDOP(getTotal())}`}
         </Button>
-
-        {/* Secondary actions */}
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            onClick={() => mockAction('Ticket impreso')}
-            data-testid="pos-print"
-            className="flex flex-col items-center gap-1 rounded-xl border border-slate-200 bg-white py-2.5 text-[11px] font-semibold text-slate-500 transition-colors hover:border-blue-200 hover:text-blue-600"
-          >
-            <Printer className="h-4 w-4" /> Imprimir
-          </button>
-          <button
-            onClick={() => mockAction('Ticket descargado')}
-            data-testid="pos-download"
-            className="flex flex-col items-center gap-1 rounded-xl border border-slate-200 bg-white py-2.5 text-[11px] font-semibold text-slate-500 transition-colors hover:border-blue-200 hover:text-blue-600"
-          >
-            <Download className="h-4 w-4" /> Descargar
-          </button>
-          <button
-            onClick={() => setExpenseOpen(true)}
-            data-testid="pos-expense-open"
-            className="flex flex-col items-center gap-1 rounded-xl border border-slate-200 bg-white py-2.5 text-[11px] font-semibold text-slate-500 transition-colors hover:border-blue-200 hover:text-blue-600"
-          >
-            <Wallet className="h-4 w-4" /> Gasto
-          </button>
-        </div>
       </div>
 
       <ExpenseModal open={expenseOpen} onClose={() => setExpenseOpen(false)} />

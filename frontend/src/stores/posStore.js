@@ -16,6 +16,7 @@ export const usePosStore = create(
       taxPct: 18, // ITBIS
       paymentMethod: 'efectivo',
       transferProof: null, // { name } for uploaded receipt
+      paymentReference: '', // voucher / reference number
       cartDrawerOpen: false, // mobile bottom sheet
 
       setBranch: (branchId) => set({ branchId }),
@@ -23,6 +24,7 @@ export const usePosStore = create(
       setDiscountPct: (discountPct) => set({ discountPct: Math.max(0, Math.min(100, Number(discountPct) || 0)) }),
       setPaymentMethod: (paymentMethod) => set({ paymentMethod, transferProof: paymentMethod === 'transferencia' ? get().transferProof : null }),
       setTransferProof: (transferProof) => set({ transferProof }),
+      setPaymentReference: (paymentReference) => set({ paymentReference }),
       openCartDrawer: () => set({ cartDrawerOpen: true }),
       closeCartDrawer: () => set({ cartDrawerOpen: false }),
 
@@ -60,7 +62,7 @@ export const usePosStore = create(
         set((state) => ({ items: state.items.filter((i) => i.id !== id) })),
 
       clearCart: () =>
-        set({ items: [], discountPct: 0, customer: DEFAULT_CUSTOMER, transferProof: null }),
+        set({ items: [], discountPct: 0, customer: DEFAULT_CUSTOMER, transferProof: null, paymentReference: '' }),
 
       // ---- derived selectors ----
       getSubtotal: () => get().items.reduce((sum, i) => sum + i.price * i.qty, 0),

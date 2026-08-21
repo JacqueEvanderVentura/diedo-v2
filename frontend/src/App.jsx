@@ -3,12 +3,12 @@ import { AppRoutes } from './router'
 import { useLenis } from './lib/useLenis'
 
 export default function App() {
-  useLenis(true)
+  useLenis(false)
   return (
     <>
       <AppRoutes />
       <Toaster
-        position="bottom-right"
+        position="top-right"
         richColors
         toastOptions={{
           style: {
