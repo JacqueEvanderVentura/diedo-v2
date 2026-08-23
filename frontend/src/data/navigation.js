@@ -12,7 +12,7 @@ export const NAV_GROUPS = [
       { label: 'Cuentas por Cobrar', to: '/pos/cuentas-por-cobrar' },
     ],
   },
-  { id: 'agenda', label: 'Agenda', to: '/agenda', icon: 'CalendarDays', soon: true },
+  { id: 'agenda', label: 'Agenda', to: '/agenda', icon: 'CalendarDays' },
   {
     id: 'crm',
     label: 'CRM',

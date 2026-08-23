@@ -67,11 +67,17 @@ Navbar + Dashboard + POS Terminal, with the POS cart as a sticky RIGHT sidebar (
 - `/activos`: stat cards (valor total excl. baja, operativos, en reparación, baja), buscador, filtros por categoría y estado, tabla con badges, CRUD vía ActivoFormModal (nombre, código/serie, valor, ubicación, fecha compra, categoría, estado, notas).
 - Sidebar entry (icon Landmark) + ruta en router. Versión simple (valor + estado + categoría), sin depreciación por elección del usuario.
 
-## Backlog (future phases)
-- P1 Fase 2: `/pos/caja` (cierre de caja real), `/pos/cuentas-por-cobrar`. Real "Item manual" in cart; real print/download.
+## Implemented (2026-06 / Fase 5 Agenda) — DONE (verified iteration_7, 13/13)
+- `agendaStore` (persist 'diedo-agenda', version 2 + `merge` que re-ancla citas semilla al día actual sin tocar las del usuario): CRUD (add/update/delete/setStatus), getByDate/getToday, helper todayKey/toKey; estados pendiente/confirmada/completada/cancelada.
+- `/agenda`: vistas Día y Semana, navegación prev/next/Hoy, tarjetas de cita (hora, cliente, servicio+DOP$, duración, badge estado) con editar/eliminar visibles (touch-friendly). Semana = 7 columnas, hoy resaltado, contador por día; click en columna precarga esa fecha.
+- `AppointmentFormModal`: liga cliente (posStore.customers) + servicio (catalogStore type=service, autollena precio), fecha/hora, duración, estado, notas.
+- Dashboard: `AppointmentsToday` lee del agendaStore (lista + "Ver agenda"); KPI en vivo "Citas Hoy" (id 'citas') reemplaza el placeholder 'personal'.
+- Fixes post-test: bug de fallback falsy en updateAppointment (precio/duración 0 se descartaban), acciones ocultas hover-only, capitalización del label de rango.
+
+## Backlog (future phases)- P1 Fase 2: `/pos/caja` (cierre de caja real), `/pos/cuentas-por-cobrar`. Real "Item manual" in cart; real print/download.
 - P1 Fase 3: `/inventarios` + catálogo/config items.
 - P2 Fase 4: CRM `/crm/clientes`, `/crm/ventas`. Fase 5 Agenda. Fase 6 Finanzas. Fase 7 Reportes. Fase 8 Config tenant.
 - P2: block zero-value sale on 100% discount; render single CartPanel instance per viewport.
 
 ## Next tasks
-- Await user review of módulo Activos; proceed to Fase 4 (CRM Clientes + Ventas) on confirmation.
+- Await user review of Fase 5 (Agenda); proceed to Fase 4 (CRM Clientes + Ventas) on confirmation.

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { useCatalogStore, deriveLowStock } from '@/stores/catalogStore'
+import { useAgendaStore, todayKey } from '@/stores/agendaStore'
 import { DASHBOARD_FILTERS, CURRENT_USER } from '@/data/dashboard'
 import { KpiCard } from '../components/KpiCard'
 import { SalesChart } from '../components/SalesChart'
@@ -19,9 +20,11 @@ function greeting() {
 }
 
 export default function DashboardPage() {
-  const { period, setPeriod, getKpis, getSalesTrend, activity, appointments } =
+  const { period, setPeriod, getKpis, getSalesTrend, activity } =
     useDashboardStore()
   const catalogProducts = useCatalogStore((s) => s.products)
+  const appointments = useAgendaStore((s) => s.appointments)
+  const todayCount = useMemo(() => appointments.filter((a) => a.date === todayKey()).length, [appointments])
   const stockAlerts = useMemo(() => deriveLowStock(catalogProducts), [catalogProducts])
   const [loading, setLoading] = useState(false)
   const firstRun = useRef(true)
@@ -37,6 +40,11 @@ export default function DashboardPage() {
   }, [period])
 
   const kpis = getKpis()
+  const liveKpis = kpis.map((k) =>
+    k.id === 'personal'
+      ? { id: 'citas', label: 'Citas Hoy', value: todayCount, kind: 'number', tag: 'Agenda del día', icon: 'CalendarClock', tone: 'violet' }
+      : k
+  )
   const trend = getSalesTrend()
 
   return (
@@ -72,7 +80,7 @@ export default function DashboardPage() {
       <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {loading
           ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[168px]" />)
-          : kpis.map((kpi, i) => <KpiCard key={kpi.id} kpi={kpi} index={i} />)}
+          : liveKpis.map((kpi, i) => <KpiCard key={kpi.id} kpi={kpi} index={i} />)}
       </div>
 
       {/* Chart + stock alerts */}
@@ -92,7 +100,7 @@ export default function DashboardPage() {
         transition={{ duration: 0.4, delay: 0.1 }}
         className="grid grid-cols-1 gap-6 lg:grid-cols-2"
       >
-        <AppointmentsToday appointments={appointments} />
+        <AppointmentsToday />
         <RecentActivity activity={activity} />
       </motion.div>
     </div>

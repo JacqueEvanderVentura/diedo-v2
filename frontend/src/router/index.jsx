@@ -6,6 +6,7 @@ import CajaPage from '@/modules/pos/pages/CajaPage'
 import CxcPage from '@/modules/pos/pages/CxcPage'
 import InventariosPage from '@/modules/inventarios/pages/InventariosPage'
 import ActivosPage from '@/modules/activos/pages/ActivosPage'
+import AgendaPage from '@/modules/agenda/pages/AgendaPage'
 import PlaceholderPage from '@/components/layout/PlaceholderPage'
 
 export function AppRoutes() {
@@ -53,7 +54,15 @@ export function AppRoutes() {
           </PageShell>
         }
       />
-      {['/crm', '/crm/clientes', '/crm/pipeline', '/crm/seguimientos', '/agenda', '/finanzas/gastos', '/finanzas/ingresos', '/reportes', '/configuracion'].map((p) => (
+      <Route
+        path="/agenda"
+        element={
+          <PageShell title="Agenda" subtitle="Gestión de citas por día y semana.">
+            <AgendaPage />
+          </PageShell>
+        }
+      />
+      {['/crm', '/crm/clientes', '/crm/pipeline', '/crm/seguimientos', '/finanzas/gastos', '/finanzas/ingresos', '/reportes', '/configuracion'].map((p) => (
         <Route
           key={p}
           path={p}
