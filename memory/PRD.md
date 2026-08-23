@@ -87,10 +87,17 @@ Navbar + Dashboard + POS Terminal, with the POS cart as a sticky RIGHT sidebar (
 - `/finanzas/ingresos`: derivados de posStore.sales — banner informativo, resumen (total, N.º ventas, ticket promedio), desglose por método (%), tabla; toggle período.
 - Sin plan contable ni asientos (resumen simple). Helpers finanzas/lib (parseWhen/fmtWhen/isThisMonth). Nav Finanzas activa (Gastos + Ingresos).
 
+## Implemented (2026-06 / Fase 7 Reportes core) — DONE
+- Módulo `reportes` con filtros de período reutilizados del dashboard (Hoy/Semana/Mes/Trimestre) vía `PeriodFilter`; lib con inPeriod/buildSeries (buckets diarios≤31d o semanales)/mockFromId. Solo lectura desde stores.
+- `/reportes/generales`: KPIs (ingresos, N.º ventas, ticket promedio) + BarChart ventas por día + PieChart ventas por método (posStore.sales).
+- `/reportes/inventario`: KPIs (productos con stock, valor inventario, bajo stock) + bar Stock actual (top 8) + bar Rotación estimada (mock) + pie Valor por categoría (catalogStore).
+- `/reportes/agenda`: KPIs (citas, cumplidas, no-show, tasa asistencia) + pie distribución por estado (real) + bar agrupado Cumplidas vs No-show últimos 7 días (mock) (agendaStore).
+- Nav Reportes = grupo (Generales/Inventario/Agenda); /reportes redirige a /reportes/generales.
+
 ## Backlog (future phases)- P1 Fase 2: `/pos/caja` (cierre de caja real), `/pos/cuentas-por-cobrar`. Real "Item manual" in cart; real print/download.
 - P1 Fase 3: `/inventarios` + catálogo/config items.
 - P2 Fase 4: CRM `/crm/clientes`, `/crm/ventas`. Fase 5 Agenda. Fase 6 Finanzas. Fase 7 Reportes. Fase 8 Config tenant.
 - P2: block zero-value sale on 100% discount; render single CartPanel instance per viewport.
 
 ## Next tasks
-- Await user review of Fase 6 (Finanzas); proceed to Fase 7 (Reportes core) on confirmation.
+- Await user review of Fase 7 (Reportes); proceed to Fase 8 (Configuración tenant) on confirmation.

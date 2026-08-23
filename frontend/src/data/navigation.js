@@ -33,6 +33,15 @@ export const NAV_GROUPS = [
       { label: 'Ingresos', to: '/finanzas/ingresos' },
     ],
   },
-  { id: 'reportes', label: 'Reportes', to: '/reportes', icon: 'BarChart3', soon: true },
+  {
+    id: 'reportes',
+    label: 'Reportes',
+    icon: 'BarChart3',
+    children: [
+      { label: 'Generales', to: '/reportes/generales' },
+      { label: 'Inventario', to: '/reportes/inventario' },
+      { label: 'Agenda', to: '/reportes/agenda' },
+    ],
+  },
   { id: 'configuracion', label: 'Configuración', to: '/configuracion', icon: 'Settings', soon: true },
 ]

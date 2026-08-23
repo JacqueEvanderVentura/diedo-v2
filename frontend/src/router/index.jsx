@@ -11,6 +11,9 @@ import ClientesPage from '@/modules/crm/pages/ClientesPage'
 import VentasPage from '@/modules/crm/pages/VentasPage'
 import GastosPage from '@/modules/finanzas/pages/GastosPage'
 import IngresosPage from '@/modules/finanzas/pages/IngresosPage'
+import GeneralesPage from '@/modules/reportes/pages/GeneralesPage'
+import InventarioReportPage from '@/modules/reportes/pages/InventarioPage'
+import AgendaReportPage from '@/modules/reportes/pages/AgendaReportPage'
 import PlaceholderPage from '@/components/layout/PlaceholderPage'
 
 export function AppRoutes() {
@@ -99,7 +102,32 @@ export function AppRoutes() {
           </PageShell>
         }
       />
-      {['/reportes', '/configuracion'].map((p) => (
+      <Route path="/reportes" element={<Navigate to="/reportes/generales" replace />} />
+      <Route
+        path="/reportes/generales"
+        element={
+          <PageShell title="Reportes · Generales" subtitle="Ventas y ticket promedio por período.">
+            <GeneralesPage />
+          </PageShell>
+        }
+      />
+      <Route
+        path="/reportes/inventario"
+        element={
+          <PageShell title="Reportes · Inventario" subtitle="Stock y rotación estimada.">
+            <InventarioReportPage />
+          </PageShell>
+        }
+      />
+      <Route
+        path="/reportes/agenda"
+        element={
+          <PageShell title="Reportes · Agenda" subtitle="Citas cumplidas vs no-show.">
+            <AgendaReportPage />
+          </PageShell>
+        }
+      />
+      {['/configuracion'].map((p) => (
         <Route
           key={p}
           path={p}

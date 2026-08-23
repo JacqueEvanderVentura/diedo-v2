@@ -1,0 +1,51 @@
+{
+  "summary": "FASE 7 Reportes (frontend-only, mock) tested end-to-end with Playwright on the public preview URL. Verified /reportes redirect, sidebar Reportes group, Generales (period filter + 3 stat cards + bar/donut charts), Inventario (3 stat cards + 3 charts, math cross-checked vs seed data), Agenda report (period filter, status donut, weekly mock bars) including a live E2E where I created 1 'completada' + 1 'cancelada' appointment via the Agenda UI to validate Cumplidas / No-show / Tasa de asistencia (1 / 1 / 50% correct) and then deleted them. ZERO console errors and NO 'Maximum update depth exceeded' on any of the 3 report pages. Mobile 390px: no horizontal overflow. Backend testing skipped as requested.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Reportes · Agenda period filter",
+        "issue": "Period filter does not change any value: 'Hoy', 'Esta semana', 'Este mes' and 'Trimestre' all show Citas=5. Root cause: inPeriod() in reportes.js only checks d >= periodStart(period) with NO upper bound, so future-dated appointments (seed apt-4/apt-5 are +1d/+2d) are counted in every period, including 'Hoy'. 'Hoy' should show only the 3 citas of today. Sales are past-dated so Generales looks fine, but the same helper will mis-count any future-dated sale/cita.",
+        "affected_selectors": ["report-period-today", "report-stat-citas-value"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "Reportes · Generales / Inventario / Agenda",
+        "issues": [
+          "Generales with 'Hoy' (empty period): 'Ventas por día' still renders an empty axis chart with $0..$4 ticks instead of the same 'Sin ventas en el período' empty state used by the donut - inconsistent empty-state handling.",
+          "Inventario: stat card labelled 'Productos con stock' = 6 but it counts every stock-tracked product including the 4 with stock 0; label is misleading (suggest 'Productos con inventario' or exclude stock=0).",
+          "Inventario: 'Stock actual por producto' top-8 includes the 4 zero-stock products rendering invisible bars (labels with no bar); consider filtering stock>0.",
+          "Inventario donut 'Valor de inventario por categoría' shows a single slice ('Productos' 100%) because all stock items share one category - low informational value with current seed.",
+          "Agenda report with default seed shows Cumplidas=0, No-show=0, Tasa=0% (no completada/cancelada in agenda seed), so the headline KPI of the page is empty out-of-the-box. Logic is correct (verified by creating data) - consider seeding a few past completed/cancelled citas.",
+          "Mobile 390px: PageShell title 'Reportes · Generales' wraps to 2 lines and the subtitle is truncated with ellipsis in the header - minor."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Add an upper bound to inPeriod()/periodStart() (e.g. exclude dates > end of today, or clamp per period) so the Agenda report period filter actually differentiates Hoy/Semana/Mes/Trimestre.",
+    "Add a 'Sin ventas en el período' empty state to the 'Ventas por día' chart for consistency.",
+    "Rename/adjust 'Productos con stock' KPI and/or filter stock=0 out of the top-8 stock chart.",
+    "Optionally seed a couple of past 'completada'/'cancelada' appointments so the Agenda report KPIs are non-zero by default."
+  ],
+  "critical_code_review_comments": [
+    "reportes.js inPeriod() has no end boundary — any future-dated record is always inside every period; this silently breaks 'Hoy' for agenda.",
+    "buildSeries computes dayCount from now vs startDay and only buckets past data; future-dated items are dropped from the chart while still counted in the stat cards (inconsistency once agenda gets a time series).",
+    "Zustand selectors on report pages are single-field ((s) => s.sales / s.products / s.appointments) with useMemo derivations — no new-object selectors, hence no infinite render loop. Good pattern, keep it."
+  ],
+  "updated_files": [
+    "/app/frontend/src/modules/reportes/components/ReportPrimitives.jsx",
+    "/app/frontend/src/modules/reportes/pages/GeneralesPage.jsx",
+    "/app/frontend/src/modules/reportes/pages/InventarioPage.jsx",
+    "/app/frontend/src/modules/reportes/pages/AgendaReportPage.jsx"
+  ],
+  "success_rate": { "backend": "N/A (skipped)", "frontend": "92%" },
+  "seed_data_creation": "Temporarily created 2 appointments (completada + cancelada) via the Agenda UI to validate KPIs; both deleted afterwards. No residual test data.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Fase 7 report pages verified: routes, redirect, sidebar group, all 6 charts render (recharts, no warnings), no console errors, math verified (Generales quarter: 24,280 = 6,080+6,200+12,000; ticket 3,468.57 = total/7; Inventario value 43,080 = 24*1350+12*890; low stock 4). Stat cards now expose data-testid: report-stat-{ingresos,ventas,ticket,inv-count,inv-value,inv-low,citas,cumplidas,noshow,asistencia}(-value). Only open functional issue: inPeriod() missing upper bound => Agenda period filter is a no-op with the future-dated seed.",
+  "rca_of_the_issue": "periodStart(period) returns the start date and inPeriod only asserts d >= start; there is no 'd <= now/end of period' check. Agenda seed has appointments at today+1 and today+2, so they pass every period filter and 'Hoy' reports 5 citas instead of 3. Reproduce: open /reportes/agenda, click 'Hoy' -> Citas (período) stays 5."
+}
