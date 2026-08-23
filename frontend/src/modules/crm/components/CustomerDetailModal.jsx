@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Phone, Mail, Star, ShoppingBag, CalendarClock, Pencil } from 'lucide-react'
+import { Phone, Mail, Star, ShoppingBag, CalendarClock, Pencil, CalendarPlus } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -17,7 +17,7 @@ function Section({ title, children }) {
   )
 }
 
-export function CustomerDetailModal({ open, onClose, customer, onEdit }) {
+export function CustomerDetailModal({ open, onClose, customer, onEdit, onSchedule }) {
   const sales = usePosStore((s) => s.sales)
   const appointments = useAgendaStore((s) => s.appointments)
 
@@ -76,6 +76,13 @@ export function CustomerDetailModal({ open, onClose, customer, onEdit }) {
 
           {/* Upcoming appointments */}
           <Section title="Próximas citas">
+            <button
+              onClick={() => onSchedule(customer)}
+              data-testid="customer-detail-schedule"
+              className="mb-3 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+            >
+              <CalendarPlus className="h-4 w-4" /> Agendar cita
+            </button>
             {upcoming.length === 0 ? (
               <p className="flex items-center gap-2 text-sm text-slate-400"><CalendarClock className="h-4 w-4" /> Sin citas próximas</p>
             ) : (

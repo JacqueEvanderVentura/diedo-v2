@@ -18,7 +18,8 @@ export const APPOINTMENT_STATUSES = [
   { id: 'pendiente', name: 'Pendiente', tone: 'warning' },
   { id: 'confirmada', name: 'Confirmada', tone: 'brand' },
   { id: 'completada', name: 'Completada', tone: 'success' },
-  { id: 'cancelada', name: 'Cancelada', tone: 'danger' },
+  { id: 'noshow', name: 'No-show', tone: 'danger' },
+  { id: 'cancelada', name: 'Cancelada', tone: 'neutral' },
 ]
 export const statusMeta = (id) => APPOINTMENT_STATUSES.find((s) => s.id === id) || APPOINTMENT_STATUSES[0]
 

@@ -1,16 +1,17 @@
 import { useState, useMemo } from 'react'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
 import { CalendarCheck, UserX, CalendarClock, Percent } from 'lucide-react'
-import { useAgendaStore } from '@/stores/agendaStore'
+import { useAgendaStore, toKey } from '@/stores/agendaStore'
 import { PeriodFilter } from '../components/PeriodFilter'
 import { StatCard, ChartCard } from '../components/ReportPrimitives'
-import { inPeriod, mockFromId } from '../lib/reportes'
+import { inPeriod } from '../lib/reportes'
 
 const STATUS_META = [
   { id: 'completada', name: 'Cumplidas', color: '#10b981' },
   { id: 'confirmada', name: 'Confirmadas', color: '#3b82f6' },
   { id: 'pendiente', name: 'Pendientes', color: '#f59e0b' },
-  { id: 'cancelada', name: 'No-show / Canceladas', color: '#ef4444' },
+  { id: 'noshow', name: 'No-show', color: '#ef4444' },
+  { id: 'cancelada', name: 'Canceladas', color: '#94a3b8' },
 ]
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 
@@ -21,13 +22,13 @@ export default function AgendaReportPage() {
   const filtered = useMemo(() => appointments.filter((a) => inPeriod(a.date, period)), [appointments, period])
 
   const counts = useMemo(() => {
-    const c = { completada: 0, confirmada: 0, pendiente: 0, cancelada: 0 }
+    const c = { completada: 0, confirmada: 0, pendiente: 0, noshow: 0, cancelada: 0 }
     filtered.forEach((a) => { c[a.status] = (c[a.status] || 0) + 1 })
     return c
   }, [filtered])
 
   const cumplidas = counts.completada
-  const noShow = counts.cancelada
+  const noShow = counts.noshow
   const asistencia = cumplidas + noShow > 0 ? Math.round((cumplidas / (cumplidas + noShow)) * 100) : 0
 
   const pie = useMemo(
@@ -35,19 +36,20 @@ export default function AgendaReportPage() {
     [counts]
   )
 
-  // Cumplidas vs No-show — últimos 7 días (mock determinista, solo lectura).
+  // Cumplidas vs No-show — últimos 7 días (datos reales de la agenda).
   const weekly = useMemo(() => {
     const now = new Date()
     return Array.from({ length: 7 }, (_, i) => {
       const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (6 - i))
-      const key = `wk-${d.getDate()}-${d.getMonth()}`
+      const key = toKey(d)
+      const dayAppts = appointments.filter((a) => a.date === key)
       return {
         label: `${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()]}`,
-        Cumplidas: mockFromId(key + '-c', 2, 9),
-        'No-show': mockFromId(key + '-n', 0, 4),
+        Cumplidas: dayAppts.filter((a) => a.status === 'completada').length,
+        'No-show': dayAppts.filter((a) => a.status === 'noshow').length,
       }
     })
-  }, [])
+  }, [appointments])
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8">
@@ -56,7 +58,7 @@ export default function AgendaReportPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Citas (período)" value={filtered.length} icon={CalendarClock} tone="brand" testId="report-stat-citas" />
         <StatCard label="Cumplidas" value={cumplidas} icon={CalendarCheck} tone="emerald" testId="report-stat-cumplidas" />
-        <StatCard label="No-show / Canceladas" value={noShow} icon={UserX} tone="red" testId="report-stat-noshow" />
+        <StatCard label="No-show" value={noShow} icon={UserX} tone="red" testId="report-stat-noshow" />
         <StatCard label="Tasa de asistencia" value={`${asistencia}%`} icon={Percent} tone="violet" sub="Cumplidas vs no-show" testId="report-stat-asistencia" />
       </div>
 
@@ -89,7 +91,7 @@ export default function AgendaReportPage() {
         </ChartCard>
 
         <div className="lg:col-span-2">
-          <ChartCard title="Cumplidas vs No-show" subtitle="Últimos 7 días (datos mock)" testId="report-agenda-weekly">
+          <ChartCard title="Cumplidas vs No-show" subtitle="Últimos 7 días (datos reales)" testId="report-agenda-weekly">
             <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height={300} minWidth={0}>
                 <BarChart data={weekly} margin={{ top: 10, right: 8, left: -12, bottom: 0 }}>

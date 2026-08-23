@@ -1,0 +1,25 @@
+{
+  "summary": "Frontend-only testing of the two new enhancements (Agenda quick status confirm + Agendar desde Cliente + Agenda report real data). All 6 requested scenarios pass. Agenda day view: quick buttons agenda-complete-<id>/agenda-noshow-<id> update badges instantly (COMPLETADA green / NO-SHOW red) with correct Spanish toasts ('Cita marcada como cumplida' / 'como no-show'); statuses persist after page.reload() (diedo-agenda persist). Week view cards expose the same quick buttons and work. CRM: clientes-row-c1 -> customer-detail-modal -> 'Agendar cita' opens appointment-form-modal with customer PRESELECTED (value=c1 / 'María Fernández') and date defaulted to today (2026-08-23); saving shows 'Cita agendada', the new 17:45 appointment appears in /agenda today and in the customer's 'Próximas citas' list. /reportes/agenda uses real data: after marking 2 completada + 1 noshow, KPIs read Citas 4 / Cumplidas 2 / No-show 1 / Tasa de asistencia 67%; donut shows Cumplidas 2, Pendientes 1, No-show 1; weekly bar chart (subtitle 'Últimos 7 días (datos reales)') renders real bars only on today's column (14 rects, 23 ago = 2 green + 1 red). Zero console errors on /agenda, /crm/clientes, /reportes/agenda (no 'Maximum update depth exceeded').",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AgendaReportPage StatCard", "issue": "KPI label still reads 'No-show / Canceladas' although the value now counts ONLY status 'noshow' (canceladas are excluded). Spec asked to rename it to 'No-show'. Cosmetic/label-data mismatch.", "selector": "[data-testid=\"report-stat-noshow\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": ["Rename report KPI label 'No-show / Canceladas' -> 'No-show' to match the counted metric (report-stat-noshow)"],
+  "critical_code_review_comments": [
+    "AgendaReportPage 'Citas (período)' with 'Este mes' shows 4 (only today's) because inPeriod excludes future dates; future seed appointments (24/25 ago) are not counted — verify this is intended for a period report.",
+    "AppointmentFormModal is correctly reused by AgendaPage and ClientesPage with defaultCustomerId; empty() falls back to 'walk-in' which is right."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only mock app)", "frontend": "100% of requested scenarios (1 cosmetic label issue)"},
+  "seed_data_creation": "Created one appointment for María Fernández today 17:45 (service '50% Restante de Ciclo') via CRM flow; localStorage-only, resets per run.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "None required (no auth)",
+  "context_for_next_testing_agent": "Server date 2026-08-23 (Sunday). 3 seed appointments today; localStorage is clean each automation run, so test persistence with page.reload() inside the same script. Badge text is CSS-uppercased — compare with 'COMPLETADA'/'NO-SHOW' when using inner_text.",
+  "rca_of_the_issue": "N/A — only a label wording mismatch in the report KPI."
+}

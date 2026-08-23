@@ -9,17 +9,17 @@ import { useCatalogStore } from '@/stores/catalogStore'
 import { formatDOP } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-const empty = (date) => ({
+const empty = (date, customerId) => ({
   date: date || todayKey(),
   time: '09:00',
   duration: 30,
-  customerId: 'walk-in',
+  customerId: customerId || 'walk-in',
   serviceId: '',
   status: 'pendiente',
   notes: '',
 })
 
-export function AppointmentFormModal({ open, onClose, appointment, defaultDate }) {
+export function AppointmentFormModal({ open, onClose, appointment, defaultDate, defaultCustomerId }) {
   const addAppointment = useAgendaStore((s) => s.addAppointment)
   const updateAppointment = useAgendaStore((s) => s.updateAppointment)
   const customers = usePosStore((s) => s.customers)
@@ -32,10 +32,10 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate }
 
   useEffect(() => {
     if (open) {
-      setForm(appointment ? { ...appointment } : empty(defaultDate))
+      setForm(appointment ? { ...appointment } : empty(defaultDate, defaultCustomerId))
       setErr('')
     }
-  }, [open, appointment, defaultDate])
+  }, [open, appointment, defaultDate, defaultCustomerId])
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 

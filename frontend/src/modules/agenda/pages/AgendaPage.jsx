@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { toast } from 'sonner'
-import { Plus, ChevronLeft, ChevronRight, Clock, User, Pencil, Trash2, CalendarDays } from 'lucide-react'
+import { Plus, ChevronLeft, ChevronRight, Clock, User, Pencil, Trash2, CalendarDays, CheckCircle2, UserX } from 'lucide-react'
 import { useAgendaStore, statusMeta, toKey, todayKey } from '@/stores/agendaStore'
 import { formatDOP } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
@@ -33,7 +33,7 @@ const addDaysKey = (key, n) => {
   return toKey(d)
 }
 
-function AppointmentCard({ apt, onEdit, onDelete, compact }) {
+function AppointmentCard({ apt, onEdit, onDelete, onStatus, compact }) {
   const st = statusMeta(apt.status)
   return (
     <div
@@ -57,6 +57,13 @@ function AppointmentCard({ apt, onEdit, onDelete, compact }) {
       )}
       <p className="mt-0.5 text-[11px] text-slate-400">{apt.duration} min</p>
       <div className="mt-2 flex items-center gap-1">
+        <button onClick={() => onStatus(apt, 'completada')} data-testid={`agenda-complete-${apt.id}`} title="Marcar cumplida" className={cn('flex h-7 w-7 items-center justify-center rounded-lg transition-colors', apt.status === 'completada' ? 'bg-emerald-50 text-emerald-600' : 'text-slate-400 hover:bg-emerald-50 hover:text-emerald-600')}>
+          <CheckCircle2 className="h-3.5 w-3.5" />
+        </button>
+        <button onClick={() => onStatus(apt, 'noshow')} data-testid={`agenda-noshow-${apt.id}`} title="Marcar no-show" className={cn('flex h-7 w-7 items-center justify-center rounded-lg transition-colors', apt.status === 'noshow' ? 'bg-red-50 text-red-500' : 'text-slate-400 hover:bg-red-50 hover:text-red-500')}>
+          <UserX className="h-3.5 w-3.5" />
+        </button>
+        <span className="mx-0.5 h-4 w-px bg-slate-100" />
         <button onClick={() => onEdit(apt)} data-testid={`agenda-edit-${apt.id}`} className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600">
           <Pencil className="h-3.5 w-3.5" />
         </button>
@@ -71,6 +78,7 @@ function AppointmentCard({ apt, onEdit, onDelete, compact }) {
 export default function AgendaPage() {
   const appointments = useAgendaStore((s) => s.appointments)
   const deleteAppointment = useAgendaStore((s) => s.deleteAppointment)
+  const setStatus = useAgendaStore((s) => s.setStatus)
 
   const [view, setView] = useState('day') // 'day' | 'week'
   const [cursor, setCursor] = useState(todayKey())
@@ -95,6 +103,10 @@ export default function AgendaPage() {
   const openNew = (date) => { setEditing(null); setFormDate(date || cursor); setModalOpen(true) }
   const openEdit = (apt) => { setEditing(apt); setModalOpen(true) }
   const handleDelete = (apt) => { deleteAppointment(apt.id); toast.success('Cita eliminada') }
+  const markStatus = (apt, status) => {
+    setStatus(apt.id, status)
+    toast.success(status === 'completada' ? 'Cita marcada como cumplida' : 'Cita marcada como no-show')
+  }
 
   const dayList = byDate[cursor] || []
   const rangeLabel = view === 'day'
@@ -141,7 +153,7 @@ export default function AgendaPage() {
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {dayList.map((apt) => (
-                <AppointmentCard key={apt.id} apt={apt} onEdit={openEdit} onDelete={handleDelete} />
+                <AppointmentCard key={apt.id} apt={apt} onEdit={openEdit} onDelete={handleDelete} onStatus={markStatus} />
               ))}
             </div>
           )}
@@ -172,7 +184,7 @@ export default function AgendaPage() {
                   {list.length === 0 ? (
                     <p className="py-6 text-center text-[11px] text-slate-300">—</p>
                   ) : (
-                    list.map((apt) => <AppointmentCard key={apt.id} apt={apt} onEdit={openEdit} onDelete={handleDelete} compact />)
+                    list.map((apt) => <AppointmentCard key={apt.id} apt={apt} onEdit={openEdit} onDelete={handleDelete} onStatus={markStatus} compact />)
                   )}
                 </div>
               </div>

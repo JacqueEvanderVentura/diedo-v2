@@ -103,6 +103,11 @@ Navbar + Dashboard + POS Terminal, with the POS cart as a sticky RIGHT sidebar (
 - Impuesto default alimenta el ITBIS por defecto de nuevos productos. Nav Configuración = grupo; /configuracion redirige a sucursales. Sin permisos granulares/WhatsApp/nómina aún.
 - Fixes post-test (iteration_11, 97%): PaymentSection reconcilia el método seleccionado si se desactiva en config (useEffect → primer activo); guard de última sucursal movido a configStore.deleteBranch; Sidebar consume settings.businessName (marca + inicial).
 
+## Implemented (2026-06 / Mejoras Agenda+CRM) — DONE (verified iteration_12, 100%)
+- "Agendar desde Cliente": botón en CustomerDetailModal abre AppointmentFormModal con el cliente preseleccionado (nueva prop defaultCustomerId); la cita creada aparece en /agenda y en las "Próximas citas" del cliente.
+- "Confirmar Cita": botones rápidos en las tarjetas de Agenda (día y semana) para marcar Cumplida (completada) o No-show (nuevo estado 'noshow') con toast; estado persiste.
+- Reporte de Agenda ahora usa DATOS REALES: KPIs (cumplidas/no-show/tasa asistencia), dona por estado y comparativa semanal Cumplidas vs No-show derivadas de citas reales (ya no mock). Fix cosmético: KPI renombrado a "No-show".
+
 ## Backlog (future phases)- P1 Fase 2: `/pos/caja` (cierre de caja real), `/pos/cuentas-por-cobrar`. Real "Item manual" in cart; real print/download.
 - P1 Fase 3: `/inventarios` + catálogo/config items.
 - P2 Fase 4: CRM `/crm/clientes`, `/crm/ventas`. Fase 5 Agenda. Fase 6 Finanzas. Fase 7 Reportes. Fase 8 Config tenant.

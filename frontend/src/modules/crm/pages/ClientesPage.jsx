@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { CustomerFormModal } from '../components/CustomerFormModal'
 import { CustomerDetailModal } from '../components/CustomerDetailModal'
+import { AppointmentFormModal } from '@/modules/agenda/components/AppointmentFormModal'
 import { cn } from '@/lib/utils'
 
 function Chip({ label, value, tone }) {
@@ -27,6 +28,7 @@ export default function ClientesPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [detail, setDetail] = useState(null)
+  const [scheduling, setScheduling] = useState(null)
 
   // Total gastado por cliente (una sola pasada).
   const spentByCustomer = useMemo(() => {
@@ -129,7 +131,8 @@ export default function ClientesPage() {
       </Card>
 
       <CustomerFormModal open={formOpen} onClose={() => setFormOpen(false)} customer={editing} />
-      <CustomerDetailModal open={!!detail} onClose={() => setDetail(null)} customer={detail} onEdit={openEdit} />
+      <CustomerDetailModal open={!!detail} onClose={() => setDetail(null)} customer={detail} onEdit={openEdit} onSchedule={(c) => { setDetail(null); setScheduling(c) }} />
+      <AppointmentFormModal open={!!scheduling} onClose={() => setScheduling(null)} defaultCustomerId={scheduling?.id} />
     </div>
   )
 }
