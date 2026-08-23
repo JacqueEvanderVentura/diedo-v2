@@ -4,6 +4,7 @@ import DashboardPage from '@/modules/dashboard/pages/DashboardPage'
 import PosPage from '@/modules/pos/pages/PosPage'
 import CajaPage from '@/modules/pos/pages/CajaPage'
 import CxcPage from '@/modules/pos/pages/CxcPage'
+import InventariosPage from '@/modules/inventarios/pages/InventariosPage'
 import PlaceholderPage from '@/components/layout/PlaceholderPage'
 
 export function AppRoutes() {
@@ -35,7 +36,15 @@ export function AppRoutes() {
           </PageShell>
         }
       />
-      {['/inventarios', '/crm', '/crm/clientes', '/crm/pipeline', '/crm/seguimientos', '/agenda', '/finanzas/gastos', '/finanzas/ingresos', '/reportes', '/configuracion'].map((p) => (
+      <Route
+        path="/inventarios"
+        element={
+          <PageShell title="Inventarios" subtitle="Catálogo de productos y servicios.">
+            <InventariosPage />
+          </PageShell>
+        }
+      />
+      {['/crm', '/crm/clientes', '/crm/pipeline', '/crm/seguimientos', '/agenda', '/finanzas/gastos', '/finanzas/ingresos', '/reportes', '/configuracion'].map((p) => (
         <Route
           key={p}
           path={p}

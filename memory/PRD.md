@@ -55,6 +55,12 @@ Navbar + Dashboard + POS Terminal, with the POS cart as a sticky RIGHT sidebar (
 - Customer selector: first option 'Crear nuevo cliente' opens a modal, creates + auto-selects (posStore.customers + addCustomer).
 - Modal closes on Escape.
 
+## Implemented (2026-06 / Fase 3) — DONE (verified iteration_6, 100%)
+- `catalogStore` = single source of truth (products/services, persist 'diedo-catalog'); CRUD + decrementForSale + getLowStock.
+- `/inventarios`: dense table, search + category bubbles, summary chips, low/critical badges, CRUD via ProductFormModal.
+- POS ProductGrid reads catalog; sale decrements product stock; Dashboard StockAlerts derived from catalog.
+- Fix: cart qty capped at available stock (no over-sell, toast warning); updateProduct price guard; DRY dashboard via deriveLowStock.
+
 ## Backlog (future phases)
 - P1 Fase 2: `/pos/caja` (cierre de caja real), `/pos/cuentas-por-cobrar`. Real "Item manual" in cart; real print/download.
 - P1 Fase 3: `/inventarios` + catálogo/config items.

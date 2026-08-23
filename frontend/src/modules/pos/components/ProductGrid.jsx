@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { toast } from 'sonner'
 import { SearchX } from 'lucide-react'
-import { PRODUCTS } from '@/data/products'
+import { useCatalogStore } from '@/stores/catalogStore'
 import { usePosStore } from '@/stores/posStore'
 import { ProductCard } from './ProductCard'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -9,10 +9,11 @@ import { Skeleton } from '@/components/ui/Skeleton'
 
 export function ProductGrid({ query, category, loading }) {
   const addItem = usePosStore((s) => s.addItem)
+  const products = useCatalogStore((s) => s.products)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return PRODUCTS.filter((p) => {
+    return products.filter((p) => {
       const matchCat = category === 'all' || p.category === category
       const matchQuery =
         !q ||
@@ -20,9 +21,16 @@ export function ProductGrid({ query, category, loading }) {
         (p.sku && String(p.sku).toLowerCase().includes(q))
       return matchCat && matchQuery
     })
-  }, [query, category])
+  }, [products, query, category])
 
   const handleAdd = (product) => {
+    if (product.type === 'product' && product.stock !== null) {
+      const inCart = usePosStore.getState().items.find((i) => i.id === product.id)?.qty || 0
+      if (inCart >= product.stock) {
+        toast.error(`Solo quedan ${product.stock} en stock`)
+        return
+      }
+    }
     addItem(product)
     toast.success(`${product.name} agregado al carrito`)
   }

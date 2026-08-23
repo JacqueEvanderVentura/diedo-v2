@@ -1,12 +1,24 @@
 import { motion } from 'framer-motion'
+import { toast } from 'sonner'
 import { Minus, Plus, Trash2, Tag } from 'lucide-react'
 import { formatDOP } from '@/lib/format'
 import { usePosStore } from '@/stores/posStore'
+import { useCatalogStore } from '@/stores/catalogStore'
 
 export function CartItem({ item }) {
   const incItem = usePosStore((s) => s.incItem)
   const decItem = usePosStore((s) => s.decItem)
   const removeItem = usePosStore((s) => s.removeItem)
+  const products = useCatalogStore((s) => s.products)
+
+  const handleInc = () => {
+    const cat = products.find((p) => p.id === item.id)
+    if (cat && cat.type === 'product' && cat.stock !== null && item.qty >= cat.stock) {
+      toast.error(`Solo quedan ${cat.stock} en stock`)
+      return
+    }
+    incItem(item.id)
+  }
 
   return (
     <motion.div
@@ -51,7 +63,7 @@ export function CartItem({ item }) {
               {item.qty}
             </span>
             <button
-              onClick={() => incItem(item.id)}
+              onClick={handleInc}
               data-testid={`cart-item-inc-${item.id}`}
               className="flex h-6 w-6 items-center justify-center rounded bg-blue-600 text-white shadow-sm transition-colors hover:bg-blue-700"
             >

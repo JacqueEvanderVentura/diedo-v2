@@ -24,7 +24,7 @@ export const NAV_GROUPS = [
       { label: 'Seguimientos', to: '/crm/seguimientos', soon: true },
     ],
   },
-  { id: 'inventarios', label: 'Inventarios', to: '/inventarios', icon: 'Package', soon: true },
+  { id: 'inventarios', label: 'Inventarios', to: '/inventarios', icon: 'Package' },
   {
     id: 'finanzas',
     label: 'Finanzas',

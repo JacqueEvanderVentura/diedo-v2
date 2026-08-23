@@ -1,0 +1,33 @@
+{
+  "summary": "FASE 3 frontend-only testing (no backend). Verified /inventarios page (chips, search, category filter, dense table), full CRUD via ProductFormModal (validation, create, service toggle, edit prefill, delete), and both core done-when criteria: (A) editing stock in Inventarios reflects live on POS cards (AGOTADO + disabled at 0, stock badge when positive, price sync), (B) a POS sale decrements catalog stock (p18 12 -> 10 after qty 2 Efectivo checkout; p17 sold out to 0 -> AGOTADO). Dashboard 'Alertas de Stock' derives from catalog and shows CRÍTICO. Regression on POS (add-to-cart, discount amount/percent, transfer proof-or-reference gate, Efectivo/Transferencia/Cxc checkout, /pos/caja, /pos/cuentas-por-cobrar, sidebar Inventarios navigates with no 'Pronto') all passed. Zero JS console errors / pageerrors across all runs.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "POS cart quantity vs available stock",
+        "issue": "Cart allows qty greater than available stock (added Bloqueador SPF50 with stock 11 and reached qty 15; checkout succeeds and stock silently clamps to 0 via Math.max(0, ...)). Over-sold units are lost with no warning/cap.",
+        "affected_selectors": ["cart-item-inc-p18", "pos-checkout-btn", "inventory-stock-p18"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Consider capping cart qty at available stock (or showing a warning) so sales cannot exceed inventory; currently decrementForSale clamps at 0 silently.",
+    "catalogStore.updateProduct uses `price: Number(data.price) ?? p.price` — Number('') is 0 and Number('abc') is NaN, so nullish coalescing never falls back. Guard with Number.isFinite before assigning; same for stock (`Number(data.stock) || 0` turns non-numeric into 0).",
+    "Inventarios reuses POS testids for its category filter bubbles (pos-category-*) via shared CategoryBubbles; consider a testId prefix prop for unambiguous targeting."
+  ],
+  "critical_code_review_comments": [
+    "No blocking defects found. Store is a clean single source of truth (persist key 'diedo-catalog'); POS ProductGrid, Inventarios and Dashboard all subscribe to useCatalogStore.products so sync is instant on SPA navigation.",
+    "deriveLowStock exists in catalogStore but DashboardPage re-implements the same filter/map inline with a hardcoded 5 — DRY: use getLowStock()/deriveLowStock and LOW_STOCK_THRESHOLD."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "N/A (no backend)", "frontend": "100% of tested flows passed (1 minor business-logic gap: over-sell not capped)" },
+  "seed_data_creation": "Created transient item 'TEST_Crema Facial' (SKU TEST-01, stock 7, categoría Productos) in localStorage only; cleared via localStorage.clear() in subsequent runs.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "None required (no auth)",
+  "context_for_next_testing_agent": "All FASE 3 acceptance criteria verified on the public preview URL. State lives in localStorage keys 'diedo-catalog' and POS stores — run localStorage.clear() + reload before each scenario. Useful testids: inventory-search, inventory-new-btn, inventory-form-modal, inventory-field-{name,sku,price,tax,stock}, inventory-type-{product,service}, inventory-cat-*, inventory-branch-*, inventory-form-{save,cancel,error}, inventory-row-<id>, inventory-stock-<id>, inventory-edit/delete-<id>, pos-product-<id>, cart-item-{inc,dec,qty}-<id>, pos-payment-<method>, pos-checkout-btn. Only remaining gap: cart qty can exceed stock.",
+  "rca_of_the_issue": "Over-sell gap root cause: ProductCard only disables at stock===0 and posStore addItem/increment has no stock ceiling; catalogStore.decrementForSale uses Math.max(0, stock - qty), absorbing the excess silently."
+}

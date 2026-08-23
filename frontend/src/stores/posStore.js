@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { CUSTOMERS } from '@/data/customers'
+import { useCatalogStore } from '@/stores/catalogStore'
 
 const DEFAULT_CUSTOMER = CUSTOMERS[0]
 const now = () => new Date().toISOString()
@@ -56,13 +57,25 @@ export const usePosStore = create(
 
       addItem: (product) =>
         set((state) => {
+          const cat = useCatalogStore.getState().products.find((p) => p.id === product.id)
+          const cap = cat && cat.type === 'product' && cat.stock !== null ? cat.stock : Infinity
           const existing = state.items.find((i) => i.id === product.id)
+          const currentQty = existing ? existing.qty : 0
+          if (currentQty >= cap) return {} // at stock ceiling
           if (existing) {
             return { items: state.items.map((i) => (i.id === product.id ? { ...i, qty: i.qty + 1 } : i)) }
           }
           return { items: [...state.items, { id: product.id, name: product.name, price: product.price, sku: product.sku, qty: 1 }] }
         }),
-      incItem: (id) => set((state) => ({ items: state.items.map((i) => (i.id === id ? { ...i, qty: i.qty + 1 } : i)) })),
+      incItem: (id) =>
+        set((state) => {
+          const item = state.items.find((i) => i.id === id)
+          if (!item) return {}
+          const cat = useCatalogStore.getState().products.find((p) => p.id === id)
+          const cap = cat && cat.type === 'product' && cat.stock !== null ? cat.stock : Infinity
+          if (item.qty >= cap) return {}
+          return { items: state.items.map((i) => (i.id === id ? { ...i, qty: i.qty + 1 } : i)) }
+        }),
       decItem: (id) => set((state) => ({ items: state.items.map((i) => (i.id === id ? { ...i, qty: i.qty - 1 } : i)).filter((i) => i.qty > 0) })),
       removeItem: (id) => set((state) => ({ items: state.items.filter((i) => i.id !== id) })),
       clearCart: () => set({ items: [], discountMode: 'pct', discountValue: 0, customer: DEFAULT_CUSTOMER, transferProof: null, paymentReference: '' }),

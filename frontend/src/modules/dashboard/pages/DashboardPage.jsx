@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { useDashboardStore } from '@/stores/dashboardStore'
+import { useCatalogStore, deriveLowStock } from '@/stores/catalogStore'
 import { DASHBOARD_FILTERS, CURRENT_USER } from '@/data/dashboard'
 import { KpiCard } from '../components/KpiCard'
 import { SalesChart } from '../components/SalesChart'
@@ -18,8 +19,10 @@ function greeting() {
 }
 
 export default function DashboardPage() {
-  const { period, setPeriod, getKpis, getSalesTrend, stockAlerts, activity, appointments } =
+  const { period, setPeriod, getKpis, getSalesTrend, activity, appointments } =
     useDashboardStore()
+  const catalogProducts = useCatalogStore((s) => s.products)
+  const stockAlerts = useMemo(() => deriveLowStock(catalogProducts), [catalogProducts])
   const [loading, setLoading] = useState(false)
   const firstRun = useRef(true)
 

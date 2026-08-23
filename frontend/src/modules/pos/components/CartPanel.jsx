@@ -3,6 +3,7 @@ import { AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { ShoppingCart, Plus, Trash2, Printer, Download, Wallet, Percent } from 'lucide-react'
 import { usePosStore, RECEIVABLE_METHODS } from '@/stores/posStore'
+import { useCatalogStore } from '@/stores/catalogStore'
 import { formatDOP } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
@@ -31,6 +32,7 @@ export function CartPanel({ onCheckoutDone }) {
   const register = usePosStore((s) => s.register)
   const recordSale = usePosStore((s) => s.recordSale)
   const customer = usePosStore((s) => s.customer)
+  const decrementForSale = useCatalogStore((s) => s.decrementForSale)
 
   const [payError, setPayError] = useState(false)
   const [expenseOpen, setExpenseOpen] = useState(false)
@@ -58,6 +60,7 @@ export function CartPanel({ onCheckoutDone }) {
     setPayError(false)
     const total = getTotal()
     recordSale({ total, method: paymentMethod, customer, reference: paymentReference, items })
+    decrementForSale(items)
     if (RECEIVABLE_METHODS.includes(paymentMethod)) {
       toast.success(`Cuenta por cobrar generada · ${formatDOP(total)}`)
     } else {
