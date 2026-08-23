@@ -61,6 +61,12 @@ Navbar + Dashboard + POS Terminal, with the POS cart as a sticky RIGHT sidebar (
 - POS ProductGrid reads catalog; sale decrements product stock; Dashboard StockAlerts derived from catalog.
 - Fix: cart qty capped at available stock (no over-sell, toast warning); updateProduct price guard; DRY dashboard via deriveLowStock.
 
+## Implemented (2026-06 / Módulo Activos) — DONE (self-verified via screenshot)
+- Decisión de arquitectura: módulo dedicado (NO tag de categoría) para no ensuciar el catálogo del POS.
+- `activosStore` (persist 'diedo-activos'): CRUD (addActivo/updateActivo/deleteActivo) + getStats; categorías (mobiliario/equipos/tecnología/vehículos/herramientas/otros) y estados (activo/reparación/baja).
+- `/activos`: stat cards (valor total excl. baja, operativos, en reparación, baja), buscador, filtros por categoría y estado, tabla con badges, CRUD vía ActivoFormModal (nombre, código/serie, valor, ubicación, fecha compra, categoría, estado, notas).
+- Sidebar entry (icon Landmark) + ruta en router. Versión simple (valor + estado + categoría), sin depreciación por elección del usuario.
+
 ## Backlog (future phases)
 - P1 Fase 2: `/pos/caja` (cierre de caja real), `/pos/cuentas-por-cobrar`. Real "Item manual" in cart; real print/download.
 - P1 Fase 3: `/inventarios` + catálogo/config items.
@@ -68,4 +74,4 @@ Navbar + Dashboard + POS Terminal, with the POS cart as a sticky RIGHT sidebar (
 - P2: block zero-value sale on 100% discount; render single CartPanel instance per viewport.
 
 ## Next tasks
-- Await user review of Fase 1; proceed to Fase 2 (Caja + CxC) on confirmation.
+- Await user review of módulo Activos; proceed to Fase 4 (CRM Clientes + Ventas) on confirmation.

@@ -25,6 +25,7 @@ export const NAV_GROUPS = [
     ],
   },
   { id: 'inventarios', label: 'Inventarios', to: '/inventarios', icon: 'Package' },
+  { id: 'activos', label: 'Activos', to: '/activos', icon: 'Landmark' },
   {
     id: 'finanzas',
     label: 'Finanzas',

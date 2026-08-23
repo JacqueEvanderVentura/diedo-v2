@@ -5,6 +5,7 @@ import PosPage from '@/modules/pos/pages/PosPage'
 import CajaPage from '@/modules/pos/pages/CajaPage'
 import CxcPage from '@/modules/pos/pages/CxcPage'
 import InventariosPage from '@/modules/inventarios/pages/InventariosPage'
+import ActivosPage from '@/modules/activos/pages/ActivosPage'
 import PlaceholderPage from '@/components/layout/PlaceholderPage'
 
 export function AppRoutes() {
@@ -41,6 +42,14 @@ export function AppRoutes() {
         element={
           <PageShell title="Inventarios" subtitle="Catálogo de productos y servicios.">
             <InventariosPage />
+          </PageShell>
+        }
+      />
+      <Route
+        path="/activos"
+        element={
+          <PageShell title="Activos" subtitle="Bienes de la empresa: mobiliario, equipos y tecnología.">
+            <ActivosPage />
           </PageShell>
         }
       />
