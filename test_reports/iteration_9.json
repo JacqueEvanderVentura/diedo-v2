@@ -1,0 +1,26 @@
+{
+  "summary": "FASE 6 (Finanzas lite) frontend-only testing via Playwright on the public preview URL. 40+ assertions across /finanzas/gastos and /finanzas/ingresos: sidebar nav group, summary cards math, period toggle (incl. an explicitly created past-month expense to prove 'Mes actual' filtering), variable expense CRUD + validation + persistence, caja read-only integration, fixed expenses CRUD, ingresos derived from posStore.sales, method breakdown, table sorting. All functional checks PASSED; no console errors and no 'Maximum update depth exceeded'.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/finanzas/gastos - variable table (caja rows)", "issues": ["'Desde caja' label uses text-slate-300 on white -> contrast ratio ~1.6:1, effectively unreadable. Suggest text-slate-400/500."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": ["Optional: raise contrast of the 'Desde caja' placeholder text (text-slate-300 -> text-slate-400/500)."],
+  "critical_code_review_comments": [
+    "ExpenseFormModal destructures the whole store (useFinanzasStore()) instead of per-action selectors; harmless today (actions are stable) but it re-renders on every expense change - prefer selectors for consistency with the rest of the codebase.",
+    "GastosPage inPeriod() is used inside useMemo but is not a dependency; it works only because `period` is listed explicitly. Keep in mind when refactoring.",
+    "Caja expenses are merged with category hardcoded to 'otros' and dedupe/id-collision with finanzas ids is unguarded (genId prefixes differ, so OK for now)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only app, no backend)", "frontend": "100% (all executed checks passed)"},
+  "seed_data_creation": "Created and removed TEST_ items via UI: TEST_Gasto QA (variable, edited to 2000, deleted), TEST_Fijo QA (fixed, edited 7000, deleted). Left behind in last run (localStorage of test browser only, not shared state): TEST_Caja gasto (333, POS caja) and TEST_Mes pasado (4444, dated 2026-06-10).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "None required (no auth)",
+  "context_for_next_testing_agent": "Server date 2026-08-23. All posStore SEED_SALES (relative daysAgo 1-9) and finanzas SEED_EXPENSES (dayKey 2-15) fall inside the current calendar month, so 'Mes actual' == 'Todo' for seeds (ingresos 24,280 / variables 7,650 / fijos 106,500 / balance -89,870). To validate the period filter you must create an expense with an explicit past-month date (done: 2026-06-10) - it correctly hides under 'Mes actual' and shows under 'Todo'. Ingresos breakdown: Link de pago 12,000 (49%), Tarjeta 6,200 (26%), Efectivo 6,080 (25%) = 100% and sums to total. Caja expenses added via /pos/caja (caja-add-expense -> expense-concept/expense-amount/expense-submit) show in gastos-table with a CAJA badge and no edit/delete controls. Note when scraping summary cards: 'div.shadow-soft' also matches table cards; use the label/value <p> pair (p.text-xs.font-medium + sibling p.font-heading).",
+  "rca_of_the_issue": "No product defects found. Two failures during the runs were test-script artifacts (regex float parse over table text; splitting breakdown card text by newline index) and were corrected/verified visually - breakdown amounts do sum to the total."
+}

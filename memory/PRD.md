@@ -81,10 +81,16 @@ Navbar + Dashboard + POS Terminal, with the POS cart as a sticky RIGHT sidebar (
 - `/crm/ventas`: tabla de historial (fecha, cliente, artículos, método, referencia, total) con filtros por método + búsqueda y resumen (conteo + monto total).
 - Navegación CRM = Clientes + Ventas; /crm redirige a /crm/clientes. Fix cosmético: puntos con separador de miles.
 
+## Implemented (2026-06 / Fase 6 Finanzas lite) — DONE (verified iteration_9, 100%)
+- `finanzasStore` (persist 'diedo-finanzas'): expenses variables (SEED 5, categorizadas + fecha) y fixedExpenses mensuales (SEED 4); CRUD para ambos. EXPENSE_CATEGORIES compartidas.
+- `/finanzas/gastos`: resumen (Ingresos período · Gastos variables · Gastos fijos mensual · Balance = ing − var − fijos), toggle período Mes actual/Todo, tabla variable (CRUD) que además muestra gastos de caja (posStore.expenses) como solo-lectura con badge "Caja", y sección de gastos fijos en tarjetas (CRUD lite).
+- `/finanzas/ingresos`: derivados de posStore.sales — banner informativo, resumen (total, N.º ventas, ticket promedio), desglose por método (%), tabla; toggle período.
+- Sin plan contable ni asientos (resumen simple). Helpers finanzas/lib (parseWhen/fmtWhen/isThisMonth). Nav Finanzas activa (Gastos + Ingresos).
+
 ## Backlog (future phases)- P1 Fase 2: `/pos/caja` (cierre de caja real), `/pos/cuentas-por-cobrar`. Real "Item manual" in cart; real print/download.
 - P1 Fase 3: `/inventarios` + catálogo/config items.
 - P2 Fase 4: CRM `/crm/clientes`, `/crm/ventas`. Fase 5 Agenda. Fase 6 Finanzas. Fase 7 Reportes. Fase 8 Config tenant.
 - P2: block zero-value sale on 100% discount; render single CartPanel instance per viewport.
 
 ## Next tasks
-- Await user review of Fase 4 (CRM); proceed to Fase 6 (Finanzas: gastos + ingresos) on confirmation.
+- Await user review of Fase 6 (Finanzas); proceed to Fase 7 (Reportes core) on confirmation.

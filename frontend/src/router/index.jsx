@@ -9,6 +9,8 @@ import ActivosPage from '@/modules/activos/pages/ActivosPage'
 import AgendaPage from '@/modules/agenda/pages/AgendaPage'
 import ClientesPage from '@/modules/crm/pages/ClientesPage'
 import VentasPage from '@/modules/crm/pages/VentasPage'
+import GastosPage from '@/modules/finanzas/pages/GastosPage'
+import IngresosPage from '@/modules/finanzas/pages/IngresosPage'
 import PlaceholderPage from '@/components/layout/PlaceholderPage'
 
 export function AppRoutes() {
@@ -81,7 +83,23 @@ export function AppRoutes() {
           </PageShell>
         }
       />
-      {['/finanzas/gastos', '/finanzas/ingresos', '/reportes', '/configuracion'].map((p) => (
+      <Route
+        path="/finanzas/gastos"
+        element={
+          <PageShell title="Gastos" subtitle="Gastos variables y fijos del negocio.">
+            <GastosPage />
+          </PageShell>
+        }
+      />
+      <Route
+        path="/finanzas/ingresos"
+        element={
+          <PageShell title="Ingresos" subtitle="Ingresos generados desde las ventas del POS.">
+            <IngresosPage />
+          </PageShell>
+        }
+      />
+      {['/reportes', '/configuracion'].map((p) => (
         <Route
           key={p}
           path={p}

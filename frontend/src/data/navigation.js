@@ -29,8 +29,8 @@ export const NAV_GROUPS = [
     label: 'Finanzas',
     icon: 'Wallet',
     children: [
-      { label: 'Gastos', to: '/finanzas/gastos', soon: true },
-      { label: 'Ingresos', to: '/finanzas/ingresos', soon: true },
+      { label: 'Gastos', to: '/finanzas/gastos' },
+      { label: 'Ingresos', to: '/finanzas/ingresos' },
     ],
   },
   { id: 'reportes', label: 'Reportes', to: '/reportes', icon: 'BarChart3', soon: true },
