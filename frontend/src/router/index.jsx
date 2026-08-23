@@ -7,6 +7,8 @@ import CxcPage from '@/modules/pos/pages/CxcPage'
 import InventariosPage from '@/modules/inventarios/pages/InventariosPage'
 import ActivosPage from '@/modules/activos/pages/ActivosPage'
 import AgendaPage from '@/modules/agenda/pages/AgendaPage'
+import ClientesPage from '@/modules/crm/pages/ClientesPage'
+import VentasPage from '@/modules/crm/pages/VentasPage'
 import PlaceholderPage from '@/components/layout/PlaceholderPage'
 
 export function AppRoutes() {
@@ -62,7 +64,24 @@ export function AppRoutes() {
           </PageShell>
         }
       />
-      {['/crm', '/crm/clientes', '/crm/pipeline', '/crm/seguimientos', '/finanzas/gastos', '/finanzas/ingresos', '/reportes', '/configuracion'].map((p) => (
+      <Route path="/crm" element={<Navigate to="/crm/clientes" replace />} />
+      <Route
+        path="/crm/clientes"
+        element={
+          <PageShell title="Clientes" subtitle="Directorio de clientes, historial y próximas citas.">
+            <ClientesPage />
+          </PageShell>
+        }
+      />
+      <Route
+        path="/crm/ventas"
+        element={
+          <PageShell title="Ventas" subtitle="Historial de ventas registradas.">
+            <VentasPage />
+          </PageShell>
+        }
+      />
+      {['/finanzas/gastos', '/finanzas/ingresos', '/reportes', '/configuracion'].map((p) => (
         <Route
           key={p}
           path={p}

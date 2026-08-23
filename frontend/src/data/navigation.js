@@ -18,10 +18,8 @@ export const NAV_GROUPS = [
     label: 'CRM',
     icon: 'Users',
     children: [
-      { label: 'Overview', to: '/crm', soon: true },
-      { label: 'Clientes & Leads', to: '/crm/clientes', soon: true },
-      { label: 'Pipeline', to: '/crm/pipeline', soon: true },
-      { label: 'Seguimientos', to: '/crm/seguimientos', soon: true },
+      { label: 'Clientes', to: '/crm/clientes' },
+      { label: 'Ventas', to: '/crm/ventas' },
     ],
   },
   { id: 'inventarios', label: 'Inventarios', to: '/inventarios', icon: 'Package' },

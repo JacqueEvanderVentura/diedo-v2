@@ -74,10 +74,17 @@ Navbar + Dashboard + POS Terminal, with the POS cart as a sticky RIGHT sidebar (
 - Dashboard: `AppointmentsToday` lee del agendaStore (lista + "Ver agenda"); KPI en vivo "Citas Hoy" (id 'citas') reemplaza el placeholder 'personal'.
 - Fixes post-test: bug de fallback falsy en updateAppointment (precio/duración 0 se descartaban), acciones ocultas hover-only, capitalización del label de rango.
 
+## Implemented (2026-06 / Fase 4 CRM) — DONE (verified iteration_8, 15/15)
+- Reutiliza `posStore` como fuente: `customers` (+ nuevo `updateCustomer`, campos email/points/notes) y `sales` (nuevo `SEED_SALES` historial; persist version 2 + `merge` que inyecta ventas semilla si vacío). No afecta la caja del turno.
+- `/crm/clientes`: directorio (excluye walk-in), chips (clientes, con compras, puntos), búsqueda nombre/teléfono/email, "Total gastado" derivado de ventas, CRUD vía CustomerFormModal.
+- `CustomerDetailModal`: contacto, puntos, total gastado, historial de compras (posStore.sales) y próximas citas (agendaStore por customerId) — cross-module Agenda↔CRM verificado.
+- `/crm/ventas`: tabla de historial (fecha, cliente, artículos, método, referencia, total) con filtros por método + búsqueda y resumen (conteo + monto total).
+- Navegación CRM = Clientes + Ventas; /crm redirige a /crm/clientes. Fix cosmético: puntos con separador de miles.
+
 ## Backlog (future phases)- P1 Fase 2: `/pos/caja` (cierre de caja real), `/pos/cuentas-por-cobrar`. Real "Item manual" in cart; real print/download.
 - P1 Fase 3: `/inventarios` + catálogo/config items.
 - P2 Fase 4: CRM `/crm/clientes`, `/crm/ventas`. Fase 5 Agenda. Fase 6 Finanzas. Fase 7 Reportes. Fase 8 Config tenant.
 - P2: block zero-value sale on 100% discount; render single CartPanel instance per viewport.
 
 ## Next tasks
-- Await user review of Fase 5 (Agenda); proceed to Fase 4 (CRM Clientes + Ventas) on confirmation.
+- Await user review of Fase 4 (CRM); proceed to Fase 6 (Finanzas: gastos + ingresos) on confirmation.

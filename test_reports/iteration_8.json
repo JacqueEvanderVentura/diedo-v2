@@ -1,0 +1,25 @@
+{
+  "summary": "FASE 4 (CRM) frontend-only testing via Playwright on the public preview URL. Covered: sidebar CRM group + /crm redirect, /crm/clientes (5 seed customers, walk-in excluded, stat chips, derived 'Total gastado'), search by name/phone/nonsense, create customer (with empty-name validation), customer detail modal (name/points/total/purchase count/history/upcoming citas), edit-from-detail prefill+update, cross-module agenda->CRM appointment propagation, /crm/ventas (7 seed sales sorted desc, DOP$ 24,280 total, all 6 method filter chips, search by customer/reference, combined filter+search), localStorage persistence across reload, and mobile 390px layout. 15/15 checks passed. No console errors and NO 'Maximum update depth exceeded' (Zustand selector loop) on either CRM page. Backend testing skipped as instructed (frontend-only mock app).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/crm/clientes stat chips", "issues": ["'Puntos acumulados' renders raw number 1815 without thousands separator (formatDOP-style grouping absent) — cosmetic only"]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "posStore.merge only reseeds sales when empty; if a future SEED_SALES change is needed it will be ignored for existing localStorage — consider bumping version + migrate instead (non-blocking).",
+    "Optional: format 'Puntos acumulados' with Intl.NumberFormat for consistency with DOP$ formatting."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped)", "frontend": "100%"},
+  "seed_data_creation": "Created test customers 'TEST QA Cliente' and 'TEST Sin Compras' plus one agenda appointment for c5 (Carla Jiménez) in browser localStorage only (no backend). These live in the test browser profile, not in repo data.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "None required (no auth on this frontend-only PWA)",
+  "context_for_next_testing_agent": "Verified data: clientes row totals -> c1 DOP$1,800 / c2 12,000 / c3 7,500 / c4 1,200 / c5 1,780; puntos total 1815; ventas all = 7 rows / DOP$24,280, efectivo 4/6,080, tarjeta 2/6,200, link 1/12,000, transferencia & cxc empty state. Cross-module agenda->CRM 'Próximas citas' confirmed working. Note customers created in a test run persist in that browser's localStorage ('diedo-pos'), which shifts row counts (6 instead of 5) on subsequent runs in the same profile.",
+  "rca_of_the_issue": "N/A — no defects found."
+}

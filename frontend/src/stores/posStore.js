@@ -18,6 +18,17 @@ const SEED_RECEIVABLES = [
   { id: 'cxc-seed-3', saleId: 'sale-seed-3', customer: { id: 'c3', name: 'Ana Cristina Vargas' }, amount: 700, method: 'cxc', reference: 'CXC-0007', status: 'paid', createdAt: daysAgo(2), paidAt: daysAgo(1), paidMethod: 'efectivo', items: [{ name: '1 Sesión rostro', qty: 1, price: 700 }] },
 ]
 
+// Historial de ventas mock (para CRM Ventas + ficha de cliente). No afecta la caja del turno.
+const SEED_SALES = [
+  { id: 'sale-h1', total: 900, method: 'efectivo', customer: { id: 'c1', name: 'María Fernández' }, reference: null, items: [{ name: '1 sesión axilas', qty: 1, price: 900 }], createdAt: daysAgo(1) },
+  { id: 'sale-h2', total: 5000, method: 'tarjeta', customer: { id: 'c3', name: 'Ana Cristina Vargas' }, reference: 'APR-2231', items: [{ name: 'Paq. 12 sesiones Rostro completo', qty: 1, price: 5000 }], createdAt: daysAgo(2) },
+  { id: 'sale-h3', total: 1780, method: 'efectivo', customer: { id: 'c5', name: 'Carla Jiménez' }, reference: null, items: [{ name: 'Red Bull', qty: 2, price: 180 }, { name: '1 sesión axilas', qty: 1, price: 900 }, { name: '1 Sesión rostro', qty: 1, price: 700 }], createdAt: daysAgo(3) },
+  { id: 'sale-h4', total: 12000, method: 'link', customer: { id: 'c2', name: 'José Ramírez' }, reference: 'LNK-3391', items: [{ name: '50% Paquete de 2 Cuerpos Completos', qty: 1, price: 12000 }], createdAt: daysAgo(4) },
+  { id: 'sale-h5', total: 1200, method: 'tarjeta', customer: { id: 'c4', name: 'Luis Alberto Peña' }, reference: 'APR-9910', items: [{ name: '1 sesión piernas completas', qty: 1, price: 1200 }], createdAt: daysAgo(5) },
+  { id: 'sale-h6', total: 2500, method: 'efectivo', customer: { id: 'c3', name: 'Ana Cristina Vargas' }, reference: null, items: [{ name: 'Facial hidratante', qty: 1, price: 2500 }], createdAt: daysAgo(6) },
+  { id: 'sale-h7', total: 900, method: 'efectivo', customer: { id: 'c1', name: 'María Fernández' }, reference: null, items: [{ name: '1 sesión axilas', qty: 1, price: 900 }], createdAt: daysAgo(9) },
+]
+
 // POS store — cart + caja (register) + expenses + receivables (CxC) + customers. Persisted.
 export const usePosStore = create(
   persist(
@@ -39,7 +50,7 @@ export const usePosStore = create(
       register: { open: true, openedAt: now(), openingCash: 2000, closedAt: null },
       cashSales: 0,
       expenses: [],
-      sales: [],
+      sales: SEED_SALES,
       receivables: SEED_RECEIVABLES,
       lastCloseSummary: null,
 
@@ -47,6 +58,11 @@ export const usePosStore = create(
       setBranch: (branchId) => set({ branchId }),
       setCustomer: (customer) => set({ customer }),
       addCustomer: (customer) => set((s) => ({ customers: [customer, ...s.customers], customer })),
+      updateCustomer: (id, data) =>
+        set((s) => ({
+          customers: s.customers.map((c) => (c.id === id ? { ...c, ...data } : c)),
+          customer: s.customer?.id === id ? { ...s.customer, ...data } : s.customer,
+        })),
       setDiscountMode: (discountMode) => set({ discountMode }),
       setDiscountValue: (v) => set({ discountValue: Math.max(0, Number(v) || 0) }),
       setPaymentMethod: (paymentMethod) => set({ paymentMethod, transferProof: paymentMethod === 'transferencia' ? get().transferProof : null }),
@@ -151,6 +167,12 @@ export const usePosStore = create(
     }),
     {
       name: 'diedo-pos',
+      version: 2,
+      merge: (persisted, current) => {
+        const state = { ...current, ...(persisted || {}) }
+        if (!Array.isArray(state.sales) || state.sales.length === 0) state.sales = SEED_SALES
+        return state
+      },
       partialize: (s) => ({
         branchId: s.branchId,
         items: s.items,
