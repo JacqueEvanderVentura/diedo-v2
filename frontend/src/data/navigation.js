@@ -43,5 +43,15 @@ export const NAV_GROUPS = [
       { label: 'Agenda', to: '/reportes/agenda' },
     ],
   },
-  { id: 'configuracion', label: 'Configuración', to: '/configuracion', icon: 'Settings', soon: true },
+  {
+    id: 'configuracion',
+    label: 'Configuración',
+    icon: 'Settings',
+    children: [
+      { label: 'Sucursales', to: '/configuracion/sucursales' },
+      { label: 'Usuarios', to: '/configuracion/usuarios' },
+      { label: 'Categorías', to: '/configuracion/categorias' },
+      { label: 'Métodos de pago', to: '/configuracion/metodos-pago' },
+    ],
+  },
 ]

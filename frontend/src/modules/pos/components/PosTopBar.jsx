@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Menu, Search, Store, ChevronDown, Check, Lock, Unlock, ReceiptText } from 'lucide-react'
-import { BRANCHES } from '@/data/products'
+import { useConfigStore } from '@/stores/configStore'
 import { usePosStore } from '@/stores/posStore'
 import { useUiStore } from '@/stores/uiStore'
 import { cn } from '@/lib/utils'
@@ -10,9 +10,10 @@ import { cn } from '@/lib/utils'
 function BranchSelector() {
   const branchId = usePosStore((s) => s.branchId)
   const setBranch = usePosStore((s) => s.setBranch)
+  const branches = useConfigStore((s) => s.branches)
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
-  const current = BRANCHES.find((b) => b.id === branchId) || BRANCHES[0]
+  const current = branches.find((b) => b.id === branchId) || branches[0]
 
   useEffect(() => {
     function onClick(e) {
@@ -42,7 +43,7 @@ function BranchSelector() {
             transition={{ duration: 0.15 }}
             className="absolute right-0 top-full z-40 mt-2 w-56 overflow-hidden rounded-xl border border-slate-100 bg-white p-1.5 shadow-xl"
           >
-            {BRANCHES.map((b) => (
+            {branches.map((b) => (
               <button
                 key={b.id}
                 onClick={() => {

@@ -94,10 +94,19 @@ Navbar + Dashboard + POS Terminal, with the POS cart as a sticky RIGHT sidebar (
 - `/reportes/agenda`: KPIs (citas, cumplidas, no-show, tasa asistencia) + pie distribución por estado (real) + bar agrupado Cumplidas vs No-show últimos 7 días (mock) (agendaStore).
 - Nav Reportes = grupo (Generales/Inventario/Agenda); /reportes redirige a /reportes/generales.
 
+## Implemented (2026-06 / Fase 8 Configuración tenant core) — DONE
+- Nuevo `configStore` (persist 'diedo-config') = fuente única de branches, categories, paymentMethods, users y settings (seed desde data/products). Refactor: POS (CategoryBubbles, BranchSelector, PaymentSection) e Inventarios (página + ProductFormModal) leen del configStore.
+- `/configuracion/sucursales`: ajustes generales (nombre negocio, región, impuesto default) + CRUD de sucursales con toggle activa.
+- `/configuracion/usuarios`: CRUD de usuarios con roles mock (Administrador/Gerente/Cajero/Recepción) y estado activo.
+- `/configuracion/categorias`: CRUD de categorías del catálogo POS (cross-module con POS/Inventarios).
+- `/configuracion/metodos-pago`: activar/desactivar métodos (solo activos aparecen en el cobro POS) + agregar/eliminar personalizados; los core no se eliminan.
+- Impuesto default alimenta el ITBIS por defecto de nuevos productos. Nav Configuración = grupo; /configuracion redirige a sucursales. Sin permisos granulares/WhatsApp/nómina aún.
+- Fixes post-test (iteration_11, 97%): PaymentSection reconcilia el método seleccionado si se desactiva en config (useEffect → primer activo); guard de última sucursal movido a configStore.deleteBranch; Sidebar consume settings.businessName (marca + inicial).
+
 ## Backlog (future phases)- P1 Fase 2: `/pos/caja` (cierre de caja real), `/pos/cuentas-por-cobrar`. Real "Item manual" in cart; real print/download.
 - P1 Fase 3: `/inventarios` + catálogo/config items.
 - P2 Fase 4: CRM `/crm/clientes`, `/crm/ventas`. Fase 5 Agenda. Fase 6 Finanzas. Fase 7 Reportes. Fase 8 Config tenant.
 - P2: block zero-value sale on 100% discount; render single CartPanel instance per viewport.
 
 ## Next tasks
-- Await user review of Fase 7 (Reportes); proceed to Fase 8 (Configuración tenant) on confirmation.
+- Fase 8 (Configuración) implementada — todas las fases core (1–8) del roadmap completas. Await user review / próximas mejoras.

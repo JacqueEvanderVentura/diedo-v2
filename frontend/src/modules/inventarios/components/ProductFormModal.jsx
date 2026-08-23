@@ -4,25 +4,27 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useCatalogStore } from '@/stores/catalogStore'
-import { CATEGORIES, BRANCHES } from '@/data/products'
+import { useConfigStore } from '@/stores/configStore'
 import { cn } from '@/lib/utils'
 
 const EMPTY = { name: '', sku: '', price: '', taxPct: 18, stock: '', category: 'otros', type: 'product', branchId: 'charm-dn' }
-const FORM_CATEGORIES = CATEGORIES.filter((c) => c.id !== 'all')
 
 export function ProductFormModal({ open, onClose, product }) {
   const addProduct = useCatalogStore((s) => s.addProduct)
   const updateProduct = useCatalogStore((s) => s.updateProduct)
+  const FORM_CATEGORIES = useConfigStore((s) => s.categories)
+  const BRANCHES = useConfigStore((s) => s.branches)
+  const taxDefault = useConfigStore((s) => s.settings.taxDefault)
   const [form, setForm] = useState(EMPTY)
   const [err, setErr] = useState('')
   const editing = !!product
 
   useEffect(() => {
     if (open) {
-      setForm(product ? { ...product, sku: product.sku || '', stock: product.stock ?? '' } : EMPTY)
+      setForm(product ? { ...product, sku: product.sku || '', stock: product.stock ?? '' } : { ...EMPTY, taxPct: taxDefault ?? 18 })
       setErr('')
     }
-  }, [open, product])
+  }, [open, product, taxDefault])
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 

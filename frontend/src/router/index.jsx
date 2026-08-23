@@ -14,7 +14,10 @@ import IngresosPage from '@/modules/finanzas/pages/IngresosPage'
 import GeneralesPage from '@/modules/reportes/pages/GeneralesPage'
 import InventarioReportPage from '@/modules/reportes/pages/InventarioPage'
 import AgendaReportPage from '@/modules/reportes/pages/AgendaReportPage'
-import PlaceholderPage from '@/components/layout/PlaceholderPage'
+import SucursalesPage from '@/modules/configuracion/pages/SucursalesPage'
+import UsuariosPage from '@/modules/configuracion/pages/UsuariosPage'
+import CategoriasPage from '@/modules/configuracion/pages/CategoriasPage'
+import MetodosPagoPage from '@/modules/configuracion/pages/MetodosPagoPage'
 
 export function AppRoutes() {
   return (
@@ -127,17 +130,11 @@ export function AppRoutes() {
           </PageShell>
         }
       />
-      {['/configuracion'].map((p) => (
-        <Route
-          key={p}
-          path={p}
-          element={
-            <PageShell title="Módulo en desarrollo" subtitle="Esta sección llega en una próxima fase.">
-              <PlaceholderPage path={p} />
-            </PageShell>
-          }
-        />
-      ))}
+      <Route path="/configuracion" element={<Navigate to="/configuracion/sucursales" replace />} />
+      <Route path="/configuracion/sucursales" element={<PageShell title="Configuración · Sucursales" subtitle="Sucursales y ajustes generales del negocio."><SucursalesPage /></PageShell>} />
+      <Route path="/configuracion/usuarios" element={<PageShell title="Configuración · Usuarios" subtitle="Equipo y roles (mock)."><UsuariosPage /></PageShell>} />
+      <Route path="/configuracion/categorias" element={<PageShell title="Configuración · Categorías" subtitle="Categorías del catálogo POS."><CategoriasPage /></PageShell>} />
+      <Route path="/configuracion/metodos-pago" element={<PageShell title="Configuración · Métodos de pago" subtitle="Métodos disponibles al cobrar."><MetodosPagoPage /></PageShell>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   )

@@ -1,10 +1,13 @@
+import { useMemo } from 'react'
 import { cn } from '@/lib/utils'
-import { CATEGORIES } from '@/data/products'
+import { useConfigStore } from '@/stores/configStore'
 
 export function CategoryBubbles({ active, onChange }) {
+  const categories = useConfigStore((s) => s.categories)
+  const items = useMemo(() => [{ id: 'all', name: 'Todos' }, ...categories], [categories])
   return (
     <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide" data-testid="pos-category-bubbles">
-      {CATEGORIES.map((cat) => {
+      {items.map((cat) => {
         const isActive = active === cat.id
         return (
           <button

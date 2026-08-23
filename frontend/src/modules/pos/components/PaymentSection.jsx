@@ -1,10 +1,10 @@
-import { useRef } from 'react'
-import { Banknote, CreditCard, ArrowLeftRight, Link2, Clock, Upload, CheckCircle2, Hash } from 'lucide-react'
-import { PAYMENT_METHODS } from '@/data/products'
+import { useRef, useEffect } from 'react'
+import { Banknote, CreditCard, ArrowLeftRight, Link2, Clock, Wallet, Upload, CheckCircle2, Hash } from 'lucide-react'
+import { useConfigStore } from '@/stores/configStore'
 import { usePosStore } from '@/stores/posStore'
 import { cn } from '@/lib/utils'
 
-const ICONS = { Banknote, CreditCard, ArrowLeftRight, Link2, Clock }
+const ICONS = { Banknote, CreditCard, ArrowLeftRight, Link2, Clock, Wallet }
 
 const REF_LABELS = {
   efectivo: 'N° de referencia (opcional)',
@@ -15,6 +15,8 @@ const REF_LABELS = {
 }
 
 export function PaymentSection({ error }) {
+  const allMethods = useConfigStore((s) => s.paymentMethods)
+  const paymentMethods = allMethods.filter((m) => m.enabled)
   const paymentMethod = usePosStore((s) => s.paymentMethod)
   const setPaymentMethod = usePosStore((s) => s.setPaymentMethod)
   const transferProof = usePosStore((s) => s.transferProof)
@@ -22,6 +24,13 @@ export function PaymentSection({ error }) {
   const paymentReference = usePosStore((s) => s.paymentReference)
   const setPaymentReference = usePosStore((s) => s.setPaymentReference)
   const fileRef = useRef(null)
+
+  // Si el método seleccionado se desactivó en Configuración, reconcilia al primero activo.
+  useEffect(() => {
+    if (paymentMethods.length && !paymentMethods.some((m) => m.id === paymentMethod)) {
+      setPaymentMethod(paymentMethods[0].id)
+    }
+  }, [paymentMethods, paymentMethod, setPaymentMethod])
 
   const isReceivable = ['transferencia', 'link', 'cxc'].includes(paymentMethod)
   const isTransfer = paymentMethod === 'transferencia'
@@ -33,8 +42,8 @@ export function PaymentSection({ error }) {
     <div data-testid="pos-payment-section">
       <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Método de pago</p>
       <div className="grid grid-cols-3 gap-2">
-        {PAYMENT_METHODS.map((m) => {
-          const Icon = ICONS[m.icon]
+        {paymentMethods.map((m) => {
+          const Icon = ICONS[m.icon] || Wallet
           const active = paymentMethod === m.id
           return (
             <button

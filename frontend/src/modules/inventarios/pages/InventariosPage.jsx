@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { toast } from 'sonner'
 import { Plus, Pencil, Trash2, Package, PackageSearch, CalendarDays, AlertTriangle } from 'lucide-react'
 import { useCatalogStore, LOW_STOCK_THRESHOLD } from '@/stores/catalogStore'
-import { CATEGORIES, BRANCHES } from '@/data/products'
+import { useConfigStore } from '@/stores/configStore'
 import { formatDOP } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -12,8 +12,8 @@ import { CategoryBubbles } from '@/modules/pos/components/CategoryBubbles'
 import { ProductFormModal } from '../components/ProductFormModal'
 import { cn } from '@/lib/utils'
 
-const branchName = (id) => BRANCHES.find((b) => b.id === id)?.name || '—'
-const catName = (id) => CATEGORIES.find((c) => c.id === id)?.name || id
+const branchName = (branches, id) => branches.find((b) => b.id === id)?.name || '—'
+const catName = (categories, id) => categories.find((c) => c.id === id)?.name || id
 
 function Chip({ label, value, tone }) {
   const tones = { brand: 'text-blue-600', slate: 'text-slate-700', amber: 'text-amber-600' }
@@ -28,6 +28,8 @@ function Chip({ label, value, tone }) {
 export default function InventariosPage() {
   const products = useCatalogStore((s) => s.products)
   const deleteProduct = useCatalogStore((s) => s.deleteProduct)
+  const branches = useConfigStore((s) => s.branches)
+  const categories = useConfigStore((s) => s.categories)
 
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('all')
@@ -118,11 +120,11 @@ export default function InventariosPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-slate-500">{catName(p.category)}</td>
+                      <td className="whitespace-nowrap px-6 py-4 text-slate-500">{catName(categories, p.category)}</td>
                       <td className="px-6 py-4">
                         {p.type === 'service' ? <Badge tone="brand">Servicio</Badge> : <Badge tone="neutral">Producto</Badge>}
                       </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-slate-500">{branchName(p.branchId)}</td>
+                      <td className="whitespace-nowrap px-6 py-4 text-slate-500">{branchName(branches, p.branchId)}</td>
                       <td className="whitespace-nowrap px-6 py-4 text-right font-heading font-bold text-blue-600">{formatDOP(p.price)}</td>
                       <td className="px-6 py-4 text-center">
                         {p.type === 'service' ? (

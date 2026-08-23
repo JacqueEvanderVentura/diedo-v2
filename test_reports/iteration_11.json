@@ -1,0 +1,53 @@
+{
+  "summary": "FASE 8 (Configuración tenant core) frontend-only E2E testing via Playwright on the public preview URL. Verified sidebar Configuración group + /configuracion redirect, Ajustes generales (businessName/region/taxDefault) save+persist, Sucursales CRUD + toggle + last-branch guard, Categorías CRUD, Métodos de pago toggle/add/delete (core protected), Usuarios CRUD + role chips + toggle, localStorage persistence ('diedo-config') across reload, and ALL 6 critical cross-module propagations into POS and Inventarios. 0 console errors, 0 React 'Maximum update depth exceeded' warnings anywhere (config pages, POS, Inventarios). No blocking defects; 3 minor/edge findings reported.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "POS payment method vs Configuración disable",
+        "issue": "If the currently selected POS payment method (e.g. 'tarjeta') is later disabled in Configuración, PaymentSection renders with NO method selected (0 active buttons) but posStore.paymentMethod still holds the disabled id — and 'Cobrar' completes the sale successfully ('Venta cobrada · DOP$ 826.00') recording a disabled/hidden payment method. Expected: reset paymentMethod to the first enabled method (or block checkout with a validation message).",
+        "affected_selectors": ["pos-payment-tarjeta", "pos-payment-section", "pos-checkout-btn"]
+      },
+      {
+        "flow": "Ajustes generales -> POS tax",
+        "issue": "settings.taxDefault only feeds ProductFormModal (verified: ITBIS prefilled 16). POS cart still uses its own posStore.taxPct hardcoded 18, so cart shows 'ITBIS (18%)' after changing the default tax to 16. Inconsistent single-source-of-truth (report only; not in the stated scope).",
+        "affected_selectors": ["config-tax-default", "pos-cart-summary"]
+      },
+      {
+        "flow": "Ajustes generales -> businessName",
+        "issue": "settings.businessName persists but is not consumed anywhere in the UI; Sidebar brand and PageShell still hardcode 'Diedo App'. Setting appears to have no effect for the user.",
+        "affected_selectors": ["config-business-name", "sidebar-desktop"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "Configuración (all pages)",
+        "issues": [
+          "Deletes (sucursal/categoría/usuario/método) execute immediately with no confirmation dialog — accidental destructive action risk.",
+          "Deleting a branch/category leaves orphaned products: Inventarios shows branch '—' and falls back to the raw category id; POS branch selector label falls back to branches[0] while posStore.branchId stays stale (no crash, cosmetic)."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Reset/validate posStore.paymentMethod when the selected method is disabled or deleted in Configuración (and/or block Cobrar when no enabled method is selected).",
+    "Optional: drive POS cart ITBIS from configStore.settings.taxDefault instead of posStore.taxPct.",
+    "Optional: consume settings.businessName in Sidebar brand / PageShell so the setting is visible.",
+    "Optional: add confirm step for destructive deletes in Configuración."
+  ],
+  "critical_code_review_comments": [
+    "PaymentSection computes `allMethods.filter(...)` in the render body — safe here (not a Zustand selector), correct pattern; CategoryBubbles' useMemo over config categories is also correct. No new-array-selector infinite-loop regressions found.",
+    "configStore.deletePaymentMethod uses `filter(m => m.id !== id || m.core)` which correctly protects core methods, but the UI already hides the delete button — consider surfacing an error instead of silent no-op if ever called for a core id.",
+    "Last-branch guard lives in the page component (`branches.length <= 1`), not in configStore.deleteBranch — a future caller could delete the last branch. Move the invariant into the store."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "N/A (frontend-only, no backend)", "frontend": "97% (all specified Fase 8 cases pass; 1 edge-case integration gap)" },
+  "seed_data_creation": "Transient localStorage-only test entities created and cleaned per browser context: 'QA Sucursal Norte/Renombrada', 'QA Promociones'/'QA Cat', 'QA PayPal', user 'QA Tester'. Each tool run uses a fresh browser context so nothing leaks between sessions.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "None required (frontend-only mock, no auth)",
+  "context_for_next_testing_agent": "Verified passing: /configuracion -> redirect to /configuracion/sucursales; sidebar nav-group-configuracion auto-expands on route with all 4 sub-links (nav-sub-/configuracion/*); config-general-card save + reload persistence; 3 seed branches (charm-dn/santiago/este) create/edit/toggle/delete + 'Debe existir al menos una sucursal' guard; 5 seed categories CRUD; 5 core payment methods enabled with no delete button, toggle persists, custom method add/delete works; 4 seed users CRUD + role chips + active toggle + empty-name validation on all modals. Cross-module all PASS: new/renamed branch appears in pos-branch-selector and inventory-branch-* chips; new category appears in pos-category-bubbles, Inventarios CategoryBubbles and inventory-cat-* chips; disabled 'tarjeta' removed from pos-payment-*; custom 'QA PayPal' appears in POS; taxDefault=16 prefills ProductFormModal ITBIS. POS regression fine: 19 product cards render. IMPORTANT: each browser_automation run starts with clean localStorage, so persistence must be tested with page.reload() inside a single run.",
+  "rca_of_the_issue": "Payment-method edge case: PaymentSection derives its rendered list from enabled configStore.paymentMethods, but posStore.paymentMethod is persisted independently and never reconciled with configStore. Disabling the selected method leaves a dangling selection that still passes checkout validation (only 'transferencia' has extra validation), so a sale is recorded against a disabled method. Fix by reconciling posStore.paymentMethod against enabled methods (effect in PaymentSection or on togglePaymentMethod)."
+}

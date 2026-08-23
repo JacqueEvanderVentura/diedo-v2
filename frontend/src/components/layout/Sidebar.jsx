@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { NAV_GROUPS } from '@/data/navigation'
 import { useUiStore } from '@/stores/uiStore'
 import { usePosStore } from '@/stores/posStore'
+import { useConfigStore } from '@/stores/configStore'
 import { CURRENT_USER } from '@/data/dashboard'
 
 function isGroupActive(group, pathname) {
@@ -139,6 +140,7 @@ function GroupItem({ group, collapsed, open, onToggle, onNavigate }) {
 
 function SidebarContent({ collapsed, onNavigate, onClose }) {
   const location = useLocation()
+  const businessName = useConfigStore((s) => s.settings.businessName)
   const [open, setOpen] = useState({})
 
   useEffect(() => {
@@ -158,11 +160,11 @@ function SidebarContent({ collapsed, onNavigate, onClose }) {
       {/* Brand */}
       <div className={cn('flex h-20 shrink-0 items-center gap-3 px-5', collapsed && 'justify-center px-0')}>
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-violet-500 font-heading text-lg font-bold text-white">
-          D
+          {(businessName || 'D').slice(0, 1).toUpperCase()}
         </div>
         {!collapsed && (
           <div className="min-w-0 flex-1 leading-tight">
-            <p className="truncate font-heading text-base font-bold tracking-tight text-slate-900">Diedo App</p>
+            <p className="truncate font-heading text-base font-bold tracking-tight text-slate-900">{businessName || 'Diedo App'}</p>
             <p className="truncate text-[11px] font-medium text-slate-400">Admin Console</p>
           </div>
         )}
