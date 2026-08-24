@@ -14,6 +14,7 @@ from app.db.models.foundation import (
 )
 from app.db.models.identity import (
     AccessScope,
+    AuthSession,
     Permission,
     PlatformUser,
     Role,
@@ -24,6 +25,7 @@ from app.db.models.identity import (
 
 __all__ = [
     "AccessScope",
+    "AuthSession",
     "AuditEntry",
     "Branch",
     "LegalEntity",

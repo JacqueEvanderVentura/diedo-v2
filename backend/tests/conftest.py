@@ -12,3 +12,11 @@ def client() -> Generator[TestClient]:
     with TestClient(app, raise_server_exceptions=False) as test_client:
         yield test_client
     dispose_engine()
+
+
+@pytest.fixture
+def app_client() -> Generator[TestClient]:
+    dispose_engine()
+    with TestClient(app, raise_server_exceptions=False) as test_client:
+        yield test_client
+    dispose_engine()

@@ -1,6 +1,10 @@
 from fastapi import APIRouter
 
-from app.api.routers import health
+from app.api.routers import auth, health, permissions, users
 
 api_router = APIRouter()
 api_router.include_router(health.router)
+api_router.include_router(auth.router)
+api_router.include_router(users.router)
+api_router.include_router(permissions.roles_router)
+api_router.include_router(permissions.permissions_router)

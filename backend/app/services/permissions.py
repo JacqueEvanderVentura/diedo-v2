@@ -1,0 +1,119 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from uuid import UUID
+
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.core.request_context import get_request_id
+from app.repositories.permissions import PermissionRecord, PermissionsRepository, RoleRecord
+from app.services.auth import AuthPrincipal
+from app.services.authorization import AuthorizationService, PermissionGrant
+from app.services.errors import (
+    AuthorizationError,
+    ConflictError,
+    ResourceNotFoundError,
+)
+
+
+@dataclass(frozen=True)
+class PermissionModule:
+    code: str
+    name: str
+    permissions: tuple[PermissionRecord, ...]
+
+
+@dataclass(frozen=True)
+class PermissionMatrix:
+    roles: tuple[RoleRecord, ...]
+    modules: tuple[PermissionModule, ...]
+    total_permissions: int
+
+
+class PermissionsService:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+        self._repository = PermissionsRepository(session)
+
+    def list_roles(self, workspace_id: UUID) -> tuple[RoleRecord, ...]:
+        return tuple(self._repository.list_roles(workspace_id))
+
+    def matrix(self, workspace_id: UUID) -> PermissionMatrix:
+        roles = tuple(self._repository.list_roles(workspace_id))
+        permissions = self._repository.list_permissions(
+            workspace_id,
+            {role.id for role in roles},
+        )
+        grouped: dict[tuple[str, str], list[PermissionRecord]] = {}
+        for permission in permissions:
+            grouped.setdefault(
+                (permission.module_code, permission.module_name),
+                [],
+            ).append(permission)
+        modules = tuple(
+            PermissionModule(code=key[0], name=key[1], permissions=tuple(items))
+            for key, items in grouped.items()
+        )
+        return PermissionMatrix(
+            roles=roles,
+            modules=modules,
+            total_permissions=len(permissions),
+        )
+
+    def replace_role_permissions(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        role_id: UUID,
+        permission_ids: list[UUID],
+        expected_version: int,
+    ) -> RoleRecord:
+        if not grant.workspace_wide:
+            raise AuthorizationError(
+                "Gestionar permisos de roles requiere alcance sobre todo el workspace."
+            )
+        role = self._repository.get_role_for_update(principal.workspace_id, role_id)
+        if role is None:
+            raise ResourceNotFoundError("El rol no existe.", "roleId")
+        if role.version != expected_version:
+            raise ConflictError(
+                "El rol cambió; vuelve a cargar la matriz antes de guardar.",
+                "version",
+            )
+
+        requested_ids = set(permission_ids)
+        requested_permissions = self._repository.permissions_by_ids(requested_ids)
+        if len(requested_permissions) != len(requested_ids):
+            raise ResourceNotFoundError(
+                "Uno o más permisos no existen.",
+                "permissionIds",
+            )
+        if role.code == "workspace_admin":
+            required_admin_permissions = {
+                "membership.read",
+                "membership.manage",
+                "role.read",
+                "role.manage",
+            }
+            if not required_admin_permissions.issubset(requested_permissions.values()):
+                raise ConflictError(
+                    "El rol Administrador debe conservar los permisos básicos de usuarios y roles.",
+                    "permissionIds",
+                )
+        actor_permissions = AuthorizationService(self._session).all_permission_codes(principal)
+        if not set(requested_permissions.values()).issubset(actor_permissions):
+            raise AuthorizationError("No puedes conceder permisos que tú no posees.")
+        try:
+            result = self._repository.replace_role_permissions(
+                role=role,
+                permission_ids=requested_ids,
+                actor_platform_user_id=principal.platform_user_id,
+                request_id=get_request_id(),
+            )
+            self._session.commit()
+            return result
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise ConflictError("No se pudieron actualizar los permisos del rol.") from exc

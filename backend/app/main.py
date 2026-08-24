@@ -13,12 +13,18 @@ from app.api.routers import development
 from app.config import settings
 from app.core.cors import parse_cors_origins
 from app.core.errors import (
+    application_exception_handler,
     http_exception_handler,
     request_validation_exception_handler,
     unhandled_exception_handler,
 )
-from app.core.middleware import AccessLogMiddleware, CorrelationIdMiddleware
+from app.core.middleware import (
+    AccessLogMiddleware,
+    CorrelationIdMiddleware,
+    SecurityHeadersMiddleware,
+)
 from app.db.session import dispose_engine
+from app.services.errors import ApplicationError
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -44,6 +50,7 @@ def create_app() -> FastAPI:
 
     application.add_exception_handler(StarletteHTTPException, http_exception_handler)
     application.add_exception_handler(RequestValidationError, request_validation_exception_handler)
+    application.add_exception_handler(ApplicationError, application_exception_handler)
     application.add_exception_handler(Exception, unhandled_exception_handler)
 
     origins = parse_cors_origins(settings.cors_origins)
@@ -58,6 +65,7 @@ def create_app() -> FastAPI:
 
     application.add_middleware(AccessLogMiddleware)
     application.add_middleware(CorrelationIdMiddleware)
+    application.add_middleware(SecurityHeadersMiddleware)
     application.include_router(api_router)
 
     if settings.app_env in {"development", "test"}:

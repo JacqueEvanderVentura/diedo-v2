@@ -47,6 +47,18 @@ python -m alembic check
 python -m app.scripts.bootstrap_local
 ```
 
+Set `LOCAL_BOOTSTRAP_ADMIN_PASSWORD` in the untracked `.env` before the first bootstrap when local
+Bearer-token login is needed. The development owner is `owner@erp.dev` in workspace `local-erp`.
+
+To populate the local users, branches, roles, and permission matrix with repeatable demo data, run:
+
+```bash
+python -m app.scripts.seed_local_demo
+```
+
+The eight `*.demo@erp.dev` users share the local bootstrap password strictly for development. The
+seed is safe to repeat and includes workspace-wide and branch-scoped users plus one suspended user.
+
 The local database listens on port `5433` to avoid colliding with a PostgreSQL installation on the
 default port.
 
@@ -59,10 +71,17 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - Liveness: `GET http://localhost:8000/health`
 - Database readiness: `GET http://localhost:8000/health/ready`
 - Local foundation status: `GET http://localhost:8000/dev/foundation`
+- Authentication: `POST http://localhost:8000/api/v1/auth/login`
+- Users: `GET/POST http://localhost:8000/api/v1/users`
+- User metrics: `GET http://localhost:8000/api/v1/users/summary`
+- Permission matrix: `GET http://localhost:8000/api/v1/permissions/matrix`
 - Swagger UI: `http://localhost:8000/swagger/index.html`
 - OpenAPI JSON: `http://localhost:8000/swagger.json`
 
 Swagger and ReDoc are disabled when `APP_ENV=production`.
+
+The IAM contract and security decisions are documented in
+[`../docs/backend/IAM_API.md`](../docs/backend/IAM_API.md).
 
 ## Quality checks
 

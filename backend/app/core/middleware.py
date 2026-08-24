@@ -69,3 +69,21 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
                 duration_ms,
                 get_request_id(),
             )
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Apply browser-safe API defaults without assuming TLS termination details."""
+
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: RequestResponseEndpoint,
+    ) -> Response:
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault(
+            "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+        )
+        return response

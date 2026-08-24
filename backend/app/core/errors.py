@@ -10,6 +10,14 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.cors import apply_cors_headers
+from app.services.errors import (
+    ApplicationError,
+    AuthenticationError,
+    AuthorizationError,
+    ConflictError,
+    InvalidOperationError,
+    ResourceNotFoundError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +100,32 @@ async def request_validation_exception_handler(
             "message": friendly_validation_message(first_error),
             "parameter": parameter_from_validation_location(location),
         },
+    )
+
+
+async def application_exception_handler(
+    _request: Request,
+    exc: Exception,
+) -> JSONResponse:
+    if not isinstance(exc, ApplicationError):
+        raise TypeError("Expected an ApplicationError.")
+    status_code = 500
+    headers: dict[str, str] | None = None
+    if isinstance(exc, AuthenticationError):
+        status_code = 401
+        headers = {"WWW-Authenticate": "Bearer"}
+    elif isinstance(exc, AuthorizationError):
+        status_code = 403
+    elif isinstance(exc, ResourceNotFoundError):
+        status_code = 404
+    elif isinstance(exc, ConflictError):
+        status_code = 409
+    elif isinstance(exc, InvalidOperationError):
+        status_code = 400
+    return JSONResponse(
+        status_code=status_code,
+        content={"message": exc.message, "parameter": exc.parameter},
+        headers=headers,
     )
 
 

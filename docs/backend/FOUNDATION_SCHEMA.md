@@ -61,8 +61,10 @@ The command is limited to development and test environments and is safe to repea
 - global module metadata, enabling only `foundation` and `iam`;
 - a Dominican Republic regional pack in `planned` state, with no unverified fiscal rules activated.
 
-The bootstrap intentionally creates no password, API token, customer, employee, invoice, payment,
-stock, accounting, or fiscal record.
+By default the bootstrap creates no password. In development or test, setting
+`LOCAL_BOOTSTRAP_ADMIN_PASSWORD` sets the local owner's Argon2 password once when it is still empty.
+The bootstrap never creates an API key, customer, employee, invoice, payment, stock, accounting, or
+fiscal record.
 
 ## Runtime verification
 

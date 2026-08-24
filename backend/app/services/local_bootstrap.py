@@ -23,19 +23,92 @@ from app.db.models import (
 )
 
 _PERMISSIONS = (
-    ("workspace.read", "View workspace configuration."),
-    ("workspace.update", "Change workspace configuration."),
-    ("legal_entity.read", "View legal entities."),
-    ("legal_entity.manage", "Create and change legal entities."),
-    ("branch.read", "View branches."),
-    ("branch.manage", "Create and change branches."),
-    ("membership.read", "View workspace memberships."),
-    ("membership.manage", "Invite and manage workspace memberships."),
-    ("role.read", "View roles and permission assignments."),
-    ("role.manage", "Create roles and assign permissions."),
-    ("entitlement.read", "View enabled ERP modules."),
-    ("audit.read", "View workspace audit history."),
+    (
+        "workspace.read",
+        "foundation",
+        "read",
+        "Ver espacio de trabajo",
+        "View workspace configuration.",
+        10,
+    ),
+    (
+        "workspace.update",
+        "foundation",
+        "update",
+        "Editar espacio de trabajo",
+        "Change workspace configuration.",
+        20,
+    ),
+    (
+        "legal_entity.read",
+        "foundation",
+        "read",
+        "Ver entidades legales",
+        "View legal entities.",
+        30,
+    ),
+    (
+        "legal_entity.manage",
+        "foundation",
+        "manage",
+        "Gestionar entidades legales",
+        "Create and change legal entities.",
+        40,
+    ),
+    ("branch.read", "foundation", "read", "Ver sucursales", "View branches.", 50),
+    (
+        "branch.manage",
+        "foundation",
+        "manage",
+        "Gestionar sucursales",
+        "Create and change branches.",
+        60,
+    ),
+    (
+        "entitlement.read",
+        "foundation",
+        "read",
+        "Ver módulos habilitados",
+        "View enabled ERP modules.",
+        70,
+    ),
+    ("audit.read", "foundation", "read", "Ver auditoría", "View workspace audit history.", 80),
+    ("membership.read", "iam", "read", "Ver usuarios", "View workspace memberships.", 10),
+    (
+        "membership.manage",
+        "iam",
+        "manage",
+        "Gestionar usuarios",
+        "Invite and manage workspace memberships.",
+        20,
+    ),
+    (
+        "role.read",
+        "iam",
+        "read",
+        "Ver roles y permisos",
+        "View roles and permission assignments.",
+        30,
+    ),
+    (
+        "role.manage",
+        "iam",
+        "manage",
+        "Gestionar roles y permisos",
+        "Create roles and assign permissions.",
+        40,
+    ),
 )
+
+_ROLE_TEMPLATES = (
+    ("workspace_admin", "Administrador", True),
+    ("manager", "Gerente", True),
+    ("supervisor", "Supervisor", True),
+    ("cashier", "Cajero", True),
+    ("seller", "Vendedor", True),
+)
+
+_LOCAL_OWNER_EMAIL = "owner@erp.dev"
 
 _MODULES: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
     ("foundation", "Foundation", "core", "available", ()),
@@ -64,7 +137,10 @@ class BootstrapSummary:
     enabled_modules: tuple[str, ...]
 
 
-def bootstrap_local_foundation(session: Session) -> BootstrapSummary:
+def bootstrap_local_foundation(
+    session: Session,
+    owner_password_hash: str | None = None,
+) -> BootstrapSummary:
     """Install deterministic local catalogs and a non-sensitive development workspace."""
 
     now = datetime.now(UTC)
@@ -91,8 +167,11 @@ def bootstrap_local_foundation(session: Session) -> BootstrapSummary:
         PlatformUser,
         {
             "external_subject": "local:owner",
-            "email": "owner@erp.local.test",
+            "email": _LOCAL_OWNER_EMAIL,
+            "normalized_email": _LOCAL_OWNER_EMAIL,
             "display_name": "Local Owner",
+            "password_hash": owner_password_hash,
+            "password_changed_at": now if owner_password_hash is not None else None,
             "status": "active",
         },
     )
@@ -101,6 +180,12 @@ def bootstrap_local_foundation(session: Session) -> BootstrapSummary:
     )
     if user is None:
         raise RuntimeError("Local platform user could not be loaded after bootstrap.")
+    if user.normalized_email == "owner@erp.local.test":
+        user.email = _LOCAL_OWNER_EMAIL
+        user.normalized_email = _LOCAL_OWNER_EMAIL
+    if owner_password_hash is not None and user.password_hash is None:
+        user.password_hash = owner_password_hash
+        user.password_changed_at = now
 
     _insert_do_nothing(
         session,
@@ -148,6 +233,7 @@ def bootstrap_local_foundation(session: Session) -> BootstrapSummary:
             "platform_user_id": user.id,
             "status": "active",
             "activated_at": now,
+            "is_default": True,
         },
     )
     membership = session.scalar(
@@ -158,18 +244,20 @@ def bootstrap_local_foundation(session: Session) -> BootstrapSummary:
     )
     if membership is None:
         raise RuntimeError("Local membership could not be loaded after bootstrap.")
+    membership.is_default = True
 
-    _insert_do_nothing(
-        session,
-        Role,
-        {
-            "workspace_id": workspace.id,
-            "code": "workspace_admin",
-            "name": "Workspace administrator",
-            "status": "active",
-            "is_system": True,
-        },
-    )
+    for role_code, role_name, is_system in _ROLE_TEMPLATES:
+        _insert_do_nothing(
+            session,
+            Role,
+            {
+                "workspace_id": workspace.id,
+                "code": role_code,
+                "name": role_name,
+                "status": "active",
+                "is_system": is_system,
+            },
+        )
     role = session.scalar(
         select(Role).where(Role.workspace_id == workspace.id, Role.code == "workspace_admin")
     )
@@ -246,21 +334,6 @@ def bootstrap_local_foundation(session: Session) -> BootstrapSummary:
 
 
 def _upsert_catalogs(session: Session) -> None:
-    for code, description in _PERMISSIONS:
-        statement = (
-            insert(Permission)
-            .values(code=code, description=description, is_platform_only=False)
-            .on_conflict_do_update(
-                index_elements=[Permission.code],
-                set_={
-                    "description": description,
-                    "is_platform_only": False,
-                    "updated_at": func.now(),
-                },
-            )
-        )
-        session.execute(statement)
-
     for code, name, kind, status, dependencies in _MODULES:
         statement = (
             insert(ModuleDefinition)
@@ -278,6 +351,33 @@ def _upsert_catalogs(session: Session) -> None:
                     "kind": kind,
                     "status": status,
                     "dependency_codes": list(dependencies),
+                    "updated_at": func.now(),
+                },
+            )
+        )
+        session.execute(statement)
+
+    for code, module_code, action, name, description, sort_order in _PERMISSIONS:
+        statement = (
+            insert(Permission)
+            .values(
+                code=code,
+                module_code=module_code,
+                action=action,
+                name=name,
+                description=description,
+                sort_order=sort_order,
+                is_platform_only=False,
+            )
+            .on_conflict_do_update(
+                index_elements=[Permission.code],
+                set_={
+                    "module_code": module_code,
+                    "action": action,
+                    "name": name,
+                    "description": description,
+                    "sort_order": sort_order,
+                    "is_platform_only": False,
                     "updated_at": func.now(),
                 },
             )

@@ -24,7 +24,10 @@ class PlatformUser(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
 
     external_subject: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
     email: Mapped[str] = mapped_column(String(254), nullable=False, unique=True)
+    normalized_email: Mapped[str] = mapped_column(String(254), nullable=False, unique=True)
     display_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(String(255))
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="active", server_default=text("'active'")
     )
@@ -41,6 +44,12 @@ class WorkspaceMembership(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Bas
         ),
         Index("ix_memberships_platform_user", "platform_user_id"),
         Index("ix_memberships_workspace_status", "workspace_id", "status"),
+        Index(
+            "uq_memberships_default_workspace",
+            "platform_user_id",
+            unique=True,
+            postgresql_where=text("is_default"),
+        ),
     )
 
     workspace_id: Mapped[UUID] = mapped_column(
@@ -53,13 +62,27 @@ class WorkspaceMembership(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Bas
     invited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_access_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_default: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
 
 
 class Permission(UuidPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "permissions"
+    __table_args__ = (
+        CheckConstraint("sort_order >= 0", name="sort_order_non_negative"),
+        Index("ix_permissions_module_sort", "module_code", "sort_order"),
+    )
 
     code: Mapped[str] = mapped_column(String(96), nullable=False, unique=True)
+    module_code: Mapped[str] = mapped_column(
+        ForeignKey("module_definitions.code", ondelete="RESTRICT"), nullable=False
+    )
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str] = mapped_column(String(240), nullable=False)
+    sort_order: Mapped[int] = mapped_column(nullable=False, default=0, server_default=text("0"))
     is_platform_only: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
@@ -213,3 +236,32 @@ class RoleAssignment(UuidPrimaryKeyMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AuthSession(UuidPrimaryKeyMixin, TimestampMixin, Base):
+    """Server-side refresh-session state; raw refresh tokens are never stored."""
+
+    __tablename__ = "auth_sessions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "membership_id"],
+            ["workspace_memberships.workspace_id", "workspace_memberships.id"],
+            ondelete="RESTRICT",
+            name="fk_auth_sessions_workspace_membership",
+        ),
+        CheckConstraint("expires_at > created_at", name="valid_expiry"),
+        Index("ix_auth_sessions_membership_expiry", "membership_id", "expires_at"),
+        Index("ix_auth_sessions_user_expiry", "platform_user_id", "expires_at"),
+    )
+
+    platform_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("platform_users.id", ondelete="RESTRICT"), nullable=False
+    )
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
+    )
+    membership_id: Mapped[UUID] = mapped_column(nullable=False)
+    refresh_token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

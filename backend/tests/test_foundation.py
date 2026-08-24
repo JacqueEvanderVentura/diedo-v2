@@ -163,7 +163,15 @@ def test_development_endpoint_is_not_registered_in_production(
 
 
 @pytest.mark.integration
-def test_bootstrap_cli_emits_machine_readable_summary(capsys: pytest.CaptureFixture[str]) -> None:
+def test_bootstrap_cli_emits_machine_readable_summary(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        bootstrap_script,
+        "settings",
+        SimpleNamespace(app_env="development", local_bootstrap_admin_password=None),
+    )
     bootstrap_script.main()
 
     output = capsys.readouterr().out
