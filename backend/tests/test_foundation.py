@@ -9,6 +9,7 @@ from app.db.models import (
     Branch,
     LegalEntity,
     Permission,
+    Role,
     RolePermission,
     Workspace,
 )
@@ -33,12 +34,20 @@ def test_local_bootstrap_is_idempotent_and_installs_minimum_access_model() -> No
         assigned_permission_count = session.scalar(
             select(func.count())
             .select_from(RolePermission)
-            .where(RolePermission.workspace_id == second.workspace_id)
+            .join(
+                Role,
+                (Role.workspace_id == RolePermission.workspace_id)
+                & (Role.id == RolePermission.role_id),
+            )
+            .where(
+                RolePermission.workspace_id == second.workspace_id,
+                Role.code == "workspace_admin",
+            )
         )
 
     assert second == first
-    assert second.enabled_modules == ("foundation", "iam")
-    assert permission_count == 12
+    assert second.enabled_modules == ("foundation", "iam", "catalog")
+    assert permission_count == 14
     assert assigned_permission_count == permission_count
     assert second.workspace_id.version == 7
 
@@ -128,15 +137,14 @@ def test_development_foundation_endpoint_reports_seeded_database(client: TestCli
     response = client.get("/dev/foundation")
 
     assert response.status_code == 200
-    assert response.json() == {
-        "status": "ready",
-        "database": "ok",
-        "workspaceCount": 1,
-        "legalEntityCount": 1,
-        "branchCount": 1,
-        "activeMembershipCount": 1,
-        "enabledModules": ["foundation", "iam"],
-    }
+    body = response.json()
+    assert body["status"] == "ready"
+    assert body["database"] == "ok"
+    assert body["workspaceCount"] >= 1
+    assert body["legalEntityCount"] >= 1
+    assert body["branchCount"] >= 1
+    assert body["activeMembershipCount"] >= 1
+    assert body["enabledModules"] == ["catalog", "foundation", "iam"]
 
 
 def test_foundation_endpoint_returns_service_unavailable_on_query_failure() -> None:

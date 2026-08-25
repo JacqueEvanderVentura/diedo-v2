@@ -75,6 +75,9 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - Users: `GET/POST http://localhost:8000/api/v1/users`
 - User metrics: `GET http://localhost:8000/api/v1/users/summary`
 - Permission matrix: `GET http://localhost:8000/api/v1/permissions/matrix`
+- Catalog categories: `GET/POST http://localhost:8000/api/v1/catalog/categories`
+- Catalog products: `GET/POST http://localhost:8000/api/v1/catalog/products`
+- Units of measure: `GET http://localhost:8000/api/v1/catalog/units-of-measure`
 - Swagger UI: `http://localhost:8000/swagger/index.html`
 - OpenAPI JSON: `http://localhost:8000/swagger.json`
 
@@ -82,6 +85,8 @@ Swagger and ReDoc are disabled when `APP_ENV=production`.
 
 The IAM contract and security decisions are documented in
 [`../docs/backend/IAM_API.md`](../docs/backend/IAM_API.md).
+The catalog contract, filters, scope rules, and concurrency behavior are documented in
+[`../docs/backend/CATALOG_API.md`](../docs/backend/CATALOG_API.md).
 
 ## Quality checks
 

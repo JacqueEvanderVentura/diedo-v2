@@ -57,3 +57,11 @@ RoleManageGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("role.manage")),
 ]
+CatalogReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("catalog.read")),
+]
+CatalogManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("catalog.manage")),
+]

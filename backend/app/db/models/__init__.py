@@ -1,6 +1,7 @@
 """Persistence model registry used by Alembic metadata discovery."""
 
 from app.db.models.audit import AuditEntry
+from app.db.models.catalog import Item, ItemBranchAssignment, ItemCategory, UnitOfMeasure
 from app.db.models.foundation import (
     Branch,
     LegalEntity,
@@ -28,6 +29,9 @@ __all__ = [
     "AuthSession",
     "AuditEntry",
     "Branch",
+    "Item",
+    "ItemBranchAssignment",
+    "ItemCategory",
     "LegalEntity",
     "LegalEntityIdentity",
     "LegalEntityRegionalRule",
@@ -42,4 +46,5 @@ __all__ = [
     "RolePermission",
     "Workspace",
     "WorkspaceMembership",
+    "UnitOfMeasure",
 ]

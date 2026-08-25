@@ -55,14 +55,17 @@ _ROLE_PERMISSION_CODES: dict[str, tuple[str, ...]] = {
         "membership.read",
         "membership.manage",
         "role.read",
+        "catalog.read",
+        "catalog.manage",
     ),
     "supervisor": (
         "workspace.read",
         "branch.read",
         "membership.read",
+        "catalog.read",
     ),
-    "cashier": ("branch.read",),
-    "seller": ("branch.read",),
+    "cashier": ("branch.read", "catalog.read"),
+    "seller": ("branch.read", "catalog.read"),
 }
 
 _DEMO_USERS = (

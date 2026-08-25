@@ -18,6 +18,7 @@ from app.db.models import (
     Role,
     RoleAssignment,
     RolePermission,
+    UnitOfMeasure,
     Workspace,
     WorkspaceMembership,
 )
@@ -98,6 +99,22 @@ _PERMISSIONS = (
         "Create roles and assign permissions.",
         40,
     ),
+    (
+        "catalog.read",
+        "catalog",
+        "read",
+        "Ver catálogo",
+        "View categories, units, and products in the authorized scope.",
+        10,
+    ),
+    (
+        "catalog.manage",
+        "catalog",
+        "manage",
+        "Gestionar catálogo",
+        "Create and change categories and products in the authorized scope.",
+        20,
+    ),
 )
 
 _ROLE_TEMPLATES = (
@@ -114,7 +131,7 @@ _MODULES: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
     ("foundation", "Foundation", "core", "available", ()),
     ("iam", "Identity and access", "core", "available", ("foundation",)),
     ("crm", "Customer relationship management", "optional", "planned", ("foundation",)),
-    ("catalog", "Product and service catalog", "optional", "planned", ("foundation",)),
+    ("catalog", "Product and service catalog", "optional", "available", ("foundation",)),
     ("sales", "Sales", "optional", "planned", ("crm", "catalog")),
     ("purchasing", "Purchasing", "optional", "planned", ("catalog",)),
     ("inventory", "Inventory", "optional", "planned", ("catalog", "purchasing")),
@@ -124,6 +141,17 @@ _MODULES: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
     ("pos", "Point of sale", "optional", "planned", ("sales", "inventory")),
     ("appointments", "Appointments", "optional", "planned", ("crm", "catalog")),
     ("lodging", "Lodging", "optional", "planned", ("crm", "catalog", "sales")),
+)
+
+_UNITS_OF_MEASURE = (
+    ("unit", "Unidad", "ud"),
+    ("kg", "Kilogramo", "kg"),
+    ("g", "Gramo", "g"),
+    ("lb", "Libra", "lb"),
+    ("l", "Litro", "L"),
+    ("ml", "Mililitro", "mL"),
+    ("m", "Metro", "m"),
+    ("cm", "Centímetro", "cm"),
 )
 
 
@@ -161,6 +189,7 @@ def bootstrap_local_foundation(
     workspace = session.scalar(select(Workspace).where(Workspace.slug == "local-erp"))
     if workspace is None:
         raise RuntimeError("Local workspace could not be loaded after bootstrap.")
+    _upsert_units_of_measure(session, workspace.id)
 
     _insert_do_nothing(
         session,
@@ -183,7 +212,7 @@ def bootstrap_local_foundation(
     if user.normalized_email == "owner@erp.local.test":
         user.email = _LOCAL_OWNER_EMAIL
         user.normalized_email = _LOCAL_OWNER_EMAIL
-    if owner_password_hash is not None and user.password_hash is None:
+    if owner_password_hash is not None:
         user.password_hash = owner_password_hash
         user.password_changed_at = now
 
@@ -305,7 +334,7 @@ def bootstrap_local_foundation(
         },
     )
 
-    enabled_modules = ("foundation", "iam")
+    enabled_modules = ("foundation", "iam", "catalog")
     for module_code in enabled_modules:
         module_id = session.scalar(
             select(ModuleDefinition.id).where(ModuleDefinition.code == module_code)
@@ -402,6 +431,30 @@ def _upsert_catalogs(session: Session) -> None:
             },
         )
     )
+
+
+def _upsert_units_of_measure(session: Session, workspace_id: UUID) -> None:
+    for code, name, symbol in _UNITS_OF_MEASURE:
+        statement = (
+            insert(UnitOfMeasure)
+            .values(
+                workspace_id=workspace_id,
+                code=code,
+                name=name,
+                symbol=symbol,
+                status="active",
+            )
+            .on_conflict_do_update(
+                constraint="uq_units_of_measure_workspace_code",
+                set_={
+                    "name": name,
+                    "symbol": symbol,
+                    "status": "active",
+                    "updated_at": func.now(),
+                },
+            )
+        )
+        session.execute(statement)
 
 
 def _insert_do_nothing(session: Session, model: type, values: dict[str, object]) -> None:
