@@ -149,6 +149,9 @@ def test_openapi_marks_only_protected_iam_routes_as_bearer(app_client: TestClien
     assert set(login_schema["properties"]) == {"email", "password"}
     assert schema["paths"]["/api/v1/auth/me"]["get"]["security"] == [{"BearerAuth": []}]
     assert schema["paths"]["/api/v1/users"]["get"]["security"] == [{"BearerAuth": []}]
+    assert schema["paths"]["/api/v1/roles/summary"]["get"]["security"] == [{"BearerAuth": []}]
+    assert schema["paths"]["/api/v1/lookups/roles"]["get"]["security"] == [{"BearerAuth": []}]
+    assert schema["paths"]["/api/v1/lookups/branches"]["get"]["security"] == [{"BearerAuth": []}]
 
     health = app_client.get("/health")
     assert health.headers["x-content-type-options"] == "nosniff"

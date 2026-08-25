@@ -31,6 +31,12 @@ class PermissionMatrix:
     total_permissions: int
 
 
+@dataclass(frozen=True)
+class RolePermissionSummary:
+    roles: tuple[RoleRecord, ...]
+    total_permissions: int
+
+
 class PermissionsService:
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -38,6 +44,12 @@ class PermissionsService:
 
     def list_roles(self, workspace_id: UUID) -> tuple[RoleRecord, ...]:
         return tuple(self._repository.list_roles(workspace_id))
+
+    def role_summary(self, workspace_id: UUID) -> RolePermissionSummary:
+        return RolePermissionSummary(
+            roles=tuple(self._repository.list_roles(workspace_id)),
+            total_permissions=self._repository.count_available_permissions(),
+        )
 
     def matrix(self, workspace_id: UUID) -> PermissionMatrix:
         roles = tuple(self._repository.list_roles(workspace_id))

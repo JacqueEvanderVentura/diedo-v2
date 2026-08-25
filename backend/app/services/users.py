@@ -97,11 +97,15 @@ class UsersService:
 
     def form_options(self, grant: PermissionGrant) -> UserFormOptions:
         return UserFormOptions(
-            roles=tuple(self._repository.list_roles(grant.workspace_id)),
-            branches=tuple(
-                self._repository.list_branches(grant.workspace_id, grant.allowed_branch_ids)
-            ),
+            roles=self.assignable_roles(grant),
+            branches=self.assignable_branches(grant),
         )
+
+    def assignable_roles(self, grant: PermissionGrant) -> tuple[RoleRecord, ...]:
+        return tuple(self._repository.list_roles(grant.workspace_id))
+
+    def assignable_branches(self, grant: PermissionGrant) -> tuple[BranchRecord, ...]:
+        return tuple(self._repository.list_branches(grant.workspace_id, grant.allowed_branch_ids))
 
     def create_user(
         self,

@@ -57,8 +57,11 @@ All JSON fields use `camelCase`. Expected errors use the common `{message, param
 | GET | `/api/v1/users/form-options` | `membership.manage` | Return assignable roles and in-scope active branches. |
 | POST | `/api/v1/users` | `membership.manage` | Create identity, membership, password, and scoped role assignments. |
 | GET | `/api/v1/roles` | `role.read` | List active roles and granted-permission counts. |
+| GET | `/api/v1/roles/summary` | `role.read` | Return granted counts and percentages for role summary cards. |
 | GET | `/api/v1/permissions/matrix` | `role.read` | Return dynamic module/action rows and grants by role. |
 | PUT | `/api/v1/roles/{roleId}/permissions` | workspace-wide `role.manage` | Idempotently replace grants using optimistic versioning. |
+| GET | `/api/v1/lookups/roles` | `membership.manage` | Return assignable roles as `{id, name}` options. |
+| GET | `/api/v1/lookups/branches` | `membership.manage` | Return in-scope active branches as `{id, name}` options. |
 
 ### Login
 
@@ -101,6 +104,18 @@ over an account by email.
 permission they do not possess, and a branch-scoped role administrator cannot mutate a
 workspace-wide role definition. The system Administrador role must retain the four IAM permissions
 needed to view/manage users and roles, preventing an accidental workspace lockout.
+
+### Role summary and user-form lookups
+
+`GET /api/v1/roles/summary` returns `totalPermissions` once and a `roles` collection containing each
+role's `id`, `code`, `name`, `permissionCount`, and rounded integer `permissionPercentage`. Counts
+include only non-platform permissions from modules that are not deprecated, matching the permission
+matrix.
+
+The two `/api/v1/lookups` routes deliberately return only `id` and `name`. They require
+`membership.manage`, because they support user creation rather than general catalog browsing. Role
+options are workspace-owned; branch options are additionally limited to the caller's effective
+branch scope from the Bearer session.
 
 ## Starter catalog
 

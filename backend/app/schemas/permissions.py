@@ -14,6 +14,19 @@ class RoleResponse(ApiModel):
     permission_count: int = 0
 
 
+class RolePermissionSummaryItem(ApiModel):
+    id: UUID
+    code: str
+    name: str
+    permission_count: int = Field(ge=0)
+    permission_percentage: int = Field(ge=0, le=100)
+
+
+class RolePermissionSummaryResponse(ApiModel):
+    total_permissions: int = Field(ge=0)
+    roles: list[RolePermissionSummaryItem]
+
+
 class PermissionMatrixItem(ApiModel):
     id: UUID
     code: str

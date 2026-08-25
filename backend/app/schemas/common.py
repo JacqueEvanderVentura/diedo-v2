@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
@@ -16,3 +18,8 @@ class ApiModel(BaseModel):
 class ErrorResponse(ApiModel):
     message: str
     parameter: str | None = None
+
+
+class SimpleOptionResponse(ApiModel):
+    id: UUID
+    name: str

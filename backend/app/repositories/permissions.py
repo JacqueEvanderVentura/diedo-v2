@@ -42,7 +42,13 @@ class PermissionsRepository:
                 RolePermission.role_id,
                 func.count(RolePermission.permission_id).label("count"),
             )
+            .join(Permission, Permission.id == RolePermission.permission_id)
+            .join(ModuleDefinition, ModuleDefinition.code == Permission.module_code)
             .where(RolePermission.workspace_id == workspace_id)
+            .where(
+                Permission.is_platform_only.is_(False),
+                ModuleDefinition.status != "deprecated",
+            )
             .group_by(RolePermission.role_id)
             .subquery()
         )
@@ -60,6 +66,19 @@ class PermissionsRepository:
             .order_by(Role.is_system.desc(), Role.name, Role.id)
         )
         return [RoleRecord(*row) for row in rows]
+
+    def count_available_permissions(self) -> int:
+        return (
+            self._session.scalar(
+                select(func.count(Permission.id))
+                .join(ModuleDefinition, ModuleDefinition.code == Permission.module_code)
+                .where(
+                    Permission.is_platform_only.is_(False),
+                    ModuleDefinition.status != "deprecated",
+                )
+            )
+            or 0
+        )
 
     def list_permissions(
         self,

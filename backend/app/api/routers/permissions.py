@@ -16,6 +16,8 @@ from app.schemas.permissions import (
     PermissionMatrixResponse,
     PermissionModule,
     ReplaceRolePermissionsRequest,
+    RolePermissionSummaryItem,
+    RolePermissionSummaryResponse,
     RoleResponse,
 )
 from app.services.permissions import PermissionsService
@@ -66,6 +68,36 @@ def list_roles(
         _role_response(role)
         for role in PermissionsService(database).list_roles(principal.workspace_id)
     ]
+
+
+@roles_router.get(
+    "/summary",
+    summary="Obtener cantidad y porcentaje de permisos concedidos por rol",
+    responses=_SECURITY_RESPONSES,
+)
+def role_permission_summary(
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: RoleReadGrant,
+) -> RolePermissionSummaryResponse:
+    del grant
+    summary = PermissionsService(database).role_summary(principal.workspace_id)
+    total = summary.total_permissions
+    return RolePermissionSummaryResponse(
+        total_permissions=total,
+        roles=[
+            RolePermissionSummaryItem(
+                id=role.id,
+                code=role.code,
+                name=role.name,
+                permission_count=role.permission_count,
+                permission_percentage=(
+                    (role.permission_count * 100 + total // 2) // total if total else 0
+                ),
+            )
+            for role in summary.roles
+        ],
+    )
 
 
 @permissions_router.get(

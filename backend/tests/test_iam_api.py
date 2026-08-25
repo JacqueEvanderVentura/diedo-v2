@@ -196,6 +196,27 @@ def test_users_roles_permissions_and_branch_isolation(client: TestClient) -> Non
         secondary_branch_id,
     }
 
+    role_options_response = client.get("/api/v1/lookups/roles", headers=admin_headers)
+    assert role_options_response.status_code == 200
+    role_options = role_options_response.json()
+    assert all(set(option) == {"id", "name"} for option in role_options)
+    assert {option["name"] for option in role_options} >= {
+        "Administrador",
+        "Gerente",
+        "Supervisor",
+        "Cajero",
+        "Vendedor",
+    }
+
+    branch_options_response = client.get("/api/v1/lookups/branches", headers=admin_headers)
+    assert branch_options_response.status_code == 200
+    branch_options = branch_options_response.json()
+    assert all(set(option) == {"id", "name"} for option in branch_options)
+    assert {UUID(option["id"]) for option in branch_options} >= {
+        primary_branch_id,
+        secondary_branch_id,
+    }
+
     matrix_response = client.get("/api/v1/permissions/matrix", headers=admin_headers)
     assert matrix_response.status_code == 200
     matrix = matrix_response.json()
@@ -207,6 +228,16 @@ def test_users_roles_permissions_and_branch_isolation(client: TestClient) -> Non
     }
     matrix_roles = {role["code"]: role for role in matrix["roles"]}
     manager = matrix_roles["manager"]
+
+    role_summary_response = client.get("/api/v1/roles/summary", headers=admin_headers)
+    assert role_summary_response.status_code == 200
+    role_summary = role_summary_response.json()
+    assert role_summary["totalPermissions"] == 12
+    role_cards = {role["code"]: role for role in role_summary["roles"]}
+    assert role_cards["workspace_admin"]["permissionCount"] == 12
+    assert role_cards["workspace_admin"]["permissionPercentage"] == 100
+    assert role_cards["manager"]["permissionCount"] == 0
+    assert role_cards["manager"]["permissionPercentage"] == 0
 
     cleared = client.put(
         f"/api/v1/roles/{manager['id']}/permissions",
@@ -266,6 +297,13 @@ def test_users_roles_permissions_and_branch_isolation(client: TestClient) -> Non
         },
     )
     assert granted.status_code == 200
+
+    manager_branch_options = client.get(
+        "/api/v1/lookups/branches",
+        headers=manager_headers,
+    )
+    assert manager_branch_options.status_code == 200
+    assert {UUID(option["id"]) for option in manager_branch_options.json()} == {primary_branch_id}
 
     stale_update = client.put(
         f"/api/v1/roles/{manager['id']}/permissions",
