@@ -35,6 +35,14 @@ export const PRODUCTS = [
   { id: 'p18', sku: 'PRD-06', name: 'Bloqueador solar SPF50', price: 890, category: 'productos', type: 'product', stock: 12 },
 ]
 
+// Insumos / materia prima — no se venden en POS (coste de adquisición, stock).
+export const SUPPLIES = [
+  { id: 'sup-1', sku: 'INS-01', name: 'Guantes de nitrilo (caja)', cost: 450, stock: 120, minStock: 20, category: 'insumos', type: 'supply', unit: 'caja', branchId: 'charm-dn' },
+  { id: 'sup-2', sku: 'INS-02', name: 'Gel conductor láser', cost: 850, stock: 45, minStock: 10, category: 'insumos', type: 'supply', unit: 'lt', branchId: 'charm-dn' },
+  { id: 'sup-3', sku: 'INS-03', name: 'Toallas desechables (paquete)', cost: 320, stock: 80, minStock: 15, category: 'insumos', type: 'supply', unit: 'paq', branchId: 'charm-dn' },
+  { id: 'sup-4', sku: 'INS-04', name: 'Alcohol isopropílico 70%', cost: 280, stock: 36, minStock: 8, category: 'insumos', type: 'supply', unit: 'lt', branchId: 'charm-dn' },
+]
+
 export const PAYMENT_METHODS = [
   { id: 'efectivo', name: 'Efectivo', icon: 'Banknote' },
   { id: 'tarjeta', name: 'Tarjeta', icon: 'CreditCard' },

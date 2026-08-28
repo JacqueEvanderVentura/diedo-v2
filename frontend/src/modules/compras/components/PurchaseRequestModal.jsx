@@ -6,13 +6,20 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { useComprasStore } from '@/stores/comprasStore'
+import { useConfigStore } from '@/stores/configStore'
+import { usePosStore } from '@/stores/posStore'
 import { REQUEST_PRIORITIES } from '@/data/compras'
+import { buildBranchFilterOptions } from '@/lib/branches'
 
 const emptyItem = () => ({ name: '', qty: 1, unit: 'unidad', price: 0 })
 
 export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 'Usuario actual' }) {
   const suppliers = useComprasStore((s) => s.suppliers)
+  const branches = useConfigStore((s) => s.branches)
+  const posBranchId = usePosStore((s) => s.branchId)
+  const branchOptions = buildBranchFilterOptions(branches, { includeAll: false })
   const [supplierId, setSupplierId] = useState('')
+  const [branchId, setBranchId] = useState('charm-dn')
   const [priority, setPriority] = useState('normal')
   const [notes, setNotes] = useState('')
   const [items, setItems] = useState([emptyItem()])
@@ -21,11 +28,12 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
   useEffect(() => {
     if (!open) return
     setSupplierId(suppliers[0]?.id || '')
+    setBranchId(posBranchId || branches[0]?.id || 'charm-dn')
     setPriority('normal')
     setNotes('')
     setItems([emptyItem()])
     setErr('')
-  }, [open, suppliers])
+  }, [open, suppliers, posBranchId, branches])
 
   const updateItem = (idx, field, value) =>
     setItems((list) => list.map((it, i) => (i === idx ? { ...it, [field]: value } : it)))
@@ -39,6 +47,7 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
     if (!validItems.length) return setErr('Agrega al menos un artículo.')
     onSubmit({
       supplierId,
+      branchId,
       requesterName,
       items: validItems.map((i) => ({ ...i, qty: Number(i.qty) || 1, price: Number(i.price) || 0 })),
       priority,
@@ -52,7 +61,7 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
     <Modal open={open} onClose={onClose} title="Nueva solicitud de compra" wide testId="purchase-request-modal">
       {err && <p className="mb-4 text-sm text-red-500">{err}</p>}
       <div className="space-y-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-400">Proveedor *</label>
             <Select
@@ -61,6 +70,10 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
               placeholder="Seleccionar..."
               options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
             />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-400">Sucursal</label>
+            <Select value={branchId} onChange={setBranchId} options={branchOptions} />
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-400">Prioridad</label>

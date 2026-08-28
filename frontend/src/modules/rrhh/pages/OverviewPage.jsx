@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Users,
@@ -14,9 +14,22 @@ import { useRrhhStore } from '@/stores/rrhhStore'
 import { useIncidenciasStore } from '@/stores/incidenciasStore'
 import { priorityMeta, statusMeta } from '@/data/incidencias'
 import { fullName, initials, fmtDateShort } from '../lib/rrhh'
+import { getEmployeeBranchIds } from '../lib/staff'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
+import {
+  ResponsiveList,
+  ResponsiveTable,
+  ResponsiveCards,
+  MobileCard,
+  MobileField,
+  MobileCardHeader,
+  MobileCardGrid,
+} from '@/components/ui/ResponsiveList'
 import { cn } from '@/lib/utils'
+import { DataFilterBar } from '@/components/ui/DataFilterBar'
+import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
+import { useSortedRows } from '@/hooks/useTableControls'
 
 function KpiCard({ label, sublabel, value, icon: Icon, tone }) {
   const tones = {
@@ -53,10 +66,33 @@ export default function RrhhOverviewPage() {
   const incidencias = useIncidenciasStore((s) => s.incidencias)
   const getStats = useIncidenciasStore((s) => s.getStats)
 
+  const [employeeSearch, setEmployeeSearch] = useState('')
+  const [branchFilter, setBranchFilter] = useState('all')
+
   const rrhhStats = useMemo(() => getOverviewStats(), [employees, vacationRequests, getOverviewStats])
   const incStats = useMemo(() => getStats(), [incidencias, getStats])
 
-  const recentEmployees = useMemo(() => employees.filter((e) => e.active).slice(0, 5), [employees])
+  const activeEmployees = useMemo(() => employees.filter((e) => e.active), [employees])
+
+  const filteredEmployees = useMemo(() => {
+    const q = employeeSearch.trim().toLowerCase()
+    return activeEmployees.filter((e) => {
+      if (branchFilter !== 'all' && !getEmployeeBranchIds(e).includes(branchFilter)) return false
+      if (!q) return true
+      return fullName(e).toLowerCase().includes(q) || e.position?.toLowerCase().includes(q) || e.department?.toLowerCase().includes(q)
+    })
+  }, [activeEmployees, employeeSearch, branchFilter])
+
+  const { rows: recentEmployees, sortKey, sortDir, toggleSort } = useSortedRows(filteredEmployees, {
+    defaultSort: { key: 'employee', dir: 'asc' },
+    accessors: {
+      employee: (e) => fullName(e),
+      position: (e) => e.position || '',
+      department: (e) => e.department || '',
+      status: (e) => e.active ? 1 : 0,
+    },
+  })
+
   const recentRequests = useMemo(() => vacationRequests.slice(0, 3), [vacationRequests])
   const recentIncidencias = useMemo(
     () => [...incidencias].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 3),
@@ -81,38 +117,67 @@ export default function RrhhOverviewPage() {
             </div>
             <Link to="/rrhh/directorio" className="text-sm font-medium text-blue-600 hover:underline">Ver Todos</Link>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  <th className="py-3 pr-2">Empleado</th>
-                  <th className="hidden py-3 pr-2 md:table-cell">Puesto</th>
-                  <th className="hidden py-3 pr-2 lg:table-cell">Departamento</th>
-                  <th className="py-3">Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentEmployees.map((e) => (
-                  <tr key={e.id} className="border-b border-slate-50">
-                    <td className="py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700">{initials(e)}</div>
-                        <div>
-                          <p className="font-medium text-slate-800">{fullName(e)}</p>
-                          <p className="text-xs text-slate-400">ID: {e.id.slice(-8)}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="hidden py-3 text-slate-600 md:table-cell">{e.position || '—'}</td>
-                    <td className="hidden py-3 text-slate-600 lg:table-cell">{e.department || '—'}</td>
-                    <td className="py-3">
-                      <Badge tone={e.active ? 'warning' : 'neutral'}>{e.active ? 'Activo' : 'Inactivo'}</Badge>
-                    </td>
+          <DataFilterBar
+            search={employeeSearch}
+            onSearchChange={setEmployeeSearch}
+            searchPlaceholder="Buscar empleado..."
+            showBranch
+            branchId={branchFilter}
+            onBranchChange={setBranchFilter}
+            testId="rrhh-overview-employee-filters"
+            className="mb-4 border-0 shadow-none p-0"
+          />
+          <ResponsiveList columnCount={4}>
+            <ResponsiveTable testId="rrhh-overview-employees" wrapCard={false}>
+              <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    <SortableTh column="employee" className="py-3 pr-2">Empleado</SortableTh>
+                    <SortableTh column="position" className="hidden py-3 pr-2 md:table-cell">Puesto</SortableTh>
+                    <SortableTh column="department" className="hidden py-3 pr-2 lg:table-cell">Departamento</SortableTh>
+                    <SortableTh column="status" className="py-3">Estado</SortableTh>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {recentEmployees.map((e) => (
+                    <tr key={e.id} className="border-b border-slate-50">
+                      <td className="py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700">{initials(e)}</div>
+                          <div>
+                            <p className="font-medium text-slate-800">{fullName(e)}</p>
+                            <p className="text-xs text-slate-400">ID: {e.id.slice(-8)}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="hidden py-3 text-slate-600 md:table-cell">{e.position || '—'}</td>
+                      <td className="hidden py-3 text-slate-600 lg:table-cell">{e.department || '—'}</td>
+                      <td className="py-3">
+                        <Badge tone={e.active ? 'warning' : 'neutral'}>{e.active ? 'Activo' : 'Inactivo'}</Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              </SortableTableProvider>
+            </ResponsiveTable>
+            <ResponsiveCards testId="rrhh-overview-employees-cards">
+              {recentEmployees.map((e) => (
+                <MobileCard key={e.id} testId={`rrhh-overview-employee-card-${e.id}`}>
+                  <MobileCardHeader
+                    title={fullName(e)}
+                    subtitle={`ID: ${e.id.slice(-8)}`}
+                    badge={<Badge tone={e.active ? 'warning' : 'neutral'}>{e.active ? 'Activo' : 'Inactivo'}</Badge>}
+                  />
+                  <MobileCardGrid>
+                    <MobileField label="Puesto">{e.position || '—'}</MobileField>
+                    <MobileField label="Departamento">{e.department || '—'}</MobileField>
+                  </MobileCardGrid>
+                </MobileCard>
+              ))}
+            </ResponsiveCards>
+          </ResponsiveList>
         </Card>
 
         <Card className="p-6">

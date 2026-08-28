@@ -4,6 +4,8 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { MentionInput } from '@/components/ui/MentionInput'
+import { MentionText } from '@/components/ui/MentionText'
 import { CURRENT_USER } from '@/data/dashboard'
 import { initials, priorityMeta, statusMeta, typeMeta, INCIDENCIA_STATUSES } from '@/data/incidencias'
 import { cn } from '@/lib/utils'
@@ -129,7 +131,9 @@ export function IncidenciaDetail({ item, branchName, activoName, onStatusChange,
                     <span className="text-sm font-semibold text-slate-800">{entry.author}</span>
                     <span className="text-xs text-slate-400">{formatDate(entry.createdAt)}</span>
                   </div>
-                  <p className="mt-0.5 text-sm text-slate-600">{entry.message}</p>
+                  <p className="mt-0.5 text-sm text-slate-600">
+                    <MentionText text={entry.message} />
+                  </p>
                 </div>
               </div>
             ))}
@@ -138,31 +142,36 @@ export function IncidenciaDetail({ item, branchName, activoName, onStatusChange,
       </div>
 
       <div className="space-y-3 overflow-visible border-t border-slate-100 p-4 pb-6">
-        <div className="flex gap-2">
-          <input
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendComment())}
-            placeholder="Escribe un comentario..."
-            data-testid="incidencia-comment-input"
-            className="flex-1 rounded-xl border-0 bg-slate-50 px-4 py-2.5 text-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-600"
-          />
-          <Button onClick={sendComment} data-testid="incidencia-comment-send" disabled={!comment.trim()}>
-            <Send className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="flex items-start gap-3 overflow-visible py-1">
-          <span className="shrink-0 pt-3 text-xs font-medium text-slate-500">Cambiar estado:</span>
+        <div className="flex flex-wrap items-center gap-2 overflow-visible">
+          <span className="text-xs font-medium text-slate-500">Cambiar estado:</span>
           <Select
             value={item.status}
             onChange={(status) => onStatusChange(item.id, status, CURRENT_USER.name)}
             options={STATUS_OPTIONS}
-            size="md"
+            size="sm"
             menuMinWidth={180}
             placement="top"
-            className="min-w-0 flex-1"
+            className="w-44"
             data-testid="incidencia-status-select"
           />
+        </div>
+        <div className="flex items-end gap-2">
+          <MentionInput
+            value={comment}
+            onChange={setComment}
+            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendComment())}
+            placeholder="Escribe un comentario… usa @ para mencionar"
+            testId="incidencia-comment-input"
+            className="min-h-[88px] rounded-xl border-0 bg-slate-50 px-4 py-3 text-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-600"
+          />
+          <Button
+            onClick={sendComment}
+            data-testid="incidencia-comment-send"
+            disabled={!comment.trim()}
+            className="shrink-0 self-end"
+          >
+            <Send className="h-4 w-4" />
+          </Button>
         </div>
       </div>
     </div>

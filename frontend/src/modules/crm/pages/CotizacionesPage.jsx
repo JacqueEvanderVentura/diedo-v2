@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Plus, Trash2 } from 'lucide-react'
 import { useCrmStore } from '@/stores/crmStore'
+import { useConfigStore } from '@/stores/configStore'
+import { buildBranchFilterOptions } from '@/lib/branches'
 import { QUOTE_STATUSES, QUOTE_STATUS_META } from '@/data/crm'
 import { fmtDate } from '../lib/crm'
 import { formatDOP } from '@/lib/format'
@@ -15,30 +17,37 @@ import { ExportMenu } from '@/modules/finanzas/components/ExportMenu'
 
 export default function CotizacionesPage() {
   const quotes = useCrmStore((s) => s.quotes)
+  const branches = useConfigStore((s) => s.branches)
   const opportunities = useCrmStore((s) => s.opportunities)
   const addQuote = useCrmStore((s) => s.addQuote)
   const updateQuote = useCrmStore((s) => s.updateQuote)
   const deleteQuote = useCrmStore((s) => s.deleteQuote)
 
   const [modalOpen, setModalOpen] = useState(false)
+  const [branchFilter, setBranchFilter] = useState('all')
   const [form, setForm] = useState({ customerName: '', opportunityId: '', itemName: '', itemPrice: '', branchId: 'charm-dn' })
 
+  const visibleQuotes = useMemo(() => {
+    if (branchFilter === 'all') return quotes
+    return quotes.filter((q) => q.branchId === branchFilter)
+  }, [quotes, branchFilter])
+
   const stats = useMemo(() => ({
-    total: quotes.length,
-    enviadas: quotes.filter((q) => q.status === 'enviada').length,
-    aceptadas: quotes.filter((q) => q.status === 'aceptada').length,
-    valor: quotes.reduce((a, q) => a + (q.total || 0), 0),
-  }), [quotes])
+    total: visibleQuotes.length,
+    enviadas: visibleQuotes.filter((q) => q.status === 'enviada').length,
+    aceptadas: visibleQuotes.filter((q) => q.status === 'aceptada').length,
+    valor: visibleQuotes.reduce((a, q) => a + (q.total || 0), 0),
+  }), [visibleQuotes])
 
   const exportRows = useMemo(
-    () => quotes.map((q) => ({
+    () => visibleQuotes.map((q) => ({
       numero: q.number,
       cliente: q.customerName,
       estado: QUOTE_STATUS_META[q.status]?.label || q.status,
       total: formatDOP(q.total),
       fecha: fmtDate(q.createdAt),
     })),
-    [quotes]
+    [visibleQuotes]
   )
 
   const oppOptions = [{ value: '', label: 'Sin oportunidad' }, ...opportunities.map((o) => ({ value: o.id, label: o.title }))]
@@ -68,6 +77,7 @@ export default function CotizacionesPage() {
           <p className="text-sm text-slate-500">{stats.total} cotizaciones · {formatDOP(stats.valor)} en pipeline</p>
         </div>
         <div className="flex gap-2">
+          <Select value={branchFilter} onChange={setBranchFilter} options={buildBranchFilterOptions(branches)} className="min-w-[180px]" data-testid="cotizaciones-branch-filter" />
           <ExportMenu
             title="Cotizaciones CRM"
             columns={[
@@ -101,7 +111,7 @@ export default function CotizacionesPage() {
       </div>
 
       <div className="space-y-3">
-        {quotes.map((q) => (
+        {visibleQuotes.map((q) => (
           <Card key={q.id} className="p-4">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>

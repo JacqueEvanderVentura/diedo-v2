@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
   Building2,
-  DollarSign,
   Image as ImageIcon,
   Landmark,
   Layers,
@@ -51,7 +50,6 @@ function makeEmpty(branchIds, taxDefault) {
     isMembership: false,
     branchIds,
     unit: 'ud',
-    dynamicPrice: false,
     allowNegativeStock: false,
     image: null,
   }
@@ -198,7 +196,6 @@ export function FlashItemModal({ onClose }) {
       branchIds: form.branchIds,
       branchId: form.branchIds.includes(branchId) ? branchId : form.branchIds[0],
       unit: form.unit,
-      dynamicPrice: form.dynamicPrice,
       allowNegativeStock: form.allowNegativeStock,
       image: form.image,
     })
@@ -349,16 +346,6 @@ export function FlashItemModal({ onClose }) {
         <Field label="Unidad de Medida">
           <Select value={form.unit} onChange={(v) => set('unit', v)} options={UNITS} data-testid="flash-item-unit" />
         </Field>
-
-        <TogglePanel
-          id="flash-dynamic-price"
-          checked={form.dynamicPrice}
-          onChange={(v) => set('dynamicPrice', v)}
-          tone="green"
-          icon={DollarSign}
-          title="¿Precio Dinámico?"
-          description="Si está activo, el precio se podrá modificar manualmente al momento de la venta en el POS."
-        />
 
         <TogglePanel
           id="flash-negative-stock"

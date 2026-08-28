@@ -1,6 +1,7 @@
 export const CURRENT_USER = {
+  id: 'u1',
   name: 'Leonedis Hamburgo',
-  role: 'Gerente',
+  role: 'Administrador',
   initials: 'LH',
 }
 

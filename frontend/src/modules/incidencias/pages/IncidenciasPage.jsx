@@ -1,9 +1,14 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Plus } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { useIncidenciasStore } from '@/stores/incidenciasStore'
+import { useNotificationsStore } from '@/stores/notificationsStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useActivosStore } from '@/stores/activosStore'
+import { CURRENT_USER } from '@/data/dashboard'
+import { extractMentionedUserIds, plainMessagePreview } from '@/lib/mentions'
 import { IncidenciaStats } from '../components/IncidenciaStats'
 import { IncidenciaList } from '../components/IncidenciaList'
 import { IncidenciaDetail } from '../components/IncidenciaDetail'
@@ -18,17 +23,52 @@ export default function IncidenciasPage() {
   const updateStatus = useIncidenciasStore((s) => s.updateStatus)
   const addComment = useIncidenciasStore((s) => s.addComment)
   const addImages = useIncidenciasStore((s) => s.addImages)
+  const addMentionNotifications = useNotificationsStore((s) => s.addMentionNotifications)
+
+  const [searchParams] = useSearchParams()
 
   const branches = useConfigStore((s) => s.branches)
+  const users = useConfigStore((s) => s.users)
   const activos = useActivosStore((s) => s.activos)
 
   const [query, setQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [quickFilter, setQuickFilter] = useState('all')
+  const [branchFilter, setBranchFilter] = useState('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
 
-  const stats = useMemo(() => getStats(), [incidencias, getStats])
+  useEffect(() => {
+    const incId = searchParams.get('inc')
+    if (incId) setSelectedId(incId)
+  }, [searchParams, setSelectedId])
+
+  const handleComment = (id, author, message) => {
+    addComment(id, author, message)
+    const item = incidencias.find((i) => i.id === id)
+    if (!item) return
+    const userIds = extractMentionedUserIds(message)
+    if (!userIds.length) return
+    addMentionNotifications({
+      authorId: CURRENT_USER.id,
+      authorName: author,
+      userIds,
+      incidenciaId: id,
+      incidenciaCode: item.code,
+      messagePreview: plainMessagePreview(message),
+    })
+    const names = userIds
+      .map((uid) => users.find((u) => u.id === uid)?.name)
+      .filter(Boolean)
+    if (names.length) toast.success(`Notificación enviada a ${names.join(', ')}`)
+  }
+
+  const branchOptions = useMemo(
+    () => [{ value: 'all', label: 'Todas las sucursales' }, ...branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))],
+    [branches]
+  )
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -38,6 +78,10 @@ export default function IncidenciasPage() {
       if (quickFilter === 'critica' && !(i.priority === 'critica' && i.status !== 'cerrada')) return false
       if (typeFilter !== 'all' && i.type !== typeFilter) return false
       if (statusFilter !== 'all' && i.status !== statusFilter) return false
+      if (branchFilter !== 'all' && i.branchId !== branchFilter) return false
+      const day = i.createdAt?.slice(0, 10)
+      if (dateFrom && day < dateFrom) return false
+      if (dateTo && day > dateTo) return false
       if (!q) return true
       return (
         i.code.toLowerCase().includes(q) ||
@@ -45,7 +89,9 @@ export default function IncidenciasPage() {
         i.description?.toLowerCase().includes(q)
       )
     })
-  }, [incidencias, query, typeFilter, statusFilter, quickFilter])
+  }, [incidencias, query, typeFilter, statusFilter, quickFilter, branchFilter, dateFrom, dateTo])
+
+  const stats = useMemo(() => getStats(), [incidencias, getStats])
 
   const selected = useMemo(
     () => incidencias.find((i) => i.id === selectedId) || filtered[0] || null,
@@ -82,6 +128,13 @@ export default function IncidenciasPage() {
             onTypeFilterChange={setTypeFilter}
             statusFilter={statusFilter}
             onStatusFilterChange={setStatusFilter}
+            branchFilter={branchFilter}
+            onBranchFilterChange={setBranchFilter}
+            branchOptions={branchOptions}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onDateFromChange={setDateFrom}
+            onDateToChange={setDateTo}
           />
         </div>
         <div className="lg:col-span-2">
@@ -90,7 +143,7 @@ export default function IncidenciasPage() {
             branchName={branchName}
             activoName={activoName}
             onStatusChange={updateStatus}
-            onComment={addComment}
+            onComment={handleComment}
             onAddImages={addImages}
           />
         </div>

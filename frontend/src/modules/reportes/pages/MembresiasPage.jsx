@@ -10,8 +10,18 @@ import { usePaginatedReport } from '../hooks/usePaginatedReport'
 import { ReportFilterBar } from '../components/ReportFilterBar'
 import { Pagination } from '../components/Pagination'
 import { StatCard } from '../components/ReportPrimitives'
+import {
+  ResponsiveList,
+  ResponsiveTable,
+  ResponsiveCards,
+  MobileCard,
+  MobileField,
+  MobileCardHeader,
+  MobileCardGrid,
+} from '@/components/ui/ResponsiveList'
 import { Select } from '@/components/ui/Select'
 import { cn } from '@/lib/utils'
+import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
 
 const STATUS_TONE = {
   activo: 'bg-emerald-100 text-emerald-700',
@@ -29,7 +39,7 @@ export default function MembresiasPage() {
   const branchName = (id) => branches.find((b) => b.id === id)?.name || id
 
   const fetcher = useCallback((params) => fetchMembershipReport(params), [])
-  const report = usePaginatedReport(fetcher, { branchId: '', status: '', search: '', plan: '' })
+  const report = usePaginatedReport(fetcher, { branchId: '', status: '', search: '', plan: '' }, 10, { key: 'clientName', dir: 'asc' })
 
   const summary = report.summary || { activeCount: 0, mrr: 0, avgTicket: 0, proximo: 0, vencido: 0 }
   const growth = useMemo(
@@ -109,45 +119,74 @@ export default function MembresiasPage() {
         <div className="border-b border-slate-100 px-5 py-4">
           <h3 className="font-heading text-base font-semibold text-slate-800">Listado de miembros</h3>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-                <th className="px-4 py-3">Cliente</th>
-                <th className="px-4 py-3">Membresía</th>
-                <th className="px-4 py-3">Sucursal</th>
-                <th className="px-4 py-3">Último pago</th>
-                <th className="px-4 py-3 text-right">Monto</th>
-                <th className="px-4 py-3 text-right">Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {report.loading ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-slate-400">Cargando…</td></tr>
-              ) : report.items.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-slate-400">Sin resultados para los filtros seleccionados</td></tr>
-              ) : (
-                report.items.map((row) => {
-                  const meta = MEMBERSHIP_STATUSES.find((s) => s.id === row.status)
-                  return (
-                    <tr key={row.id} className="border-b border-slate-50 hover:bg-slate-50/80">
-                      <td className="px-4 py-3 font-medium text-slate-800">{row.clientName}</td>
-                      <td className="px-4 py-3 text-slate-600">{row.plan}</td>
-                      <td className="px-4 py-3 text-slate-600">{branchName(row.branchId)}</td>
-                      <td className="px-4 py-3 text-slate-600">{formatShortDate(row.lastPaymentAt)}</td>
-                      <td className="px-4 py-3 text-right font-medium text-slate-800">{formatDOP(row.amount)}</td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={cn('inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold', STATUS_TONE[row.status])}>
-                          {meta?.label || row.status}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+        <ResponsiveList columnCount={6}>
+          <ResponsiveTable testId="report-membresias-table" wrapCard={false}>
+            <SortableTableProvider sortKey={report.sortKey} sortDir={report.sortDir} onSort={report.toggleSort}>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+                  <SortableTh column="clientName" className="px-4 py-3">Cliente</SortableTh>
+                  <SortableTh column="plan" className="px-4 py-3">Membresía</SortableTh>
+                  <SortableTh column="branchId" className="px-4 py-3">Sucursal</SortableTh>
+                  <SortableTh column="lastPayment" className="px-4 py-3">Último pago</SortableTh>
+                  <SortableTh column="amount" align="right" className="px-4 py-3">Monto</SortableTh>
+                  <SortableTh column="status" align="right" className="px-4 py-3">Estado</SortableTh>
+                </tr>
+              </thead>
+              <tbody>
+                {report.loading ? (
+                  <tr><td colSpan={6} className="px-4 py-12 text-center text-slate-400">Cargando…</td></tr>
+                ) : report.items.length === 0 ? (
+                  <tr><td colSpan={6} className="px-4 py-12 text-center text-slate-400">Sin resultados para los filtros seleccionados</td></tr>
+                ) : (
+                  report.items.map((row) => {
+                    const meta = MEMBERSHIP_STATUSES.find((s) => s.id === row.status)
+                    return (
+                      <tr key={row.id} className="border-b border-slate-50 hover:bg-slate-50/80">
+                        <td className="px-4 py-3 font-medium text-slate-800">{row.clientName}</td>
+                        <td className="px-4 py-3 text-slate-600">{row.plan}</td>
+                        <td className="px-4 py-3 text-slate-600">{branchName(row.branchId)}</td>
+                        <td className="px-4 py-3 text-slate-600">{formatShortDate(row.lastPaymentAt)}</td>
+                        <td className="px-4 py-3 text-right font-medium text-slate-800">{formatDOP(row.amount)}</td>
+                        <td className="px-4 py-3 text-right">
+                          <span className={cn('inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold', STATUS_TONE[row.status])}>
+                            {meta?.label || row.status}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+            </SortableTableProvider>
+          </ResponsiveTable>
+          <ResponsiveCards testId="report-membresias-cards" className="p-4">
+            {!report.loading && report.items.map((row) => {
+              const meta = MEMBERSHIP_STATUSES.find((s) => s.id === row.status)
+              return (
+                <MobileCard key={row.id} testId={`report-membresias-card-${row.id}`}>
+                  <MobileCardHeader
+                    title={row.clientName}
+                    subtitle={row.plan}
+                    badge={
+                      <span className={cn('inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold', STATUS_TONE[row.status])}>
+                        {meta?.label || row.status}
+                      </span>
+                    }
+                  />
+                  <MobileCardGrid>
+                    <MobileField label="Sucursal">{branchName(row.branchId)}</MobileField>
+                    <MobileField label="Último pago">{formatShortDate(row.lastPaymentAt)}</MobileField>
+                    <MobileField label="Monto" fullWidth>
+                      <span className="font-medium text-slate-800">{formatDOP(row.amount)}</span>
+                    </MobileField>
+                  </MobileCardGrid>
+                </MobileCard>
+              )
+            })}
+          </ResponsiveCards>
+        </ResponsiveList>
         <div className="px-5 pb-4">
           <Pagination
             page={report.page}

@@ -8,8 +8,9 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { Input } from '@/components/ui/Input'
-import { buildDocumentContent, exportDocumentPdf } from '../lib/documents'
+import { buildDocumentContent, buildDocumentPrintHtml, exportDocumentPdf } from '../lib/documents'
 import { fullName } from '../lib/rrhh'
+import { printHtml } from '@/lib/print'
 import { cn } from '@/lib/utils'
 
 const ICONS = { FileText, Building2, Users, Calendar }
@@ -49,20 +50,7 @@ export default function DocumentosPage() {
 
   const printDoc = () => {
     if (!preview) return toast.error('Selecciona un empleado')
-    const w = window.open('', '_blank')
-    if (!w) return toast.error('No se pudo abrir la ventana de impresión')
-    w.document.write(`
-      <html><head><title>${preview.title}</title>
-      <style>body{font-family:Georgia,serif;max-width:700px;margin:40px auto;line-height:1.6;color:#1e293b}
-      h1{text-align:center;font-size:18px;margin:32px 0} .meta{font-size:12px;color:#64748b}
-      .sig{margin-top:48px;font-size:12px}</style></head><body>
-      <div class="meta">${preview.company}<br>${preview.department}<br>Ref: ${preview.ref} · ${preview.dateStr}</div>
-      <h1>${preview.title}</h1>
-      ${preview.body.map((p) => (p ? `<p>${p}</p>` : '<br/>')).join('')}
-      <div class="sig"><strong>${preview.company.toUpperCase()}</strong><br>Dirección de Recursos Humanos</div>
-      </body></html>`)
-    w.document.close()
-    w.print()
+    printHtml(buildDocumentPrintHtml(preview))
   }
 
   return (

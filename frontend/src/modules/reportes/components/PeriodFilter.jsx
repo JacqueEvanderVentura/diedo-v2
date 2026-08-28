@@ -1,10 +1,10 @@
 import { REPORT_PERIODS } from '../lib/reportes'
 import { cn } from '@/lib/utils'
 
-export function PeriodFilter({ period, onChange }) {
+export function PeriodFilter({ period, onChange, periods = REPORT_PERIODS }) {
   return (
     <div className="flex items-center gap-1 self-start overflow-x-auto scrollbar-hide rounded-xl border border-slate-100 bg-white p-1 shadow-soft w-fit" data-testid="report-period-filter">
-      {REPORT_PERIODS.map((f) => (
+      {periods.map((f) => (
         <button
           key={f.id}
           onClick={() => onChange(f.id)}

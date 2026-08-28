@@ -2,10 +2,25 @@ import { useState, useMemo } from 'react'
 import * as Icons from 'lucide-react'
 import { Search, ShoppingBag } from 'lucide-react'
 import { usePosStore } from '@/stores/posStore'
+import { useConfigStore } from '@/stores/configStore'
 import { formatDOP } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
+import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { SaleDetailModal } from '../components/SaleDetailModal'
 import { fmtDateTime, METHOD_LABELS, METHOD_ICON } from '../lib/crm'
+import {
+  ResponsiveList,
+  ResponsiveTable,
+  ResponsiveCards,
+  MobileCard,
+  MobileField,
+  MobileCardHeader,
+  MobileCardFooter,
+  MobileCardGrid,
+} from '@/components/ui/ResponsiveList'
+import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
+import { useSortedRows } from '@/hooks/useTableControls'
 import { cn } from '@/lib/utils'
 
 const FILTERS = [
@@ -29,21 +44,40 @@ function Chip({ label, value, tone }) {
 
 export default function VentasPage() {
   const sales = usePosStore((s) => s.sales)
+  const branches = useConfigStore((s) => s.branches)
   const [query, setQuery] = useState('')
   const [method, setMethod] = useState('all')
+  const [branchId, setBranchId] = useState('all')
+  const [selected, setSelected] = useState(null)
+
+  const branchMap = useMemo(() => Object.fromEntries(branches.map((b) => [b.id, b.name])), [branches])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return sales
       .filter((s) => method === 'all' || s.method === method)
+      .filter((s) => branchId === 'all' || s.branchId === branchId)
       .filter((s) => !q || (s.customer?.name || '').toLowerCase().includes(q) || (s.reference || '').toLowerCase().includes(q))
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-  }, [sales, query, method])
+  }, [sales, query, method, branchId])
+
+  const { rows: displayRows, sortKey, sortDir, toggleSort } = useSortedRows(filtered, {
+    defaultSort: { key: 'date', dir: 'desc' },
+    accessors: {
+      date: (s) => new Date(s.createdAt),
+      customer: (s) => s.customer?.name || '',
+      branch: (s) => branchMap[s.branchId] || '',
+      items: (s) => s.items?.length || 0,
+      method: (s) => s.method || '',
+      total: (s) => s.total || 0,
+    },
+  })
 
   const stats = useMemo(() => {
     const total = filtered.reduce((a, s) => a + (s.total || 0), 0)
     return { count: filtered.length, total }
   }, [filtered])
+
+  const branchOptions = [{ value: 'all', label: 'Todas las sucursales' }, ...branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))]
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8">
@@ -63,6 +97,13 @@ export default function VentasPage() {
             className="w-full rounded-xl border-0 bg-white py-3 pl-10 pr-4 text-sm text-slate-700 ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600"
           />
         </div>
+        <Select
+          value={branchId}
+          onChange={setBranchId}
+          options={branchOptions}
+          className="w-full sm:w-56"
+          data-testid="ventas-filter-branch"
+        />
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -74,30 +115,40 @@ export default function VentasPage() {
         ))}
       </div>
 
-      <Card className="overflow-hidden" data-testid="ventas-table">
-        {filtered.length === 0 ? (
+      {filtered.length === 0 ? (
+        <Card className="overflow-hidden">
           <EmptyState icon={ShoppingBag} title="Sin ventas" description="No hay ventas con esos filtros." className="py-14" />
-        ) : (
-          <div className="overflow-x-auto scrollbar-thin">
-            <table className="w-full min-w-[820px] text-sm">
+        </Card>
+      ) : (
+        <ResponsiveList minTableWidth={920} columnCount={7}>
+          <ResponsiveTable testId="ventas-table">
+            <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
+            <table className="w-full min-w-[920px] text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  <th className="px-6 py-4">Fecha</th>
-                  <th className="px-6 py-4">Cliente</th>
-                  <th className="px-6 py-4">Artículos</th>
-                  <th className="px-6 py-4">Método</th>
-                  <th className="px-6 py-4">Referencia</th>
-                  <th className="px-6 py-4 text-right">Total</th>
+                  <SortableTh column="date" className="px-6 py-4">Fecha</SortableTh>
+                  <SortableTh column="customer" className="px-6 py-4">Cliente</SortableTh>
+                  <SortableTh column="branch" className="px-6 py-4">Sucursal</SortableTh>
+                  <SortableTh column="items" className="px-6 py-4">Artículos</SortableTh>
+                  <SortableTh column="method" className="px-6 py-4">Método</SortableTh>
+                  <SortableTh column="reference" sortable={false} className="px-6 py-4">Referencia</SortableTh>
+                  <SortableTh column="total" align="right" className="px-6 py-4">Total</SortableTh>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {filtered.map((s) => {
+                {displayRows.map((s) => {
                   const Icon = Icons[METHOD_ICON[s.method]] || Icons.Circle
                   return (
-                    <tr key={s.id} className="transition-colors hover:bg-slate-50/60" data-testid={`ventas-row-${s.id}`}>
+                    <tr
+                      key={s.id}
+                      onClick={() => setSelected(s)}
+                      className="cursor-pointer transition-colors hover:bg-blue-50/50"
+                      data-testid={`ventas-row-${s.id}`}
+                    >
                       <td className="whitespace-nowrap px-6 py-4 text-slate-500">{fmtDateTime(s.createdAt)}</td>
                       <td className="whitespace-nowrap px-6 py-4 font-semibold text-slate-800">{s.customer?.name || 'Cliente Mostrador'}</td>
-                      <td className="max-w-[240px] truncate px-6 py-4 text-slate-500">{s.items?.map((i) => `${i.qty}× ${i.name}`).join(', ')}</td>
+                      <td className="whitespace-nowrap px-6 py-4 text-slate-500">{branchMap[s.branchId] || '—'}</td>
+                      <td className="max-w-[200px] truncate px-6 py-4 text-slate-500">{s.items?.map((i) => `${i.qty}× ${i.name}`).join(', ')}</td>
                       <td className="px-6 py-4">
                         <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-slate-600"><Icon className="h-4 w-4 text-slate-400" /> {METHOD_LABELS[s.method] || s.method}</span>
                       </td>
@@ -108,9 +159,42 @@ export default function VentasPage() {
                 })}
               </tbody>
             </table>
-          </div>
-        )}
-      </Card>
+            </SortableTableProvider>
+          </ResponsiveTable>
+          <ResponsiveCards testId="ventas-cards">
+            {displayRows.map((s) => {
+              const Icon = Icons[METHOD_ICON[s.method]] || Icons.Circle
+              return (
+                <MobileCard key={s.id} onClick={() => setSelected(s)} testId={`ventas-card-${s.id}`}>
+                  <MobileCardHeader
+                    title={s.customer?.name || 'Cliente Mostrador'}
+                    subtitle={fmtDateTime(s.createdAt)}
+                  />
+                  <MobileCardGrid>
+                    <MobileField label="Sucursal">{branchMap[s.branchId] || '—'}</MobileField>
+                    <MobileField label="Método">
+                      <span className="inline-flex items-center gap-1">
+                        <Icon className="h-3.5 w-3.5 text-slate-400" />
+                        {METHOD_LABELS[s.method] || s.method}
+                      </span>
+                    </MobileField>
+                    <MobileField label="Artículos" fullWidth>
+                      {s.items?.map((i) => `${i.qty}× ${i.name}`).join(', ') || '—'}
+                    </MobileField>
+                    {s.reference ? <MobileField label="Referencia">{s.reference}</MobileField> : null}
+                  </MobileCardGrid>
+                  <MobileCardFooter>
+                    <span />
+                    <span className="font-heading text-sm font-bold text-blue-600">{formatDOP(s.total)}</span>
+                  </MobileCardFooter>
+                </MobileCard>
+              )
+            })}
+          </ResponsiveCards>
+        </ResponsiveList>
+      )}
+
+      <SaleDetailModal open={!!selected} onClose={() => setSelected(null)} sale={selected} />
     </div>
   )
 }

@@ -3,15 +3,30 @@ import { Plus, Search, FileText, CheckCircle, Package, Clock } from 'lucide-reac
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { EmptyState } from '@/components/ui/EmptyState'
+import {
+  ResponsiveList,
+  ResponsiveTable,
+  ResponsiveCards,
+  MobileCard,
+  MobileField,
+  MobileCardHeader,
+  MobileCardGrid,
+} from '@/components/ui/ResponsiveList'
 import { useComprasStore, requestTotal } from '@/stores/comprasStore'
+import { useConfigStore } from '@/stores/configStore'
 import { REQUEST_STATUS_META } from '@/data/compras'
 import { formatDOP } from '@/lib/format'
+import { buildBranchFilterOptions } from '@/lib/branches'
+import { Select } from '@/components/ui/Select'
 
 function formatDate(iso) {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 import { PurchaseRequestModal } from './PurchaseRequestModal'
+import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
+import { useSortedRows } from '@/hooks/useTableControls'
 import { cn } from '@/lib/utils'
 
 const toneClass = {
@@ -42,8 +57,10 @@ export function SolicitudesTab() {
   const reviewPurchaseRequest = useComprasStore((s) => s.reviewPurchaseRequest)
   const markRequestDelivered = useComprasStore((s) => s.markRequestDelivered)
   const getRequestStats = useComprasStore((s) => s.getRequestStats)
+  const branches = useConfigStore((s) => s.branches)
 
   const [search, setSearch] = useState('')
+  const [branchFilter, setBranchFilter] = useState('all')
   const [selectedId, setSelectedId] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
 
@@ -51,16 +68,30 @@ export function SolicitudesTab() {
 
   const supplierName = (id) => suppliers.find((s) => s.id === id)?.name || '—'
 
-  const filtered = useMemo(() => {
+  const filteredRaw = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return purchaseRequests
-    return purchaseRequests.filter(
-      (r) =>
+    return purchaseRequests.filter((r) => {
+      if (branchFilter !== 'all' && r.branchId !== branchFilter) return false
+      if (!q) return true
+      return (
         r.id.toLowerCase().includes(q) ||
         r.requesterName?.toLowerCase().includes(q) ||
         supplierName(r.supplierId).toLowerCase().includes(q)
-    )
-  }, [purchaseRequests, search, suppliers])
+      )
+    })
+  }, [purchaseRequests, search, suppliers, branchFilter])
+
+  const { rows: filtered, sortKey, sortDir, toggleSort } = useSortedRows(filteredRaw, {
+    defaultSort: { key: 'date', dir: 'desc' },
+    accessors: {
+      date: (r) => new Date(r.createdAt),
+      supplier: (r) => supplierName(r.supplierId),
+      requester: (r) => r.requesterName || '',
+      total: (r) => requestTotal(r),
+      quote: (r) => r.quoteFile ? 1 : 0,
+      status: (r) => r.status || '',
+    },
+  })
 
   const selected = purchaseRequests.find((r) => r.id === selectedId) || filtered[0] || null
 
@@ -89,71 +120,108 @@ export function SolicitudesTab() {
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative max-w-md flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <Input className="pl-9" placeholder="Buscar solicitud..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative max-w-md flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input className="pl-9" placeholder="Buscar solicitud..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <Select value={branchFilter} onChange={setBranchFilter} options={buildBranchFilterOptions(branches)} size="sm" className="min-w-[180px]" data-testid="solicitudes-branch-filter" />
         </div>
         <Button onClick={() => setModalOpen(true)}><Plus className="h-4 w-4" /> Nueva Solicitud</Button>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-5">
         <div className="lg:col-span-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-                <th className="px-4 py-3">ID / Fecha</th>
-                <th className="px-4 py-3">Proveedor</th>
-                <th className="px-4 py-3">Solicitado por</th>
-                <th className="px-4 py-3">Monto Total</th>
-                <th className="px-4 py-3 text-center">Cotización</th>
-                <th className="px-4 py-3 text-right">Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
-                    <FileText className="mx-auto mb-2 h-10 w-10 opacity-40" />
-                    No hay solicitudes de compra.
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((req) => {
+          {filtered.length === 0 ? (
+            <EmptyState icon={FileText} title="Sin solicitudes" description="No hay solicitudes de compra." className="py-12" />
+          ) : (
+            <ResponsiveList columnCount={6}>
+              <ResponsiveTable testId="solicitudes-table" wrapCard={false}>
+                <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+                      <SortableTh column="date" className="px-4 py-3">ID / Fecha</SortableTh>
+                      <SortableTh column="supplier" className="px-4 py-3">Proveedor</SortableTh>
+                      <SortableTh column="requester" className="px-4 py-3">Solicitado por</SortableTh>
+                      <SortableTh column="total" className="px-4 py-3">Monto Total</SortableTh>
+                      <SortableTh column="quote" align="center" className="px-4 py-3">Cotización</SortableTh>
+                      <SortableTh column="status" align="right" className="px-4 py-3">Estado</SortableTh>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((req) => {
+                      const meta = REQUEST_STATUS_META[req.status] || REQUEST_STATUS_META.pendiente
+                      return (
+                        <tr
+                          key={req.id}
+                          onClick={() => setSelectedId(req.id)}
+                          className={cn(
+                            'cursor-pointer border-b border-slate-100 transition-colors hover:bg-slate-50',
+                            selected?.id === req.id && 'bg-blue-50/60'
+                          )}
+                        >
+                          <td className="px-4 py-3">
+                            <p className="font-medium text-slate-800">{req.id}</p>
+                            <p className="text-xs text-slate-400">{formatDate(req.createdAt)}</p>
+                          </td>
+                          <td className="px-4 py-3 text-slate-600">{supplierName(req.supplierId)}</td>
+                          <td className="px-4 py-3 text-slate-600">{req.requesterName}</td>
+                          <td className="px-4 py-3 font-medium text-slate-800">{formatDOP(requestTotal(req))}</td>
+                          <td className="px-4 py-3 text-center">
+                            {req.quoteFile ? (
+                              <span className="text-xs text-blue-600">{req.quoteFile.name}</span>
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <span className={cn('inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold', toneClass[meta.tone])}>
+                              {meta.label}
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+                </SortableTableProvider>
+              </ResponsiveTable>
+              <ResponsiveCards testId="solicitudes-cards" className="p-4">
+                {filtered.map((req) => {
                   const meta = REQUEST_STATUS_META[req.status] || REQUEST_STATUS_META.pendiente
                   return (
-                    <tr
+                    <MobileCard
                       key={req.id}
                       onClick={() => setSelectedId(req.id)}
-                      className={cn(
-                        'cursor-pointer border-b border-slate-100 transition-colors hover:bg-slate-50',
-                        selected?.id === req.id && 'bg-blue-50/60'
-                      )}
+                      testId={`solicitudes-card-${req.id}`}
+                      className={selected?.id === req.id ? 'ring-2 ring-blue-200' : undefined}
                     >
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-slate-800">{req.id}</p>
-                        <p className="text-xs text-slate-400">{formatDate(req.createdAt)}</p>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">{supplierName(req.supplierId)}</td>
-                      <td className="px-4 py-3 text-slate-600">{req.requesterName}</td>
-                      <td className="px-4 py-3 font-medium text-slate-800">{formatDOP(requestTotal(req))}</td>
-                      <td className="px-4 py-3 text-center">
-                        {req.quoteFile ? (
-                          <span className="text-xs text-blue-600">{req.quoteFile.name}</span>
-                        ) : (
-                          <span className="text-xs text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={cn('inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold', toneClass[meta.tone])}>
-                          {meta.label}
-                        </span>
-                      </td>
-                    </tr>
+                      <MobileCardHeader
+                        title={req.id}
+                        subtitle={formatDate(req.createdAt)}
+                        badge={
+                          <span className={cn('inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold', toneClass[meta.tone])}>
+                            {meta.label}
+                          </span>
+                        }
+                      />
+                      <MobileCardGrid>
+                        <MobileField label="Proveedor">{supplierName(req.supplierId)}</MobileField>
+                        <MobileField label="Solicitado por">{req.requesterName}</MobileField>
+                        <MobileField label="Monto">
+                          <span className="font-medium text-slate-800">{formatDOP(requestTotal(req))}</span>
+                        </MobileField>
+                        <MobileField label="Cotización">
+                          {req.quoteFile ? req.quoteFile.name : '—'}
+                        </MobileField>
+                      </MobileCardGrid>
+                    </MobileCard>
                   )
-                })
-              )}
-            </tbody>
-          </table>
+                })}
+              </ResponsiveCards>
+            </ResponsiveList>
+          )}
         </div>
 
         <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-white p-5">

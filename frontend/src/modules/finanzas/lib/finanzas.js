@@ -23,3 +23,19 @@ export function isThisMonth(v) {
   const now = new Date()
   return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
 }
+
+export function budgetUsagePct(spent, limit) {
+  if (!limit || limit <= 0) return 0
+  return Math.min(100, (spent / limit) * 100)
+}
+
+export function formatBudgetPct(spent, limit) {
+  if (!limit || limit <= 0) return '0.00%'
+  return `${((spent / limit) * 100).toFixed(2)}%`
+}
+
+export function budgetSpentForMonth(expenses, budgetId) {
+  return expenses
+    .filter((e) => e.budgetId === budgetId && isThisMonth(e.date))
+    .reduce((a, e) => a + (Number(e.amount) || 0), 0)
+}

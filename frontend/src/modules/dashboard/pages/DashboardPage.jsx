@@ -3,7 +3,11 @@ import { motion } from 'framer-motion'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { useCatalogStore, deriveLowStock } from '@/stores/catalogStore'
 import { useAgendaStore, todayKey } from '@/stores/agendaStore'
-import { DASHBOARD_FILTERS, CURRENT_USER } from '@/data/dashboard'
+import { usePosStore } from '@/stores/posStore'
+import { useConfigStore } from '@/stores/configStore'
+import { DASHBOARD_FILTERS, CURRENT_USER, KPIS, SALES_TREND } from '@/data/dashboard'
+import { buildBranchFilterOptions } from '@/lib/branches'
+import { Select } from '@/components/ui/Select'
 import { KpiCard } from '../components/KpiCard'
 import { SalesChart } from '../components/SalesChart'
 import { StockAlerts } from '../components/StockAlerts'
@@ -20,12 +24,30 @@ function greeting() {
 }
 
 export default function DashboardPage() {
-  const { period, setPeriod, getKpis, getSalesTrend, activity } =
-    useDashboardStore()
+  const period = useDashboardStore((s) => s.period)
+  const branchId = useDashboardStore((s) => s.branchId)
+  const setPeriod = useDashboardStore((s) => s.setPeriod)
+  const setBranchId = useDashboardStore((s) => s.setBranchId)
+  const activity = useDashboardStore((s) => s.activity)
+  const branches = useConfigStore((s) => s.branches)
+  const sales = usePosStore((s) => s.sales)
   const catalogProducts = useCatalogStore((s) => s.products)
   const appointments = useAgendaStore((s) => s.appointments)
-  const todayCount = useMemo(() => appointments.filter((a) => a.date === todayKey()).length, [appointments])
-  const stockAlerts = useMemo(() => deriveLowStock(catalogProducts), [catalogProducts])
+  const todayCount = useMemo(
+    () =>
+      appointments.filter(
+        (a) => a.date === todayKey() && (branchId === 'all' || a.branchId === branchId)
+      ).length,
+    [appointments, branchId]
+  )
+  const stockAlerts = useMemo(() => {
+    const alerts = deriveLowStock(catalogProducts)
+    if (branchId === 'all') return alerts
+    return alerts.filter((a) => {
+      const product = catalogProducts.find((p) => p.id === a.id || p.name === a.name)
+      return product?.branchId === branchId || product?.branchIds?.includes(branchId)
+    })
+  }, [catalogProducts, branchId])
   const [loading, setLoading] = useState(false)
   const firstRun = useRef(true)
 
@@ -37,15 +59,29 @@ export default function DashboardPage() {
     setLoading(true)
     const t = setTimeout(() => setLoading(false), 400)
     return () => clearTimeout(t)
-  }, [period])
+  }, [period, branchId])
 
-  const kpis = getKpis()
-  const liveKpis = kpis.map((k) =>
-    k.id === 'personal'
-      ? { id: 'citas', label: 'Citas Hoy', value: todayCount, kind: 'number', tag: 'Agenda del día', icon: 'CalendarClock', tone: 'violet' }
-      : k
-  )
-  const trend = getSalesTrend()
+  const kpis = KPIS[period] || KPIS.week
+  const branchSalesTotal = useMemo(() => {
+    if (branchId === 'all') return null
+    const now = Date.now()
+    const days = { today: 1, week: 7, month: 30, quarter: 90 }[period] || 7
+    const start = now - days * 86400000
+    return sales
+      .filter((s) => s.branchId === branchId && new Date(s.createdAt).getTime() >= start)
+      .reduce((sum, s) => sum + (s.total || 0), 0)
+  }, [sales, branchId, period])
+
+  const liveKpis = kpis.map((k) => {
+    if (k.id === 'personal') {
+      return { id: 'citas', label: 'Citas Hoy', value: todayCount, kind: 'number', tag: 'Agenda del día', icon: 'CalendarClock', tone: 'violet' }
+    }
+    if (k.id === 'ingresos' && branchSalesTotal != null) {
+      return { ...k, value: branchSalesTotal, tag: 'Filtrado por sucursal' }
+    }
+    return k
+  })
+  const trend = SALES_TREND[period] || SALES_TREND.week
 
   return (
     <div className="mx-auto w-full max-w-[1600px] p-6 sm:p-8">
@@ -59,7 +95,15 @@ export default function DashboardPage() {
             Este es el resumen de tu empresa en tiempo real.
           </p>
         </div>
-        <div className="flex items-center gap-1 self-start overflow-x-auto scrollbar-hide rounded-xl border border-slate-100 bg-white p-1 shadow-soft">
+        <div className="flex flex-col items-stretch gap-2 self-start sm:items-end">
+          <Select
+            value={branchId}
+            onChange={setBranchId}
+            options={buildBranchFilterOptions(branches)}
+            className="min-w-[200px]"
+            data-testid="dashboard-branch-filter"
+          />
+          <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide rounded-xl border border-slate-100 bg-white p-1 shadow-soft">
           {DASHBOARD_FILTERS.map((f) => (
             <button
               key={f.id}
@@ -73,6 +117,7 @@ export default function DashboardPage() {
               {f.label}
             </button>
           ))}
+          </div>
         </div>
       </div>
 
@@ -100,7 +145,7 @@ export default function DashboardPage() {
         transition={{ duration: 0.4, delay: 0.1 }}
         className="grid grid-cols-1 gap-6 lg:grid-cols-2"
       >
-        <AppointmentsToday />
+        <AppointmentsToday branchId={branchId} />
         <RecentActivity activity={activity} />
       </motion.div>
     </div>

@@ -42,7 +42,7 @@ const SEED_EXPENSES = [
   { id: 'exp-s1', concept: 'Compra de guantes de nitrilo', amount: 1200, category: 'insumos', date: dayKey(2), branchId: 'charm-dn', status: 'pagado', budgetId: null },
   { id: 'exp-s2', concept: 'Publicidad Instagram Ads', amount: 3000, category: 'marketing', date: dayKey(5), branchId: 'charm-dn', status: 'pagado', budgetId: 'bud-marketing' },
   { id: 'exp-s3', concept: 'Mantenimiento equipo láser', amount: 1800, category: 'mantenimiento', date: dayKey(8), branchId: 'charm-santiago', status: 'pagado', budgetId: null },
-  { id: 'exp-s4', concept: 'Compra de cera y consumibles', amount: 950, category: 'insumos', date: dayKey(12), branchId: 'charm-dn', status: 'pagado', budgetId: null },
+  { id: 'exp-s4', concept: 'Compra de cera y consumibles', amount: 950, category: 'insumos', date: dayKey(12), branchId: 'charm-dn', status: 'pagado', budgetId: 'bud-operaciones' },
   { id: 'exp-s5', concept: 'Factura de agua', amount: 700, category: 'servicios', date: dayKey(15), branchId: 'charm-este', status: 'pendiente', budgetId: null },
 ]
 
@@ -114,6 +114,7 @@ export const useFinanzasStore = create(
                   ...e,
                   ...data,
                   amount: data.amount === undefined ? e.amount : Number(data.amount) || 0,
+                  budgetId: data.budgetId === undefined ? e.budgetId : data.budgetId || null,
                 }
               : e
           ),
@@ -300,10 +301,19 @@ export const useFinanzasStore = create(
         const { budgets, expenses } = get()
         const list = branchId ? budgets.filter((b) => b.branchId === branchId) : budgets
         const totalBudget = list.reduce((a, b) => a + b.monthlyLimit, 0)
-        const spent = expenses
-          .filter((e) => isThisMonth(e.date) && (!branchId || e.branchId === branchId))
-          .reduce((a, e) => a + e.amount, 0)
-        return { totalBudget, spent, remaining: totalBudget - spent, overBudget: 0 }
+        const spent = list.reduce((total, b) => {
+          const s = expenses
+            .filter((e) => e.budgetId === b.id && isThisMonth(e.date))
+            .reduce((a, e) => a + (Number(e.amount) || 0), 0)
+          return total + s
+        }, 0)
+        const overBudget = list.filter((b) => {
+          const s = expenses
+            .filter((e) => e.budgetId === b.id && isThisMonth(e.date))
+            .reduce((a, e) => a + (Number(e.amount) || 0), 0)
+          return s > b.monthlyLimit
+        }).length
+        return { totalBudget, spent, remaining: totalBudget - spent, overBudget }
       },
 
       getAccountStats: () => {

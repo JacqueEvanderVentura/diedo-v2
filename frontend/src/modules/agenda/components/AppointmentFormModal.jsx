@@ -1,25 +1,30 @@
 import { useState, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
-import { Save, X, MessageSquare } from 'lucide-react'
+import { Save, X } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { useAgendaStore, todayKey } from '@/stores/agendaStore'
+import { useRrhhStore } from '@/stores/rrhhStore'
 import { usePosStore } from '@/stores/posStore'
 import { useCatalogStore } from '@/stores/catalogStore'
+import { useConfigStore } from '@/stores/configStore'
+import { AppointmentShareCard } from './AppointmentShareCard'
+import { AppointmentShareActions } from './AppointmentShareActions'
+import { CustomerPicker } from '@/components/customers/CustomerPicker'
 import {
   CABINAS,
-  EMPLOYEES,
   DURATION_OPTIONS,
   RECURRENCE_OPTIONS,
   REPEAT_COUNTS,
   CALENDAR_STATUSES,
-  employeeName,
 } from '@/data/agenda'
+import { useBranchStaff } from '@/modules/rrhh/lib/staff'
+import { getAvailableSlots, fitsInSchedule } from '../lib/selfBooking'
 import { formatDOP } from '@/lib/format'
-import { endTime, formatShortDate, addDaysKey, addMonthsKey } from '../lib/calendar'
 import { cn } from '@/lib/utils'
+import { addDaysKey, addMonthsKey } from '../lib/calendar'
 
 const empty = (date, customerId, slot = {}) => ({
   date: slot.date || date || todayKey(),
@@ -30,6 +35,7 @@ const empty = (date, customerId, slot = {}) => ({
   customerPhone: '',
   serviceId: '',
   employeeId: slot.employeeId || '',
+  branchId: slot.branchId || 'charm-dn',
   cabinaId: slot.cabinaId || 'cab1',
   status: 'confirmada',
   notes: '',
@@ -49,17 +55,19 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
   const updateAppointment = useAgendaStore((s) => s.updateAppointment)
   const customers = usePosStore((s) => s.customers)
   const allProducts = useCatalogStore((s) => s.products)
+  const branches = useConfigStore((s) => s.branches)
+  const employees = useRrhhStore((s) => s.employees)
+  const vacationRequests = useRrhhStore((s) => s.vacationRequests)
+  const appointments = useAgendaStore((s) => s.appointments)
   const services = useMemo(() => allProducts.filter((p) => p.type === 'service'), [allProducts])
 
   const [form, setForm] = useState(empty())
-  const [search, setSearch] = useState('')
   const [err, setErr] = useState('')
   const editing = !!appointment
 
   useEffect(() => {
     if (open) {
       setForm(appointment ? { ...appointment } : empty(defaultDate, defaultCustomerId, defaultSlot))
-      setSearch('')
       setErr('')
     }
   }, [open, appointment, defaultDate, defaultCustomerId, defaultSlot])
@@ -68,14 +76,42 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
 
   const selectedService = useMemo(() => services.find((s) => s.id === form.serviceId), [services, form.serviceId])
   const price = selectedService?.price || form.price || 0
+  const branchStaff = useBranchStaff(form.branchId)
+  const selectedEmployee = useMemo(
+    () => employees.find((e) => e.id === form.employeeId),
+    [employees, form.employeeId]
+  )
 
-  const filteredCustomers = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return customers.filter((c) => !c.isDefault)
-    return customers.filter(
-      (c) => !c.isDefault && (c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)))
-    )
-  }, [customers, search])
+  const availableSlots = useMemo(
+    () =>
+      form.employeeId && form.date
+        ? getAvailableSlots({
+            date: form.date,
+            employeeId: form.employeeId,
+            duration: form.duration,
+            appointments,
+            employee: selectedEmployee,
+            vacationRequests,
+            excludeAppointmentId: appointment?.id,
+          })
+        : [],
+    [
+      form.employeeId,
+      form.date,
+      form.duration,
+      appointments,
+      selectedEmployee,
+      vacationRequests,
+      appointment?.id,
+    ]
+  )
+
+  useEffect(() => {
+    if (!form.employeeId) return
+    if (!branchStaff.some((e) => e.id === form.employeeId)) {
+      setForm((f) => ({ ...f, employeeId: '' }))
+    }
+  }, [form.branchId, branchStaff, form.employeeId])
 
   const pickCustomer = (c) => {
     setForm((f) => ({
@@ -84,8 +120,16 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
       customerName: c.name,
       customerPhone: c.phone || '',
     }))
-    setSearch('')
   }
+
+  const selectedCustomer = useMemo(
+    () => ({
+      id: form.customerId,
+      name: form.customerName || customers.find((c) => c.id === form.customerId)?.name || '',
+      phone: form.customerPhone || customers.find((c) => c.id === form.customerId)?.phone || '',
+    }),
+    [form.customerId, form.customerName, form.customerPhone, customers]
+  )
 
   const buildPayload = () => {
     const customer = customers.find((c) => c.id === form.customerId)
@@ -116,6 +160,20 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
   const submit = () => {
     if (!form.date) return setErr('Selecciona una fecha.')
     if (!form.time) return setErr('Selecciona una hora.')
+    if (
+      selectedEmployee &&
+      !fitsInSchedule({
+        employee: selectedEmployee,
+        date: form.date,
+        time: form.time,
+        duration: form.duration,
+      })
+    ) {
+      return setErr('La hora seleccionada está fuera del horario del empleado.')
+    }
+    if (form.employeeId && availableSlots.length > 0 && !availableSlots.includes(form.time)) {
+      return setErr('Ese horario ya no está disponible para el empleado.')
+    }
     const payload = buildPayload()
     if (editing) {
       updateAppointment(appointment.id, payload)
@@ -129,41 +187,24 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     onClose()
   }
 
-  const previewName = form.customerName || customers.find((c) => c.id === form.customerId)?.name || 'Cliente'
+  const previewAppointment = useMemo(
+    () => ({
+      ...form,
+      customerName: form.customerName || customers.find((c) => c.id === form.customerId)?.name || 'Cliente',
+      serviceName: selectedService?.name || form.serviceName || 'Servicio',
+      price,
+      createdBy: appointment?.createdBy,
+      updatedBy: appointment?.updatedBy,
+    }),
+    [form, customers, selectedService, price, appointment]
+  )
 
   return (
     <Modal open={open} onClose={onClose} title={editing ? 'Editar cita' : 'Nueva Cita'} testId="appointment-form-modal" wide={wide}>
       <div className="space-y-4">
-        {/* Preview card */}
-        <div className="mx-auto w-full max-w-sm rounded-2xl border border-slate-100 bg-white p-4 shadow-md">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-600">
-                {previewName.slice(0, 1).toUpperCase()}
-              </div>
-              <div className="font-semibold text-slate-800">{previewName}</div>
-            </div>
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">📅</div>
-          </div>
-          <div className="my-3 border-t border-slate-100" />
-          <div className="flex items-center justify-between text-sm text-slate-600">
-            <span>{formatShortDate(form.date)}</span>
-            <span className="font-semibold text-slate-800">{form.time} - {endTime(form.time, form.duration)}</span>
-          </div>
-          <div className="mt-4 flex items-start justify-between">
-            <div>
-              <div className="font-semibold text-slate-800">{selectedService?.name || 'Servicio'}</div>
-              <div className="text-sm text-slate-400">{employeeName(form.employeeId) || 'Con Especialista'}</div>
-            </div>
-            <div className="text-sm font-semibold text-slate-800">{formatDOP(price)}</div>
-          </div>
-          <div className="mt-4 flex items-center justify-between text-sm">
-            <div className="flex items-center gap-2 text-slate-600">
-              <MessageSquare className="h-4 w-4" />
-              <span className="font-medium">Recordatorio</span>
-            </div>
-            <span className="font-semibold uppercase text-emerald-600">{form.reminderSent ? 'Entregado' : 'Pendiente'}</span>
-          </div>
+        <div className="flex flex-col items-center gap-3">
+          <AppointmentShareCard appointment={previewAppointment} showAudit={editing} />
+          {editing && <AppointmentShareActions appointment={previewAppointment} showAudit />}
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -183,13 +224,23 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
               value={form.employeeId}
               onChange={(v) => set('employeeId', v)}
               placeholder="Seleccionar Empleado"
-              options={EMPLOYEES.map((e) => ({ value: e.id, label: e.name }))}
+              options={branchStaff.map((e) => ({ value: e.id, label: e.name }))}
               data-testid="appointment-field-employee"
             />
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Sucursal</label>
+            <Select
+              value={form.branchId}
+              onChange={(v) => set('branchId', v)}
+              placeholder="Seleccionar sucursal"
+              options={branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))}
+              data-testid="appointment-field-branch"
+            />
+          </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Cabina</label>
             <Select
@@ -209,7 +260,36 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Hora</label>
-            <Input type="time" value={form.time} onChange={(e) => { set('time', e.target.value); setErr('') }} data-testid="appointment-field-time" />
+            {form.employeeId && form.date ? (
+              <div className="space-y-2">
+                {availableSlots.length === 0 ? (
+                  <p className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                    No hay cupos según el horario del empleado.
+                  </p>
+                ) : (
+                  <div className="grid max-h-36 grid-cols-4 gap-2 overflow-y-auto rounded-xl border border-slate-100 p-2 sm:grid-cols-5">
+                    {availableSlots.map((slot) => (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() => { set('time', slot); setErr('') }}
+                        className={cn(
+                          'rounded-lg border px-2 py-2 text-xs font-semibold transition-colors',
+                          form.time === slot
+                            ? 'border-blue-600 bg-blue-50 text-blue-700'
+                            : 'border-slate-200 text-slate-600 hover:border-blue-200'
+                        )}
+                        data-testid={`appointment-slot-${slot}`}
+                      >
+                        {slot}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Input type="time" value={form.time} onChange={(e) => { set('time', e.target.value); setErr('') }} data-testid="appointment-field-time" />
+            )}
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Duración</label>
@@ -224,23 +304,11 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
 
         <div className="space-y-2">
           <label className="text-sm font-medium text-slate-600">Cliente</label>
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar cliente por nombre o teléfono..."
-            data-testid="appointment-field-search"
+          <CustomerPicker
+            value={selectedCustomer}
+            onChange={pickCustomer}
+            testIdPrefix="appointment-customer"
           />
-          {search && filteredCustomers.length > 0 && (
-            <ul className="max-h-32 overflow-y-auto rounded-xl border border-slate-100 bg-white shadow-sm">
-              {filteredCustomers.slice(0, 6).map((c) => (
-                <li key={c.id}>
-                  <button type="button" onClick={() => pickCustomer(c)} className="flex w-full px-3 py-2 text-left text-sm hover:bg-slate-50">
-                    {c.name} {c.phone && <span className="ml-2 text-slate-400">{c.phone}</span>}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

@@ -6,12 +6,16 @@ import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useAgendaStore, statusMeta, todayKey } from '@/stores/agendaStore'
 
-export function AppointmentsToday() {
+export function AppointmentsToday({ branchId = 'all' }) {
   const navigate = useNavigate()
   const appointments = useAgendaStore((s) => s.appointments)
   const today = useMemo(
-    () => appointments.filter((a) => a.date === todayKey()).sort((a, b) => a.time.localeCompare(b.time)),
-    [appointments]
+    () =>
+      appointments
+        .filter((a) => a.date === todayKey())
+        .filter((a) => branchId === 'all' || a.branchId === branchId)
+        .sort((a, b) => a.time.localeCompare(b.time)),
+    [appointments, branchId]
   )
 
   return (

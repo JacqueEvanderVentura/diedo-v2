@@ -14,6 +14,7 @@ const SEED_REQUESTS = [
   {
     id: 'req-1',
     supplierId: 'sup-1',
+    branchId: 'charm-dn',
     requesterName: 'Leonedis Hamburgo',
     requesterId: 'u1',
     items: [
@@ -31,6 +32,7 @@ const SEED_REQUESTS = [
   {
     id: 'req-2',
     supplierId: 'sup-2',
+    branchId: 'charm-dn',
     requesterName: 'María Recepción',
     requesterId: 'u2',
     items: [{ name: 'Shampoo profesional', qty: 20, unit: 'unidad', price: 280 }],

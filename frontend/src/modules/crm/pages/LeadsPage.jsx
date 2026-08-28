@@ -15,6 +15,8 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Select } from '@/components/ui/Select'
+import { buildBranchFilterOptions } from '@/lib/branches'
+import { useConfigStore } from '@/stores/configStore'
 import { ModuleFitBars, ScoreBadge } from '../components/ModuleFitBars'
 import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
 import { cn } from '@/lib/utils'
@@ -27,6 +29,7 @@ const TABS = [
 
 function LeadsListaTab() {
   const leads = useCrmStore((s) => s.leads)
+  const branches = useConfigStore((s) => s.branches)
   const setManualScore = useCrmStore((s) => s.setManualScore)
   const convertToCustomer = useCrmStore((s) => s.convertToCustomer)
   const addToPipeline = useCrmStore((s) => s.addToPipeline)
@@ -34,6 +37,7 @@ function LeadsListaTab() {
 
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [branchFilter, setBranchFilter] = useState('all')
   const [editingScore, setEditingScore] = useState(null)
   const [manualVal, setManualVal] = useState('')
   const [manualNotes, setManualNotes] = useState('')
@@ -42,10 +46,11 @@ function LeadsListaTab() {
     const q = query.trim().toLowerCase()
     return leads.filter((l) => {
       if (statusFilter !== 'all' && l.status !== statusFilter) return false
+      if (branchFilter !== 'all' && l.branchId !== branchFilter) return false
       if (!q) return true
       return [l.name, l.company, l.location, l.phone, l.email].some((f) => f && `${f}`.toLowerCase().includes(q))
     })
-  }, [leads, query, statusFilter])
+  }, [leads, query, statusFilter, branchFilter])
 
   const saveManual = (id) => {
     setManualScore(id, manualVal, manualNotes)
@@ -70,6 +75,13 @@ function LeadsListaTab() {
           onChange={setStatusFilter}
           options={[{ value: 'all', label: 'Todos los estados' }, ...LEAD_STATUSES.map((s) => ({ value: s, label: LEAD_STATUS_META[s].label }))]}
           className="w-full sm:w-48"
+        />
+        <Select
+          value={branchFilter}
+          onChange={setBranchFilter}
+          options={buildBranchFilterOptions(branches)}
+          className="w-full sm:w-48"
+          data-testid="leads-branch-filter"
         />
       </div>
 

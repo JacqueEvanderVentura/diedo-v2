@@ -61,10 +61,31 @@ export function formatMonthYear(key) {
   return `${MONTH_NAMES[d.getMonth()]} de ${d.getFullYear()}`
 }
 
+export function formatWeekRange(key) {
+  const days = weekKeysMonday(key)
+  const start = fromKey(days[0])
+  const end = fromKey(days[6])
+  const startDay = start.getDate()
+  const endDay = end.getDate()
+  const startMonth = MONTH_NAMES[start.getMonth()]
+  const endMonth = MONTH_NAMES[end.getMonth()]
+
+  if (start.getMonth() === end.getMonth()) {
+    return `Semana ${startDay} ${startMonth} a ${endDay} ${startMonth}`
+  }
+  return `Semana ${startDay} ${startMonth} a ${endDay} ${endMonth}`
+}
+
 export function formatShortDate(key) {
   const d = fromKey(key)
   const days = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
   return `${days[d.getDay()]}, ${d.getDate()} ${MONTH_SHORT[d.getMonth()]} ${d.getFullYear()}`
+}
+
+/** Ej: 4 ago 2025 */
+export function formatCompactDate(key) {
+  const d = fromKey(key)
+  return `${d.getDate()} ${MONTH_SHORT[d.getMonth()]} ${d.getFullYear()}`
 }
 
 export function endTime(time, duration) {

@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Phone, Mail, Star, ShoppingBag, CalendarClock, Pencil, CalendarPlus } from 'lucide-react'
+import { Phone, Mail, Star, ShoppingBag, CalendarClock, CalendarDays, Pencil, CalendarPlus } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -30,6 +30,13 @@ export function CustomerDetailModal({ open, onClose, customer, onEdit, onSchedul
     () =>
       customer
         ? appointments.filter((a) => a.customerId === customer.id && a.date >= todayKey()).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+        : [],
+    [appointments, customer]
+  )
+  const pastAppointments = useMemo(
+    () =>
+      customer
+        ? appointments.filter((a) => a.customerId === customer.id && a.date < todayKey()).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time))
         : [],
     [appointments, customer]
   )
@@ -88,6 +95,24 @@ export function CustomerDetailModal({ open, onClose, customer, onEdit, onSchedul
             ) : (
               <ul className="space-y-2" data-testid="customer-detail-appointments">
                 {upcoming.map((a) => {
+                  const st = statusMeta(a.status)
+                  return (
+                    <li key={a.id} className="flex items-center justify-between rounded-xl border border-slate-100 p-3 text-sm">
+                      <span className="text-slate-700">{fmtDate(a.date)} · {a.time} · {a.serviceName || 'Sin servicio'}</span>
+                      <Badge tone={st.tone}>{st.name}</Badge>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </Section>
+
+          <Section title="Historial de citas">
+            {pastAppointments.length === 0 ? (
+              <p className="flex items-center gap-2 text-sm text-slate-400"><CalendarDays className="h-4 w-4" /> Sin citas anteriores</p>
+            ) : (
+              <ul className="max-h-48 space-y-2 overflow-y-auto scrollbar-thin" data-testid="customer-detail-past-appointments">
+                {pastAppointments.map((a) => {
                   const st = statusMeta(a.status)
                   return (
                     <li key={a.id} className="flex items-center justify-between rounded-xl border border-slate-100 p-3 text-sm">

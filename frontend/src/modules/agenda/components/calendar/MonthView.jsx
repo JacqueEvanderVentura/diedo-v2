@@ -24,25 +24,29 @@ export function MonthView({ cursor, appointments, onDayClick, onAppointmentClick
           const list = byDate[key] || []
           const isToday = key === todayKey()
           return (
-            <button
+            <div
               key={key}
-              type="button"
-              onClick={() => onDayClick(key)}
               data-testid={`calendar-month-day-${key}`}
               className={cn(
-                'min-h-[120px] rounded-xl border p-2 text-left transition-colors hover:bg-slate-50',
+                'min-h-[120px] rounded-xl border p-2 text-left',
                 inMonth ? 'border-slate-100 bg-white' : 'border-transparent bg-slate-50/50 opacity-60',
                 isToday && 'ring-2 ring-blue-200'
               )}
             >
-              <div className="mb-1 text-xs font-semibold text-slate-500">{fromKey(key).getDate()}</div>
+              <button
+                type="button"
+                onClick={() => onDayClick(key)}
+                className="mb-1 rounded-md px-1 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-50 hover:text-blue-600"
+              >
+                {fromKey(key).getDate()}
+              </button>
               {list.slice(0, 3).map((apt) => (
                 <AppointmentChip key={apt.id} apt={apt} compact onClick={onAppointmentClick} />
               ))}
               {list.length > 3 && (
                 <p className="pt-1 text-center text-[10px] font-semibold text-blue-600">+{list.length - 3} más</p>
               )}
-            </button>
+            </div>
           )
         })}
       </div>

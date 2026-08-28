@@ -18,6 +18,10 @@ import CalendarioPage from '@/modules/agenda/pages/CalendarioPage'
 
 import GestionCitasPage from '@/modules/agenda/pages/GestionCitasPage'
 
+import AgendarPage from '@/modules/agenda/pages/AgendarPage'
+
+import PerfilPublicoPage from '@/modules/agenda/pages/PerfilPublicoPage'
+
 import ClientesPage from '@/modules/crm/pages/ClientesPage'
 
 import CrmOverviewPage from '@/modules/crm/pages/OverviewPage'
@@ -87,6 +91,10 @@ export function AppRoutes() {
     <Routes>
 
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+      <Route path="/agendar" element={<AgendarPage />} />
+
+      <Route path="/agendar/perfil" element={<PerfilPublicoPage />} />
 
       <Route element={<AppFrame />}>
 

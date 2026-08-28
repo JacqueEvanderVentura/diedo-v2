@@ -4,7 +4,7 @@ import { Plus, ChevronDown, ChevronUp } from 'lucide-react'
 import { useFinanzasStore } from '@/stores/finanzasStore'
 import { useConfigStore } from '@/stores/configStore'
 import { formatDOP } from '@/lib/format'
-import { fmtWhen, isThisMonth } from '../lib/finanzas'
+import { fmtWhen, isThisMonth, budgetUsagePct, formatBudgetPct, budgetSpentForMonth } from '../lib/finanzas'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -12,7 +12,66 @@ import { Select } from '@/components/ui/Select'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { BUDGET_GROUPS } from '@/stores/finanzasStore'
+import {
+  ResponsiveList,
+  ResponsiveTable,
+  ResponsiveCards,
+  MobileCard,
+  MobileField,
+  MobileCardGrid,
+} from '@/components/ui/ResponsiveList'
 import { cn } from '@/lib/utils'
+import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
+import { useSortedRows } from '@/hooks/useTableControls'
+
+function BudgetTransactionsTable({ transactions }) {
+  const { rows, sortKey, sortDir, toggleSort } = useSortedRows(transactions, {
+    defaultSort: { key: 'date', dir: 'desc' },
+    accessors: {
+      concept: (t) => t.concept || '',
+      date: (t) => new Date(t.date),
+      amount: (t) => t.amount || 0,
+    },
+  })
+
+  return (
+    <ResponsiveList columnCount={3}>
+      <ResponsiveTable wrapCard={false}>
+        <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
+          <table className="mt-3 w-full text-xs">
+            <thead>
+              <tr className="text-left text-slate-400">
+                <SortableTh column="concept" className="py-2">Transacción</SortableTh>
+                <SortableTh column="date" className="py-2">Fecha</SortableTh>
+                <SortableTh column="amount" align="right" className="py-2">Monto</SortableTh>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((t) => (
+                <tr key={t.id} className="border-t border-slate-50">
+                  <td className="py-2 font-medium text-slate-700">{t.concept}</td>
+                  <td className="py-2 text-slate-400">{fmtWhen(t.date)}</td>
+                  <td className="py-2 text-right text-red-500">{formatDOP(t.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </SortableTableProvider>
+      </ResponsiveTable>
+      <ResponsiveCards className="mt-3">
+        {rows.map((t) => (
+          <MobileCard key={t.id}>
+            <MobileCardGrid>
+              <MobileField label="Transacción" fullWidth>{t.concept}</MobileField>
+              <MobileField label="Fecha">{fmtWhen(t.date)}</MobileField>
+              <MobileField label="Monto"><span className="font-semibold text-red-500">{formatDOP(t.amount)}</span></MobileField>
+            </MobileCardGrid>
+          </MobileCard>
+        ))}
+      </ResponsiveCards>
+    </ResponsiveList>
+  )
+}
 
 export default function PresupuestosPage() {
   const budgets = useFinanzasStore((s) => s.budgets)
@@ -40,9 +99,6 @@ export default function PresupuestosPage() {
       .filter((b) => groupFilter === 'all' || b.group === groupFilter)
       .filter((b) => !q || b.name.toLowerCase().includes(q))
   }, [budgets, branchFilter, groupFilter, query])
-
-  const getSpent = (budgetId) =>
-    expenses.filter((e) => e.budgetId === budgetId && isThisMonth(e.date)).reduce((a, e) => a + e.amount, 0)
 
   const submit = () => {
     if (!form.name.trim()) return toast.error('Ingresa el nombre')
@@ -80,8 +136,10 @@ export default function PresupuestosPage() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {list.map((b) => {
-          const spent = getSpent(b.id)
-          const pct = b.monthlyLimit > 0 ? Math.min(100, Math.round((spent / b.monthlyLimit) * 100)) : 0
+          const spent = budgetSpentForMonth(expenses, b.id)
+          const pct = budgetUsagePct(spent, b.monthlyLimit)
+          const remaining = Math.max(0, b.monthlyLimit - spent)
+          const over = spent > b.monthlyLimit
           const txs = expenses.filter((e) => e.budgetId === b.id && isThisMonth(e.date))
           const open = expanded === b.id
           return (
@@ -90,11 +148,17 @@ export default function PresupuestosPage() {
                 <div className="min-w-0 flex-1">
                   <h4 className="font-heading font-bold text-slate-900">{b.name}</h4>
                   <p className="mt-1 text-sm text-slate-500">{formatDOP(spent)} / {formatDOP(b.monthlyLimit)}</p>
+                  <p className="mt-0.5 text-xs text-emerald-600">Disponible: {formatDOP(over ? 0 : remaining)}</p>
                   <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-                    <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${pct}%` }} />
+                    <div
+                      className={cn('h-full rounded-full transition-all', over ? 'bg-red-500' : 'bg-blue-500')}
+                      style={{ width: `${pct}%` }}
+                    />
                   </div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <Badge tone={spent > b.monthlyLimit ? 'danger' : spent > 0 ? 'warning' : 'neutral'}>{spent > 0 ? `${pct}% usado` : 'Sin iniciar'}</Badge>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Badge tone={over ? 'danger' : spent > 0 ? 'warning' : 'neutral'}>
+                      {spent > 0 ? `${formatBudgetPct(spent, b.monthlyLimit)} usado` : 'Sin iniciar'}
+                    </Badge>
                     <span className="text-xs text-slate-400">{txs.length} transacciones</span>
                   </div>
                 </div>
@@ -102,18 +166,7 @@ export default function PresupuestosPage() {
               </button>
               {open && txs.length > 0 && (
                 <div className="border-t border-slate-100 px-5 pb-5">
-                  <table className="mt-3 w-full text-xs">
-                    <thead><tr className="text-left text-slate-400"><th className="py-2">Transacción</th><th className="py-2">Fecha</th><th className="py-2 text-right">Monto</th></tr></thead>
-                    <tbody>
-                      {txs.map((t) => (
-                        <tr key={t.id} className="border-t border-slate-50">
-                          <td className="py-2 font-medium text-slate-700">{t.concept}</td>
-                          <td className="py-2 text-slate-400">{fmtWhen(t.date)}</td>
-                          <td className="py-2 text-right text-red-500">{formatDOP(t.amount)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <BudgetTransactionsTable transactions={txs} />
                 </div>
               )}
             </Card>

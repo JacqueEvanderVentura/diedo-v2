@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import * as Icons from 'lucide-react'
-import { TrendingUp, Receipt, Hash, Plus, Search } from 'lucide-react'
+import { TrendingUp, Receipt, Hash, Plus } from 'lucide-react'
 import { usePosStore } from '@/stores/posStore'
 import { useFinanzasStore } from '@/stores/finanzasStore'
 import { useConfigStore } from '@/stores/configStore'
@@ -11,8 +11,20 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
+import {
+  ResponsiveList,
+  ResponsiveTable,
+  ResponsiveCards,
+  MobileCard,
+  MobileField,
+  MobileCardHeader,
+  MobileCardGrid,
+} from '@/components/ui/ResponsiveList'
 import { ExportMenu } from '../components/ExportMenu'
 import { IncomeFormModal } from '../components/IncomeFormModal'
+import { DataFilterBar } from '@/components/ui/DataFilterBar'
+import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
+import { useSortedRows } from '@/hooks/useTableControls'
 import { cn } from '@/lib/utils'
 
 function SummaryCard({ label, value, icon: Icon, tone }) {
@@ -46,6 +58,7 @@ export default function IngresosPage() {
 
   const [period, setPeriod] = useState('month')
   const [query, setQuery] = useState('')
+  const [branchFilter, setBranchFilter] = useState('all')
   const [modalOpen, setModalOpen] = useState(false)
 
   const inPeriod = (v) => period === 'all' || isThisMonth(v)
@@ -56,7 +69,7 @@ export default function IngresosPage() {
       date: s.createdAt,
       customer: s.customer?.name || 'Cliente Mostrador',
       category: s.method,
-      branchId: null,
+      branchId: s.branchId,
       status: 'pagado',
       amount: s.total,
       source: 'POS',
@@ -71,15 +84,30 @@ export default function IngresosPage() {
       amount: i.amount,
       source: i.source,
     }))
-    return [...fromSales, ...fromManual].sort((a, b) => new Date(b.date) - new Date(a.date))
+    return [...fromSales, ...fromManual]
   }, [sales, manualIncomes])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return allIncomes
       .filter((i) => inPeriod(i.date))
+      .filter((i) => branchFilter === 'all' || i.branchId === branchFilter)
       .filter((i) => !q || i.customer.toLowerCase().includes(q) || String(i.id).toLowerCase().includes(q) || (METHOD_LABELS[i.category] || i.category).toLowerCase().includes(q))
-  }, [allIncomes, period, query])
+  }, [allIncomes, period, query, branchFilter])
+
+  const branchNameFor = (branchId, source) => branches.find((b) => b.id === branchId)?.name || (source === 'POS' ? 'POS' : '—')
+
+  const { rows: displayRows, sortKey, sortDir, toggleSort } = useSortedRows(filtered, {
+    defaultSort: { key: 'date', dir: 'desc' },
+    accessors: {
+      date: (i) => new Date(i.date),
+      customer: (i) => i.customer || '',
+      category: (i) => METHOD_LABELS[i.category] || i.category || '',
+      branch: (i) => branchNameFor(i.branchId, i.source),
+      status: (i) => i.status || '',
+      amount: (i) => i.amount || 0,
+    },
+  })
 
   const total = useMemo(() => filtered.reduce((a, i) => a + (i.amount || 0), 0), [filtered])
   const dailyTotal = useMemo(() => allIncomes.filter((i) => isToday(i.date)).reduce((a, i) => a + i.amount, 0), [allIncomes])
@@ -156,44 +184,76 @@ export default function IngresosPage() {
         </div>
       )}
 
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar ingresos por ID, cliente, categoría o sucursal..." className="w-full rounded-xl border-0 bg-slate-50 py-2.5 pl-10 pr-4 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-600" />
-      </div>
+      <DataFilterBar
+        search={query}
+        onSearchChange={setQuery}
+        searchPlaceholder="Buscar ingresos por ID, cliente o categoría..."
+        showBranch
+        branchId={branchFilter}
+        onBranchChange={setBranchFilter}
+        testId="ingresos-filters"
+      />
 
       <Card className="overflow-hidden" data-testid="ingresos-table">
-        {filtered.length === 0 ? (
+        {displayRows.length === 0 ? (
           <EmptyState icon={Receipt} title="Sin ingresos" description="No hay ingresos en este período." className="py-12" />
         ) : (
-          <div className="overflow-x-auto scrollbar-thin">
-            <table className="w-full min-w-[800px] text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  <th className="px-6 py-4">Fecha</th>
-                  <th className="px-6 py-4">Cliente</th>
-                  <th className="px-6 py-4">Categoría</th>
-                  <th className="px-6 py-4">Sucursal</th>
-                  <th className="px-6 py-4">Estado</th>
-                  <th className="px-6 py-4 text-right">Monto</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {filtered.map((i) => {
-                  const Icon = Icons[METHOD_ICON[i.category]] || Icons.Circle
-                  return (
-                    <tr key={i.id} className="hover:bg-slate-50/60" data-testid={`ingresos-row-${i.id}`}>
-                      <td className="whitespace-nowrap px-6 py-4 text-slate-500">{fmtWhen(i.date)}</td>
-                      <td className="whitespace-nowrap px-6 py-4 font-semibold text-slate-800">{i.customer}</td>
-                      <td className="px-6 py-4"><span className="inline-flex items-center gap-1.5 text-slate-600"><Icon className="h-4 w-4 text-slate-400" />{METHOD_LABELS[i.category] || i.category}</span></td>
-                      <td className="whitespace-nowrap px-6 py-4 text-slate-500">{branches.find((b) => b.id === i.branchId)?.name || (i.source === 'POS' ? 'POS' : '—')}</td>
-                      <td className="px-6 py-4"><Badge tone={i.status === 'pagado' ? 'success' : 'warning'}>{i.status === 'pagado' ? 'Pagado' : 'Pendiente'}</Badge></td>
-                      <td className="whitespace-nowrap px-6 py-4 text-right font-heading font-bold text-emerald-600">+ {formatDOP(i.amount)}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <ResponsiveList minTableWidth={800} columnCount={6}>
+            <ResponsiveTable testId="ingresos-table" wrapCard={false}>
+              <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
+              <table className="w-full min-w-[800px] text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    <SortableTh column="date" className="px-6 py-4">Fecha</SortableTh>
+                    <SortableTh column="customer" className="px-6 py-4">Cliente</SortableTh>
+                    <SortableTh column="category" className="px-6 py-4">Categoría</SortableTh>
+                    <SortableTh column="branch" className="px-6 py-4">Sucursal</SortableTh>
+                    <SortableTh column="status" className="px-6 py-4">Estado</SortableTh>
+                    <SortableTh column="amount" align="right" className="px-6 py-4">Monto</SortableTh>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {displayRows.map((i) => {
+                    const Icon = Icons[METHOD_ICON[i.category]] || Icons.Circle
+                    return (
+                      <tr key={i.id} className="hover:bg-slate-50/60" data-testid={`ingresos-row-${i.id}`}>
+                        <td className="whitespace-nowrap px-6 py-4 text-slate-500">{fmtWhen(i.date)}</td>
+                        <td className="whitespace-nowrap px-6 py-4 font-semibold text-slate-800">{i.customer}</td>
+                        <td className="px-6 py-4"><span className="inline-flex items-center gap-1.5 text-slate-600"><Icon className="h-4 w-4 text-slate-400" />{METHOD_LABELS[i.category] || i.category}</span></td>
+                        <td className="whitespace-nowrap px-6 py-4 text-slate-500">{branchNameFor(i.branchId, i.source)}</td>
+                        <td className="px-6 py-4"><Badge tone={i.status === 'pagado' ? 'success' : 'warning'}>{i.status === 'pagado' ? 'Pagado' : 'Pendiente'}</Badge></td>
+                        <td className="whitespace-nowrap px-6 py-4 text-right font-heading font-bold text-emerald-600">+ {formatDOP(i.amount)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              </SortableTableProvider>
+            </ResponsiveTable>
+            <ResponsiveCards testId="ingresos-cards" className="p-4">
+              {displayRows.map((i) => {
+                const Icon = Icons[METHOD_ICON[i.category]] || Icons.Circle
+                return (
+                  <MobileCard key={i.id} testId={`ingresos-card-${i.id}`}>
+                    <MobileCardHeader
+                      title={i.customer}
+                      subtitle={fmtWhen(i.date)}
+                      badge={<Badge tone={i.status === 'pagado' ? 'success' : 'warning'}>{i.status === 'pagado' ? 'Pagado' : 'Pendiente'}</Badge>}
+                    />
+                    <MobileCardGrid>
+                      <MobileField label="Categoría">
+                        <span className="inline-flex items-center gap-1.5"><Icon className="h-4 w-4 text-slate-400" />{METHOD_LABELS[i.category] || i.category}</span>
+                      </MobileField>
+                      <MobileField label="Sucursal">{branchNameFor(i.branchId, i.source)}</MobileField>
+                      <MobileField label="Monto" fullWidth>
+                        <span className="font-heading font-bold text-emerald-600">+ {formatDOP(i.amount)}</span>
+                      </MobileField>
+                    </MobileCardGrid>
+                  </MobileCard>
+                )
+              })}
+            </ResponsiveCards>
+          </ResponsiveList>
         )}
         {filtered.length > 0 && (
           <div className="border-t border-slate-100 px-6 py-3 text-right text-sm font-semibold text-slate-600">

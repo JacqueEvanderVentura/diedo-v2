@@ -5,7 +5,17 @@ import { useConfigStore, USER_ROLES } from '@/stores/configStore'
 import { PERMISSION_MODULES, actionId } from '@/data/permisos'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import {
+  ResponsiveList,
+  ResponsiveTable,
+  ResponsiveCards,
+  MobileCard,
+  MobileCardHeader,
+} from '@/components/ui/ResponsiveList'
 import { cn } from '@/lib/utils'
+import { DataFilterBar } from '@/components/ui/DataFilterBar'
+import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
+import { useSortedRows } from '@/hooks/useTableControls'
 
 function PermCell({ granted, onClick }) {
   return (
@@ -22,13 +32,90 @@ function PermCell({ granted, onClick }) {
   )
 }
 
+function PermModuleCard({ mod, actions, highlightRole, permissions, togglePermission }) {
+  const rows = useMemo(
+    () => actions.map((action) => ({ action, id: actionId(mod.id, action) })),
+    [actions, mod.id]
+  )
+
+  const { rows: sortedActions, sortKey, sortDir, toggleSort } = useSortedRows(rows, {
+    defaultSort: { key: 'action', dir: 'asc' },
+    accessors: { action: (r) => r.action },
+  })
+
+  return (
+    <Card className="overflow-hidden" data-testid={`perm-module-${mod.id}`}>
+      <div className="border-b border-slate-100 px-6 py-4">
+        <h4 className="font-semibold text-slate-800">{mod.name}</h4>
+        <p className="text-sm text-slate-500">{mod.description}</p>
+      </div>
+      <ResponsiveList wide columnCount={6}>
+        <ResponsiveTable testId={`perm-module-table-${mod.id}`} wrapCard={false}>
+          <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
+          <table className="w-full min-w-[700px] text-sm">
+            <thead>
+              <tr className="border-b border-slate-50 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <SortableTh column="action" className="px-6 py-3">Acción</SortableTh>
+                {USER_ROLES.map((role) => (
+                  <th key={role} className={cn('px-3 py-3 text-center', highlightRole === role && 'bg-blue-50/50')}>{role}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {sortedActions.map(({ action, id }) => (
+                <tr key={id}>
+                  <td className="px-6 py-3 font-medium text-slate-700">{action}</td>
+                  {USER_ROLES.map((role) => (
+                    <td key={role} className={cn('px-3 py-2 text-center', highlightRole === role && 'bg-blue-50/30')}>
+                      <PermCell
+                        granted={!!permissions[id]?.[role]}
+                        onClick={() => togglePermission(id, role)}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </SortableTableProvider>
+        </ResponsiveTable>
+        <ResponsiveCards testId={`perm-module-cards-${mod.id}`} className="p-4">
+          {sortedActions.map(({ action, id }) => (
+            <MobileCard key={id} testId={`perm-card-${id}`}>
+              <MobileCardHeader title={action} />
+              <div className="mt-3 space-y-2">
+                {USER_ROLES.map((role) => (
+                  <div key={role} className={cn('flex items-center justify-between rounded-lg px-3 py-2', highlightRole === role && 'bg-blue-50/50')}>
+                    <span className="text-sm font-medium text-slate-600">{role}</span>
+                    <PermCell
+                      granted={!!permissions[id]?.[role]}
+                      onClick={() => togglePermission(id, role)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </MobileCard>
+          ))}
+        </ResponsiveCards>
+      </ResponsiveList>
+    </Card>
+  )
+}
+
 export default function PermisosPage() {
   const permissions = useConfigStore((s) => s.permissions)
   const togglePermission = useConfigStore((s) => s.togglePermission)
   const getPermissionSummary = useConfigStore((s) => s.getPermissionSummary)
   const [highlightRole, setHighlightRole] = useState('Administrador')
+  const [actionSearch, setActionSearch] = useState('')
 
   const summary = useMemo(() => getPermissionSummary(), [permissions, getPermissionSummary])
+
+  const filterActions = (actions) => {
+    const q = actionSearch.trim().toLowerCase()
+    if (!q) return actions
+    return actions.filter((a) => a.toLowerCase().includes(q))
+  }
 
   const save = () => toast.success('Permisos guardados correctamente')
 
@@ -55,46 +142,29 @@ export default function PermisosPage() {
         ))}
       </div>
 
+      <DataFilterBar
+        search={actionSearch}
+        onSearchChange={setActionSearch}
+        searchPlaceholder="Buscar acción..."
+        testId="permisos-filters"
+      />
+
       <div className="space-y-6">
         <h3 className="font-heading text-lg font-bold text-slate-800">Roles del Sistema</h3>
-        {PERMISSION_MODULES.map((mod) => (
-          <Card key={mod.id} className="overflow-hidden" data-testid={`perm-module-${mod.id}`}>
-            <div className="border-b border-slate-100 px-6 py-4">
-              <h4 className="font-semibold text-slate-800">{mod.name}</h4>
-              <p className="text-sm text-slate-500">{mod.description}</p>
-            </div>
-            <div className="overflow-x-auto scrollbar-thin">
-              <table className="w-full min-w-[700px] text-sm">
-                <thead>
-                  <tr className="border-b border-slate-50 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    <th className="px-6 py-3">Acción</th>
-                    {USER_ROLES.map((role) => (
-                      <th key={role} className={cn('px-3 py-3 text-center', highlightRole === role && 'bg-blue-50/50')}>{role}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {mod.actions.map((action) => {
-                    const id = actionId(mod.id, action)
-                    return (
-                      <tr key={id}>
-                        <td className="px-6 py-3 font-medium text-slate-700">{action}</td>
-                        {USER_ROLES.map((role) => (
-                          <td key={role} className={cn('px-3 py-2 text-center', highlightRole === role && 'bg-blue-50/30')}>
-                            <PermCell
-                              granted={!!permissions[id]?.[role]}
-                              onClick={() => togglePermission(id, role)}
-                            />
-                          </td>
-                        ))}
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        ))}
+        {PERMISSION_MODULES.map((mod) => {
+          const modActions = filterActions(mod.actions)
+          if (modActions.length === 0 && actionSearch.trim()) return null
+          return (
+            <PermModuleCard
+              key={mod.id}
+              mod={mod}
+              actions={modActions}
+              highlightRole={highlightRole}
+              permissions={permissions}
+              togglePermission={togglePermission}
+            />
+          )
+        })}
       </div>
 
       <Card className="p-6" data-testid="permisos-summary">

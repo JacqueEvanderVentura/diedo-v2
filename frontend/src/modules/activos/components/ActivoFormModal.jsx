@@ -3,14 +3,19 @@ import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
 import { useActivosStore, ACTIVO_CATEGORIES, ACTIVO_STATUSES } from '@/stores/activosStore'
+import { useConfigStore } from '@/stores/configStore'
+import { buildBranchFilterOptions } from '@/lib/branches'
 import { cn } from '@/lib/utils'
 
-const EMPTY = { name: '', code: '', category: 'mobiliario', value: '', status: 'activo', location: '', purchaseDate: '', notes: '' }
+const EMPTY = { name: '', code: '', category: 'mobiliario', value: '', status: 'activo', location: '', branchId: 'charm-dn', purchaseDate: '', notes: '' }
 
 export function ActivoFormModal({ open, onClose, activo }) {
   const addActivo = useActivosStore((s) => s.addActivo)
   const updateActivo = useActivosStore((s) => s.updateActivo)
+  const branches = useConfigStore((s) => s.branches)
+  const branchOptions = buildBranchFilterOptions(branches, { includeAll: false })
   const [form, setForm] = useState(EMPTY)
   const [err, setErr] = useState('')
   const editing = !!activo
@@ -62,9 +67,14 @@ export function ActivoFormModal({ open, onClose, activo }) {
             <Input value={form.location} onChange={(e) => set('location', e.target.value)} placeholder="Ej. Recepción" data-testid="activo-field-location" />
           </div>
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-600">Fecha de compra</label>
-            <Input type="date" value={form.purchaseDate} onChange={(e) => set('purchaseDate', e.target.value)} data-testid="activo-field-date" />
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Sucursal</label>
+            <Select value={form.branchId || 'charm-dn'} onChange={(v) => set('branchId', v)} options={branchOptions} data-testid="activo-field-branch" />
           </div>
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-600">Fecha de compra</label>
+          <Input type="date" value={form.purchaseDate} onChange={(e) => set('purchaseDate', e.target.value)} data-testid="activo-field-date" />
         </div>
 
         <div>

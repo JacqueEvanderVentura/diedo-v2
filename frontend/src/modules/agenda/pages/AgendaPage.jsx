@@ -167,16 +167,21 @@ export default function AgendaPage() {
             const d = fromKey(key)
             const list = byDate[key] || []
             const isToday = key === todayKey()
+            const isSelected = key === cursor
             return (
               <div key={key} className="flex flex-col rounded-2xl border border-slate-100 bg-white shadow-soft">
                 <button
                   onClick={() => openNew(key)}
                   data-testid={`agenda-daycol-${key}`}
-                  className={cn('flex items-center justify-between rounded-t-2xl border-b border-slate-100 px-3 py-2.5 text-left transition-colors hover:bg-slate-50', isToday && 'bg-blue-50')}
+                  className={cn(
+                    'flex items-center justify-between rounded-t-2xl border-b border-slate-100 px-3 py-2.5 text-left transition-colors hover:bg-slate-50',
+                    isToday && 'bg-blue-50',
+                    !isToday && isSelected && 'bg-blue-50/60 ring-1 ring-inset ring-blue-200'
+                  )}
                 >
                   <div>
                     <p className="text-[11px] font-bold uppercase text-slate-400">{DAY_NAMES[d.getDay()]}</p>
-                    <p className={cn('font-heading text-lg font-bold', isToday ? 'text-blue-600' : 'text-slate-700')}>{d.getDate()}</p>
+                    <p className={cn('font-heading text-lg font-bold', isToday || isSelected ? 'text-blue-600' : 'text-slate-700')}>{d.getDate()}</p>
                   </div>
                   {list.length > 0 && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">{list.length}</span>}
                 </button>

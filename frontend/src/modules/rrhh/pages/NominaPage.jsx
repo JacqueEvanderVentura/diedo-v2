@@ -5,9 +5,22 @@ import { useRrhhStore } from '@/stores/rrhhStore'
 import { PAYROLL_PERIODS, PAYROLL_PERIOD_LABELS } from '@/data/rrhh'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import {
+  ResponsiveList,
+  ResponsiveTable,
+  ResponsiveCards,
+  MobileCard,
+  MobileField,
+  MobileCardHeader,
+  MobileCardGrid,
+} from '@/components/ui/ResponsiveList'
 import { Select } from '@/components/ui/Select'
 import { ExportMenu } from '@/modules/finanzas/components/ExportMenu'
 import { fullName, calcPayrollNet } from '../lib/rrhh'
+import { getEmployeeBranchIds } from '../lib/staff'
+import { DataFilterBar } from '@/components/ui/DataFilterBar'
+import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
+import { useSortedRows } from '@/hooks/useTableControls'
 import { formatDOP } from '@/lib/format'
 
 export default function NominaPage() {
@@ -17,6 +30,8 @@ export default function NominaPage() {
 
   const now = new Date()
   const [period, setPeriod] = useState('quincena-1')
+  const [query, setQuery] = useState('')
+  const [branchFilter, setBranchFilter] = useState('all')
   const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
   const activeEmployees = useMemo(() => employees.filter((e) => e.active), [employees])
@@ -28,11 +43,32 @@ export default function NominaPage() {
     })
   }, [activeEmployees])
 
+  const filteredRows = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return rows.filter((r) => {
+      if (branchFilter !== 'all' && !getEmployeeBranchIds(r.emp).includes(branchFilter)) return false
+      if (!q) return true
+      return fullName(r.emp).toLowerCase().includes(q) || r.emp.position?.toLowerCase().includes(q)
+    })
+  }, [rows, query, branchFilter])
+
+  const { rows: displayRows, sortKey, sortDir, toggleSort } = useSortedRows(filteredRows, {
+    defaultSort: { key: 'employee', dir: 'asc' },
+    accessors: {
+      employee: (r) => fullName(r.emp),
+      position: (r) => r.emp.position || '',
+      base: (r) => r.base,
+      tss: (r) => r.tss,
+      isr: (r) => r.isr,
+      net: (r) => r.net,
+    },
+  })
+
   const totals = useMemo(() => {
-    const cost = rows.reduce((s, r) => s + r.net, 0)
-    const avg = rows.length ? cost / rows.length : 0
-    return { cost, count: rows.length, avg }
-  }, [rows])
+    const cost = filteredRows.reduce((s, r) => s + r.net, 0)
+    const avg = filteredRows.length ? cost / filteredRows.length : 0
+    return { cost, count: filteredRows.length, avg }
+  }, [filteredRows])
 
   const isClosed = payrollRuns.some((r) => r.period === period && r.monthKey === monthKey)
 
@@ -90,31 +126,62 @@ export default function NominaPage() {
         </Card>
       </div>
 
+      <DataFilterBar
+        search={query}
+        onSearchChange={setQuery}
+        searchPlaceholder="Buscar empleado..."
+        showBranch
+        branchId={branchFilter}
+        onBranchChange={setBranchFilter}
+        testId="rrhh-nomina-filters"
+      />
+
       <Card className="overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-100 bg-slate-50/50 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
-              <th className="px-6 py-3">Empleado</th>
-              <th className="hidden px-6 py-3 md:table-cell">Cargo</th>
-              <th className="px-6 py-3">Base</th>
-              <th className="hidden px-6 py-3 sm:table-cell">TSS</th>
-              <th className="hidden px-6 py-3 sm:table-cell">ISR</th>
-              <th className="px-6 py-3">Neto</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(({ emp, base, tss, isr, net }) => (
-              <tr key={emp.id} className="border-b border-slate-50">
-                <td className="px-6 py-4 font-medium text-slate-800">{fullName(emp)}</td>
-                <td className="hidden px-6 py-4 text-slate-600 md:table-cell">{emp.position}</td>
-                <td className="px-6 py-4">{formatDOP(base)}</td>
-                <td className="hidden px-6 py-4 text-red-600 sm:table-cell">-{formatDOP(tss)}</td>
-                <td className="hidden px-6 py-4 text-red-600 sm:table-cell">-{formatDOP(isr)}</td>
-                <td className="px-6 py-4 font-semibold text-emerald-700">{formatDOP(net)}</td>
-              </tr>
+        <ResponsiveList columnCount={6}>
+          <ResponsiveTable testId="rrhh-nomina-table" wrapCard={false}>
+            <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/50 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  <SortableTh column="employee" className="px-6 py-3">Empleado</SortableTh>
+                  <SortableTh column="position" className="hidden px-6 py-3 md:table-cell">Cargo</SortableTh>
+                  <SortableTh column="base" className="px-6 py-3">Base</SortableTh>
+                  <SortableTh column="tss" className="hidden px-6 py-3 sm:table-cell">TSS</SortableTh>
+                  <SortableTh column="isr" className="hidden px-6 py-3 sm:table-cell">ISR</SortableTh>
+                  <SortableTh column="net" className="px-6 py-3">Neto</SortableTh>
+                </tr>
+              </thead>
+              <tbody>
+                {displayRows.map(({ emp, base, tss, isr, net }) => (
+                  <tr key={emp.id} className="border-b border-slate-50">
+                    <td className="px-6 py-4 font-medium text-slate-800">{fullName(emp)}</td>
+                    <td className="hidden px-6 py-4 text-slate-600 md:table-cell">{emp.position}</td>
+                    <td className="px-6 py-4">{formatDOP(base)}</td>
+                    <td className="hidden px-6 py-4 text-red-600 sm:table-cell">-{formatDOP(tss)}</td>
+                    <td className="hidden px-6 py-4 text-red-600 sm:table-cell">-{formatDOP(isr)}</td>
+                    <td className="px-6 py-4 font-semibold text-emerald-700">{formatDOP(net)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            </SortableTableProvider>
+          </ResponsiveTable>
+          <ResponsiveCards testId="rrhh-nomina-cards" className="p-4">
+            {displayRows.map(({ emp, base, tss, isr, net }) => (
+              <MobileCard key={emp.id} testId={`rrhh-nomina-card-${emp.id}`}>
+                <MobileCardHeader title={fullName(emp)} subtitle={emp.position} />
+                <MobileCardGrid>
+                  <MobileField label="Base">{formatDOP(base)}</MobileField>
+                  <MobileField label="TSS"><span className="text-red-600">-{formatDOP(tss)}</span></MobileField>
+                  <MobileField label="ISR"><span className="text-red-600">-{formatDOP(isr)}</span></MobileField>
+                  <MobileField label="Neto">
+                    <span className="font-semibold text-emerald-700">{formatDOP(net)}</span>
+                  </MobileField>
+                </MobileCardGrid>
+              </MobileCard>
             ))}
-          </tbody>
-        </table>
+          </ResponsiveCards>
+        </ResponsiveList>
       </Card>
     </div>
   )

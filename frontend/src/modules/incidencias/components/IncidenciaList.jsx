@@ -1,5 +1,6 @@
 import { Search } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
+import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { initials, priorityMeta, statusMeta, typeMeta, TYPE_FILTER_OPTIONS, STATUS_FILTER_OPTIONS } from '@/data/incidencias'
 import { cn } from '@/lib/utils'
@@ -14,6 +15,13 @@ export function IncidenciaList({
   onTypeFilterChange,
   statusFilter,
   onStatusFilterChange,
+  branchFilter,
+  onBranchFilterChange,
+  branchOptions,
+  dateFrom,
+  dateTo,
+  onDateFromChange,
+  onDateToChange,
 }) {
   return (
     <div className="flex h-full flex-col rounded-xl border border-slate-100 bg-white shadow-soft">
@@ -29,6 +37,24 @@ export function IncidenciaList({
           />
         </div>
         <div className="flex flex-col gap-2">
+          <Select
+            value={branchFilter}
+            onChange={onBranchFilterChange}
+            options={branchOptions}
+            size="md"
+            menuMinWidth={240}
+            data-testid="incidencias-filter-branch"
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Desde</label>
+              <Input type="date" value={dateFrom} onChange={(e) => onDateFromChange(e.target.value)} data-testid="incidencias-filter-date-from" />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Hasta</label>
+              <Input type="date" value={dateTo} onChange={(e) => onDateToChange(e.target.value)} data-testid="incidencias-filter-date-to" />
+            </div>
+          </div>
           <Select
             value={typeFilter}
             onChange={onTypeFilterChange}

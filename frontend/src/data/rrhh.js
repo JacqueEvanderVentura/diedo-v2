@@ -40,3 +40,8 @@ export const PAYROLL_PERIOD_LABELS = {
   'quincena-2': 'Segunda quincena',
   mensual: 'Mensual',
 }
+
+export const BANK_ACCOUNT_TYPES = [
+  { id: 'ahorro', label: 'Ahorro' },
+  { id: 'corriente', label: 'Corriente' },
+]

@@ -25,18 +25,28 @@ export function WeekView({ cursor, appointments, onDayClick, onAppointmentClick 
           const d = fromKey(key)
           const list = byDate[key] || []
           const isToday = key === todayKey()
+          const isSelected = key === cursor
           return (
-            <button
+            <div
               key={key}
-              type="button"
-              onClick={() => onDayClick(key)}
               data-testid={`calendar-week-day-${key}`}
               className={cn(
-                'min-h-[180px] rounded-xl border p-2 text-left transition-colors hover:bg-slate-50',
-                isToday ? 'border-blue-200 bg-blue-50/40' : 'border-slate-100'
+                'min-h-[180px] rounded-xl border p-2 text-left',
+                isToday && 'border-blue-200 bg-blue-50/40',
+                !isToday && isSelected && 'border-blue-300 bg-blue-50/30 ring-1 ring-blue-200',
+                !isToday && !isSelected && 'border-slate-100'
               )}
             >
-              <div className="mb-2 text-xs font-semibold text-slate-500">{d.getDate()}</div>
+              <button
+                type="button"
+                onClick={() => onDayClick(key)}
+                className={cn(
+                  'mb-2 rounded-md px-1 text-xs font-semibold transition-colors hover:bg-white/80',
+                  isToday || isSelected ? 'text-blue-600' : 'text-slate-500'
+                )}
+              >
+                {d.getDate()}
+              </button>
               <div className="space-y-0">
                 {list.slice(0, 6).map((apt) => (
                   <AppointmentChip key={apt.id} apt={apt} compact onClick={onAppointmentClick} />
@@ -45,7 +55,7 @@ export function WeekView({ cursor, appointments, onDayClick, onAppointmentClick 
                   <p className="pt-1 text-center text-[10px] font-semibold text-blue-600">+{list.length - 6} más</p>
                 )}
               </div>
-            </button>
+            </div>
           )
         })}
       </div>

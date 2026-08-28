@@ -69,8 +69,9 @@ export default function InventariosPage() {
           <StatCard label="Dados de baja" value={activoStats.baja} icon={PackageX} tone="slate" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <StatCard label="Total Productos" value={productStats.total} icon={Package} tone="brand" />
+          <StatCard label="Insumos" value={productStats.supplies ?? 0} icon={Boxes} tone="slate" />
           <StatCard label="Stock Bajo" value={productStats.low} icon={AlertTriangle} tone="warning" />
           <StatCard label="Sin Stock" value={productStats.out} icon={PackageX} tone="danger" />
           <StatCard label="Valor Total" value={formatDOP(productStats.totalValue)} icon={DollarSign} tone="success" />

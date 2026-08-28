@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { toast } from 'sonner'
 import { SearchX } from 'lucide-react'
-import { useCatalogStore } from '@/stores/catalogStore'
+import { useCatalogStore, isPosSellable } from '@/stores/catalogStore'
 import { usePosStore } from '@/stores/posStore'
 import { ProductCard } from './ProductCard'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -14,6 +14,7 @@ export function ProductGrid({ query, category, loading }) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return products.filter((p) => {
+      if (!isPosSellable(p)) return false
       const matchCat = category === 'all' || p.category === category
       const matchQuery =
         !q ||

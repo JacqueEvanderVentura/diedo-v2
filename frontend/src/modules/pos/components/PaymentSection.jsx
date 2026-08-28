@@ -39,7 +39,7 @@ export function PaymentSection({ error }) {
   const showRefError = isTransfer && error && transferMissing
 
   return (
-    <div data-testid="pos-payment-section">
+    <div data-testid="pos-payment-section" className="min-w-0 overflow-hidden">
       <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Método de pago</p>
       <div className="grid grid-cols-3 gap-2">
         {paymentMethods.map((m) => {

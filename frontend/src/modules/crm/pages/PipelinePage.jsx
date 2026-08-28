@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Plus, GripVertical } from 'lucide-react'
 import { useCrmStore } from '@/stores/crmStore'
+import { useConfigStore } from '@/stores/configStore'
+import { buildBranchFilterOptions } from '@/lib/branches'
 import { OPPORTUNITY_STAGES, STAGE_META } from '@/data/crm'
 import { formatDOP } from '@/lib/format'
 import { Button } from '@/components/ui/Button'
@@ -35,21 +37,28 @@ function DealCard({ opp, onDragStart }) {
 
 export default function PipelinePage() {
   const opportunities = useCrmStore((s) => s.opportunities)
+  const branches = useConfigStore((s) => s.branches)
   const updateOpportunityStage = useCrmStore((s) => s.updateOpportunityStage)
   const addOpportunity = useCrmStore((s) => s.addOpportunity)
   const leads = useCrmStore((s) => s.leads)
 
   const [modalOpen, setModalOpen] = useState(false)
+  const [branchFilter, setBranchFilter] = useState('all')
   const [form, setForm] = useState({ title: '', customerName: '', value: '', leadId: '', stage: 'nuevo' })
   const [dragId, setDragId] = useState(null)
 
+  const filteredOpportunities = useMemo(() => {
+    if (branchFilter === 'all') return opportunities
+    return opportunities.filter((o) => o.branchId === branchFilter)
+  }, [opportunities, branchFilter])
+
   const byStage = useMemo(() => {
     const map = Object.fromEntries(OPPORTUNITY_STAGES.map((s) => [s, []]))
-    opportunities.forEach((o) => {
+    filteredOpportunities.forEach((o) => {
       if (map[o.stage]) map[o.stage].push(o)
     })
     return map
-  }, [opportunities])
+  }, [filteredOpportunities])
 
   const totals = useMemo(() => {
     const open = opportunities.filter((o) => !['cerrado', 'perdido'].includes(o.stage))
@@ -93,9 +102,12 @@ export default function PipelinePage() {
           <h2 className="font-heading text-2xl font-bold text-slate-900">Pipeline</h2>
           <p className="text-sm text-slate-500">{totals.count} oportunidades abiertas · {formatDOP(totals.value)}</p>
         </div>
-        <Button onClick={() => setModalOpen(true)}>
-          <Plus className="h-4 w-4" /> Nueva oportunidad
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Select value={branchFilter} onChange={setBranchFilter} options={buildBranchFilterOptions(branches)} className="min-w-[180px]" data-testid="pipeline-branch-filter" />
+          <Button onClick={() => setModalOpen(true)}>
+            <Plus className="h-4 w-4" /> Nueva oportunidad
+          </Button>
+        </div>
       </div>
 
       <div className="flex gap-4 overflow-x-auto pb-4">

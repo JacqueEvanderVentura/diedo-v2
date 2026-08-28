@@ -82,11 +82,11 @@ const SEED_CATEGORIES = CATEGORIES.filter((c) => c.id !== 'all').map((c, i) => (
 const SEED_METHODS = PAYMENT_METHODS.map((m) => ({ ...m, enabled: true, core: true }))
 
 const SEED_USERS = [
-  { id: 'u1', name: 'Leonedis Hamburgo', email: 'leonedis@charm.do', role: 'Administrador', active: true, branchIds: ['charm-dn', 'charm-santiago', 'charm-este'], lastAccess: null },
-  { id: 'u2', name: 'María Recepción', email: 'maria@charm.do', role: 'Supervisor', active: true, branchIds: ['charm-dn'], lastAccess: null },
-  { id: 'u3', name: 'Carlos Cajero', email: 'carlos@charm.do', role: 'Cajero', active: true, branchIds: ['charm-dn'], lastAccess: null },
-  { id: 'u4', name: 'Admin Charm', email: 'admin@charm.do', role: 'Gerente', active: false, branchIds: ['charm-dn', 'charm-santiago'], lastAccess: null },
-  { id: 'u5', name: 'Ana Vendedora', email: 'ana@charm.do', role: 'Vendedor', active: true, branchIds: ['charm-este'], lastAccess: null },
+  { id: 'u1', name: 'Leonedis Hamburgo', email: 'leonedis@charm.do', role: 'Administrador', active: true, branchIds: ['charm-dn', 'charm-santiago', 'charm-este'], lastAccess: null, password: 'admin123' },
+  { id: 'u2', name: 'María Recepción', email: 'maria@charm.do', role: 'Supervisor', active: true, branchIds: ['charm-dn'], lastAccess: null, password: 'maria123' },
+  { id: 'u3', name: 'Carlos Cajero', email: 'carlos@charm.do', role: 'Cajero', active: true, branchIds: ['charm-dn'], lastAccess: null, password: 'carlos123' },
+  { id: 'u4', name: 'Admin Charm', email: 'admin@charm.do', role: 'Gerente', active: false, branchIds: ['charm-dn', 'charm-santiago'], lastAccess: null, password: 'admin123' },
+  { id: 'u5', name: 'Ana Vendedora', email: 'ana@charm.do', role: 'Vendedor', active: true, branchIds: ['charm-este'], lastAccess: null, password: 'ana123' },
 ]
 
 const SEED_SETTINGS = { businessName: 'Diedo App', taxDefault: 18, region: 'República Dominicana', currency: 'RD$' }
@@ -176,6 +176,22 @@ export const useConfigStore = create(
         })),
       deleteUser: (id) => set((s) => ({ users: s.users.filter((u) => u.id !== id) })),
 
+      changeOwnPassword: (userId, currentPassword, newPassword) => {
+        const user = get().users.find((u) => u.id === userId)
+        if (!user) return { ok: false, error: 'Usuario no encontrado.' }
+        if ((user.password || '') !== currentPassword) return { ok: false, error: 'La contraseña actual no es correcta.' }
+        if (!newPassword || newPassword.length < 6) return { ok: false, error: 'La nueva contraseña debe tener al menos 6 caracteres.' }
+        set((s) => ({
+          users: s.users.map((u) => (u.id === userId ? { ...u, password: newPassword } : u)),
+        }))
+        return { ok: true }
+      },
+
+      updateOwnProfile: (userId, data) =>
+        set((s) => ({
+          users: s.users.map((u) => (u.id === userId ? { ...u, ...data } : u)),
+        })),
+
       // ---- settings ----
       updateSettings: (data) => set((s) => ({ settings: { ...s.settings, ...data } })),
 
@@ -197,6 +213,24 @@ export const useConfigStore = create(
         })
       },
     }),
-    { name: 'diedo-config' }
+    {
+      name: 'diedo-config',
+      merge: (persisted, current) => {
+        const state = { ...current, ...(persisted || {}) }
+        const defaults = buildDefaultMatrix()
+        const merged = { ...defaults, ...(state.permissions || {}) }
+        Object.keys(defaults).forEach((id) => {
+          merged[id] = { ...defaults[id], ...(state.permissions?.[id] || {}) }
+        })
+        state.permissions = merged
+        if (Array.isArray(state.users)) {
+          state.users = state.users.map((u) => ({
+            ...u,
+            password: u.password || 'changeme',
+          }))
+        }
+        return state
+      },
+    }
   )
 )

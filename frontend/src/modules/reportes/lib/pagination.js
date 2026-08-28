@@ -1,12 +1,15 @@
+import { applySort } from '@/lib/tableControls'
+
 export const PAGE_SIZE_OPTIONS = [10, 25, 50]
 
-export function paginateSlice(items, { page = 1, pageSize = 10 } = {}) {
-  const total = items.length
+export function paginateSlice(items, { page = 1, pageSize = 10, sortKey, sortDir, sortAccessors } = {}) {
+  const sorted = sortKey ? applySort(items, sortKey, sortDir || 'asc', sortAccessors || {}) : items
+  const total = sorted.length
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
   const safePage = Math.min(Math.max(1, page), totalPages)
   const start = (safePage - 1) * pageSize
   return {
-    items: items.slice(start, start + pageSize),
+    items: sorted.slice(start, start + pageSize),
     total,
     totalPages,
     page: safePage,

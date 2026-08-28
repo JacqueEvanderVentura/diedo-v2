@@ -8,8 +8,22 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
+import {
+  ResponsiveList,
+  ResponsiveTable,
+  ResponsiveCards,
+  MobileCard,
+  MobileField,
+  MobileCardHeader,
+  MobileCardFooter,
+  MobileCardGrid,
+} from '@/components/ui/ResponsiveList'
 import { Modal } from '@/components/ui/Modal'
 import { fullName, debtBalance, debtStatus } from '../lib/rrhh'
+import { getEmployeeBranchIds } from '../lib/staff'
+import { DataFilterBar } from '@/components/ui/DataFilterBar'
+import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
+import { useSortedRows } from '@/hooks/useTableControls'
 import { formatDOP } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -24,6 +38,7 @@ export default function CuentasPorCobrarPage() {
 
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('todos')
+  const [branchFilter, setBranchFilter] = useState('all')
   const [modalOpen, setModalOpen] = useState(false)
   const [payModal, setPayModal] = useState(null)
   const [payAmount, setPayAmount] = useState('')
@@ -31,17 +46,29 @@ export default function CuentasPorCobrarPage() {
 
   const stats = useMemo(() => getDebtStats(), [employeeDebts, getDebtStats])
 
-  const list = useMemo(() => {
+  const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return employeeDebts.filter((d) => {
       const emp = employees.find((e) => e.id === d.employeeId)
       const name = fullName(emp).toLowerCase()
       const status = debtStatus(d)
+      if (branchFilter !== 'all' && !getEmployeeBranchIds(emp).includes(branchFilter)) return false
       if (filter !== 'todos' && status !== filter) return false
       if (!q) return true
       return name.includes(q) || d.concept?.toLowerCase().includes(q) || d.clientName?.toLowerCase().includes(q)
     })
-  }, [employeeDebts, employees, query, filter])
+  }, [employeeDebts, employees, query, filter, branchFilter])
+
+  const { rows: list, sortKey, sortDir, toggleSort } = useSortedRows(filtered, {
+    defaultSort: { key: 'employee', dir: 'asc' },
+    accessors: {
+      employee: (d) => fullName(employees.find((e) => e.id === d.employeeId)),
+      concept: (d) => d.concept || '',
+      amount: (d) => d.amount || 0,
+      balance: (d) => debtBalance(d),
+      status: (d) => debtStatus(d),
+    },
+  })
 
   const hasPending = stats.pending > 0
 
@@ -92,17 +119,15 @@ export default function CuentasPorCobrarPage() {
         </Card>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="relative min-w-[200px] flex-1 max-w-md">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar deudas..."
-            className="w-full rounded-xl border-0 bg-slate-50 py-2.5 pl-10 pr-4 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-600"
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      <DataFilterBar
+        search={query}
+        onSearchChange={setQuery}
+        searchPlaceholder="Buscar deudas..."
+        showBranch
+        branchId={branchFilter}
+        onBranchChange={setBranchFilter}
+        testId="rrhh-cxc-filters"
+        extra={
           <div className="flex rounded-xl bg-slate-100 p-1">
             {FILTERS.map((f) => (
               <button
@@ -118,8 +143,11 @@ export default function CuentasPorCobrarPage() {
               </button>
             ))}
           </div>
-          <Button onClick={() => setModalOpen(true)}><Plus className="h-4 w-4" /> Nueva deuda</Button>
-        </div>
+        }
+      />
+
+      <div className="flex justify-end">
+        <Button onClick={() => setModalOpen(true)}><Plus className="h-4 w-4" /> Nueva deuda</Button>
       </div>
 
       {!hasPending && list.length === 0 ? (
@@ -130,45 +158,83 @@ export default function CuentasPorCobrarPage() {
         </Card>
       ) : (
         <Card className="overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/50 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
-                <th className="px-6 py-3">Empleado</th>
-                <th className="hidden px-6 py-3 md:table-cell">Concepto</th>
-                <th className="px-6 py-3">Monto</th>
-                <th className="px-6 py-3">Saldo</th>
-                <th className="px-6 py-3">Estado</th>
-                <th className="px-6 py-3" />
-              </tr>
-            </thead>
-            <tbody>
+          <ResponsiveList columnCount={6}>
+            <ResponsiveTable testId="rrhh-cxc-table" wrapCard={false}>
+              <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/50 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    <SortableTh column="employee" className="px-6 py-3">Empleado</SortableTh>
+                    <SortableTh column="concept" className="hidden px-6 py-3 md:table-cell">Concepto</SortableTh>
+                    <SortableTh column="amount" className="px-6 py-3">Monto</SortableTh>
+                    <SortableTh column="balance" className="px-6 py-3">Saldo</SortableTh>
+                    <SortableTh column="status" className="px-6 py-3">Estado</SortableTh>
+                    <SortableTh sortable={false} className="px-6 py-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {list.map((d) => {
+                    const emp = employees.find((e) => e.id === d.employeeId)
+                    const status = debtStatus(d)
+                    const meta = DEBT_STATUS_META[status]
+                    const balance = debtBalance(d)
+                    return (
+                      <tr key={d.id} className="border-b border-slate-50">
+                        <td className="px-6 py-4 font-medium text-slate-800">{fullName(emp)}</td>
+                        <td className="hidden px-6 py-4 text-slate-600 md:table-cell">
+                          {d.concept}
+                          {d.clientName && <span className="block text-xs text-slate-400">{d.clientName}</span>}
+                        </td>
+                        <td className="px-6 py-4">{formatDOP(d.amount)}</td>
+                        <td className="px-6 py-4 font-medium">{formatDOP(balance)}</td>
+                        <td className="px-6 py-4"><Badge tone={meta.tone}>{meta.label}</Badge></td>
+                        <td className="px-6 py-4 text-right">
+                          {balance > 0 && (
+                            <Button size="sm" variant="secondary" onClick={() => { setPayModal(d); setPayAmount(String(balance)) }}>
+                              <DollarSign className="h-4 w-4" /> Pagar
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              </SortableTableProvider>
+            </ResponsiveTable>
+            <ResponsiveCards testId="rrhh-cxc-cards" className="p-4">
               {list.map((d) => {
                 const emp = employees.find((e) => e.id === d.employeeId)
                 const status = debtStatus(d)
                 const meta = DEBT_STATUS_META[status]
                 const balance = debtBalance(d)
                 return (
-                  <tr key={d.id} className="border-b border-slate-50">
-                    <td className="px-6 py-4 font-medium text-slate-800">{fullName(emp)}</td>
-                    <td className="hidden px-6 py-4 text-slate-600 md:table-cell">
-                      {d.concept}
-                      {d.clientName && <span className="block text-xs text-slate-400">{d.clientName}</span>}
-                    </td>
-                    <td className="px-6 py-4">{formatDOP(d.amount)}</td>
-                    <td className="px-6 py-4 font-medium">{formatDOP(balance)}</td>
-                    <td className="px-6 py-4"><Badge tone={meta.tone}>{meta.label}</Badge></td>
-                    <td className="px-6 py-4 text-right">
-                      {balance > 0 && (
+                  <MobileCard key={d.id} testId={`rrhh-cxc-card-${d.id}`}>
+                    <MobileCardHeader
+                      title={fullName(emp)}
+                      subtitle={d.concept}
+                      badge={<Badge tone={meta.tone}>{meta.label}</Badge>}
+                    />
+                    {d.clientName && <p className="mt-1 text-xs text-slate-400">{d.clientName}</p>}
+                    <MobileCardGrid className="mt-3">
+                      <MobileField label="Monto">{formatDOP(d.amount)}</MobileField>
+                      <MobileField label="Saldo">
+                        <span className="font-medium">{formatDOP(balance)}</span>
+                      </MobileField>
+                    </MobileCardGrid>
+                    {balance > 0 && (
+                      <MobileCardFooter>
+                        <span />
                         <Button size="sm" variant="secondary" onClick={() => { setPayModal(d); setPayAmount(String(balance)) }}>
                           <DollarSign className="h-4 w-4" /> Pagar
                         </Button>
-                      )}
-                    </td>
-                  </tr>
+                      </MobileCardFooter>
+                    )}
+                  </MobileCard>
                 )
               })}
-            </tbody>
-          </table>
+            </ResponsiveCards>
+          </ResponsiveList>
         </Card>
       )}
 

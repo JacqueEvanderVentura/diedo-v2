@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -19,6 +19,8 @@ const emptyFixed = () => ({ concept: '', amount: '', category: 'servicios', bran
 
 export function ExpenseFormModal({ open, onClose, expense, mode = 'variable' }) {
   const { addExpense, updateExpense, addFixed, updateFixed } = useFinanzasStore()
+  const budgets = useFinanzasStore((s) => s.budgets)
+  const branches = useConfigStore((s) => s.branches)
   const fixed = mode === 'fixed'
   const [form, setForm] = useState(fixed ? emptyFixed() : emptyVariable())
   const [err, setErr] = useState('')
@@ -26,28 +28,51 @@ export function ExpenseFormModal({ open, onClose, expense, mode = 'variable' }) 
 
   useEffect(() => {
     if (!open) return
-    const { branches } = useConfigStore.getState()
     const defaultBranch = branches.find((b) => b.active)?.id || ''
     if (expense) {
-      setForm({ ...(fixed ? emptyFixed() : emptyVariable()), branchId: defaultBranch, ...expense, dayOfMonth: String(expense.dayOfMonth || 1) })
+      setForm({
+        ...(fixed ? emptyFixed() : emptyVariable()),
+        branchId: defaultBranch,
+        ...expense,
+        budgetId: expense.budgetId || '',
+        dayOfMonth: String(expense.dayOfMonth || 1),
+      })
     } else {
       setForm(fixed ? { ...emptyFixed(), branchId: defaultBranch } : { ...emptyVariable(), branchId: defaultBranch })
     }
     setErr('')
-  }, [open, expense, fixed])
+  }, [open, expense, fixed, branches])
 
-  const { branches } = useConfigStore.getState()
   const branchOptions = branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))
+  const budgetOptions = useMemo(() => {
+    const base = [{ value: '', label: 'Sin presupuesto' }]
+    if (!form.branchId) return base
+    return [
+      ...base,
+      ...budgets
+        .filter((b) => b.branchId === form.branchId)
+        .map((b) => ({ value: b.id, label: `${b.name} (${b.monthlyLimit.toLocaleString('es-DO')} RD$)` })),
+    ]
+  }, [budgets, form.branchId])
+
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+
+  const onBranchChange = (branchId) => {
+    setForm((f) => {
+      const stillValid = !f.budgetId || budgets.some((b) => b.id === f.budgetId && b.branchId === branchId)
+      return { ...f, branchId, budgetId: stillValid ? f.budgetId : '' }
+    })
+  }
 
   const submit = () => {
     if (!form.concept.trim()) return setErr('Ingresa el concepto.')
     if (form.amount === '' || Number(form.amount) <= 0) return setErr('Ingresa un monto válido.')
     if (!form.branchId) return setErr('Selecciona una sucursal.')
+    const payload = { ...form, budgetId: form.budgetId || null }
     if (fixed) {
-      editing ? updateFixed(expense.id, form) : addFixed(form)
+      editing ? updateFixed(expense.id, payload) : addFixed(payload)
     } else {
-      editing ? updateExpense(expense.id, form) : addExpense(form)
+      editing ? updateExpense(expense.id, payload) : addExpense(payload)
     }
     toast.success(editing ? 'Gasto actualizado' : 'Gasto registrado')
     onClose()
@@ -66,7 +91,7 @@ export function ExpenseFormModal({ open, onClose, expense, mode = 'variable' }) 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Sucursal</label>
-            <Select value={form.branchId} onChange={(v) => set('branchId', v)} options={branchOptions} data-testid="expense-field-branch" />
+            <Select value={form.branchId} onChange={onBranchChange} options={branchOptions} data-testid="expense-field-branch" />
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Monto (RD$)</label>
@@ -82,6 +107,19 @@ export function ExpenseFormModal({ open, onClose, expense, mode = 'variable' }) 
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-600">Estado</label>
               <Select value={form.status} onChange={(v) => set('status', v)} options={STATUS_OPTIONS} data-testid="expense-field-status" />
+            </div>
+          )}
+          {!fixed && (
+            <div className="sm:col-span-2">
+              <label className="mb-1.5 block text-sm font-medium text-slate-600">Categoría de presupuesto</label>
+              <Select
+                value={form.budgetId}
+                onChange={(v) => set('budgetId', v)}
+                options={budgetOptions}
+                placeholder="Vincular a presupuesto"
+                data-testid="expense-field-budget"
+              />
+              <p className="mt-1 text-xs text-slate-400">El monto se restará del disponible del presupuesto seleccionado.</p>
             </div>
           )}
           {fixed && (

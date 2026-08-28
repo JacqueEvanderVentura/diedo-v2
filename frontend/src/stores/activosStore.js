@@ -24,11 +24,11 @@ export const statusMeta = (id) => ACTIVO_STATUSES.find((s) => s.id === id) || AC
 export const catName = (id) => ACTIVO_CATEGORIES.find((c) => c.id === id)?.name || id
 
 const SEED = [
-  { id: 'act-seed-1', name: 'Silla ergonómica de recepción', code: 'MOB-001', category: 'mobiliario', value: 8500, status: 'activo', location: 'Recepción', purchaseDate: '2024-03-12', notes: '' },
-  { id: 'act-seed-2', name: 'Laptop administración', code: 'TEC-014', category: 'tecnologia', value: 42000, status: 'activo', location: 'Oficina', purchaseDate: '2023-11-05', notes: 'MacBook Air M2' },
-  { id: 'act-seed-3', name: 'Esterilizador UV', code: 'EQP-003', category: 'equipos', value: 15600, status: 'reparacion', location: 'Sala 2', purchaseDate: '2024-01-20', notes: 'En taller externo' },
-  { id: 'act-seed-4', name: 'Aire acondicionado 24k BTU', code: 'EQP-009', category: 'equipos', value: 38000, status: 'activo', location: 'Sala principal', purchaseDate: '2022-06-18', notes: '' },
-  { id: 'act-seed-5', name: 'Impresora térmica antigua', code: 'TEC-002', category: 'tecnologia', value: 4200, status: 'baja', location: 'Almacén', purchaseDate: '2020-02-10', notes: 'Reemplazada' },
+  { id: 'act-seed-1', name: 'Silla ergonómica de recepción', code: 'MOB-001', category: 'mobiliario', value: 8500, status: 'activo', location: 'Recepción', branchId: 'charm-dn', purchaseDate: '2024-03-12', notes: '' },
+  { id: 'act-seed-2', name: 'Laptop administración', code: 'TEC-014', category: 'tecnologia', value: 42000, status: 'activo', location: 'Oficina', branchId: 'charm-dn', purchaseDate: '2023-11-05', notes: 'MacBook Air M2' },
+  { id: 'act-seed-3', name: 'Esterilizador UV', code: 'EQP-003', category: 'equipos', value: 15600, status: 'reparacion', location: 'Sala 2', branchId: 'charm-este', purchaseDate: '2024-01-20', notes: 'En taller externo' },
+  { id: 'act-seed-4', name: 'Aire acondicionado 24k BTU', code: 'EQP-009', category: 'equipos', value: 38000, status: 'activo', location: 'Sala principal', branchId: 'charm-santiago', purchaseDate: '2022-06-18', notes: '' },
+  { id: 'act-seed-5', name: 'Impresora térmica antigua', code: 'TEC-002', category: 'tecnologia', value: 4200, status: 'baja', location: 'Almacén', branchId: 'charm-dn', purchaseDate: '2020-02-10', notes: 'Reemplazada' },
 ]
 
 export const useActivosStore = create(
@@ -47,6 +47,7 @@ export const useActivosStore = create(
               value: Number(data.value) || 0,
               status: data.status || 'activo',
               location: data.location || '',
+              branchId: data.branchId || 'charm-dn',
               purchaseDate: data.purchaseDate || '',
               notes: data.notes || '',
             },

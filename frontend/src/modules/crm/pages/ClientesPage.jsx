@@ -12,6 +12,18 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { CustomerFormModal } from '../components/CustomerFormModal'
 import { CustomerDetailModal } from '../components/CustomerDetailModal'
 import { AppointmentFormModal } from '@/modules/agenda/components/AppointmentFormModal'
+import {
+  ResponsiveList,
+  ResponsiveTable,
+  ResponsiveCards,
+  MobileCard,
+  MobileField,
+  MobileCardHeader,
+  MobileCardFooter,
+  MobileCardGrid,
+} from '@/components/ui/ResponsiveList'
+import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
+import { useSortedRows } from '@/hooks/useTableControls'
 import { cn } from '@/lib/utils'
 
 const PAGE_SIZE = 10
@@ -62,8 +74,17 @@ export default function ClientesPage() {
       .filter((c) => branchFilter === 'all' || c.branchId === branchFilter)
   }, [customers, query, typeFilter, statusFilter, branchFilter])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const list = useMemo(() => filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE), [filtered, page])
+  const { rows: sortedFiltered, sortKey, sortDir, toggleSort } = useSortedRows(filtered, {
+    defaultSort: { key: 'name', dir: 'asc' },
+    accessors: {
+      name: (c) => c.name,
+      points: (c) => c.points || 0,
+      spent: (c) => spentByCustomer[c.id] || 0,
+    },
+  })
+
+  const totalPages = Math.max(1, Math.ceil(sortedFiltered.length / PAGE_SIZE))
+  const list = useMemo(() => sortedFiltered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE), [sortedFiltered, page])
 
   const stats = useMemo(() => {
     const base = customers.filter((c) => c.id !== 'walk-in')
@@ -121,19 +142,22 @@ export default function ClientesPage() {
         </div>
       </div>
 
-      <Card className="overflow-hidden" data-testid="clientes-table">
-        {list.length === 0 ? (
+      {list.length === 0 ? (
+        <Card className="overflow-hidden">
           <EmptyState icon={Users} title="Sin clientes" description="No hay clientes con esos filtros." className="py-14" />
-        ) : (
-          <div className="overflow-x-auto scrollbar-thin">
+        </Card>
+      ) : (
+        <ResponsiveList minTableWidth={760} columnCount={5}>
+          <ResponsiveTable testId="clientes-table">
+            <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
             <table className="w-full min-w-[760px] text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  <th className="px-6 py-4">Cliente</th>
-                  <th className="px-6 py-4">Tipo / Estado</th>
-                  <th className="px-6 py-4">Contacto</th>
-                  <th className="px-6 py-4 text-center">Puntos</th>
-                  <th className="px-6 py-4 text-right">Total gastado</th>
+                  <SortableTh column="name" className="px-6 py-4">Cliente</SortableTh>
+                  <SortableTh column="type" sortable={false} className="px-6 py-4">Tipo / Estado</SortableTh>
+                  <SortableTh column="contact" sortable={false} className="px-6 py-4">Contacto</SortableTh>
+                  <SortableTh column="points" align="center" className="px-6 py-4">Puntos</SortableTh>
+                  <SortableTh column="spent" align="right" className="px-6 py-4">Total gastado</SortableTh>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -175,13 +199,49 @@ export default function ClientesPage() {
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
-      </Card>
+            </SortableTableProvider>
+          </ResponsiveTable>
+          <ResponsiveCards testId="clientes-cards">
+            {list.map((c) => (
+              <MobileCard key={c.id} onClick={() => setDetail(c)} testId={`clientes-card-${c.id}`}>
+                <MobileCardHeader
+                  title={c.name}
+                  badge={
+                    <div className="flex flex-wrap justify-end gap-1">
+                      <Badge tone="neutral">{(c.customerType || 'b2c').toUpperCase()}</Badge>
+                      <Badge tone={CUSTOMER_STATUS_META[c.customerStatus || 'activo']?.tone || 'success'}>
+                        {CUSTOMER_STATUS_META[c.customerStatus || 'activo']?.label || 'Activo'}
+                      </Badge>
+                    </div>
+                  }
+                />
+                <MobileCardGrid>
+                  <MobileField label="Teléfono">
+                    {c.phone ? (
+                      <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" /> {c.phone}</span>
+                    ) : '—'}
+                  </MobileField>
+                  <MobileField label="Email">
+                    {c.email ? (
+                      <span className="inline-flex items-center gap-1 truncate"><Mail className="h-3 w-3 shrink-0" /> {c.email}</span>
+                    ) : '—'}
+                  </MobileField>
+                  <MobileField label="Puntos">
+                    <span className="inline-flex items-center gap-1 font-semibold text-amber-600"><Star className="h-3.5 w-3.5" /> {c.points || 0}</span>
+                  </MobileField>
+                  <MobileField label="Total gastado">
+                    <span className="font-heading font-bold text-slate-900">{formatDOP(spentByCustomer[c.id] || 0)}</span>
+                  </MobileField>
+                </MobileCardGrid>
+              </MobileCard>
+            ))}
+          </ResponsiveCards>
+        </ResponsiveList>
+      )}
 
-      {filtered.length > PAGE_SIZE && (
+      {sortedFiltered.length > PAGE_SIZE && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-slate-500">Página {page + 1} de {totalPages} · {filtered.length} clientes</p>
+          <p className="text-sm text-slate-500">Página {page + 1} de {totalPages} · {sortedFiltered.length} clientes</p>
           <div className="flex gap-2">
             <Button size="sm" variant="secondary" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
               <ChevronLeft className="h-4 w-4" /> Anterior

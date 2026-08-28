@@ -3,9 +3,24 @@ import { Plus, Search, Pencil, Trash2, Building2, Phone, Mail, MapPin } from 'lu
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { EmptyState } from '@/components/ui/EmptyState'
+import {
+  ResponsiveList,
+  ResponsiveTable,
+  ResponsiveCards,
+  MobileCard,
+  MobileField,
+  MobileCardHeader,
+  MobileCardFooter,
+  MobileCardGrid,
+} from '@/components/ui/ResponsiveList'
 import { useComprasStore } from '@/stores/comprasStore'
 import { useConfigStore } from '@/stores/configStore'
+import { buildBranchFilterOptions, matchesBranch } from '@/lib/branches'
+import { Select } from '@/components/ui/Select'
 import { SupplierFormModal } from './SupplierFormModal'
+import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
+import { useSortedRows } from '@/hooks/useTableControls'
 import { cn } from '@/lib/utils'
 
 export function ProveedoresTab() {
@@ -16,20 +31,33 @@ export function ProveedoresTab() {
   const branches = useConfigStore((s) => s.branches)
 
   const [search, setSearch] = useState('')
+  const [branchFilter, setBranchFilter] = useState('all')
   const [selectedId, setSelectedId] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
 
-  const filtered = useMemo(() => {
+  const filteredRaw = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return suppliers
-    return suppliers.filter(
-      (s) =>
+    return suppliers.filter((s) => {
+      if (!matchesBranch(s, branchFilter)) return false
+      if (!q) return true
+      return (
         s.name.toLowerCase().includes(q) ||
         s.rnc?.toLowerCase().includes(q) ||
         s.contactName?.toLowerCase().includes(q)
-    )
-  }, [suppliers, search])
+      )
+    })
+  }, [suppliers, search, branchFilter])
+
+  const { rows: filtered, sortKey, sortDir, toggleSort } = useSortedRows(filteredRaw, {
+    defaultSort: { key: 'name', dir: 'asc' },
+    accessors: {
+      name: (s) => s.name,
+      rnc: (s) => s.rnc || '',
+      contact: (s) => s.contactName || '',
+      products: (s) => s.productCount ?? 0,
+    },
+  })
 
   const selected = suppliers.find((s) => s.id === selectedId) || filtered[0] || null
 
@@ -64,48 +92,80 @@ export function ProveedoresTab() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative max-w-md flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <Input className="pl-9" placeholder="Buscar proveedor..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative max-w-md flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input className="pl-9" placeholder="Buscar proveedor..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <Select value={branchFilter} onChange={setBranchFilter} options={buildBranchFilterOptions(branches)} size="sm" className="min-w-[180px]" data-testid="proveedores-branch-filter" />
         </div>
         <Button onClick={openCreate}><Plus className="h-4 w-4" /> Registrar Proveedor</Button>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-5">
         <div className="lg:col-span-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-                <th className="px-4 py-3">Proveedor</th>
-                <th className="px-4 py-3">RNC</th>
-                <th className="px-4 py-3">Contacto</th>
-                <th className="px-4 py-3 text-center">Productos</th>
-                <th className="px-4 py-3 text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-slate-400">
-                    No hay proveedores registrados.
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((sup) => (
-                  <tr
+          {filtered.length === 0 ? (
+            <EmptyState icon={Building2} title="Sin proveedores" description="No hay proveedores registrados." className="py-12" />
+          ) : (
+            <ResponsiveList columnCount={5}>
+              <ResponsiveTable testId="proveedores-table" wrapCard={false}>
+                <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+                      <SortableTh column="name" className="px-4 py-3">Proveedor</SortableTh>
+                      <SortableTh column="rnc" className="px-4 py-3">RNC</SortableTh>
+                      <SortableTh column="contact" className="px-4 py-3">Contacto</SortableTh>
+                      <SortableTh column="products" align="center" className="px-4 py-3">Productos</SortableTh>
+                      <SortableTh sortable={false} align="right" className="px-4 py-3">Acciones</SortableTh>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((sup) => (
+                      <tr
+                        key={sup.id}
+                        onClick={() => setSelectedId(sup.id)}
+                        className={cn(
+                          'cursor-pointer border-b border-slate-100 transition-colors hover:bg-slate-50',
+                          selected?.id === sup.id && 'bg-blue-50/60'
+                        )}
+                      >
+                        <td className="px-4 py-3 font-medium text-slate-800">{sup.name}</td>
+                        <td className="px-4 py-3 text-slate-600">{sup.rnc || '—'}</td>
+                        <td className="px-4 py-3 text-slate-600">{sup.contactName || '—'}</td>
+                        <td className="px-4 py-3 text-center text-slate-600">{sup.productCount ?? 0}</td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex justify-end gap-1">
+                            <button type="button" onClick={(e) => { e.stopPropagation(); openEdit(sup) }} className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600">
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(sup.id) }} className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-red-500">
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                </SortableTableProvider>
+              </ResponsiveTable>
+              <ResponsiveCards testId="proveedores-cards" className="p-4">
+                {filtered.map((sup) => (
+                  <MobileCard
                     key={sup.id}
                     onClick={() => setSelectedId(sup.id)}
-                    className={cn(
-                      'cursor-pointer border-b border-slate-100 transition-colors hover:bg-slate-50',
-                      selected?.id === sup.id && 'bg-blue-50/60'
-                    )}
+                    testId={`proveedores-card-${sup.id}`}
+                    className={selected?.id === sup.id ? 'ring-2 ring-blue-200' : undefined}
                   >
-                    <td className="px-4 py-3 font-medium text-slate-800">{sup.name}</td>
-                    <td className="px-4 py-3 text-slate-600">{sup.rnc || '—'}</td>
-                    <td className="px-4 py-3 text-slate-600">{sup.contactName || '—'}</td>
-                    <td className="px-4 py-3 text-center text-slate-600">{sup.productCount ?? 0}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-1">
+                    <MobileCardHeader title={sup.name} subtitle={sup.rnc ? `RNC: ${sup.rnc}` : undefined} />
+                    <MobileCardGrid>
+                      <MobileField label="Contacto">{sup.contactName || '—'}</MobileField>
+                      <MobileField label="Productos">{sup.productCount ?? 0}</MobileField>
+                    </MobileCardGrid>
+                    <MobileCardFooter>
+                      <span />
+                      <div className="flex gap-1">
                         <button type="button" onClick={(e) => { e.stopPropagation(); openEdit(sup) }} className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600">
                           <Pencil className="h-4 w-4" />
                         </button>
@@ -113,12 +173,12 @@ export function ProveedoresTab() {
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                    </MobileCardFooter>
+                  </MobileCard>
+                ))}
+              </ResponsiveCards>
+            </ResponsiveList>
+          )}
         </div>
 
         <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-white p-5">

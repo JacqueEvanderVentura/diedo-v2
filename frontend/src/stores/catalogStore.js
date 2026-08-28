@@ -1,27 +1,46 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { PRODUCTS } from '@/data/products'
+import { PRODUCTS, SUPPLIES } from '@/data/products'
 
 export const LOW_STOCK_THRESHOLD = 5
 const genId = () => `prod-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 
-// Single source of truth for products/services. POS + Inventarios both read this.
-const SEED = PRODUCTS.map((p) => ({
-  id: p.id,
-  sku: p.sku ?? null,
-  name: p.name,
-  price: p.price,
-  category: p.category,
-  type: p.type, // 'service' | 'product'
-  stock: p.type === 'service' ? null : p.stock ?? 0,
-  minStock: p.minStock ?? 0,
-  taxPct: 18,
-  branchId: 'charm-dn',
-}))
+export function isPosSellable(product) {
+  return product?.type === 'product' || product?.type === 'service'
+}
+
+export function isStockTracked(product) {
+  return product?.type === 'product' || product?.type === 'supply'
+}
+
+function normalizeSeed(p) {
+  const isSupply = p.type === 'supply'
+  return {
+    id: p.id,
+    sku: p.sku ?? null,
+    name: p.name,
+    price: isSupply ? 0 : p.price,
+    category: p.category,
+    type: p.type,
+    stock: p.type === 'service' ? null : p.stock ?? 0,
+    minStock: p.minStock ?? 0,
+    taxPct: isSupply ? 0 : 18,
+    branchId: p.branchId || 'charm-dn',
+    branchIds: p.branchIds || [p.branchId || 'charm-dn'],
+    cost: Number(p.cost) || 0,
+    unit: p.unit || 'ud',
+    subtype: isSupply ? 'raw' : 'sale',
+  }
+}
+
+const SEED = [
+  ...PRODUCTS.map((p) => normalizeSeed(p)),
+  ...SUPPLIES.map((p) => normalizeSeed(p)),
+]
 
 export function deriveLowStock(products) {
   return products
-    .filter((p) => p.type === 'product' && p.stock !== null && p.stock <= LOW_STOCK_THRESHOLD)
+    .filter((p) => isStockTracked(p) && p.stock !== null && p.stock <= (p.minStock || LOW_STOCK_THRESHOLD))
     .sort((a, b) => a.stock - b.stock)
     .map((p) => ({
       id: p.id,
@@ -38,18 +57,20 @@ export const useCatalogStore = create(
       products: SEED,
 
       addProduct: (data) => {
+        const type = data.type || 'product'
+        const isSupply = type === 'supply'
         const product = {
           id: genId(),
           sku: data.sku || null,
           name: data.name,
-          price: Number(data.price) || 0,
-          category: data.category || 'otros',
-          type: data.type || 'product',
-          stock: data.type === 'service' ? null : Number(data.stock) || 0,
-          taxPct: data.appliesTax === false ? 0 : Number(data.taxPct) || 18,
+          price: isSupply ? 0 : Number(data.price) || 0,
+          category: data.category || (isSupply ? 'insumos' : 'otros'),
+          type,
+          stock: type === 'service' ? null : Number(data.stock) || 0,
+          taxPct: isSupply ? 0 : data.appliesTax === false ? 0 : Number(data.taxPct) || 18,
           branchId: data.branchId || data.branchIds?.[0] || 'charm-dn',
           branchIds: data.branchIds || (data.branchId ? [data.branchId] : ['charm-dn']),
-          subtype: data.subtype || 'sale',
+          subtype: isSupply ? 'raw' : data.subtype || 'sale',
           cost: Number(data.cost) || 0,
           minStock: Number(data.minStock) || 0,
           requiresSize: !!data.requiresSize,
@@ -65,17 +86,21 @@ export const useCatalogStore = create(
 
       updateProduct: (id, data) =>
         set((s) => ({
-          products: s.products.map((p) =>
-            p.id === id
-              ? {
-                  ...p,
-                  ...data,
-                  price: Number.isFinite(Number(data.price)) ? Number(data.price) : p.price,
-                  taxPct: Number(data.taxPct) || p.taxPct,
-                  stock: data.type === 'service' ? null : Number(data.stock) || 0,
-                }
-              : p
-          ),
+          products: s.products.map((p) => {
+            if (p.id !== id) return p
+            const type = data.type || p.type
+            const isSupply = type === 'supply'
+            return {
+              ...p,
+              ...data,
+              type,
+              price: isSupply ? 0 : Number.isFinite(Number(data.price)) ? Number(data.price) : p.price,
+              taxPct: isSupply ? 0 : Number(data.taxPct) || p.taxPct,
+              stock: type === 'service' ? null : Number(data.stock) || 0,
+              cost: Number.isFinite(Number(data.cost)) ? Number(data.cost) : p.cost,
+              subtype: isSupply ? 'raw' : data.subtype || p.subtype,
+            }
+          }),
         })),
 
       deleteProduct: (id) => set((s) => ({ products: s.products.filter((p) => p.id !== id) })),
@@ -83,7 +108,6 @@ export const useCatalogStore = create(
       setStock: (id, stock) =>
         set((s) => ({ products: s.products.map((p) => (p.id === id ? { ...p, stock: Math.max(0, Number(stock) || 0) } : p)) })),
 
-      // Called on POS checkout — decrements stock of product-type items sold.
       decrementForSale: (items) =>
         set((s) => ({
           products: s.products.map((p) => {
@@ -99,18 +123,23 @@ export const useCatalogStore = create(
         set((s) => ({
           products: s.products.map((p) => {
             const row = items.find((i) => i.id === p.id)
-            if (!row || p.type !== 'product' || p.stock === null) return p
+            if (!row || !isStockTracked(p) || p.stock === null) return p
             const next = p.stock - (Number(row.qty) || 0)
             return { ...p, stock: p.allowNegativeStock ? next : Math.max(0, next) }
           }),
         })),
 
+      getSupplies: () => get().products.filter((p) => p.type === 'supply'),
+
       getInventoryStats: () => {
-        const products = get().products.filter((p) => p.type === 'product')
-        const low = products.filter((p) => p.stock !== null && p.stock > 0 && p.stock <= (p.minStock || LOW_STOCK_THRESHOLD)).length
-        const out = products.filter((p) => p.stock === 0).length
-        const totalValue = products.reduce((sum, p) => sum + (Number(p.price) || 0) * (Number(p.stock) || 0), 0)
-        return { total: products.length, low, out, totalValue }
+        const stocked = get().products.filter((p) => isStockTracked(p))
+        const low = stocked.filter((p) => p.stock !== null && p.stock > 0 && p.stock <= (p.minStock || LOW_STOCK_THRESHOLD)).length
+        const out = stocked.filter((p) => p.stock === 0).length
+        const totalValue = stocked.reduce(
+          (sum, p) => sum + (Number(p.cost) || Number(p.price) || 0) * (Number(p.stock) || 0),
+          0
+        )
+        return { total: stocked.length, low, out, totalValue, supplies: get().getSupplies().length }
       },
 
       getLowStock: () => deriveLowStock(get().products),

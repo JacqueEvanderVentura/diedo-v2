@@ -7,7 +7,21 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
+import { Select } from '@/components/ui/Select'
 import { Modal } from '@/components/ui/Modal'
+import {
+  ResponsiveList,
+  ResponsiveTable,
+  ResponsiveCards,
+  MobileCard,
+  MobileField,
+  MobileCardHeader,
+  MobileCardFooter,
+  MobileCardGrid,
+} from '@/components/ui/ResponsiveList'
+import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
+import { useSortedRows } from '@/hooks/useTableControls'
+import { matchesBranch, buildBranchFilterOptions } from '@/lib/branches'
 import { cn } from '@/lib/utils'
 
 const ROLE_TONE = { Administrador: 'brand', Gerente: 'success', Supervisor: 'warning', Cajero: 'neutral', Vendedor: 'neutral' }
@@ -21,6 +35,7 @@ export default function UsuariosPage() {
   const deleteUser = useConfigStore((s) => s.deleteUser)
 
   const [query, setQuery] = useState('')
+  const [branchFilter, setBranchFilter] = useState('all')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY)
@@ -36,10 +51,26 @@ export default function UsuariosPage() {
     inactivos: users.filter((u) => !u.active).length,
   }), [users])
 
-  const list = useMemo(() => {
+  const listFiltered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return users.filter((u) => !q || u.name.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q))
-  }, [users, query])
+    return users.filter((u) => {
+      if (!matchesBranch(u, branchFilter)) return false
+      return !q || u.name.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)
+    })
+  }, [users, query, branchFilter])
+
+  const branchLabel = (ids) => (ids || []).map((bid) => branches.find((b) => b.id === bid)?.name || bid).join(', ')
+
+  const { rows: list, sortKey, sortDir, toggleSort } = useSortedRows(listFiltered, {
+    defaultSort: { key: 'name', dir: 'asc' },
+    accessors: {
+      name: (u) => u.name,
+      role: (u) => u.role || '',
+      branches: (u) => branchLabel(u.branchIds),
+      lastAccess: (u) => u.lastAccess || '',
+      status: (u) => u.active ? 1 : 0,
+    },
+  })
 
   const toggleBranch = (id) => {
     setForm((f) => ({
@@ -54,7 +85,7 @@ export default function UsuariosPage() {
     if (!editing && (!form.password || form.password.length < 6)) return setErr('La contraseña debe tener al menos 6 caracteres.')
     const { password, ...data } = form
     if (editing) { updateUser(editing.id, data); toast.success('Usuario actualizado') }
-    else { addUser(data); toast.success('Usuario creado') }
+    else { addUser({ ...data, password }); toast.success('Usuario creado') }
     setModalOpen(false)
   }
 
@@ -74,58 +105,100 @@ export default function UsuariosPage() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="relative min-w-[200px] flex-1 max-w-md">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar usuarios..." className="w-full rounded-xl border-0 bg-slate-50 py-2.5 pl-10 pr-4 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-600" />
+        <div className="flex flex-1 flex-wrap items-center gap-3">
+          <div className="relative min-w-[200px] flex-1 max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar usuarios..." className="w-full rounded-xl border-0 bg-slate-50 py-2.5 pl-10 pr-4 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-600" />
+          </div>
+          <Select value={branchFilter} onChange={setBranchFilter} options={buildBranchFilterOptions(branches)} size="sm" className="min-w-[180px]" data-testid="usuarios-branch-filter" />
         </div>
         <Button onClick={() => { setEditing(null); setModalOpen(true) }} data-testid="usuario-new-btn"><Plus className="h-4 w-4" /> Nuevo Usuario</Button>
       </div>
 
       <Card className="overflow-hidden" data-testid="usuarios-table">
-        <div className="overflow-x-auto scrollbar-thin">
-          <table className="w-full min-w-[900px] text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
-                <th className="px-6 py-4">Usuario</th>
-                <th className="px-6 py-4">Rol</th>
-                <th className="px-6 py-4">Sucursales</th>
-                <th className="px-6 py-4">Último Acceso</th>
-                <th className="px-6 py-4">Estado</th>
-                <th className="px-6 py-4 text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {list.map((u) => (
-                <tr key={u.id} className="hover:bg-slate-50/60" data-testid={`usuario-row-${u.id}`}>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">{u.name.split(' ').map((p) => p[0]).slice(0, 2).join('')}</div>
-                      <div><p className="font-semibold text-slate-800">{u.name}</p><p className="text-xs text-slate-400">{u.email}</p></div>
+        <ResponsiveList minTableWidth={900} columnCount={6}>
+          <ResponsiveTable testId="usuarios-table" wrapCard={false}>
+            <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
+            <table className="w-full min-w-[900px] text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  <SortableTh column="name" className="px-6 py-4">Usuario</SortableTh>
+                  <SortableTh column="role" className="px-6 py-4">Rol</SortableTh>
+                  <SortableTh column="branches" className="px-6 py-4">Sucursales</SortableTh>
+                  <SortableTh column="lastAccess" className="px-6 py-4">Último Acceso</SortableTh>
+                  <SortableTh column="status" className="px-6 py-4">Estado</SortableTh>
+                  <SortableTh sortable={false} align="right" className="px-6 py-4">Acciones</SortableTh>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {list.map((u) => (
+                  <tr key={u.id} className="hover:bg-slate-50/60" data-testid={`usuario-row-${u.id}`}>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">{u.name.split(' ').map((p) => p[0]).slice(0, 2).join('')}</div>
+                        <div><p className="font-semibold text-slate-800">{u.name}</p><p className="text-xs text-slate-400">{u.email}</p></div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4"><Badge tone={ROLE_TONE[u.role] || 'neutral'}>{u.role}</Badge></td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap gap-1">
+                        {(u.branchIds || []).map((bid) => (
+                          <span key={bid} className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">{branches.find((b) => b.id === bid)?.name || bid}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-slate-400">{u.lastAccess || '—'}</td>
+                    <td className="px-6 py-4">
+                      <button onClick={() => updateUser(u.id, { active: !u.active })}><Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Inactivo'}</Badge></button>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex justify-end gap-1">
+                        <button onClick={() => { setEditing(u); setModalOpen(true) }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></button>
+                        <button onClick={() => { deleteUser(u.id); toast.success('Usuario eliminado') }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            </SortableTableProvider>
+          </ResponsiveTable>
+          <ResponsiveCards testId="usuarios-cards" className="p-4">
+            {list.map((u) => (
+              <MobileCard key={u.id} testId={`usuario-card-${u.id}`}>
+                <MobileCardHeader
+                  title={u.name}
+                  subtitle={u.email}
+                  badge={
+                    <div className="flex flex-wrap justify-end gap-1">
+                      <Badge tone={ROLE_TONE[u.role] || 'neutral'}>{u.role}</Badge>
+                      <button onClick={() => updateUser(u.id, { active: !u.active })}>
+                        <Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Inactivo'}</Badge>
+                      </button>
                     </div>
-                  </td>
-                  <td className="px-6 py-4"><Badge tone={ROLE_TONE[u.role] || 'neutral'}>{u.role}</Badge></td>
-                  <td className="px-6 py-4">
+                  }
+                />
+                <MobileCardGrid>
+                  <MobileField label="Sucursales" fullWidth>
                     <div className="flex flex-wrap gap-1">
                       {(u.branchIds || []).map((bid) => (
                         <span key={bid} className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">{branches.find((b) => b.id === bid)?.name || bid}</span>
                       ))}
                     </div>
-                  </td>
-                  <td className="px-6 py-4 text-slate-400">{u.lastAccess || '—'}</td>
-                  <td className="px-6 py-4">
-                    <button onClick={() => updateUser(u.id, { active: !u.active })}><Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Inactivo'}</Badge></button>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex justify-end gap-1">
-                      <button onClick={() => { setEditing(u); setModalOpen(true) }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></button>
-                      <button onClick={() => { deleteUser(u.id); toast.success('Usuario eliminado') }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </MobileField>
+                  <MobileField label="Último acceso">{u.lastAccess || '—'}</MobileField>
+                </MobileCardGrid>
+                <MobileCardFooter>
+                  <span />
+                  <div className="flex gap-1">
+                    <button onClick={() => { setEditing(u); setModalOpen(true) }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></button>
+                    <button onClick={() => { deleteUser(u.id); toast.success('Usuario eliminado') }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                </MobileCardFooter>
+              </MobileCard>
+            ))}
+          </ResponsiveCards>
+        </ResponsiveList>
       </Card>
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Editar Usuario' : 'Nuevo Usuario'} wide testId="usuario-modal">

@@ -32,18 +32,25 @@ export function DayView({ dateKey, appointments, onSlotClick, onAppointmentClick
                 {CABINAS.map((c) => {
                   const apt = byCabina[c.id]?.find((a) => a.time === slot)
                   return (
-                    <button
+                    <div
                       key={`${c.id}-${slot}`}
-                      type="button"
-                      onClick={() => (apt ? onAppointmentClick(apt) : onSlotClick({ date: dateKey, time: slot, cabinaId: c.id }))}
                       data-testid={`calendar-slot-${c.id}-${slot}`}
                       className={cn(
-                        'min-h-[52px] border-b border-l border-slate-100 p-1 text-left transition-colors hover:bg-blue-50/50',
-                        apt && 'bg-blue-50/30'
+                        'min-h-[52px] border-b border-l border-slate-100 p-1',
+                        apt ? 'bg-blue-50/30' : 'hover:bg-blue-50/50'
                       )}
                     >
-                      {apt && <AppointmentChip apt={apt} compact onClick={onAppointmentClick} />}
-                    </button>
+                      {apt ? (
+                        <AppointmentChip apt={apt} compact onClick={onAppointmentClick} />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onSlotClick({ date: dateKey, time: slot, cabinaId: c.id })}
+                          className="h-full min-h-[44px] w-full rounded-lg text-left transition-colors hover:bg-blue-50/50"
+                          aria-label={`Agendar ${slot} en ${c.name}`}
+                        />
+                      )}
+                    </div>
                   )
                 })}
               </div>

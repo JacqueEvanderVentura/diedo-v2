@@ -19,8 +19,20 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
+import {
+  ResponsiveList,
+  ResponsiveTable,
+  ResponsiveCards,
+  MobileCard,
+  MobileField,
+  MobileCardHeader,
+  MobileCardGrid,
+} from '@/components/ui/ResponsiveList'
 import { MovementModal } from '../components/MovementModal'
 import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
+import { DataFilterBar } from '@/components/ui/DataFilterBar'
+import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
+import { useSortedRows } from '@/hooks/useTableControls'
 import { filterMovements, methodLabel, PAYMENT_BREAKDOWN, sumByMethod } from '../lib/caja'
 import { cn } from '@/lib/utils'
 
@@ -56,6 +68,109 @@ function KpiCard({ label, value, sub, children }) {
   )
 }
 
+function RegisterHistoryPanel({ history }) {
+  const [search, setSearch] = useState('')
+  const [branchFilter, setBranchFilter] = useState('all')
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return history.filter((h) => {
+      if (branchFilter !== 'all' && h.branchId !== branchFilter) return false
+      if (!q) return true
+      return h.userName?.toLowerCase().includes(q)
+    })
+  }, [history, search, branchFilter])
+
+  const { rows: displayRows, sortKey, sortDir, toggleSort } = useSortedRows(filtered, {
+    defaultSort: { key: 'closedAt', dir: 'desc' },
+    accessors: {
+      closedAt: (h) => new Date(h.closedAt),
+      userName: (h) => h.userName || '',
+      openingCash: (h) => h.openingCash || 0,
+      expected: (h) => h.expected || 0,
+      actual: (h) => h.actual || 0,
+      difference: (h) => h.difference || 0,
+    },
+  })
+
+  if (!history.length) return null
+  return (
+    <Card className="overflow-hidden p-0">
+      <div className="border-b border-slate-100 px-6 py-4">
+        <h3 className="font-heading text-lg font-semibold text-slate-800">Historial de Cajas</h3>
+      </div>
+      <div className="px-4 pt-4">
+        <DataFilterBar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Buscar por usuario..."
+          showBranch
+          branchId={branchFilter}
+          onBranchChange={setBranchFilter}
+          testId="caja-history-filters"
+        />
+      </div>
+      <ResponsiveList columnCount={7}>
+        <ResponsiveTable testId="caja-history-table" wrapCard={false}>
+          <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50/50 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <SortableTh column="closedAt" className="px-4 py-3">Fecha</SortableTh>
+                <SortableTh column="userName" className="px-4 py-3">Usuario</SortableTh>
+                <SortableTh column="openingCash" align="right" className="px-4 py-3">Inicial</SortableTh>
+                <SortableTh column="expected" align="right" className="px-4 py-3">Esperado</SortableTh>
+                <SortableTh column="actual" align="right" className="px-4 py-3">Real</SortableTh>
+                <SortableTh column="difference" align="right" className="px-4 py-3">Diferencia</SortableTh>
+                <SortableTh column="status" sortable={false} align="center" className="px-4 py-3">Estado</SortableTh>
+              </tr>
+            </thead>
+            <tbody>
+              {displayRows.map((h) => (
+                <tr key={h.id} className="border-b border-slate-50">
+                  <td className="px-4 py-3 text-slate-600">{fmtDateTime(h.closedAt)}</td>
+                  <td className="px-4 py-3">{h.userName}</td>
+                  <td className="px-4 py-3 text-right">{formatDOP(h.openingCash)}</td>
+                  <td className="px-4 py-3 text-right">{formatDOP(h.expected)}</td>
+                  <td className="px-4 py-3 text-right">{formatDOP(h.actual)}</td>
+                  <td className={cn('px-4 py-3 text-right font-medium', h.difference !== 0 ? 'text-amber-600' : 'text-slate-600')}>
+                    {formatDOP(h.difference)}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <Badge tone={h.difference === 0 ? 'success' : 'warning'}>{h.difference === 0 ? 'Cuadrado' : 'Diferencia'}</Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </SortableTableProvider>
+        </ResponsiveTable>
+        <ResponsiveCards testId="caja-history-cards" className="p-4">
+          {displayRows.map((h) => (
+            <MobileCard key={h.id} testId={`caja-history-card-${h.id}`}>
+              <MobileCardHeader
+                title={h.userName}
+                subtitle={fmtDateTime(h.closedAt)}
+                badge={<Badge tone={h.difference === 0 ? 'success' : 'warning'}>{h.difference === 0 ? 'Cuadrado' : 'Diferencia'}</Badge>}
+              />
+              <MobileCardGrid>
+                <MobileField label="Inicial">{formatDOP(h.openingCash)}</MobileField>
+                <MobileField label="Esperado">{formatDOP(h.expected)}</MobileField>
+                <MobileField label="Real">{formatDOP(h.actual)}</MobileField>
+                <MobileField label="Diferencia">
+                  <span className={cn('font-medium', h.difference !== 0 ? 'text-amber-600' : 'text-slate-600')}>
+                    {formatDOP(h.difference)}
+                  </span>
+                </MobileField>
+              </MobileCardGrid>
+            </MobileCard>
+          ))}
+        </ResponsiveCards>
+      </ResponsiveList>
+    </Card>
+  )
+}
+
 export default function CajaPage() {
   const register = usePosStore((s) => s.register)
   const shiftSales = usePosStore((s) => s.shiftSales)
@@ -69,6 +184,9 @@ export default function CajaPage() {
   const getCashExpenses = usePosStore((s) => s.getCashExpenses)
   const getShiftSalesTotal = usePosStore((s) => s.getShiftSalesTotal)
   const getShiftMovements = usePosStore((s) => s.getShiftMovements)
+  const getPendingTotal = usePosStore((s) => s.getPendingTotal)
+  const getOpenQuotesTotal = usePosStore((s) => s.getOpenQuotesTotal)
+  const openQuotes = usePosStore((s) => s.openQuotes)
   const openRegister = usePosStore((s) => s.openRegister)
   const closeRegister = usePosStore((s) => s.closeRegister)
   const lastCloseSummary = usePosStore((s) => s.lastCloseSummary)
@@ -87,6 +205,8 @@ export default function CajaPage() {
   const expectedCash = getCashInDrawer()
 
   const salesCount = shiftSales.length
+  const pendingCxc = getPendingTotal()
+  const openQuotesTotal = getOpenQuotesTotal()
 
   const handleOpen = () => {
     openRegister(openInput || 0)
@@ -141,45 +261,7 @@ export default function CajaPage() {
           </Card>
         )}
 
-        {registerHistory.length > 0 && (
-          <Card className="overflow-hidden p-0">
-            <div className="border-b border-slate-100 px-6 py-4">
-              <h3 className="font-heading text-lg font-semibold text-slate-800">Historial de Cajas</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/50 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    <th className="px-4 py-3">Fecha</th>
-                    <th className="px-4 py-3">Usuario</th>
-                    <th className="px-4 py-3 text-right">Inicial</th>
-                    <th className="px-4 py-3 text-right">Esperado</th>
-                    <th className="px-4 py-3 text-right">Real</th>
-                    <th className="px-4 py-3 text-right">Diferencia</th>
-                    <th className="px-4 py-3 text-center">Estado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {registerHistory.map((h) => (
-                    <tr key={h.id} className="border-b border-slate-50">
-                      <td className="px-4 py-3 text-slate-600">{fmtDateTime(h.closedAt)}</td>
-                      <td className="px-4 py-3">{h.userName}</td>
-                      <td className="px-4 py-3 text-right">{formatDOP(h.openingCash)}</td>
-                      <td className="px-4 py-3 text-right">{formatDOP(h.expected)}</td>
-                      <td className="px-4 py-3 text-right">{formatDOP(h.actual)}</td>
-                      <td className={cn('px-4 py-3 text-right font-medium', h.difference !== 0 ? 'text-amber-600' : 'text-slate-600')}>
-                        {formatDOP(h.difference)}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Badge tone={h.difference === 0 ? 'success' : 'warning'}>{h.difference === 0 ? 'Cuadrado' : 'Diferencia'}</Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        )}
+        <RegisterHistoryPanel history={registerHistory} />
       </div>
     )
   }
@@ -193,7 +275,7 @@ export default function CajaPage() {
           </div>
           <div>
             <h2 className="font-heading text-xl font-bold text-slate-900">Caja Abierta</h2>
-            <p className="text-sm text-slate-500">Abierta desde {fmtTime(register.openedAt)} hrs</p>
+            <p className="text-sm text-slate-500">Abierta desde {fmtDateTime(register.openedAt)}</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -233,6 +315,16 @@ export default function CajaPage() {
                 </span>
               </div>
             </KpiCard>
+            <KpiCard
+              label="CxC pendiente"
+              value={formatDOP(pendingCxc)}
+              sub="Cuentas por cobrar activas"
+            />
+            <KpiCard
+              label="Cotizaciones abiertas"
+              value={formatDOP(openQuotesTotal)}
+              sub={`${openQuotes.length} cuenta${openQuotes.length !== 1 ? 's' : ''} abierta${openQuotes.length !== 1 ? 's' : ''}`}
+            />
           </div>
 
           <Card className="p-6" data-testid="caja-movements">
@@ -347,45 +439,7 @@ export default function CajaPage() {
         </Card>
       </div>
 
-      {registerHistory.length > 0 && (
-        <Card className="overflow-hidden p-0">
-          <div className="border-b border-slate-100 px-6 py-4">
-            <h3 className="font-heading text-lg font-semibold text-slate-800">Historial de Cajas</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/50 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  <th className="px-4 py-3">Fecha</th>
-                  <th className="px-4 py-3">Usuario</th>
-                  <th className="px-4 py-3 text-right">Inicial</th>
-                  <th className="px-4 py-3 text-right">Esperado</th>
-                  <th className="px-4 py-3 text-right">Real</th>
-                  <th className="px-4 py-3 text-right">Diferencia</th>
-                  <th className="px-4 py-3 text-center">Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {registerHistory.map((h) => (
-                  <tr key={h.id} className="border-b border-slate-50">
-                    <td className="px-4 py-3 text-slate-600">{fmtDateTime(h.closedAt)}</td>
-                    <td className="px-4 py-3">{h.userName}</td>
-                    <td className="px-4 py-3 text-right">{formatDOP(h.openingCash)}</td>
-                    <td className="px-4 py-3 text-right">{formatDOP(h.expected)}</td>
-                    <td className="px-4 py-3 text-right">{formatDOP(h.actual)}</td>
-                    <td className={cn('px-4 py-3 text-right font-medium', h.difference !== 0 ? 'text-amber-600' : 'text-slate-600')}>
-                      {formatDOP(h.difference)}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <Badge tone={h.difference === 0 ? 'success' : 'warning'}>{h.difference === 0 ? 'Cuadrado' : 'Diferencia'}</Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+      <RegisterHistoryPanel history={registerHistory} />
 
       <MovementModal open={movementOpen} onClose={() => setMovementOpen(false)} />
     </div>

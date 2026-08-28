@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react'
 import { toast } from 'sonner'
-import { Clock, Plus, Search, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Clock, Plus, Search, ChevronLeft, ChevronRight, Link2 } from 'lucide-react'
 import { useAgendaStore, todayKey } from '@/stores/agendaStore'
 import { useConfigStore } from '@/stores/configStore'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { AppointmentFormModal } from '../components/AppointmentFormModal'
+import { BookingLinkModal } from '../components/BookingLinkModal'
 import { WeekView } from '../components/calendar/WeekView'
 import { DayView } from '../components/calendar/DayView'
 import { MonthView } from '../components/calendar/MonthView'
@@ -15,7 +16,9 @@ import {
   addMonthsKey,
   formatLongDate,
   formatMonthYear,
+  formatWeekRange,
   fromKey,
+  startOfWeekMonday,
 } from '../lib/calendar'
 import { cn } from '@/lib/utils'
 
@@ -34,27 +37,29 @@ export default function CalendarioPage() {
   const [showCancelled, setShowCancelled] = useState(false)
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
+  const [linkModalOpen, setLinkModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [defaults, setDefaults] = useState({})
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return appointments.filter((a) => {
+      if (a.branchId && a.branchId !== branchId) return false
       if (!showCancelled && a.status === 'cancelada') return false
       if (!q) return true
       return a.customerName.toLowerCase().includes(q) || (a.serviceName || '').toLowerCase().includes(q)
     })
-  }, [appointments, search, showCancelled])
+  }, [appointments, search, showCancelled, branchId])
 
   const step = (dir) => {
     if (view === 'month') setCursor((c) => addMonthsKey(c, dir))
-    else if (view === 'week') setCursor((c) => addDaysKey(c, dir * 7))
+    else if (view === 'week') setCursor((c) => addDaysKey(startOfWeekMonday(c), dir * 7))
     else setCursor((c) => addDaysKey(c, dir))
   }
 
   const openNew = (slot = {}) => {
     setEditing(null)
-    setDefaults({ date: cursor, time: '08:00', cabinaId: 'cab1', ...slot })
+    setDefaults({ date: cursor, time: '08:00', cabinaId: 'cab1', branchId, ...slot })
     setModalOpen(true)
   }
 
@@ -69,7 +74,8 @@ export default function CalendarioPage() {
     setView('day')
   }
 
-  const rangeLabel = view === 'month' ? formatMonthYear(cursor) : view === 'week' ? formatMonthYear(cursor) : formatLongDate(cursor)
+  const rangeLabel =
+    view === 'month' ? formatMonthYear(cursor) : view === 'week' ? formatWeekRange(cursor) : formatLongDate(cursor)
 
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-4 p-4 sm:p-6">
@@ -85,6 +91,9 @@ export default function CalendarioPage() {
             className="w-auto min-w-[140px]"
             data-testid="calendar-branch"
           />
+          <Button variant="secondary" size="sm" onClick={() => setLinkModalOpen(true)} data-testid="calendar-booking-link">
+            <Link2 className="h-4 w-4" /> Enlace agendación
+          </Button>
           <Button variant="secondary" size="sm" onClick={() => toast('Horarios (próximamente)')} data-testid="calendar-schedules">
             <Clock className="h-4 w-4" /> Horarios
           </Button>
@@ -187,6 +196,13 @@ export default function CalendarioPage() {
         defaultDate={defaults.date || cursor}
         defaultSlot={defaults}
         wide
+      />
+
+      <BookingLinkModal
+        open={linkModalOpen}
+        onClose={() => setLinkModalOpen(false)}
+        branchId={branchId}
+        branchName={branches.find((b) => b.id === branchId)?.name || ''}
       />
     </div>
   )

@@ -20,6 +20,7 @@ export function ReportFilterBar({
   extra,
   onRefresh,
   showPeriod = false,
+  periodOptions,
   showBranch = true,
   showSearch = true,
   testId = 'report-filters',
@@ -44,7 +45,7 @@ export function ReportFilterBar({
         {showPeriod && onPeriodChange && (
           <div className="flex-1">
             <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-400">Período</label>
-            <PeriodFilter period={period} onChange={onPeriodChange} />
+            <PeriodFilter period={period} onChange={onPeriodChange} periods={periodOptions} />
           </div>
         )}
         {onStatusChange && statusOptions.length > 0 && (

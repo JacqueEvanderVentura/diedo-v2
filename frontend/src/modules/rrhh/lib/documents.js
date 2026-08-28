@@ -64,6 +64,30 @@ export function buildDocumentContent(templateId, { employee, branch, includeSala
   return { ...t, company, name, dateStr, ref, department: 'División de Recursos Humanos' }
 }
 
+export function buildDocumentPrintHtml(doc) {
+  const body = doc.body.map((p) => (p ? `<p>${p}</p>` : '<br/>')).join('')
+  return `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>${doc.title}</title>
+  <style>
+    body { font-family: Georgia, serif; max-width: 700px; margin: 40px auto; line-height: 1.6; color: #1e293b; }
+    h1 { text-align: center; font-size: 18px; margin: 32px 0; }
+    .meta { font-size: 12px; color: #64748b; }
+    .sig { margin-top: 48px; font-size: 12px; }
+    @media print { @page { size: A4; margin: 14mm; } }
+  </style>
+</head>
+<body>
+  <div class="meta">${doc.company}<br>${doc.department}<br>Ref: ${doc.ref} · ${doc.dateStr}</div>
+  <h1>${doc.title}</h1>
+  ${body}
+  <div class="sig"><strong>${doc.company.toUpperCase()}</strong><br>Dirección de Recursos Humanos</div>
+</body>
+</html>`
+}
+
 export function exportDocumentPdf({ templateId, employee, branch, includeSalary, issueDate }) {
   const doc = buildDocumentContent(templateId, { employee, branch, includeSalary, issueDate })
   const pdf = new jsPDF()

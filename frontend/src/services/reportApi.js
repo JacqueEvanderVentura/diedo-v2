@@ -5,7 +5,8 @@
 
 import { paginateSlice, matchesSearch } from '@/modules/reportes/lib/pagination'
 import { MEMBERSHIP_SEED } from '@/data/reportes'
-import { inPeriod, parseWhen } from '@/modules/reportes/lib/reportes'
+import { inPeriod, inAppointmentPeriod, parseWhen, aggregateProductSales, expenseCategoryBreakdown } from '@/modules/reportes/lib/reportes'
+import { catName } from '@/stores/finanzasStore'
 
 const delay = (ms = 80) => new Promise((r) => setTimeout(r, ms))
 
@@ -23,7 +24,14 @@ function filterMemberships(all, filters) {
 export async function fetchMembershipReport(params) {
   await delay()
   const filtered = filterMemberships(MEMBERSHIP_SEED, params)
-  const page = paginateSlice(filtered, params)
+  const page = paginateSlice(filtered, params, {
+    clientName: (r) => r.clientName,
+    plan: (r) => r.plan,
+    branchId: (r) => r.branchId,
+    amount: (r) => r.amount,
+    status: (r) => r.status,
+    lastPayment: (r) => r.lastPaymentAt || r.lastPayment || '',
+  })
   const active = filtered.filter((r) => r.status === 'activo')
   const mrr = active.reduce((s, r) => s + r.amount, 0)
   return {
@@ -73,34 +81,75 @@ export async function fetchTransactionsReport(getData, params) {
     .filter((r) => !type || r.type === type)
     .filter((r) => !period || inPeriod(r.date, period))
     .filter((r) => matchesSearch(`${r.category} ${r.branchId}`, search))
-    .sort((a, b) => new Date(b.date) - new Date(a.date))
 
-  return paginateSlice(rows, params)
+  return paginateSlice(rows, params, {
+    date: (r) => new Date(r.date),
+    category: (r) => r.category,
+    branchId: (r) => r.branchId,
+    type: (r) => r.type,
+    amount: (r) => r.amount,
+  })
 }
 
-export async function fetchInventoryReport(getProducts, params) {
+export async function fetchInventoryReport(getProducts, getSales, params) {
   await delay()
   const { branchId, search, category } = params
   const products = getProducts().filter((p) => p.type === 'product' && p.stock !== null)
+  const sales = (getSales?.() || []).filter((s) => !branchId || s.branchId === branchId)
+  const soldMap = aggregateProductSales(sales, products)
 
   const rows = products
     .filter((p) => !category || p.category === category)
     .filter((p) => matchesSearch(p.name, search))
-    .map((p) => ({
-      id: p.id,
-      name: p.name,
-      category: p.category,
-      branchId: branchId || 'charm-dn',
-      cost: p.cost || p.price * 0.6,
-      price: p.price,
-      stock: p.stock || 0,
-      sold: Math.max(1, (p.id.charCodeAt(2) || 5) % 40),
-      revenue: p.price * Math.max(1, (p.id.charCodeAt(2) || 5) % 40),
-      profit: (p.price - (p.cost || p.price * 0.6)) * Math.max(1, (p.id.charCodeAt(2) || 5) % 40),
-    }))
-    .sort((a, b) => b.revenue - a.revenue)
+    .map((p) => {
+      const sold = soldMap[p.id] || { sold: 0, revenue: 0, cost: 0 }
+      const unitCost = Number(p.cost) || Number(p.price) * 0.6 || 0
+      const unitPrice = Number(p.price) || 0
+      const profit = sold.revenue - sold.cost
+      const marginPct = sold.revenue > 0 ? ((profit / sold.revenue) * 100).toFixed(2) : '0.00'
+      return {
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        branchId: branchId || p.branchId || 'charm-dn',
+        cost: unitCost,
+        price: unitPrice,
+        stock: p.stock || 0,
+        stockValueCost: unitCost * (p.stock || 0),
+        stockValueSale: unitPrice * (p.stock || 0),
+        sold: sold.sold,
+        revenue: sold.revenue,
+        profit,
+        marginPct,
+      }
+    })
 
-  return paginateSlice(rows, params)
+  return paginateSlice(rows, params, {
+    name: (r) => r.name,
+    category: (r) => r.category,
+    cost: (r) => r.cost,
+    price: (r) => r.price,
+    stock: (r) => r.stock,
+    stockValueCost: (r) => r.stockValueCost,
+    stockValueSale: (r) => r.stockValueSale,
+    sold: (r) => r.sold,
+    revenue: (r) => r.revenue,
+    profit: (r) => r.profit,
+    marginPct: (r) => Number(r.marginPct),
+  })
+}
+
+export async function fetchExpenseCategoryReport(getExpenses, params) {
+  await delay()
+  const { branchId, period, search } = params
+  const rows = expenseCategoryBreakdown(getExpenses(), period, branchId, catName).filter((r) =>
+    matchesSearch(r.name, search)
+  )
+  return paginateSlice(rows, params, {
+    name: (r) => r.name,
+    amount: (r) => r.amount,
+    pct: (r) => r.pct,
+  })
 }
 
 export async function fetchAgendaReport(getAppointments, params) {
@@ -110,11 +159,20 @@ export async function fetchAgendaReport(getAppointments, params) {
     .map((a) => ({ ...a, branchId: a.branchId || 'charm-dn' }))
     .filter((a) => !branchId || a.branchId === branchId)
     .filter((a) => !status || a.status === status)
-    .filter((a) => !period || inPeriod(a.date, period))
-    .filter((a) => matchesSearch(`${a.clientName} ${a.serviceName || a.service || ''}`, search))
-    .sort((a, b) => `${b.date}${b.time}`.localeCompare(`${a.date}${a.time}`))
+    .filter((a) => !period || inAppointmentPeriod(a.date, period))
+    .filter((a) => matchesSearch(`${a.customerName || a.clientName || ''} ${a.serviceName || a.service || ''}`, search))
 
-  return paginateSlice(rows, params)
+  return paginateSlice(rows, params, {
+    date: (r) => `${r.date}${r.time || ''}`,
+    time: (r) => r.time || '',
+    customerName: (r) => r.customerName,
+    employeeName: (r) => r.employeeName || r.employeeId,
+    serviceName: (r) => r.serviceName || r.service,
+    branchId: (r) => r.branchId,
+    status: (r) => r.status,
+    createdBy: (r) => r.createdBy,
+    updatedBy: (r) => r.updatedBy,
+  })
 }
 
 export async function fetchDividendReport(getBranches, params) {
@@ -140,7 +198,13 @@ export async function fetchDividendReport(getBranches, params) {
   })
 
   const filtered = rows.filter((r) => matchesSearch(`${r.partnerName} ${r.branchName}`, search))
-  const page = paginateSlice(filtered, params)
+  const page = paginateSlice(filtered, params, {
+    partnerName: (r) => r.partnerName,
+    cedula: (r) => r.cedula || '',
+    branchName: (r) => r.branchName,
+    share: (r) => r.share,
+    dividend: (r) => r.dividend,
+  })
   return {
     ...page,
     summary: {
@@ -155,7 +219,7 @@ export async function fetchPersonalReport(getEmployees, params) {
   await delay()
   const { branchId, department, status, search } = params
   const rows = getEmployees()
-    .filter((e) => !branchId || e.branchId === branchId)
+    .filter((e) => !branchId || (e.branchIds || [e.branchId]).includes(branchId))
     .filter((e) => !department || e.department === department)
     .filter((e) => {
       if (!status) return true
@@ -170,11 +234,17 @@ export async function fetchPersonalReport(getEmployees, params) {
       position: e.position,
       department: e.department,
       branchId: e.branchId,
+      branchIds: e.branchIds || [e.branchId],
       salary: e.salary,
       active: e.active,
       hireDate: e.hireDate,
     }))
-    .sort((a, b) => a.name.localeCompare(b.name))
 
-  return paginateSlice(rows, params)
+  return paginateSlice(rows, params, {
+    name: (r) => r.name,
+    position: (r) => r.position,
+    department: (r) => r.department,
+    salary: (r) => r.salary,
+    hireDate: (r) => r.hireDate,
+  })
 }

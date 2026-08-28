@@ -45,6 +45,12 @@ export const PERMISSION_MODULES = [
     description: 'Configuración del sistema',
     actions: ['Ver', 'Gestionar Categorías', 'Gestionar Usuarios', 'Gestionar Sucursales', 'Gestionar Permisos'],
   },
+  {
+    id: 'perfil',
+    name: 'Mi perfil',
+    description: 'Opciones de cuenta del usuario conectado',
+    actions: ['Ver perfil', 'Editar perfil', 'Cambiar propia clave'],
+  },
   { id: 'proyectos', name: 'Proyectos', description: 'Gestión de proyectos y tareas del equipo', actions: ['Ver', 'Crear', 'Editar', 'Eliminar'] },
   { id: 'incidencias', name: 'Incidencias', description: 'Gestión de incidencias y soporte', actions: ['Ver', 'Crear', 'Editar', 'Eliminar', 'Resolver'] },
   { id: 'documentos', name: 'Documentos', description: 'Gestión de documentos generales', actions: ['Ver'] },
@@ -145,5 +151,15 @@ export function buildDefaultMatrix() {
   ;['dashboard::Ver', 'configuracion::Ver', 'configuracion::Gestionar Permisos', 'pos::Ver'].forEach((id) => {
     if (matrix[id]) matrix[id].Administrador = true
   })
+
+  ;['perfil::Ver perfil', 'perfil::Editar perfil'].forEach((id) => {
+    if (matrix[id]) USER_ROLES.forEach((role) => { matrix[id][role] = true })
+  })
+  if (matrix['perfil::Cambiar propia clave']) {
+    ;['Administrador', 'Gerente', 'Supervisor', 'Cajero'].forEach((role) => {
+      matrix['perfil::Cambiar propia clave'][role] = true
+    })
+  }
+
   return matrix
 }

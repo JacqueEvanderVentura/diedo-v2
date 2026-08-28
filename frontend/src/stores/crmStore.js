@@ -43,9 +43,9 @@ function normalizeLead(raw, weights) {
 const RAW_SEED_LEADS = [
   { name: 'Glamour Studio RD', company: 'Glamour Studio', location: 'Santo Domingo', rawSnippet: 'Salón de belleza con citas y venta de productos', source: 'serp', status: 'calificado', phone: '809-555-1001' },
   { name: 'Spa Zen Caribe', company: 'Spa Zen', location: 'Piantini, SD', rawSnippet: 'Spa wellness masajes faciales reservas online', source: 'serp', status: 'contactado', phone: '809-555-1002' },
-  { name: 'Clínica Dental Sonrisa', company: 'Dental Sonrisa', location: 'Santiago', rawSnippet: 'Consultorio dental citas pacientes', source: 'referral', status: 'nuevo', phone: '809-555-1003' },
-  { name: 'Café Colonial', company: 'Café Colonial', location: 'Zona Colonial', rawSnippet: 'Restaurante café comida rápida POS', source: 'manual', status: 'nuevo' },
-  { name: 'Boutique Estilo', company: 'Boutique Estilo', location: 'Las Terrenas', rawSnippet: 'Tienda retail ropa inventario', source: 'import', status: 'contactado' },
+  { name: 'Clínica Dental Sonrisa', company: 'Dental Sonrisa', location: 'Santiago', rawSnippet: 'Consultorio dental citas pacientes', source: 'referral', status: 'nuevo', phone: '809-555-1003', branchId: 'charm-santiago' },
+  { name: 'Café Colonial', company: 'Café Colonial', location: 'Zona Colonial', rawSnippet: 'Restaurante café comida rápida POS', source: 'manual', status: 'nuevo', branchId: 'charm-este' },
+  { name: 'Boutique Estilo', company: 'Boutique Estilo', location: 'Las Terrenas', rawSnippet: 'Tienda retail ropa inventario', source: 'import', status: 'contactado', branchId: 'charm-santiago' },
   { name: 'AutoShine Carwash', company: 'AutoShine', location: 'Los Alcarrizos', rawSnippet: 'Car wash lavado autos citas membresías', source: 'serp', status: 'calificado', phone: '809-555-1006' },
   { name: 'FitLife Gym', company: 'FitLife', location: 'Naco', rawSnippet: 'Gimnasio fitness clases membresías CRM', source: 'serp', status: 'nuevo', phone: '809-555-1007' },
   { name: 'Ferretería El Martillo', company: 'El Martillo', location: 'San Cristóbal', rawSnippet: 'Ferretería retail inventario multi sucursal', source: 'manual', status: 'descartado' },
@@ -61,11 +61,14 @@ const SEED_OPPORTUNITIES = [
   { id: 'opp-5', title: 'Dental Sonrisa — Agenda clínica', leadId: 'lead-seed-3', customerName: 'Clínica Dental Sonrisa', stage: 'cerrado', value: 62000, branchId: 'charm-santiago', assignedUserId: 'u1', notes: 'Ganada', createdAt: daysAgo(45), updatedAt: daysAgo(10) },
 ]
 
+const hoursFromNow = (h) => new Date(Date.now() + h * 3600000).toISOString()
+
 const SEED_ACTIVITIES = [
-  { id: 'act-1', type: 'llamada', title: 'Llamada inicial Glamour Studio', description: 'Presentación de módulos Agenda y POS', opportunityId: 'opp-1', leadId: 'lead-seed-1', customerName: 'Glamour Studio RD', dueAt: daysAgo(2), completedAt: daysAgo(2), createdAt: daysAgo(3) },
-  { id: 'act-2', type: 'email', title: 'Propuesta enviada Spa Zen', description: 'Cotización suite completa', opportunityId: 'opp-2', leadId: 'lead-seed-2', customerName: 'Spa Zen Caribe', dueAt: daysAgo(1), completedAt: daysAgo(1), createdAt: daysAgo(2) },
-  { id: 'act-3', type: 'reunion', title: 'Demo AutoShine', description: 'Demostración POS en sitio', opportunityId: 'opp-3', leadId: 'lead-seed-6', customerName: 'AutoShine Carwash', dueAt: daysAgo(0), completedAt: null, createdAt: daysAgo(1) },
-  { id: 'act-4', type: 'nota', title: 'Seguimiento FitLife', description: 'Enviar caso de éxito gym', opportunityId: 'opp-4', leadId: 'lead-seed-7', customerName: 'FitLife Gym', dueAt: daysAgo(-1), completedAt: null, createdAt: daysAgo(0) },
+  { id: 'act-1', type: 'llamada', title: 'Llamada inicial Glamour Studio', description: 'Presentación de módulos Agenda y POS', opportunityId: 'opp-1', leadId: 'lead-seed-1', customerName: 'Glamour Studio RD', assignedUserId: 'u1', dueAt: daysAgo(2), completedAt: daysAgo(2), createdAt: daysAgo(3) },
+  { id: 'act-2', type: 'email', title: 'Propuesta enviada Spa Zen', description: 'Cotización suite completa', opportunityId: 'opp-2', leadId: 'lead-seed-2', customerName: 'Spa Zen Caribe', assignedUserId: 'u2', dueAt: daysAgo(1), completedAt: daysAgo(1), createdAt: daysAgo(2) },
+  { id: 'act-3', type: 'reunion', title: 'Demo AutoShine', description: 'Demostración POS en sitio', opportunityId: 'opp-3', leadId: 'lead-seed-6', customerName: 'AutoShine Carwash', assignedUserId: 'u1', dueAt: hoursFromNow(3), completedAt: null, createdAt: daysAgo(1) },
+  { id: 'act-4', type: 'tarea', title: 'Seguimiento FitLife', description: 'Enviar caso de éxito gym', opportunityId: 'opp-4', leadId: 'lead-seed-7', customerName: 'FitLife Gym', assignedUserId: 'u2', dueAt: hoursFromNow(26), completedAt: null, createdAt: daysAgo(0) },
+  { id: 'act-5', type: 'tarea', title: 'Llamar a Nicole Sosa', description: 'Confirmar próxima sesión de prueba', customerName: 'Nicole Sosa', assignedUserId: 'u1', dueAt: hoursFromNow(-2), completedAt: null, createdAt: daysAgo(0) },
 ]
 
 const SEED_QUOTES = [
@@ -224,10 +227,21 @@ export const useCrmStore = create(
         })),
 
       addActivity: (data) => {
-        const act = { id: genId('act'), createdAt: now(), completedAt: null, ...data }
+        const act = {
+          id: genId('act'),
+          createdAt: now(),
+          completedAt: null,
+          assignedUserId: 'u1',
+          ...data,
+        }
         set((s) => ({ activities: [act, ...s.activities] }))
         return act
       },
+
+      updateActivity: (id, data) =>
+        set((s) => ({
+          activities: s.activities.map((a) => (a.id === id ? { ...a, ...data } : a)),
+        })),
 
       toggleActivityComplete: (id) =>
         set((s) => ({
