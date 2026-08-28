@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { BRANCHES, CATEGORIES, PAYMENT_METHODS } from '@/data/products'
 import { PERMISSION_MODULES, buildDefaultMatrix, USER_ROLES } from '@/data/permisos'
+import { DEFAULT_WHATSAPP_TEMPLATES } from '@/data/whatsappTemplates'
 
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 
@@ -120,6 +121,7 @@ export const useConfigStore = create(
       users: SEED_USERS,
       settings: SEED_SETTINGS,
       permissions: buildDefaultMatrix(),
+      whatsappTemplates: structuredClone(DEFAULT_WHATSAPP_TEMPLATES),
 
       // ---- branches ----
       addBranch: (data) =>
@@ -143,6 +145,7 @@ export const useConfigStore = create(
           categories: s.categories.map((c) => (c.id === id ? normalizeCategory({ ...c, ...data }) : c)),
         })),
       deleteCategory: (id) => set((s) => ({ categories: s.categories.filter((c) => c.id !== id) })),
+      setCategories: (categories) => set({ categories }),
 
       // ---- payment methods ----
       addPaymentMethod: (name) =>
@@ -195,6 +198,21 @@ export const useConfigStore = create(
       // ---- settings ----
       updateSettings: (data) => set((s) => ({ settings: { ...s.settings, ...data } })),
 
+      // ---- whatsapp templates ----
+      updateWhatsappTemplates: (context, templates) =>
+        set((s) => ({
+          whatsappTemplates: { ...s.whatsappTemplates, [context]: templates },
+        })),
+      updateWhatsappTemplateBody: (context, templateId, body) =>
+        set((s) => ({
+          whatsappTemplates: {
+            ...s.whatsappTemplates,
+            [context]: (s.whatsappTemplates[context] || []).map((t) =>
+              t.id === templateId ? { ...t, body } : t
+            ),
+          },
+        })),
+
       // ---- permissions ----
       togglePermission: (actionId, role) =>
         set((s) => ({
@@ -223,6 +241,16 @@ export const useConfigStore = create(
           merged[id] = { ...defaults[id], ...(state.permissions?.[id] || {}) }
         })
         state.permissions = merged
+        if (!state.whatsappTemplates) {
+          state.whatsappTemplates = structuredClone(DEFAULT_WHATSAPP_TEMPLATES)
+        } else {
+          const mergedWa = structuredClone(DEFAULT_WHATSAPP_TEMPLATES)
+          Object.keys(mergedWa).forEach((ctx) => {
+            const saved = state.whatsappTemplates[ctx]
+            if (Array.isArray(saved) && saved.length) mergedWa[ctx] = saved
+          })
+          state.whatsappTemplates = mergedWa
+        }
         if (Array.isArray(state.users)) {
           state.users = state.users.map((u) => ({
             ...u,

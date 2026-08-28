@@ -18,6 +18,7 @@ import { Select } from '@/components/ui/Select'
 import { buildBranchFilterOptions } from '@/lib/branches'
 import { useConfigStore } from '@/stores/configStore'
 import { ModuleFitBars, ScoreBadge } from '../components/ModuleFitBars'
+import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
 import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
 import { cn } from '@/lib/utils'
 
@@ -107,6 +108,19 @@ function LeadsListaTab() {
                   <ModuleFitBars moduleFits={lead.moduleFits} compact />
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
+                  {lead.phone && (
+                    <WhatsAppMenuButton
+                      phone={lead.phone}
+                      context="oportunidades"
+                      size="sm"
+                      variables={{
+                        nombre_cliente: lead.name || lead.company || '',
+                        empresa: lead.company || lead.name || '',
+                        ubicacion: lead.location || '',
+                      }}
+                      data-testid={`lead-wa-${lead.id}`}
+                    />
+                  )}
                   {lead.status !== 'convertido' && (
                     <>
                       <Button size="sm" variant="secondary" onClick={() => { setEditingScore(lead.id); setManualVal(lead.scoreManual ?? ''); setManualNotes(lead.scoreNotes || '') }}>

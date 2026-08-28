@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { CustomerFormModal } from '../components/CustomerFormModal'
 import { CustomerDetailModal } from '../components/CustomerDetailModal'
 import { AppointmentFormModal } from '@/modules/agenda/components/AppointmentFormModal'
+import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
 import {
   ResponsiveList,
   ResponsiveTable,
@@ -185,10 +186,21 @@ export default function ClientesPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-slate-500">
-                      <div className="flex flex-col gap-0.5 text-xs">
-                        {c.phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" /> {c.phone}</span>}
-                        {c.email && <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" /> {c.email}</span>}
-                        {!c.phone && !c.email && <span className="text-slate-300">—</span>}
+                      <div className="flex items-center gap-2">
+                        <div className="flex min-w-0 flex-col gap-0.5 text-xs">
+                          {c.phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" /> {c.phone}</span>}
+                          {c.email && <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" /> {c.email}</span>}
+                          {!c.phone && !c.email && <span className="text-slate-300">—</span>}
+                        </div>
+                        {c.phone && (
+                          <WhatsAppMenuButton
+                            phone={c.phone}
+                            context="clientes"
+                            size="sm"
+                            variables={{ nombre_cliente: c.name, empresa: c.company || '' }}
+                            data-testid={`clientes-wa-${c.id}`}
+                          />
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-center">
@@ -207,11 +219,22 @@ export default function ClientesPage() {
                 <MobileCardHeader
                   title={c.name}
                   badge={
-                    <div className="flex flex-wrap justify-end gap-1">
-                      <Badge tone="neutral">{(c.customerType || 'b2c').toUpperCase()}</Badge>
-                      <Badge tone={CUSTOMER_STATUS_META[c.customerStatus || 'activo']?.tone || 'success'}>
-                        {CUSTOMER_STATUS_META[c.customerStatus || 'activo']?.label || 'Activo'}
-                      </Badge>
+                    <div className="flex items-center gap-1">
+                      {c.phone && (
+                        <WhatsAppMenuButton
+                          phone={c.phone}
+                          context="clientes"
+                          size="sm"
+                          variables={{ nombre_cliente: c.name, empresa: c.company || '' }}
+                          data-testid={`clientes-wa-card-${c.id}`}
+                        />
+                      )}
+                      <div className="flex flex-wrap justify-end gap-1">
+                        <Badge tone="neutral">{(c.customerType || 'b2c').toUpperCase()}</Badge>
+                        <Badge tone={CUSTOMER_STATUS_META[c.customerStatus || 'activo']?.tone || 'success'}>
+                          {CUSTOMER_STATUS_META[c.customerStatus || 'activo']?.label || 'Activo'}
+                        </Badge>
+                      </div>
                     </div>
                   }
                 />

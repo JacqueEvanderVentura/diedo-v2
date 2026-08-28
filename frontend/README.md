@@ -13,12 +13,38 @@ Esta entrega cubre la **Fase 1**: Navbar + Dashboard + Terminal POS. 100% datos 
 - Moneda **RD$** (`src/lib/format.js`), idioma **Español**
 
 ## Cómo correr
+
+### Solo frontend (modo demo)
 ```bash
+cd frontend
 yarn install
-yarn dev        # o: yarn start  → http://localhost:3000
+yarn dev        # → http://localhost:3000
+```
+Sin backend, la app funciona con datos mock y usuario demo (`CURRENT_USER`).
+
+### Frontend + API (PostgreSQL)
+Terminal 1 — backend (desde `backend/`):
+```bash
+docker compose up -d          # Postgres en :5433
+pip install -r requirements.txt
+alembic upgrade head
+python -m app.scripts.bootstrap_local
+# opcional: python -m app.scripts.seed_local_demo
+uvicorn app.main:app --reload --port 8000
+```
+
+Terminal 2 — frontend:
+```bash
+cd frontend
+cp env.example .env           # VITE_API_BASE_URL=/api-backend
+yarn dev                      # proxy /api-backend → :8000
+```
+
+Login: `owner@erp.dev` (contraseña definida en `backend/.env` → `LOCAL_BOOTSTRAP_ADMIN_PASSWORD`).
+
+```bash
 yarn build      # build de producción
 ```
-> En esta plataforma, supervisor ejecuta `yarn start` (mapeado a Vite) en el puerto 3000.
 
 ## Estructura
 ```

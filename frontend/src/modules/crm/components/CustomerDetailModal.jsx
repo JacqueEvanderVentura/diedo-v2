@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { Phone, Mail, Star, ShoppingBag, CalendarClock, CalendarDays, Pencil, CalendarPlus } from 'lucide-react'
+import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -58,9 +59,20 @@ export function CustomerDetailModal({ open, onClose, customer, onEdit, onSchedul
                 <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 text-amber-500" /> {customer.points ?? 0} pts</span>
               </div>
             </div>
-            <Button size="sm" variant="secondary" onClick={() => onEdit(customer)} data-testid="customer-detail-edit">
-              <Pencil className="h-3.5 w-3.5" /> Editar
-            </Button>
+            <div className="flex shrink-0 items-center gap-2">
+              {customer.phone && (
+                <WhatsAppMenuButton
+                  phone={customer.phone}
+                  context="clientes"
+                  size="sm"
+                  variables={{ nombre_cliente: customer.name, empresa: customer.company || '' }}
+                  data-testid="customer-detail-wa"
+                />
+              )}
+              <Button size="sm" variant="secondary" onClick={() => onEdit(customer)} data-testid="customer-detail-edit">
+                <Pencil className="h-3.5 w-3.5" /> Editar
+              </Button>
+            </div>
           </div>
 
           {/* Totals */}

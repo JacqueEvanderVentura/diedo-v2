@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronDown, KeyRound, LogOut, Settings, User } from 'lucide-react'
 import { toast } from 'sonner'
 import { DropdownPanel } from '@/components/ui/DropdownPanel'
-import { CURRENT_USER } from '@/data/dashboard'
 import { useConfigStore } from '@/stores/configStore'
+import { useSessionStore } from '@/stores/sessionStore'
 import {
   canChangeOwnPassword,
   canEditProfile,
@@ -42,16 +42,19 @@ export function UserProfileMenu() {
 
   const users = useConfigStore((s) => s.users)
   const permissions = useConfigStore((s) => s.permissions)
+  const sessionUser = useSessionStore((s) => s.getDisplayUser())
+  const isOnline = useSessionStore((s) => s.isOnline())
+  const logoutSession = useSessionStore((s) => s.logout)
 
-  const user = useMemo(
-    () => users.find((u) => u.id === CURRENT_USER.id) || { ...CURRENT_USER, email: '', active: true, branchIds: [] },
-    [users]
-  )
+  const user = useMemo(() => {
+    if (isOnline && sessionUser?.userId) return sessionUser
+    return users.find((u) => u.id === sessionUser.id) || sessionUser
+  }, [users, sessionUser, isOnline])
 
-  const displayName = user.name || CURRENT_USER.name
-  const displayRole = user.role || CURRENT_USER.role
+  const displayName = user.name || 'Usuario'
+  const displayRole = user.role || '—'
   const initials =
-    CURRENT_USER.initials ||
+    user.initials ||
     displayName
       .split(' ')
       .map((p) => p[0])
@@ -61,7 +64,7 @@ export function UserProfileMenu() {
 
   const showProfile = canViewProfile(permissions, displayRole)
   const showEditProfile = canEditProfile(permissions, displayRole)
-  const showChangePassword = canChangeOwnPassword(permissions, displayRole)
+  const showChangePassword = canChangeOwnPassword(permissions, displayRole) && !isOnline
   const showConfig = hasPermission(permissions, displayRole, 'configuracion', 'Ver')
 
   useEffect(() => {
@@ -91,9 +94,15 @@ export function UserProfileMenu() {
     navigate('/configuracion')
   }
 
-  const logout = () => {
+  const logout = async () => {
     closeMenu()
-    toast.info('Sesión cerrada (demo). En producción redirigiría al login.')
+    await logoutSession()
+    if (isOnline) {
+      toast.success('Sesión cerrada')
+      navigate('/login')
+    } else {
+      toast.info('Sesión cerrada (demo).')
+    }
   }
 
   const hasMenuItems = showProfile || showChangePassword || showConfig

@@ -1,6 +1,8 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 
 import { AppFrame, PageShell } from '@/components/layout/PageShell'
+import { AuthGate } from '@/components/auth/AuthGate'
+import LoginPage from '@/modules/auth/pages/LoginPage'
 
 import DashboardPage from '@/modules/dashboard/pages/DashboardPage'
 
@@ -89,6 +91,10 @@ export function AppRoutes() {
   return (
 
     <Routes>
+
+      <Route path="/login" element={<LoginPage />} />
+
+      <Route element={<AuthGate />}>
 
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
@@ -189,11 +195,15 @@ export function AppRoutes() {
 
           <Route path="/configuracion/metodos-pago" element={<MetodosPagoPage />} />
 
+          <Route path="/configuracion/whatsapp" element={<Navigate to="/configuracion?open=whatsapp" replace />} />
+
         </Route>
 
       </Route>
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
+
+      </Route>
 
     </Routes>
 

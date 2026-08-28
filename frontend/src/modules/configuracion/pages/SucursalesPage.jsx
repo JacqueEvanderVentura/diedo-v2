@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
+import { configPageClass } from '../lib/pageShell'
 import { BranchFormModal } from '../components/BranchFormModal'
 
 function GeneralSettings() {
@@ -29,7 +30,7 @@ function GeneralSettings() {
   )
 }
 
-export default function SucursalesPage() {
+export default function SucursalesPage({ embedded = false }) {
   const branches = useConfigStore((s) => s.branches)
   const addBranch = useConfigStore((s) => s.addBranch)
   const updateBranch = useConfigStore((s) => s.updateBranch)
@@ -60,7 +61,7 @@ export default function SucursalesPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8">
+    <div className={configPageClass(embedded)} data-testid="sucursales-page">
       <GeneralSettings />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

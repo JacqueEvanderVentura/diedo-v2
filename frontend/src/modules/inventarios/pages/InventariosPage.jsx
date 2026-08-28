@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Package,
@@ -11,6 +11,8 @@ import {
   History,
 } from 'lucide-react'
 import { useCatalogStore } from '@/stores/catalogStore'
+import { useConfigStore } from '@/stores/configStore'
+import { useSessionStore } from '@/stores/sessionStore'
 import { useActivosStore } from '@/stores/activosStore'
 import { formatDOP } from '@/lib/format'
 import { ProductosTab } from '../components/ProductosTab'
@@ -48,6 +50,17 @@ function StatCard({ label, value, icon: Icon, tone }) {
 
 export default function InventariosPage() {
   const [params, setParams] = useSearchParams()
+  const isOnline = useSessionStore((s) => s.isOnline())
+  const isAuthenticated = useSessionStore((s) => s.isAuthenticated())
+  const hydrateFromApi = useCatalogStore((s) => s.hydrateFromApi)
+  const categories = useConfigStore((s) => s.categories)
+  const branches = useConfigStore((s) => s.branches)
+
+  useEffect(() => {
+    if (isOnline && isAuthenticated) {
+      hydrateFromApi(categories, branches).catch(() => {})
+    }
+  }, [isOnline, isAuthenticated, hydrateFromApi, categories, branches])
   const tabParam = params.get('tab') || 'productos'
   const tab = TABS.some((t) => t.id === tabParam) ? tabParam : 'productos'
 

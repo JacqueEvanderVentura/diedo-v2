@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { useCatalogStore } from '@/stores/catalogStore'
 import { useConfigStore } from '@/stores/configStore'
+import { useSessionStore } from '@/stores/sessionStore'
 import { cn } from '@/lib/utils'
 
 const UNITS = [
@@ -31,13 +32,14 @@ const EMPTY = {
 }
 
 export function ProductFormModal({ open, onClose, product, defaultType = 'product' }) {
-  const addProduct = useCatalogStore((s) => s.addProduct)
-  const updateProduct = useCatalogStore((s) => s.updateProduct)
+  const saveProduct = useCatalogStore((s) => s.saveProduct)
   const FORM_CATEGORIES = useConfigStore((s) => s.categories)
   const BRANCHES = useConfigStore((s) => s.branches)
   const taxDefault = useConfigStore((s) => s.settings.taxDefault)
+  const isOnline = useSessionStore((s) => s.isOnline())
   const [form, setForm] = useState(EMPTY)
   const [err, setErr] = useState('')
+  const [saving, setSaving] = useState(false)
   const editing = !!product
   const isSupply = form.type === 'supply'
   const isService = form.type === 'service'
@@ -65,19 +67,25 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
     }))
   }
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.name.trim()) return setErr('Ingresa el nombre.')
     if (!isSupply && (form.price === '' || Number(form.price) < 0)) return setErr('Ingresa un precio válido.')
     if (isSupply && (form.cost === '' || Number(form.cost) < 0)) return setErr('Ingresa el costo de adquisición.')
     if (!isService && (form.stock === '' || Number(form.stock) < 0)) return setErr('Ingresa el stock.')
-    if (editing) {
-      updateProduct(product.id, form)
-      toast.success(`"${form.name}" actualizado`)
-    } else {
-      addProduct(form)
-      toast.success(`"${form.name}" creado`)
+    setSaving(true)
+    try {
+      await saveProduct(form, product, {
+        categories: FORM_CATEGORIES,
+        configBranches: BRANCHES,
+        isOnline,
+      })
+      toast.success(`"${form.name}" ${editing ? 'actualizado' : 'creado'}`)
+      onClose()
+    } catch (e) {
+      setErr(e.message || 'No se pudo guardar el producto.')
+    } finally {
+      setSaving(false)
     }
-    onClose()
   }
 
   const title = editing ? 'Editar item' : isSupply ? 'Nuevo insumo' : 'Nuevo item'
@@ -200,7 +208,7 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
 
         <div className="flex gap-3 pt-1">
           <Button variant="secondary" className="flex-1" onClick={onClose} data-testid="inventory-form-cancel">Cancelar</Button>
-          <Button className="flex-1" onClick={submit} data-testid="inventory-form-save">{editing ? 'Guardar cambios' : 'Crear item'}</Button>
+          <Button className="flex-1" onClick={submit} disabled={saving} data-testid="inventory-form-save">{saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear item'}</Button>
         </div>
       </div>
     </Modal>

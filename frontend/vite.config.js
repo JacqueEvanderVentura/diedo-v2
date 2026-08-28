@@ -30,6 +30,11 @@ export default defineConfig(({ mode }) => {
         usePolling: true,
       },
       proxy: {
+        '/api-backend': {
+          target: 'http://127.0.0.1:8000',
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/api-backend/, ''),
+        },
         '/api/serp': {
           target: 'https://serpapi.com',
           changeOrigin: true,

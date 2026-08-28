@@ -13,6 +13,7 @@ import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { AppointmentFormModal } from '../components/AppointmentFormModal'
 import { AppointmentShareModal } from '../components/AppointmentShareModal'
+import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
 import { formatShortDate, endTime } from '../lib/calendar'
 import { isProximoAppointment } from '../lib/appointments'
 import { ResponsiveList, ResponsiveTable, ResponsiveCards } from '@/components/ui/ResponsiveList'
@@ -22,6 +23,18 @@ import { useSortedRows } from '@/hooks/useTableControls'
 function ActionButtons({ apt, onEdit, onDelete, onShare }) {
   return (
     <div className="flex items-center justify-end gap-1">
+      <WhatsAppMenuButton
+        phone={apt.customerPhone}
+        context="agenda"
+        size="sm"
+        variables={{
+          nombre_cliente: apt.customerName || '',
+          fecha: formatShortDate(apt.date),
+          hora: apt.time || '',
+          servicio: apt.serviceName || '',
+        }}
+        data-testid={`gestion-wa-${apt.id}`}
+      />
       <button
         type="button"
         onClick={() => onShare(apt)}

@@ -1,40 +1,107 @@
-// Placeholder API client. Fase 1 is 100% mock — this never hits a real network,
-// it only simulates latency so components can wire real endpoints later without changes.
-import { ENDPOINTS } from './endpoints'
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api-backend'
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
-const MOCK_LATENCY = 350
-
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+let sessionHandlers = {
+  getAccessToken: () => null,
+  getRefreshToken: () => null,
+  setTokens: () => {},
+  clearSession: () => {},
 }
 
-// registry of mock resolvers keyed by endpoint. Swap for real fetch() later.
-const mockRegistry = new Map()
+let refreshPromise = null
 
-export function registerMock(endpoint, resolver) {
-  mockRegistry.set(endpoint, resolver)
+export function bindSessionHandlers(handlers) {
+  sessionHandlers = { ...sessionHandlers, ...handlers }
 }
 
-async function request(endpoint, { method = 'GET', params, body } = {}) {
-  await delay(MOCK_LATENCY)
-  const resolver = mockRegistry.get(endpoint)
-  if (resolver) {
-    return resolver({ method, params, body })
+function buildUrl(path, params) {
+  const url = new URL(`${BASE_URL}${path}`, window.location.origin)
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        url.searchParams.set(key, String(value))
+      }
+    })
   }
-  // Real implementation placeholder (unused in Fase 1):
-  // const res = await fetch(`${BASE_URL}${endpoint}`, { method, ... })
-  // return res.json()
-  throw new Error(`No mock registered for endpoint: ${endpoint}`)
+  return url.pathname + url.search
+}
+
+async function parseBody(response) {
+  if (response.status === 204) return null
+  const text = await response.text()
+  if (!text) return null
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { message: text }
+  }
+}
+
+async function refreshAccessToken() {
+  const refreshToken = sessionHandlers.getRefreshToken()
+  if (!refreshToken) return false
+
+  const response = await fetch(buildUrl('/api/v1/auth/refresh'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ refreshToken }),
+  })
+
+  if (!response.ok) {
+    sessionHandlers.clearSession()
+    return false
+  }
+
+  const data = await parseBody(response)
+  sessionHandlers.setTokens({
+    accessToken: data.accessToken,
+    refreshToken: data.refreshToken,
+  })
+  return true
+}
+
+async function request(path, { method = 'GET', params, body, auth = true, retry = true } = {}) {
+  const headers = { Accept: 'application/json' }
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+
+  const accessToken = auth ? sessionHandlers.getAccessToken() : null
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`
+
+  const response = await fetch(buildUrl(path, params), {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  })
+
+  if (response.status === 401 && auth && retry) {
+    if (!refreshPromise) {
+      refreshPromise = refreshAccessToken().finally(() => {
+        refreshPromise = null
+      })
+    }
+    const refreshed = await refreshPromise
+    if (refreshed) return request(path, { method, params, body, auth, retry: false })
+  }
+
+  const data = await parseBody(response)
+
+  if (!response.ok) {
+    const error = new Error(data?.message || `Error ${response.status}`)
+    error.status = response.status
+    error.parameter = data?.parameter
+    error.data = data
+    throw error
+  }
+
+  return data
 }
 
 export const apiClient = {
   baseUrl: BASE_URL,
-  endpoints: ENDPOINTS,
-  get: (endpoint, params) => request(endpoint, { method: 'GET', params }),
-  post: (endpoint, body) => request(endpoint, { method: 'POST', body }),
-  put: (endpoint, body) => request(endpoint, { method: 'PUT', body }),
-  delete: (endpoint, params) => request(endpoint, { method: 'DELETE', params }),
+  get: (path, params, options) => request(path, { method: 'GET', params, ...options }),
+  post: (path, body, options) => request(path, { method: 'POST', body, ...options }),
+  put: (path, body, options) => request(path, { method: 'PUT', body, ...options }),
+  patch: (path, body, options) => request(path, { method: 'PATCH', body, ...options }),
+  delete: (path, params, options) => request(path, { method: 'DELETE', params, ...options }),
 }
 
 export default apiClient

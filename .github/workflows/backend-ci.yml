@@ -1,0 +1,11 @@
+# Backend CI (Python 3.14, see backend/.python-version)
+name: Backend CI
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+
+jobs:
+  backend:
+    uses: ./.github/workflows/reusable-backend-ci.yml

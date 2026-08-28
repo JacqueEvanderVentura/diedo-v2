@@ -132,6 +132,7 @@ export const PAGE_META = {
   '/configuracion/usuarios': { title: 'Usuarios', subtitle: 'Gestiona los usuarios del sistema.' },
   '/configuracion/categorias': { title: 'Categorías', subtitle: 'Gestiona las categorías de productos y servicios.' },
   '/configuracion/permisos': { title: 'Permisos', subtitle: 'Define qué puede hacer cada rol en el sistema.' },
+  '/configuracion/whatsapp': { title: 'Mensajes de WhatsApp', subtitle: 'Personaliza los textos enviados desde los módulos.' },
   '/configuracion/metodos-pago': { title: 'Métodos de pago', subtitle: 'Métodos disponibles al cobrar.' },
 }
 

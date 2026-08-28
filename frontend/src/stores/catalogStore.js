@@ -1,6 +1,14 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { PRODUCTS, SUPPLIES } from '@/data/products'
+import { catalogApi } from '@/services/catalogApi'
+import { lookupsApi } from '@/services/lookupsApi'
+import {
+  defaultUnitId,
+  mergeProductLists,
+  resolveApiBranchIds,
+  resolveCategoryId,
+} from '@/lib/catalogSync'
 
 export const LOW_STOCK_THRESHOLD = 5
 const genId = () => `prod-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
@@ -55,6 +63,84 @@ export const useCatalogStore = create(
   persist(
     (set, get) => ({
       products: SEED,
+      apiContext: { units: [], apiBranches: [], hydrated: false },
+
+      hydrateFromApi: async (categories = [], configBranches = []) => {
+        const [productsRes, units, apiBranches] = await Promise.all([
+          catalogApi.listProducts({ pageSize: 100 }),
+          catalogApi.listUnitsOfMeasure(),
+          lookupsApi.branches(),
+        ])
+
+        const categoryIdToLocal = new Map()
+        categories.forEach((c) => {
+          if (c.api) categoryIdToLocal.set(c.id, c.id)
+        })
+
+        const merged = mergeProductLists(productsRes.items || [], get().products, categoryIdToLocal)
+        set({
+          products: merged,
+          apiContext: { units, apiBranches, hydrated: true, configBranches },
+        })
+        return merged
+      },
+
+      saveProduct: async (form, existing, { categories, configBranches, isOnline }) => {
+        if (!isOnline) {
+          if (existing) {
+            get().updateProduct(existing.id, form)
+            return existing.id
+          }
+          return get().addProduct(form).id
+        }
+
+        const { units, apiBranches } = get().apiContext
+        const categoryId = resolveCategoryId(form.category, categories)
+        const unitOfMeasureId = defaultUnitId(units, form.unit || 'ud')
+        const branchIds = resolveApiBranchIds(form.branchId, configBranches, apiBranches)
+
+        if (!categoryId) throw new Error('Selecciona una categoría sincronizada con la API.')
+        if (!unitOfMeasureId) throw new Error('No hay unidades de medida en el catálogo API.')
+        if (!branchIds.length) throw new Error('No hay sucursales API asignables.')
+
+        let apiProduct
+        if (existing?.apiSynced && existing.version) {
+          apiProduct = await catalogApi.updateProduct(existing.id, {
+            version: existing.version,
+            name: form.name.trim(),
+            sku: form.sku || null,
+            categoryId,
+            unitOfMeasureId,
+            branchIds,
+            status: 'active',
+          })
+        } else {
+          apiProduct = await catalogApi.createProduct({
+            name: form.name.trim(),
+            sku: form.sku || null,
+            categoryId,
+            unitOfMeasureId,
+            branchIds,
+            status: 'active',
+          })
+        }
+
+        const categoryIdToLocal = new Map([[categoryId, form.category]])
+        const merged = mergeProductLists([apiProduct], [{ ...existing, ...form }], categoryIdToLocal)[0]
+
+        set((s) => {
+          const without = s.products.filter((p) => p.id !== existing?.id)
+          const idx = without.findIndex((p) => p.id === merged.id)
+          if (idx >= 0) {
+            const next = [...without]
+            next[idx] = merged
+            return { products: next }
+          }
+          return { products: [merged, ...without] }
+        })
+
+        return merged.id
+      },
 
       addProduct: (data) => {
         const type = data.type || 'product'
@@ -144,6 +230,6 @@ export const useCatalogStore = create(
 
       getLowStock: () => deriveLowStock(get().products),
     }),
-    { name: 'diedo-catalog', partialize: (s) => ({ products: s.products }) }
+    { name: 'diedo-catalog', partialize: (s) => ({ products: s.products, apiContext: { hydrated: false } }) }
   )
 )

@@ -8,8 +8,9 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { cn } from '@/lib/utils'
+import { configPageClass } from '../lib/pageShell'
 
-export default function MetodosPagoPage() {
+export default function MetodosPagoPage({ embedded = false }) {
   const methods = useConfigStore((s) => s.paymentMethods)
   const toggle = useConfigStore((s) => s.togglePaymentMethod)
   const addMethod = useConfigStore((s) => s.addPaymentMethod)
@@ -25,7 +26,7 @@ export default function MetodosPagoPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1200px] space-y-6 p-6 sm:p-8">
+    <div className={configPageClass(embedded, 'max-w-[1200px]')}>
       <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-blue-700">
         <CreditCard className="h-4 w-4 shrink-0" /> Solo los métodos activos aparecen al cobrar en el POS.
       </div>
