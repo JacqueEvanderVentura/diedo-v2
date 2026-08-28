@@ -4,8 +4,10 @@ import path from 'path'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  const pagesBase = process.env.GITHUB_PAGES === 'true' ? '/diedo-v2/' : '/'
 
   return {
+    base: pagesBase,
     plugins: [react()],
     resolve: {
       alias: {
