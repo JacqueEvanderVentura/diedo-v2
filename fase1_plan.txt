@@ -1,0 +1,13 @@
+## Fase 1 — Navbar + Dashboard + Terminal POS
+
+Documentación detallada: [frontend/docs/fase-1.md](frontend/docs/fase-1.md)
+
+- **1.1 Scaffold:** React + Vite (JS), Tailwind + SCSS, Inter/Outfit, Lenis, framer-motion, estructura modular en `frontend/src/modules`.
+- **1.2 Layout:** `PageShell` (Sidebar + Navbar), navegación en `data/navigation.js`, rutas `/dashboard` y `/pos`.
+- **1.3 Dashboard:** KPIs por período, gráfica de ventas (recharts), alertas de stock, citas del día, actividad reciente.
+- **1.4 POS:** grid de productos, categorías, selector de sucursal, carrito sticky derecha (desktop) / drawer (mobile), checkout con ITBIS y métodos de pago.
+- **1.5 Stores:** `uiStore`, `dashboardStore`, `posStore` (persistidos con Zustand).
+
+**Criterio:** flujo demo completo dashboard → POS → cobrar con datos mock; carrito sticky sin stack infinito en mobile.
+
+---

@@ -1,0 +1,12 @@
+## Fase 3 — Insumos / materia prima
+
+Separar de productos de venta. Referencia [materiaprima.html](materiaprima.html).
+
+- **3.1 Tipo de catálogo:** `product | service | supply` (o `subtype: 'raw'`). Insumo **no** entra al grid POS. En alta: quitar precio de venta; dejar coste de adquisición, stock, unidad, sucursal.
+- **3.2 Salidas manuales:** atribución a empleado y/o cita. Inventarios ya tiene [SalidaMultipleModal.jsx](frontend/src/modules/inventarios/components/SalidaMultipleModal.jsx) — extender con `employeeId` / `appointmentId`.
+- **3.3 Métricas de uso:** reporte “guantes de María cada 10–100 citas” = salidas del insumo / citas atendidas del empleado. Ampliar KPIs de personal: uso de insumos, citas atendidas, ticket, no-shows (se termina en Fase 9).
+
+**Criterio:** insumo no aparece en POS, formulario sin precio de venta, salida atribuible, primer KPI de uso.
+
+---
+

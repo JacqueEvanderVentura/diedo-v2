@@ -1,0 +1,13 @@
+## Fase 2 — Cuenta abierta: Cotización → Factura + Retener + DEUDA PENDIENTE
+
+Módulo principal (restaurante: la cuenta no cierra hasta que pidan la cuenta). UI de [pos-retener.html](pos-retener.html) + banner img2.
+
+- **2.1 Modelo:** documento `kind: 'quote' | 'invoice'`. Cotización editable (ítems, precios, cliente). Factura inmutable. `holdCarts[]` para retener el carrito actual (reloj + badge).
+- **2.2 Retener:** botón Retener guarda carrito+cliente; lista “Ventas retenidas”; restaurar al carrito. Si se selecciona **otro** cliente con cotización/CxC abierta → banner naranja **DEUDA PENDIENTE** + monto, acciones **COBRAR SALDO** y **AGREGAR AL CARRITO (n)**.
+- **2.3 Pedir cuenta:** cotización → factura definitiva (stock, caja, CxC si aplica). Mientras sea cotización no cierra inventario/caja.
+- **2.4 Caja / CxC:** misma deuda visible en Caja; alinear con receivables actuales ([CxcPage.jsx](frontend/src/modules/pos/pages/CxcPage.jsx)). “Cobrar saldo” cobra la cotización/CxC; “Agregar al carrito” carga líneas de la cuenta abierta.
+
+**Criterio:** flujo completo: agregar → retener → cambiar cliente (banner) → restaurar → pedir cuenta → factura no editable.
+
+---
+
