@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AnimatePresence, motion } from 'framer-motion'
 import { Menu, Search, Store, ChevronDown, Check, Lock, Unlock, ReceiptText } from 'lucide-react'
 import { useConfigStore } from '@/stores/configStore'
 import { usePosStore } from '@/stores/posStore'
 import { useUiStore } from '@/stores/uiStore'
+import { DropdownPanel } from '@/components/ui/DropdownPanel'
 import { cn } from '@/lib/utils'
 
 function BranchSelector() {
@@ -12,20 +12,24 @@ function BranchSelector() {
   const setBranch = usePosStore((s) => s.setBranch)
   const branches = useConfigStore((s) => s.branches)
   const [open, setOpen] = useState(false)
-  const ref = useRef(null)
+  const btnRef = useRef(null)
+  const menuRef = useRef(null)
   const current = branches.find((b) => b.id === branchId) || branches[0]
 
   useEffect(() => {
+    if (!open) return
     function onClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+      if (btnRef.current?.contains(e.target) || menuRef.current?.contains(e.target)) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', onClick)
     return () => document.removeEventListener('mousedown', onClick)
-  }, [])
+  }, [open])
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative">
       <button
+        ref={btnRef}
         onClick={() => setOpen((o) => !o)}
         data-testid="pos-branch-selector"
         className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
@@ -34,32 +38,30 @@ function BranchSelector() {
         <span className="hidden sm:inline">{current.name}</span>
         <ChevronDown className={cn('h-4 w-4 text-slate-400 transition-transform', open && 'rotate-180')} />
       </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.15 }}
-            className="absolute right-0 top-full z-40 mt-2 w-56 overflow-hidden rounded-xl border border-slate-100 bg-white p-1.5 shadow-xl"
+      <DropdownPanel
+        open={open}
+        anchorRef={btnRef}
+        menuRef={menuRef}
+        align="end"
+        width={224}
+        estimatedHeight={branches.length * 44 + 12}
+        zIndex={40}
+      >
+        {branches.map((b) => (
+          <button
+            key={b.id}
+            onClick={() => {
+              setBranch(b.id)
+              setOpen(false)
+            }}
+            data-testid={`pos-branch-${b.id}`}
+            className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
           >
-            {branches.map((b) => (
-              <button
-                key={b.id}
-                onClick={() => {
-                  setBranch(b.id)
-                  setOpen(false)
-                }}
-                data-testid={`pos-branch-${b.id}`}
-                className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
-              >
-                {b.name}
-                {branchId === b.id && <Check className="h-4 w-4 text-blue-600" />}
-              </button>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
+            {b.name}
+            {branchId === b.id && <Check className="h-4 w-4 text-blue-600" />}
+          </button>
+        ))}
+      </DropdownPanel>
     </div>
   )
 }

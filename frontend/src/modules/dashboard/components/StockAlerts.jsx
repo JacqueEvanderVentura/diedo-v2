@@ -1,8 +1,12 @@
+import { useNavigate } from 'react-router-dom'
 import { Package } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { cn } from '@/lib/utils'
 
 export function StockAlerts({ alerts }) {
+  const navigate = useNavigate()
+  const goInventarios = () => navigate('/inventarios')
+
   return (
     <Card className="flex h-full flex-col p-6" data-testid="dashboard-stock-alerts">
       <div className="mb-4 flex items-center justify-between">
@@ -10,6 +14,8 @@ export function StockAlerts({ alerts }) {
           Alertas de Stock
         </h3>
         <button
+          type="button"
+          onClick={goInventarios}
           data-testid="stock-alerts-view-all"
           className="text-sm font-semibold text-blue-600 transition-colors hover:text-blue-700"
         >
@@ -19,10 +25,12 @@ export function StockAlerts({ alerts }) {
 
       <div className="-mr-2 max-h-[320px] space-y-2.5 overflow-y-auto pr-2 scrollbar-thin">
         {alerts.map((item) => (
-          <div
+          <button
+            type="button"
             key={item.id}
+            onClick={goInventarios}
             data-testid={`stock-alert-${item.id}`}
-            className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 transition-colors hover:bg-slate-50"
+            className="flex w-full items-center gap-3 rounded-xl border border-slate-100 p-3 text-left transition-colors hover:border-blue-100 hover:bg-slate-50"
           >
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-400">
               <Package className="h-5 w-5" strokeWidth={1.75} />
@@ -42,7 +50,7 @@ export function StockAlerts({ alerts }) {
                 {item.level === 'critical' ? 'Crítico' : 'Bajo'}
               </p>
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </Card>

@@ -1,14 +1,20 @@
 import { useState, useMemo } from 'react'
-import { Plus, Search, Users, Star, Phone, Mail } from 'lucide-react'
+import { Plus, Search, Users, Star, Phone, Mail, ChevronLeft, ChevronRight } from 'lucide-react'
 import { usePosStore } from '@/stores/posStore'
+import { useConfigStore } from '@/stores/configStore'
+import { CUSTOMER_STATUS_META, CUSTOMER_STATUSES } from '@/data/crm'
 import { formatDOP, formatNumber } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
+import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { CustomerFormModal } from '../components/CustomerFormModal'
 import { CustomerDetailModal } from '../components/CustomerDetailModal'
 import { AppointmentFormModal } from '@/modules/agenda/components/AppointmentFormModal'
 import { cn } from '@/lib/utils'
+
+const PAGE_SIZE = 10
 
 function Chip({ label, value, tone }) {
   const tones = { brand: 'text-blue-600', slate: 'text-slate-700', amber: 'text-amber-600' }
@@ -23,8 +29,13 @@ function Chip({ label, value, tone }) {
 export default function ClientesPage() {
   const customers = usePosStore((s) => s.customers)
   const sales = usePosStore((s) => s.sales)
+  const branches = useConfigStore((s) => s.branches)
 
   const [query, setQuery] = useState('')
+  const [typeFilter, setTypeFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [branchFilter, setBranchFilter] = useState('all')
+  const [page, setPage] = useState(0)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [detail, setDetail] = useState(null)
@@ -41,44 +52,73 @@ export default function ClientesPage() {
     return map
   }, [sales])
 
-  const list = useMemo(() => {
+  const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return customers
       .filter((c) => c.id !== 'walk-in')
       .filter((c) => !q || c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)) || (c.email && c.email.toLowerCase().includes(q)))
-  }, [customers, query])
+      .filter((c) => typeFilter === 'all' || (c.customerType || 'b2c') === typeFilter)
+      .filter((c) => statusFilter === 'all' || (c.customerStatus || 'activo') === statusFilter)
+      .filter((c) => branchFilter === 'all' || c.branchId === branchFilter)
+  }, [customers, query, typeFilter, statusFilter, branchFilter])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const list = useMemo(() => filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE), [filtered, page])
 
   const stats = useMemo(() => {
+    const base = customers.filter((c) => c.id !== 'walk-in')
     const conCompras = Object.keys(spentByCustomer).filter((id) => id !== 'walk-in').length
-    const totalPts = customers.filter((c) => c.id !== 'walk-in').reduce((a, c) => a + (c.points || 0), 0)
-    return { total: customers.filter((c) => c.id !== 'walk-in').length, conCompras, totalPts }
+    const totalPts = base.reduce((a, c) => a + (c.points || 0), 0)
+    const prospectos = base.filter((c) => (c.customerStatus || 'activo') === 'prospecto').length
+    return { total: base.length, conCompras, totalPts, prospectos }
   }, [customers, spentByCustomer])
+
+  const branchOptions = [{ value: 'all', label: 'Todas las sucursales' }, ...branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))]
 
   const openNew = () => { setEditing(null); setFormOpen(true) }
   const openEdit = (c) => { setDetail(null); setEditing(c); setFormOpen(true) }
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8">
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Chip label="Clientes" value={stats.total} tone="brand" />
+        <Chip label="Prospectos" value={stats.prospectos} tone="slate" />
         <Chip label="Con compras" value={stats.conCompras} tone="slate" />
         <Chip label="Puntos acumulados" value={formatNumber(stats.totalPts)} tone="amber" />
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar por nombre, teléfono o email..."
-            data-testid="clientes-search"
-            className="w-full rounded-xl border-0 bg-white py-3 pl-10 pr-4 text-sm text-slate-700 ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600"
-          />
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={query}
+              onChange={(e) => { setQuery(e.target.value); setPage(0) }}
+              placeholder="Buscar por nombre, teléfono o email..."
+              data-testid="clientes-search"
+              className="w-full rounded-xl border-0 bg-white py-3 pl-10 pr-4 text-sm text-slate-700 ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600"
+            />
+          </div>
+          <Button onClick={openNew} data-testid="clientes-new-btn">
+            <Plus className="h-4 w-4" /> Nuevo cliente
+          </Button>
         </div>
-        <Button onClick={openNew} data-testid="clientes-new-btn">
-          <Plus className="h-4 w-4" /> Nuevo cliente
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-3 rounded-xl bg-slate-100 p-1">
+            {[{ id: 'all', label: 'Todos' }, { id: 'b2c', label: 'B2C' }, { id: 'b2b', label: 'B2B' }].map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => { setTypeFilter(t.id); setPage(0) }}
+                className={cn('rounded-lg px-3 py-1.5 text-xs font-semibold transition-all', typeFilter === t.id ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500')}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <Select value={statusFilter} onChange={(v) => { setStatusFilter(v); setPage(0) }} options={[{ value: 'all', label: 'Todos los estados' }, ...CUSTOMER_STATUSES.map((s) => ({ value: s, label: CUSTOMER_STATUS_META[s].label }))]} className="w-40" />
+          <Select value={branchFilter} onChange={(v) => { setBranchFilter(v); setPage(0) }} options={branchOptions} className="w-48" />
+        </div>
       </div>
 
       <Card className="overflow-hidden" data-testid="clientes-table">
@@ -90,6 +130,7 @@ export default function ClientesPage() {
               <thead>
                 <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
                   <th className="px-6 py-4">Cliente</th>
+                  <th className="px-6 py-4">Tipo / Estado</th>
                   <th className="px-6 py-4">Contacto</th>
                   <th className="px-6 py-4 text-center">Puntos</th>
                   <th className="px-6 py-4 text-right">Total gastado</th>
@@ -111,6 +152,14 @@ export default function ClientesPage() {
                         <span className="font-semibold text-slate-800">{c.name}</span>
                       </div>
                     </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap gap-1">
+                        <Badge tone="neutral">{(c.customerType || 'b2c').toUpperCase()}</Badge>
+                        <Badge tone={CUSTOMER_STATUS_META[c.customerStatus || 'activo']?.tone || 'success'}>
+                          {CUSTOMER_STATUS_META[c.customerStatus || 'activo']?.label || 'Activo'}
+                        </Badge>
+                      </div>
+                    </td>
                     <td className="px-6 py-4 text-slate-500">
                       <div className="flex flex-col gap-0.5 text-xs">
                         {c.phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" /> {c.phone}</span>}
@@ -129,6 +178,20 @@ export default function ClientesPage() {
           </div>
         )}
       </Card>
+
+      {filtered.length > PAGE_SIZE && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-slate-500">Página {page + 1} de {totalPages} · {filtered.length} clientes</p>
+          <div className="flex gap-2">
+            <Button size="sm" variant="secondary" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+              <ChevronLeft className="h-4 w-4" /> Anterior
+            </Button>
+            <Button size="sm" variant="secondary" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>
+              Siguiente <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       <CustomerFormModal open={formOpen} onClose={() => setFormOpen(false)} customer={editing} />
       <CustomerDetailModal open={!!detail} onClose={() => setDetail(null)} customer={detail} onEdit={openEdit} onSchedule={(c) => { setDetail(null); setScheduling(c) }} />

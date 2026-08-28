@@ -6,7 +6,7 @@
     "integration_issues": [
       {
         "flow": "POS payment method vs Configuración disable",
-        "issue": "If the currently selected POS payment method (e.g. 'tarjeta') is later disabled in Configuración, PaymentSection renders with NO method selected (0 active buttons) but posStore.paymentMethod still holds the disabled id — and 'Cobrar' completes the sale successfully ('Venta cobrada · DOP$ 826.00') recording a disabled/hidden payment method. Expected: reset paymentMethod to the first enabled method (or block checkout with a validation message).",
+        "issue": "If the currently selected POS payment method (e.g. 'tarjeta') is later disabled in Configuración, PaymentSection renders with NO method selected (0 active buttons) but posStore.paymentMethod still holds the disabled id — and 'Cobrar' completes the sale successfully ('Venta cobrada · RD$ 826.00') recording a disabled/hidden payment method. Expected: reset paymentMethod to the first enabled method (or block checkout with a validation message).",
         "affected_selectors": ["pos-payment-tarjeta", "pos-payment-section", "pos-checkout-btn"]
       },
       {

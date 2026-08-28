@@ -5,18 +5,18 @@ Rebuild of "Diedo / Vilma AI", a multi-module business ERP/POS as a PWA.
 Fixed stack: React + Vite (JS/JSX, NO TypeScript, NO Next, NO real backend), Zustand (+persist),
 Tailwind + SCSS, framer-motion / Lenis, Inter (UI) + Outfit (headings) self-hosted woff2,
 mock data via `services/apiClient.js` + `endpoints.js`, folders `/agents` and `/docs` always present.
-Currency DOP$, language Spanish. Phased roadmap (Fase 0–9+). **This delivery = FASE 1**:
+Currency RD$, language Spanish. Phased roadmap (Fase 0–9+). **This delivery = FASE 1**:
 Navbar + Dashboard + POS Terminal, with the POS cart as a sticky RIGHT sidebar (img1 → img2).
 
 ## User choices (confirmed)
 - Vite (reconfigured `yarn start` → vite, no supervisor edit). Scalable modular folder structure.
-- Fase 1 only. 100% mock (no backend). Follow reference screenshots style. Currency = DOP$.
+- Fase 1 only. 100% mock (no backend). Follow reference screenshots style. Currency = RD$.
 
 ## Architecture
 - Frontend-only Vite app in `/app/frontend`. `yarn start` runs `vite` on :3000 (supervisor-managed).
 - Modular: `src/modules/<module>/{pages,components}`, shared `src/components/{ui,layout}`,
   `src/stores` (Zustand+persist), `src/services` (apiClient/endpoints placeholders), `src/data` (mock),
-  `src/lib` (utils, DOP$ format, Lenis), `src/styles` (SCSS + tokens). `/agents` + `/docs` present.
+  `src/lib` (utils, RD$ format, Lenis), `src/styles` (SCSS + tokens). `/agents` + `/docs` present.
 
 ## Personas
 - Gerente / cajero de un negocio de servicios (spa/láser) operando el POS y revisando el dashboard.
@@ -49,7 +49,7 @@ Navbar + Dashboard + POS Terminal, with the POS cart as a sticky RIGHT sidebar (
 
 ## POS polish round (2026-06) — DONE (verified iteration_4/5, 100%)
 - Toasts no longer stack (top-center, single visible).
-- Discount can be entered as AMOUNT (DOP$) or PERCENT with automatic conversion + helper.
+- Discount can be entered as AMOUNT (RD$) or PERCENT with automatic conversion + helper.
 - Transfer proof upload no longer overflows the cart (CartPanel root w-full/min-w-0 + aside overflow-hidden + truncated filename + Quitar).
 - Transfer requires EITHER photo proof OR reference number (one of two, not both).
 - Customer selector: first option 'Crear nuevo cliente' opens a modal, creates + auto-selects (posStore.customers + addCustomer).
@@ -69,7 +69,7 @@ Navbar + Dashboard + POS Terminal, with the POS cart as a sticky RIGHT sidebar (
 
 ## Implemented (2026-06 / Fase 5 Agenda) — DONE (verified iteration_7, 13/13)
 - `agendaStore` (persist 'diedo-agenda', version 2 + `merge` que re-ancla citas semilla al día actual sin tocar las del usuario): CRUD (add/update/delete/setStatus), getByDate/getToday, helper todayKey/toKey; estados pendiente/confirmada/completada/cancelada.
-- `/agenda`: vistas Día y Semana, navegación prev/next/Hoy, tarjetas de cita (hora, cliente, servicio+DOP$, duración, badge estado) con editar/eliminar visibles (touch-friendly). Semana = 7 columnas, hoy resaltado, contador por día; click en columna precarga esa fecha.
+- `/agenda`: vistas Día y Semana, navegación prev/next/Hoy, tarjetas de cita (hora, cliente, servicio+RD$, duración, badge estado) con editar/eliminar visibles (touch-friendly). Semana = 7 columnas, hoy resaltado, contador por día; click en columna precarga esa fecha.
 - `AppointmentFormModal`: liga cliente (posStore.customers) + servicio (catalogStore type=service, autollena precio), fecha/hora, duración, estado, notas.
 - Dashboard: `AppointmentsToday` lee del agendaStore (lista + "Ver agenda"); KPI en vivo "Citas Hoy" (id 'citas') reemplaza el placeholder 'personal'.
 - Fixes post-test: bug de fallback falsy en updateAppointment (precio/duración 0 se descartaban), acciones ocultas hover-only, capitalización del label de rango.

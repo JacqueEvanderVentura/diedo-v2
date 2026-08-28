@@ -10,7 +10,7 @@ Esta entrega cubre la **Fase 1**: Navbar + Dashboard + Terminal POS. 100% datos 
 - **framer-motion** + **Lenis** (scroll suave global)
 - **Inter** (UI) + **Outfit** (headings), self-host woff2 en `public/fonts`
 - **recharts** para gráficas, **lucide-react** para iconos, **sonner** para toasts
-- Moneda **DOP$** (`src/lib/format.js`), idioma **Español**
+- Moneda **RD$** (`src/lib/format.js`), idioma **Español**
 
 ## Cómo correr
 ```bash
@@ -30,7 +30,7 @@ src/
     ui/                  # primitivos: Button, Card, Badge, Input, Modal, Skeleton, EmptyState
     layout/              # PageShell, Navbar, Sidebar, Placeholder
   data/                  # mock: products, customers, dashboard, navigation
-  lib/                   # utils (cn), format (DOP$), useLenis
+  lib/                   # utils (cn), format (RD$), useLenis
   modules/
     dashboard/           # pages + components
     pos/                 # pages + components (carrito sidebar + drawer)

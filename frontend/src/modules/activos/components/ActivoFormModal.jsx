@@ -51,7 +51,7 @@ export function ActivoFormModal({ open, onClose, activo }) {
             <Input value={form.code} onChange={(e) => set('code', e.target.value)} placeholder="MOB-001" data-testid="activo-field-code" />
           </div>
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-600">Valor (DOP$)</label>
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Valor (RD$)</label>
             <Input type="number" value={form.value} onChange={(e) => { set('value', e.target.value); setErr('') }} placeholder="0.00" data-testid="activo-field-value" />
           </div>
         </div>

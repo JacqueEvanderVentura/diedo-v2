@@ -39,7 +39,7 @@ export function ExpenseModal({ open, onClose }) {
           />
         </div>
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-slate-600">Monto (DOP$)</label>
+          <label className="mb-1.5 block text-sm font-medium text-slate-600">Monto (RD$)</label>
           <Input
             type="number"
             value={amount}

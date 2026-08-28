@@ -20,7 +20,7 @@
   una CxC (transferencia/link/cxc). `addExpense` (modal Gasto) descuenta efectivo de la caja.
   `Efectivo en caja = inicial + ventas efectivo − gastos`.
 - Cobrar requiere **caja abierta** (si está cerrada, muestra toast y bloquea).
-- Seed inicial: 3 CxC (2 pendientes, 1 cobrada) + caja abierta con DOP$ 2,000 para demo.
+- Seed inicial: 3 CxC (2 pendientes, 1 cobrada) + caja abierta con RD$ 2,000 para demo.
 
 ## Placeholders
 - `services/apiClient.js` + `endpoints.js` intactos (mock). Print/Download/logout siguen como toasts.

@@ -1,38 +1,52 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { X } from 'lucide-react'
+import { modalBackdropTransition, modalPanelTransition } from '@/lib/motion'
+import { cn } from '@/lib/utils'
 
-export function Modal({ open, onClose, title, children, testId }) {
+export function Modal({ open, onClose, title, children, testId, wide = false, xlarge = false, bodyClassName }) {
   useEffect(() => {
     if (!open) return
     const onKey = (e) => {
       if (e.key === 'Escape') onClose?.()
     }
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = prev
+      document.removeEventListener('keydown', onKey)
+    }
   }, [open, onClose])
 
-  return (
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={modalBackdropTransition.initial}
+            animate={modalBackdropTransition.animate}
+            exit={modalBackdropTransition.exit}
+            transition={modalBackdropTransition.transition}
             onClick={onClose}
             className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
           />
           <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 12 }}
-            transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+            initial={modalPanelTransition.initial}
+            animate={modalPanelTransition.animate}
+            exit={modalPanelTransition.exit}
+            transition={modalPanelTransition.transition}
             data-testid={testId}
-            className="relative z-10 w-full max-w-md rounded-2xl border border-slate-100 bg-white shadow-xl"
+            className={cn(
+              'relative z-10 w-full rounded-2xl border border-slate-100 bg-white shadow-xl',
+              xlarge ? 'max-w-4xl' : wide ? 'max-w-2xl' : 'max-w-md'
+            )}
           >
             <div className="flex items-center justify-between border-b border-slate-100 p-5">
-              <h3 className="font-heading text-lg font-semibold tracking-tight text-slate-900">{title}</h3>
+              <div className="min-w-0 text-lg font-semibold tracking-tight text-slate-900">{title}</div>
               <button
                 onClick={onClose}
                 data-testid="modal-close"
@@ -41,10 +55,11 @@ export function Modal({ open, onClose, title, children, testId }) {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="p-5">{children}</div>
+            <div className={cn('p-5', (wide || xlarge) && 'max-h-[calc(90vh-4.5rem)] overflow-y-auto scrollbar-thin', bodyClassName)}>{children}</div>
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   )
 }

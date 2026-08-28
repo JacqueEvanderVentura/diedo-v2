@@ -65,10 +65,10 @@ export const STOCK_ALERTS = [
 ]
 
 export const RECENT_ACTIVITY = [
-  { id: 'a1', title: 'Ingreso registrado por DOP$ 2,000', time: '10:17 AM', source: 'CRM', icon: 'FileText' },
-  { id: 'a2', title: 'Nuevo lead capturado: Carla Jiménez', time: '09:52 AM', source: 'CRM', icon: 'UserPlus' },
-  { id: 'a3', title: 'Caja abierta en Charm DN', time: '08:30 AM', source: 'POS', icon: 'Store' },
-  { id: 'a4', title: 'Producto agotado: Red Bull', time: 'Ayer · 6:40 PM', source: 'Inventario', icon: 'PackageX' },
+  { id: 'a1', title: 'Ingreso registrado por RD$ 2,000', time: '10:17 AM', source: 'CRM', icon: 'FileText', to: '/crm/ventas' },
+  { id: 'a2', title: 'Nuevo lead capturado: Carla Jiménez', time: '09:52 AM', source: 'CRM', icon: 'UserPlus', to: '/crm/clientes' },
+  { id: 'a3', title: 'Caja abierta en Charm DN', time: '08:30 AM', source: 'POS', icon: 'Store', to: '/pos/caja' },
+  { id: 'a4', title: 'Producto agotado: Red Bull', time: 'Ayer · 6:40 PM', source: 'Inventario', icon: 'PackageX', to: '/inventarios' },
 ]
 
 export const APPOINTMENTS_TODAY = []

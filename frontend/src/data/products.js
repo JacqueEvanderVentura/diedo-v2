@@ -1,4 +1,4 @@
-// Mock catalog for the POS terminal. Prices in DOP.
+// Mock catalog for the POS terminal. Prices in RD.
 export const BRANCHES = [
   { id: 'charm-dn', name: 'Charm DN' },
   { id: 'charm-santiago', name: 'Charm Santiago' },

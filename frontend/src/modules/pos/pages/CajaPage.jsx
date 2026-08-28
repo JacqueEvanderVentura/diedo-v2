@@ -1,47 +1,92 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { motion } from 'framer-motion'
-import { Banknote, TrendingUp, ReceiptText, Wallet, PlusCircle, Lock, Unlock, Clock } from 'lucide-react'
+import * as Icons from 'lucide-react'
+import {
+  Lock,
+  Unlock,
+  DollarSign,
+  History,
+  ArrowUpRight,
+  ArrowDownRight,
+  ShoppingBag,
+  ChevronRight,
+} from 'lucide-react'
 import { usePosStore } from '@/stores/posStore'
+import { useConfigStore } from '@/stores/configStore'
 import { formatDOP } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
+import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { ExpenseModal } from '../components/ExpenseModal'
+import { MovementModal } from '../components/MovementModal'
+import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
+import { filterMovements, methodLabel, PAYMENT_BREAKDOWN, sumByMethod } from '../lib/caja'
+import { cn } from '@/lib/utils'
 
 const fmtTime = (iso) =>
-  new Date(iso).toLocaleString('es-DO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+  new Date(iso).toLocaleString('es-DO', { hour: '2-digit', minute: '2-digit' })
 
-function Stat({ icon: Icon, label, value, tone }) {
-  const tones = {
-    brand: 'bg-blue-50 text-blue-600',
-    green: 'bg-emerald-50 text-emerald-600',
-    red: 'bg-red-50 text-red-600',
-    amber: 'bg-amber-50 text-amber-600',
-  }
+const fmtDateTime = (iso) =>
+  new Date(iso).toLocaleString('es-DO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+const TABS = [
+  { id: 'todos', label: 'Todos' },
+  { id: 'venta', label: 'Ventas' },
+  { id: 'ingreso', label: 'Ingresos' },
+  { id: 'egreso', label: 'Egresos' },
+]
+
+const TYPE_META = {
+  venta: { label: 'venta', tone: 'brand', Icon: ShoppingBag },
+  ingreso: { label: 'ingreso', tone: 'success', Icon: ArrowUpRight },
+  egreso: { label: 'egreso', tone: 'danger', Icon: ArrowDownRight },
+}
+
+function KpiCard({ label, value, sub, children }) {
   return (
-    <Card className="p-5" data-testid={`caja-stat-${label}`}>
-      <div className={`mb-4 flex h-11 w-11 items-center justify-center rounded-xl ${tones[tone]}`}>
-        <Icon className="h-5 w-5" strokeWidth={2} />
-      </div>
-      <p className="text-sm font-medium text-slate-500">{label}</p>
-      <p className="mt-1 font-heading text-2xl font-bold tracking-tight text-slate-900">{value}</p>
+    <Card className="min-w-0 p-5">
+      <p className="text-sm text-slate-500">{label}</p>
+      {value != null && value !== '' && (
+        <p className="mt-1 break-words font-heading text-2xl font-bold tracking-tight text-slate-900">{value}</p>
+      )}
+      {sub && <p className="mt-1 text-xs text-slate-400">{sub}</p>}
+      {children}
     </Card>
   )
 }
 
 export default function CajaPage() {
   const register = usePosStore((s) => s.register)
-  const cashSales = usePosStore((s) => s.cashSales)
+  const shiftSales = usePosStore((s) => s.shiftSales)
+  const shiftIncomes = usePosStore((s) => s.shiftIncomes)
   const expenses = usePosStore((s) => s.expenses)
-  const getCashExpenses = usePosStore((s) => s.getCashExpenses)
+  const registerHistory = usePosStore((s) => s.registerHistory)
+  const branchId = usePosStore((s) => s.branchId)
+  const setBranch = usePosStore((s) => s.setBranch)
   const getCashInDrawer = usePosStore((s) => s.getCashInDrawer)
+  const getCashIncomes = usePosStore((s) => s.getCashIncomes)
+  const getCashExpenses = usePosStore((s) => s.getCashExpenses)
+  const getShiftSalesTotal = usePosStore((s) => s.getShiftSalesTotal)
+  const getShiftMovements = usePosStore((s) => s.getShiftMovements)
   const openRegister = usePosStore((s) => s.openRegister)
   const closeRegister = usePosStore((s) => s.closeRegister)
   const lastCloseSummary = usePosStore((s) => s.lastCloseSummary)
+  const branches = useConfigStore((s) => s.branches)
 
   const [openInput, setOpenInput] = useState('')
-  const [expenseOpen, setExpenseOpen] = useState(false)
+  const [movementOpen, setMovementOpen] = useState(false)
+  const [tab, setTab] = useState('todos')
+
+  const movements = useMemo(() => getShiftMovements(), [shiftSales, shiftIncomes, expenses, getShiftMovements])
+  const filtered = useMemo(() => filterMovements(movements, tab), [movements, tab])
+
+  const totalSales = useMemo(() => getShiftSalesTotal(), [shiftSales, getShiftSalesTotal])
+  const totalIncomes = useMemo(() => getCashIncomes(), [shiftIncomes, getCashIncomes])
+  const totalExpenses = useMemo(() => getCashExpenses(), [expenses, getCashExpenses])
+  const expectedCash = getCashInDrawer()
+
+  const salesCount = shiftSales.length
 
   const handleOpen = () => {
     openRegister(openInput || 0)
@@ -67,7 +112,7 @@ export default function CajaPage() {
               <p className="text-sm text-slate-400">Registra el efectivo inicial del turno.</p>
             </div>
           </div>
-          <label className="mb-1.5 block text-sm font-medium text-slate-600">Efectivo inicial (DOP$)</label>
+          <label className="mb-1.5 block text-sm font-medium text-slate-600">Efectivo inicial (RD$)</label>
           <input
             type="number"
             value={openInput}
@@ -86,11 +131,53 @@ export default function CajaPage() {
             <h3 className="mb-4 font-heading text-lg font-semibold text-slate-800">Último cierre</h3>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between text-slate-500"><dt>Efectivo inicial</dt><dd className="font-medium text-slate-700">{formatDOP(lastCloseSummary.openingCash)}</dd></div>
+              <div className="flex justify-between text-slate-500"><dt>Total ventas</dt><dd className="font-medium text-slate-700">{formatDOP(lastCloseSummary.totalSales)}</dd></div>
               <div className="flex justify-between text-slate-500"><dt>Ventas en efectivo</dt><dd className="font-medium text-slate-700">{formatDOP(lastCloseSummary.cashSales)}</dd></div>
-              <div className="flex justify-between text-slate-500"><dt>Gastos</dt><dd className="font-medium text-red-600">−{formatDOP(lastCloseSummary.expenses)}</dd></div>
+              <div className="flex justify-between text-slate-500"><dt>Ingresos</dt><dd className="font-medium text-emerald-600">+{formatDOP(lastCloseSummary.cashIncomes || 0)}</dd></div>
+              <div className="flex justify-between text-slate-500"><dt>Egresos</dt><dd className="font-medium text-red-600">−{formatDOP(lastCloseSummary.expenses)}</dd></div>
               <div className="flex justify-between border-t border-slate-100 pt-2"><dt className="font-heading font-bold text-slate-900">Efectivo esperado</dt><dd className="font-heading text-lg font-bold text-blue-600">{formatDOP(lastCloseSummary.expected)}</dd></div>
-              <p className="pt-1 text-xs text-slate-400">Cerrada el {fmtTime(lastCloseSummary.closedAt)}</p>
+              <p className="pt-1 text-xs text-slate-400">Cerrada el {fmtDateTime(lastCloseSummary.closedAt)}</p>
             </dl>
+          </Card>
+        )}
+
+        {registerHistory.length > 0 && (
+          <Card className="overflow-hidden p-0">
+            <div className="border-b border-slate-100 px-6 py-4">
+              <h3 className="font-heading text-lg font-semibold text-slate-800">Historial de Cajas</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/50 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    <th className="px-4 py-3">Fecha</th>
+                    <th className="px-4 py-3">Usuario</th>
+                    <th className="px-4 py-3 text-right">Inicial</th>
+                    <th className="px-4 py-3 text-right">Esperado</th>
+                    <th className="px-4 py-3 text-right">Real</th>
+                    <th className="px-4 py-3 text-right">Diferencia</th>
+                    <th className="px-4 py-3 text-center">Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {registerHistory.map((h) => (
+                    <tr key={h.id} className="border-b border-slate-50">
+                      <td className="px-4 py-3 text-slate-600">{fmtDateTime(h.closedAt)}</td>
+                      <td className="px-4 py-3">{h.userName}</td>
+                      <td className="px-4 py-3 text-right">{formatDOP(h.openingCash)}</td>
+                      <td className="px-4 py-3 text-right">{formatDOP(h.expected)}</td>
+                      <td className="px-4 py-3 text-right">{formatDOP(h.actual)}</td>
+                      <td className={cn('px-4 py-3 text-right font-medium', h.difference !== 0 ? 'text-amber-600' : 'text-slate-600')}>
+                        {formatDOP(h.difference)}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <Badge tone={h.difference === 0 ? 'success' : 'warning'}>{h.difference === 0 ? 'Cuadrado' : 'Diferencia'}</Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Card>
         )}
       </div>
@@ -98,54 +185,209 @@ export default function CajaPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1200px] space-y-6 p-6 sm:p-8">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2 rounded-full bg-emerald-50 px-3.5 py-1.5 text-sm font-semibold text-emerald-600">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-          Caja abierta · desde {fmtTime(register.openedAt)}
+    <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="caja-page">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-4">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+            <Unlock className="h-7 w-7" />
+          </div>
+          <div>
+            <h2 className="font-heading text-xl font-bold text-slate-900">Caja Abierta</h2>
+            <p className="text-sm text-slate-500">Abierta desde {fmtTime(register.openedAt)} hrs</p>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => setExpenseOpen(true)} data-testid="caja-add-expense">
-            <PlusCircle className="h-4 w-4" /> Registrar gasto
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" onClick={() => setMovementOpen(true)} data-testid="caja-add-movement">
+            <DollarSign className="h-4 w-4" /> Movimiento
           </Button>
           <Button variant="dangerSolid" onClick={handleClose} data-testid="caja-close-btn">
-            <Lock className="h-4 w-4" /> Cerrar caja
+            <Lock className="h-4 w-4" /> Cerrar Caja
           </Button>
+          <Select
+            value={branchId}
+            onChange={setBranch}
+            className="w-[180px]"
+            options={branches.map((b) => ({ value: b.id, label: b.name }))}
+          />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat icon={Banknote} label="Efectivo inicial" value={formatDOP(register.openingCash)} tone="brand" />
-        <Stat icon={TrendingUp} label="Ventas en efectivo" value={formatDOP(cashSales)} tone="green" />
-        <Stat icon={ReceiptText} label="Gastos del turno" value={`−${formatDOP(getCashExpenses())}`} tone="red" />
-        <Stat icon={Wallet} label="Efectivo en caja" value={formatDOP(getCashInDrawer())} tone="amber" />
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div className="space-y-4 xl:col-span-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <KpiCard
+              label="Total Ventas"
+              value={formatDOP(totalSales)}
+              sub={`${salesCount} transacciones`}
+            />
+            <KpiCard label="Efectivo Esperado" value={formatDOP(expectedCash)} />
+            <KpiCard label="Movimientos">
+              <div className="mt-2 space-y-1">
+                <span className="flex items-center gap-1 text-sm font-semibold text-emerald-600">
+                  <ArrowUpRight className="h-4 w-4 shrink-0" />
+                  <span className="tabular-nums">+{formatDOP(totalIncomes)}</span>
+                </span>
+                <span className="flex items-center gap-1 text-sm font-semibold text-red-600">
+                  <ArrowDownRight className="h-4 w-4 shrink-0" />
+                  <span className="tabular-nums">−{formatDOP(totalExpenses)}</span>
+                </span>
+              </div>
+            </KpiCard>
+          </div>
+
+          <Card className="p-6" data-testid="caja-movements">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <History className="h-5 w-5 text-blue-600" />
+                <h3 className="font-heading text-lg font-semibold text-slate-900">Movimientos del Día</h3>
+                <Badge tone="brand" className="uppercase tracking-wider">En vivo</Badge>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+                  {salesCount} ventas · {formatDOP(totalSales)}
+                </span>
+                <span className="flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
+                  <ArrowUpRight className="h-3 w-3" />+{formatDOP(totalIncomes)}
+                </span>
+                <span className="flex items-center gap-1 rounded-lg bg-red-50 px-2 py-1 text-xs font-semibold text-red-600">
+                  <ArrowDownRight className="h-3 w-3" />−{formatDOP(totalExpenses)}
+                </span>
+              </div>
+            </div>
+
+            <div className="mb-4 flex w-fit gap-1 rounded-lg bg-slate-100 p-1">
+              {TABS.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setTab(t.id)}
+                  className={cn(
+                    'rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
+                    tab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                  )}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            <AnimatedTabPanel panelKey={tab}>
+              {filtered.length === 0 ? (
+                <EmptyState icon={History} title="Sin movimientos" description="Las ventas, ingresos y egresos del turno aparecerán aquí." />
+              ) : (
+                <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
+                  {filtered.map((m) => {
+                    const meta = TYPE_META[m.type]
+                    const Icon = meta.Icon
+                    const isOut = m.type === 'egreso'
+                    return (
+                      <div key={`${m.type}-${m.id}`} className="group flex items-center gap-3 rounded-xl bg-slate-50 p-3 transition-colors hover:bg-slate-100">
+                        <div className={cn(
+                          'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
+                          m.type === 'venta' ? 'bg-blue-50 text-blue-600' : m.type === 'ingreso' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+                        )}>
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="truncate text-sm font-semibold text-slate-800">{m.label}</p>
+                            <Badge tone={meta.tone} className="shrink-0 text-[9px] uppercase">{meta.label}</Badge>
+                          </div>
+                          <div className="mt-0.5 flex items-center gap-2">
+                            <p className="text-[10px] text-slate-400">{fmtTime(m.createdAt)}</p>
+                            {m.method && (
+                              <span className="rounded bg-slate-200/80 px-1 text-[10px] text-slate-500">{methodLabel(m.method)}</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <span className={cn('text-sm font-bold', isOut ? 'text-red-600' : 'text-slate-900')}>
+                            {isOut ? '−' : '+'}{formatDOP(m.amount)}
+                          </span>
+                          <ChevronRight className="h-4 w-4 text-slate-300 transition-colors group-hover:text-slate-500" />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </AnimatedTabPanel>
+          </Card>
+        </div>
+
+        <Card className="h-fit p-5">
+          <h3 className="mb-4 font-heading font-semibold text-slate-900">Por método de pago</h3>
+          <div className="space-y-3">
+            {PAYMENT_BREAKDOWN.map((pm) => {
+              const Icon = Icons[pm.icon] || Icons.Wallet
+              const total = sumByMethod(shiftSales, pm.id)
+              return (
+                <div key={pm.id} className="flex items-center justify-between rounded-lg bg-slate-50 p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-slate-600 shadow-sm">
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <span className="font-medium text-slate-700">{pm.label}</span>
+                  </div>
+                  <span className="text-lg font-bold text-slate-900">{formatDOP(total)}</span>
+                </div>
+              )
+            })}
+          </div>
+          <div className="mt-4 border-t border-slate-100 pt-4">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">Efectivo inicial</span>
+              <span className="font-semibold">{formatDOP(register.openingCash)}</span>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-sm">
+              <span className="text-slate-500">En caja ahora</span>
+              <span className="font-heading text-lg font-bold text-blue-600">{formatDOP(expectedCash)}</span>
+            </div>
+          </div>
+        </Card>
       </div>
 
-      <Card className="p-6" data-testid="caja-expenses-list">
-        <h3 className="mb-4 font-heading text-lg font-semibold text-slate-800">Gastos del turno</h3>
-        {expenses.length === 0 ? (
-          <EmptyState icon={ReceiptText} title="Sin gastos registrados" description="Los gastos que registres descuentan el efectivo de la caja." />
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {expenses.map((e) => (
-              <li key={e.id} className="flex items-center justify-between py-3" data-testid={`caja-expense-${e.id}`}>
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-500">
-                    <ReceiptText className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">{e.concept}</p>
-                    <p className="flex items-center gap-1 text-xs text-slate-400"><Clock className="h-3 w-3" /> {fmtTime(e.createdAt)}</p>
-                  </div>
-                </div>
-                <p className="font-heading font-bold text-red-600">−{formatDOP(e.amount)}</p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+      {registerHistory.length > 0 && (
+        <Card className="overflow-hidden p-0">
+          <div className="border-b border-slate-100 px-6 py-4">
+            <h3 className="font-heading text-lg font-semibold text-slate-800">Historial de Cajas</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/50 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  <th className="px-4 py-3">Fecha</th>
+                  <th className="px-4 py-3">Usuario</th>
+                  <th className="px-4 py-3 text-right">Inicial</th>
+                  <th className="px-4 py-3 text-right">Esperado</th>
+                  <th className="px-4 py-3 text-right">Real</th>
+                  <th className="px-4 py-3 text-right">Diferencia</th>
+                  <th className="px-4 py-3 text-center">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {registerHistory.map((h) => (
+                  <tr key={h.id} className="border-b border-slate-50">
+                    <td className="px-4 py-3 text-slate-600">{fmtDateTime(h.closedAt)}</td>
+                    <td className="px-4 py-3">{h.userName}</td>
+                    <td className="px-4 py-3 text-right">{formatDOP(h.openingCash)}</td>
+                    <td className="px-4 py-3 text-right">{formatDOP(h.expected)}</td>
+                    <td className="px-4 py-3 text-right">{formatDOP(h.actual)}</td>
+                    <td className={cn('px-4 py-3 text-right font-medium', h.difference !== 0 ? 'text-amber-600' : 'text-slate-600')}>
+                      {formatDOP(h.difference)}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <Badge tone={h.difference === 0 ? 'success' : 'warning'}>{h.difference === 0 ? 'Cuadrado' : 'Diferencia'}</Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
-      <ExpenseModal open={expenseOpen} onClose={() => setExpenseOpen(false)} />
+      <MovementModal open={movementOpen} onClose={() => setMovementOpen(false)} />
     </div>
   )
 }

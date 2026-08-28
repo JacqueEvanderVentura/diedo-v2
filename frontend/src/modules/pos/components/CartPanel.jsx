@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { AnimatePresence } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { toast } from 'sonner'
-import { ShoppingCart, Plus, Trash2, Printer, Download, Wallet, Percent } from 'lucide-react'
+import { ShoppingCart, Plus, Trash2, Printer, Download, Wallet, Percent, ChevronDown } from 'lucide-react'
 import { usePosStore, RECEIVABLE_METHODS } from '@/stores/posStore'
 import { useCatalogStore } from '@/stores/catalogStore'
+import { useConfigStore } from '@/stores/configStore'
 import { formatDOP } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
@@ -11,7 +12,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { CartItem } from './CartItem'
 import { CustomerSelector } from './CustomerSelector'
 import { PaymentSection } from './PaymentSection'
-import { ExpenseModal } from './ExpenseModal'
+import { buildInvoiceHtml, printInvoice, downloadInvoice, makeInvoiceId, formatInvoiceDate, invoiceFilename } from '../lib/invoice'
 
 export function CartPanel({ onCheckoutDone }) {
   const items = usePosStore((s) => s.items)
@@ -33,9 +34,16 @@ export function CartPanel({ onCheckoutDone }) {
   const recordSale = usePosStore((s) => s.recordSale)
   const customer = usePosStore((s) => s.customer)
   const decrementForSale = useCatalogStore((s) => s.decrementForSale)
+  const addExpense = usePosStore((s) => s.addExpense)
+  const isExpense = usePosStore((s) => s.isExpense)
+  const toggleExpense = usePosStore((s) => s.toggleExpense)
+  const branchId = usePosStore((s) => s.branchId)
+  const branches = useConfigStore((s) => s.branches)
+  const paymentMethods = useConfigStore((s) => s.paymentMethods)
+  const settings = useConfigStore((s) => s.settings)
 
   const [payError, setPayError] = useState(false)
-  const [expenseOpen, setExpenseOpen] = useState(false)
+  const [discountOpen, setDiscountOpen] = useState(false)
 
   const empty = items.length === 0
   const discountAmt = getDiscountAmount()
@@ -53,12 +61,28 @@ export function CartPanel({ onCheckoutDone }) {
       return
     }
     // Transfer: needs EITHER an uploaded proof OR a reference number (one of two).
-    if (paymentMethod === 'transferencia' && !transferProof && !paymentReference.trim()) {
+    if (paymentMethod === 'transferencia' && !isExpense && !transferProof && !paymentReference.trim()) {
       setPayError(true)
       return
     }
     setPayError(false)
     const total = getTotal()
+
+    if (isExpense) {
+      const concept = items.map((i) => `${i.qty}× ${i.name}`).join(', ') || 'Gasto POS'
+      addExpense({
+        concept,
+        amount: total,
+        items,
+        method: paymentMethod,
+        reference: paymentReference.trim() || null,
+      })
+      decrementForSale(items)
+      toast.success(`Gasto registrado · ${formatDOP(total)}`)
+      clearCart()
+      onCheckoutDone?.()
+      return
+    }
     recordSale({ total, method: paymentMethod, customer, reference: paymentReference, items })
     decrementForSale(items)
     if (RECEIVABLE_METHODS.includes(paymentMethod)) {
@@ -70,9 +94,44 @@ export function CartPanel({ onCheckoutDone }) {
     onCheckoutDone?.()
   }
 
-  const mockAction = (label) => {
+  const buildCurrentInvoice = () => {
+    const issuedAt = new Date()
+    const kind = isExpense ? 'expense' : 'sale'
+    const id = makeInvoiceId(issuedAt, kind)
+    return {
+      id,
+      html: buildInvoiceHtml({
+        id,
+        kind,
+        issuedAt: formatInvoiceDate(issuedAt),
+        businessName: settings.businessName || 'Diedo App',
+        branchName: branches.find((b) => b.id === branchId)?.name || '',
+        region: settings.region || '',
+        customerName: customer?.name || 'Cliente Mostrador',
+        customerPhone: customer?.phone || '',
+        paymentMethod: paymentMethods.find((m) => m.id === paymentMethod)?.name || paymentMethod,
+        paymentReference: paymentReference.trim(),
+        items,
+        subtotal: getSubtotal(),
+        discountAmt,
+        discountPct: getDiscountPct(),
+        taxPct,
+        taxAmt: getTaxAmount(),
+        total: getTotal(),
+      }),
+    }
+  }
+
+  const handlePrint = () => {
     if (empty) return toast.error('El carrito está vacío')
-    toast.success(`${label} (simulado)`)
+    printInvoice(buildCurrentInvoice().html)
+  }
+
+  const handleDownload = () => {
+    if (empty) return toast.error('El carrito está vacío')
+    const { id, html } = buildCurrentInvoice()
+    downloadInvoice(html, invoiceFilename(id))
+    toast.success(isExpense ? 'Gasto descargado' : 'Factura descargada')
   }
 
   return (
@@ -108,63 +167,107 @@ export function CartPanel({ onCheckoutDone }) {
 
         {!empty && (
           <>
-            {/* Discount — amount OR percent */}
+            {/* Discount — collapsed by default, expands to amount/% controls */}
             <div className="border-t border-slate-100 pt-4">
-              <div className="mb-2 flex items-center justify-between">
-                <label className="flex items-center gap-1.5 text-sm font-medium text-slate-500">
-                  <Percent className="h-4 w-4" /> Descuento
-                </label>
-                <div className="flex rounded-lg bg-slate-100 p-0.5">
-                  <button
-                    onClick={() => setDiscountMode('amount')}
-                    data-testid="cart-discount-mode-amount"
-                    className={cn('rounded-md px-2.5 py-1 text-xs font-bold transition-colors', discountMode === 'amount' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400')}
-                  >
-                    DOP$
-                  </button>
-                  <button
-                    onClick={() => setDiscountMode('pct')}
-                    data-testid="cart-discount-mode-pct"
-                    className={cn('rounded-md px-2.5 py-1 text-xs font-bold transition-colors', discountMode === 'pct' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400')}
-                  >
-                    %
-                  </button>
-                </div>
-              </div>
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  value={discountValue || ''}
-                  onChange={(e) => setDiscountValue(e.target.value)}
-                  placeholder="0"
-                  data-testid="cart-discount-input"
-                  className="w-full rounded-lg border-0 bg-white py-2.5 pl-3 pr-14 text-right text-sm font-semibold text-slate-800 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-inset focus:ring-blue-600"
-                />
-                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-slate-400">
-                  {discountMode === 'amount' ? 'DOP$' : '%'}
+              <button
+                type="button"
+                onClick={() => setDiscountOpen((o) => !o)}
+                data-testid="cart-discount-toggle"
+                className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm font-semibold text-slate-600 transition-colors hover:border-blue-200 hover:text-blue-600"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <Percent className="h-4 w-4 shrink-0" />
+                  Descuento
+                  {discountAmt > 0 && (
+                    <span className="truncate font-medium text-emerald-600">
+                      · −{formatDOP(discountAmt)}
+                    </span>
+                  )}
                 </span>
-              </div>
-              {discountAmt > 0 && (
-                <p className="mt-1.5 text-xs font-medium text-emerald-600" data-testid="cart-discount-helper">
-                  {discountMode === 'amount'
-                    ? `Equivale a ${getDiscountPct().toFixed(1)}% de descuento`
-                    : `Ahorro de ${formatDOP(discountAmt)}`}
-                </p>
-              )}
+                <ChevronDown
+                  className={cn('h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200', discountOpen && 'rotate-180')}
+                />
+              </button>
+
+              <AnimatePresence initial={false}>
+                {discountOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2, ease: 'easeOut' }}
+                    className="overflow-hidden"
+                  >
+                    <div className="pt-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-sm font-medium text-slate-500">Tipo</span>
+                        <div className="flex rounded-lg bg-slate-100 p-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setDiscountMode('amount')}
+                            data-testid="cart-discount-mode-amount"
+                            className={cn('rounded-md px-2.5 py-1 text-xs font-bold transition-colors', discountMode === 'amount' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400')}
+                          >
+                            RD$
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDiscountMode('pct')}
+                            data-testid="cart-discount-mode-pct"
+                            className={cn('rounded-md px-2.5 py-1 text-xs font-bold transition-colors', discountMode === 'pct' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400')}
+                          >
+                            %
+                          </button>
+                        </div>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="0"
+                          value={discountValue || ''}
+                          onChange={(e) => setDiscountValue(e.target.value)}
+                          placeholder="0"
+                          data-testid="cart-discount-input"
+                          className="w-full rounded-lg border-0 bg-white py-2.5 pl-3 pr-14 text-right text-sm font-semibold text-slate-800 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-inset focus:ring-blue-600"
+                        />
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-slate-400">
+                          {discountMode === 'amount' ? 'RD$' : '%'}
+                        </span>
+                      </div>
+                      {discountAmt > 0 && (
+                        <p className="mt-1.5 text-xs font-medium text-emerald-600" data-testid="cart-discount-helper">
+                          {discountMode === 'amount'
+                            ? `Equivale a ${getDiscountPct().toFixed(1)}% de descuento`
+                            : `Ahorro de ${formatDOP(discountAmt)}`}
+                        </p>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             <PaymentSection error={payError} />
 
             {/* Secondary actions */}
             <div className="grid grid-cols-3 gap-2">
-              <button onClick={() => mockAction('Ticket impreso')} data-testid="pos-print" className="flex flex-col items-center gap-1 rounded-xl border border-slate-200 bg-white py-2.5 text-[11px] font-semibold text-slate-500 transition-colors hover:border-blue-200 hover:text-blue-600">
+              <button onClick={handlePrint} data-testid="pos-print" className="flex flex-col items-center gap-1 rounded-xl border border-slate-200 bg-white py-2.5 text-[11px] font-semibold text-slate-500 transition-colors hover:border-blue-200 hover:text-blue-600">
                 <Printer className="h-4 w-4" /> Imprimir
               </button>
-              <button onClick={() => mockAction('Ticket descargado')} data-testid="pos-download" className="flex flex-col items-center gap-1 rounded-xl border border-slate-200 bg-white py-2.5 text-[11px] font-semibold text-slate-500 transition-colors hover:border-blue-200 hover:text-blue-600">
+              <button onClick={handleDownload} data-testid="pos-download" className="flex flex-col items-center gap-1 rounded-xl border border-slate-200 bg-white py-2.5 text-[11px] font-semibold text-slate-500 transition-colors hover:border-blue-200 hover:text-blue-600">
                 <Download className="h-4 w-4" /> Descargar
               </button>
-              <button onClick={() => setExpenseOpen(true)} data-testid="pos-expense-open" className="flex flex-col items-center gap-1 rounded-xl border border-slate-200 bg-white py-2.5 text-[11px] font-semibold text-slate-500 transition-colors hover:border-blue-200 hover:text-blue-600">
+              <button
+                type="button"
+                onClick={toggleExpense}
+                data-testid="pos-expense-toggle"
+                className={cn(
+                  'flex flex-col items-center gap-1 rounded-xl border py-2.5 text-[11px] font-semibold transition-colors',
+                  isExpense
+                    ? 'border-red-500 bg-red-50 text-red-600'
+                    : 'border-slate-200 bg-white text-slate-500 hover:border-red-200 hover:text-red-600'
+                )}
+              >
                 <Wallet className="h-4 w-4" /> Gasto
               </button>
             </div>
@@ -191,16 +294,21 @@ export function CartPanel({ onCheckoutDone }) {
           </div>
           <div className="flex items-center justify-between border-t border-slate-200 pt-2">
             <span className="font-heading text-base font-bold text-slate-900">Total</span>
-            <span className="font-heading text-2xl font-bold tracking-tight text-blue-600" data-testid="cart-total">{formatDOP(getTotal())}</span>
+            <span className={cn('font-heading text-2xl font-bold tracking-tight', isExpense ? 'text-red-600' : 'text-blue-600')} data-testid="cart-total">{formatDOP(getTotal())}</span>
           </div>
         </div>
 
-        <Button size="lg" className="w-full" onClick={handleCheckout} disabled={empty} data-testid="pos-checkout-btn">
-          <Wallet className="h-4 w-4" /> Cobrar {!empty && `· ${formatDOP(getTotal())}`}
+        <Button
+          size="lg"
+          className="w-full"
+          variant={isExpense ? 'dangerSolid' : 'primary'}
+          onClick={handleCheckout}
+          disabled={empty}
+          data-testid="pos-checkout-btn"
+        >
+          <Wallet className="h-4 w-4" /> {isExpense ? 'Registrar gasto' : 'Cobrar'} {!empty && `· ${formatDOP(getTotal())}`}
         </Button>
       </div>
-
-      <ExpenseModal open={expenseOpen} onClose={() => setExpenseOpen(false)} />
     </div>
   )
 }

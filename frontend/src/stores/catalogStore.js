@@ -14,6 +14,7 @@ const SEED = PRODUCTS.map((p) => ({
   category: p.category,
   type: p.type, // 'service' | 'product'
   stock: p.type === 'service' ? null : p.stock ?? 0,
+  minStock: p.minStock ?? 0,
   taxPct: 18,
   branchId: 'charm-dn',
 }))
@@ -36,23 +37,31 @@ export const useCatalogStore = create(
     (set, get) => ({
       products: SEED,
 
-      addProduct: (data) =>
-        set((s) => ({
-          products: [
-            {
-              id: genId(),
-              sku: data.sku || null,
-              name: data.name,
-              price: Number(data.price) || 0,
-              category: data.category || 'otros',
-              type: data.type || 'product',
-              stock: data.type === 'service' ? null : Number(data.stock) || 0,
-              taxPct: Number(data.taxPct) || 18,
-              branchId: data.branchId || 'charm-dn',
-            },
-            ...s.products,
-          ],
-        })),
+      addProduct: (data) => {
+        const product = {
+          id: genId(),
+          sku: data.sku || null,
+          name: data.name,
+          price: Number(data.price) || 0,
+          category: data.category || 'otros',
+          type: data.type || 'product',
+          stock: data.type === 'service' ? null : Number(data.stock) || 0,
+          taxPct: data.appliesTax === false ? 0 : Number(data.taxPct) || 18,
+          branchId: data.branchId || data.branchIds?.[0] || 'charm-dn',
+          branchIds: data.branchIds || (data.branchId ? [data.branchId] : ['charm-dn']),
+          subtype: data.subtype || 'sale',
+          cost: Number(data.cost) || 0,
+          minStock: Number(data.minStock) || 0,
+          requiresSize: !!data.requiresSize,
+          isMembership: !!data.isMembership,
+          unit: data.unit || 'ud',
+          dynamicPrice: !!data.dynamicPrice,
+          allowNegativeStock: !!data.allowNegativeStock,
+          image: data.image || null,
+        }
+        set((s) => ({ products: [product, ...s.products] }))
+        return product
+      },
 
       updateProduct: (id, data) =>
         set((s) => ({
@@ -85,6 +94,24 @@ export const useCatalogStore = create(
             return p
           }),
         })),
+
+      bulkDecrementStock: (items) =>
+        set((s) => ({
+          products: s.products.map((p) => {
+            const row = items.find((i) => i.id === p.id)
+            if (!row || p.type !== 'product' || p.stock === null) return p
+            const next = p.stock - (Number(row.qty) || 0)
+            return { ...p, stock: p.allowNegativeStock ? next : Math.max(0, next) }
+          }),
+        })),
+
+      getInventoryStats: () => {
+        const products = get().products.filter((p) => p.type === 'product')
+        const low = products.filter((p) => p.stock !== null && p.stock > 0 && p.stock <= (p.minStock || LOW_STOCK_THRESHOLD)).length
+        const out = products.filter((p) => p.stock === 0).length
+        const totalValue = products.reduce((sum, p) => sum + (Number(p.price) || 0) * (Number(p.stock) || 0), 0)
+        return { total: products.length, low, out, totalValue }
+      },
 
       getLowStock: () => deriveLowStock(get().products),
     }),

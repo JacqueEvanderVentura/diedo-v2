@@ -2,7 +2,7 @@
   "project_name": "Diedo / Vilma AI ERP & POS",
   "theme": "light",
   "language": "es",
-  "currency": "DOP$",
+  "currency": "RD$",
   "typography": {
     "headings": {
       "font_family": "Outfit, sans-serif",
@@ -126,7 +126,7 @@
   "instructions_to_main_agent": [
     "CRITICAL: Use pure React+Vite with .js/.jsx files (NO TypeScript, NO .tsx).",
     "CRITICAL: The POS screen MUST use the 2-column layout exactly as defined in `layouts.pos_terminal`. Do NOT place the cart at the bottom of the page on desktop. It must be a sticky right sidebar ~400px wide.",
-    "CRITICAL: Currency is DOP$ (Dominican Peso). Always prefix prices with DOP$. Example: DOP$ 1,500.00.",
+    "CRITICAL: Currency is RD$ (Dominican Peso). Always prefix prices with RD$. Example: RD$ 1,500.00.",
     "CRITICAL: Language is Spanish. All UI text, placeholders, and error messages must be in Spanish.",
     "CRITICAL: Use Zustand for state management (Cart state, Auth state, UI sidebar toggle).",
     "CRITICAL: Category filters must be horizontal scroll bubbles, NOT <select> dropdowns.",

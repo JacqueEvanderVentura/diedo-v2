@@ -24,7 +24,7 @@ export function ProductGrid({ query, category, loading }) {
   }, [products, query, category])
 
   const handleAdd = (product) => {
-    if (product.type === 'product' && product.stock !== null) {
+    if (product.type === 'product' && product.stock !== null && !product.allowNegativeStock) {
       const inCart = usePosStore.getState().items.find((i) => i.id === product.id)?.qty || 0
       if (inCart >= product.stock) {
         toast.error(`Solo quedan ${product.stock} en stock`)

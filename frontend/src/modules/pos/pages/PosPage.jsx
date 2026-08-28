@@ -1,41 +1,36 @@
 import { useState } from 'react'
 import { ShoppingCart } from 'lucide-react'
-import { Sidebar } from '@/components/layout/Sidebar'
 import { usePosStore } from '@/stores/posStore'
 import { PosTopBar } from '../components/PosTopBar'
 import { CategoryBubbles } from '../components/CategoryBubbles'
 import { ProductGrid } from '../components/ProductGrid'
 import { CartSidebar } from '../components/CartSidebar'
 import { CartDrawer } from '../components/CartDrawer'
+import { FlashItemModal } from '../components/FlashItemModal'
 
 export default function PosPage() {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('all')
+  const [flashOpen, setFlashOpen] = useState(false)
   const loading = false
 
-  const itemCount = usePosStore((s) => s.getItemCount())
+  const itemCount = usePosStore((s) => s.items.reduce((sum, i) => sum + i.qty, 0))
   const openCartDrawer = usePosStore((s) => s.openCartDrawer)
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
-      <Sidebar />
-
-      <div className="flex min-w-0 flex-1">
-        {/* Main column: products */}
-        <div className="flex min-w-0 flex-1 flex-col">
-          <PosTopBar query={query} onQueryChange={setQuery} />
-          <div className="flex-1 overflow-y-auto scrollbar-thin p-4 sm:p-6">
-            <CategoryBubbles active={category} onChange={setCategory} />
-            <ProductGrid query={query} category={category} loading={loading} />
-          </div>
+    <div className="relative flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <PosTopBar query={query} onQueryChange={setQuery} />
+        <div className="flex-1 overflow-y-auto scrollbar-thin p-4 sm:p-6">
+          <CategoryBubbles active={category} onChange={setCategory} onNewItem={() => setFlashOpen(true)} />
+          <ProductGrid query={query} category={category} loading={loading} />
         </div>
-
-        {/* Desktop sticky cart */}
-        <CartSidebar />
       </div>
 
-      {/* Mobile cart drawer + FAB */}
+      <CartSidebar />
+
       <CartDrawer />
+      {flashOpen && <FlashItemModal onClose={() => setFlashOpen(false)} />}
       <button
         onClick={openCartDrawer}
         data-testid="pos-cart-fab"

@@ -20,16 +20,21 @@ export default {
         soft: '0 2px 12px rgba(15,23,42,0.04)',
       },
       keyframes: {
-        'fade-up': {
-          '0%': { opacity: '0', transform: 'translateY(8px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
+        'view-enter': {
+          '0%': { opacity: '0', transform: 'translate3d(0, 6px, 0)' },
+          '100%': { opacity: '1', transform: 'translate3d(0, 0, 0)' },
+        },
+        'tab-enter': {
+          '0%': { opacity: '0', transform: 'translate3d(0, 4px, 0)' },
+          '100%': { opacity: '1', transform: 'translate3d(0, 0, 0)' },
         },
         shimmer: {
           '100%': { transform: 'translateX(100%)' },
         },
       },
       animation: {
-        'fade-up': 'fade-up 0.4s ease-out both',
+        'view-enter': 'view-enter 0.26s cubic-bezier(0.45, 0, 0.55, 1) both',
+        'tab-enter': 'tab-enter 0.2s cubic-bezier(0.45, 0, 0.55, 1) both',
       },
     },
   },

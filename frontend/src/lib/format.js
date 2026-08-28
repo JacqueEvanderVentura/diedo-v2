@@ -1,4 +1,4 @@
-// Currency & number formatting — Dominican Peso (DOP$)
+// Currency & number formatting — Dominican Peso (RD$)
 
 export function formatDOP(value, { decimals = 2 } = {}) {
   const n = Number(value || 0)
@@ -6,7 +6,7 @@ export function formatDOP(value, { decimals = 2 } = {}) {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   })
-  return `DOP$ ${formatted}`
+  return `RD$ ${formatted}`
 }
 
 export function formatNumber(value) {

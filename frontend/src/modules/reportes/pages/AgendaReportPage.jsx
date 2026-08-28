@@ -1,10 +1,15 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
 import { CalendarCheck, UserX, CalendarClock, Percent } from 'lucide-react'
 import { useAgendaStore, toKey } from '@/stores/agendaStore'
-import { PeriodFilter } from '../components/PeriodFilter'
+import { useConfigStore } from '@/stores/configStore'
+import { ReportFilterBar } from '../components/ReportFilterBar'
+import { Pagination } from '../components/Pagination'
 import { StatCard, ChartCard } from '../components/ReportPrimitives'
 import { inPeriod } from '../lib/reportes'
+import { fetchAgendaReport } from '@/services/reportApi'
+import { usePaginatedReport } from '../hooks/usePaginatedReport'
+import { cn } from '@/lib/utils'
 
 const STATUS_META = [
   { id: 'completada', name: 'Cumplidas', color: '#10b981' },
@@ -17,9 +22,16 @@ const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', '
 
 export default function AgendaReportPage() {
   const appointments = useAgendaStore((s) => s.appointments)
+  const branches = useConfigStore((s) => s.branches)
   const [period, setPeriod] = useState('month')
+  const [branchId, setBranchId] = useState('')
+  const [status, setStatus] = useState('')
+  const [search, setSearch] = useState('')
 
-  const filtered = useMemo(() => appointments.filter((a) => inPeriod(a.date, period)), [appointments, period])
+  const filtered = useMemo(
+    () => appointments.filter((a) => inPeriod(a.date, period) && (!branchId || a.branchId === branchId) && (!status || a.status === status)),
+    [appointments, period, branchId, status]
+  )
 
   const counts = useMemo(() => {
     const c = { completada: 0, confirmada: 0, pendiente: 0, noshow: 0, cancelada: 0 }
@@ -51,9 +63,30 @@ export default function AgendaReportPage() {
     })
   }, [appointments])
 
+  const getAppointments = useCallback(() => appointments, [appointments])
+  const fetcher = useCallback(
+    (params) => fetchAgendaReport(getAppointments, { ...params, branchId, status, search, period }),
+    [getAppointments, branchId, status, search, period]
+  )
+  const listReport = usePaginatedReport(fetcher, {}, 10)
+  const branchName = (id) => branches.find((b) => b.id === id)?.name || '—'
+
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8">
-      <PeriodFilter period={period} onChange={setPeriod} />
+      <ReportFilterBar
+        branchId={branchId}
+        onBranchChange={setBranchId}
+        period={period}
+        onPeriodChange={setPeriod}
+        showPeriod
+        search={search}
+        onSearchChange={(v) => { setSearch(v); listReport.setPage(1) }}
+        searchPlaceholder="Buscar cliente o servicio…"
+        status={status}
+        onStatusChange={setStatus}
+        statusOptions={STATUS_META.map((s) => ({ value: s.id, label: s.name }))}
+        onRefresh={listReport.reload}
+      />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Citas (período)" value={filtered.length} icon={CalendarClock} tone="brand" testId="report-stat-citas" />
@@ -106,6 +139,64 @@ export default function AgendaReportPage() {
               </ResponsiveContainer>
             </div>
           </ChartCard>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-slate-100 bg-white shadow-soft">
+        <div className="border-b border-slate-100 px-5 py-4">
+          <h3 className="font-heading text-base font-semibold text-slate-800">Listado de citas</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+                <th className="px-4 py-3">Fecha</th>
+                <th className="px-4 py-3">Hora</th>
+                <th className="px-4 py-3">Cliente</th>
+                <th className="px-4 py-3">Servicio</th>
+                <th className="px-4 py-3">Sucursal</th>
+                <th className="px-4 py-3 text-right">Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {listReport.loading ? (
+                <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-400">Cargando…</td></tr>
+              ) : listReport.items.length === 0 ? (
+                <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-400">Sin citas</td></tr>
+              ) : (
+                listReport.items.map((a) => {
+                  const meta = STATUS_META.find((s) => s.id === a.status)
+                  return (
+                    <tr key={a.id} className="border-b border-slate-50">
+                      <td className="px-4 py-3 text-slate-600">{a.date}</td>
+                      <td className="px-4 py-3 text-slate-600">{a.time}</td>
+                      <td className="px-4 py-3 font-medium text-slate-800">{a.clientName}</td>
+                      <td className="px-4 py-3 text-slate-600">{a.serviceName || a.service}</td>
+                      <td className="px-4 py-3 text-slate-600">{branchName(a.branchId)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-semibold')} style={{ background: `${meta?.color}22`, color: meta?.color }}>
+                          {meta?.name || a.status}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="px-5 pb-4">
+          <Pagination
+            page={listReport.page}
+            totalPages={listReport.totalPages}
+            total={listReport.total}
+            from={listReport.from}
+            to={listReport.to}
+            pageSize={listReport.pageSize}
+            onPageChange={listReport.setPage}
+            onPageSizeChange={listReport.setPageSize}
+            noun="citas"
+          />
         </div>
       </div>
     </div>

@@ -70,7 +70,7 @@ export function ProductFormModal({ open, onClose, product }) {
             <Input value={form.sku} onChange={(e) => set('sku', e.target.value)} placeholder="PRD-00" data-testid="inventory-field-sku" />
           </div>
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-600">Precio (DOP$)</label>
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Precio (RD$)</label>
             <Input type="number" value={form.price} onChange={(e) => { set('price', e.target.value); setErr('') }} placeholder="0.00" data-testid="inventory-field-price" />
           </div>
         </div>

@@ -21,7 +21,7 @@ export function AppointmentsToday() {
           Agenda: Citas de Hoy
         </h3>
         <button
-          onClick={() => navigate('/agenda')}
+          onClick={() => navigate('/agenda/calendario')}
           data-testid="appointments-goto-agenda"
           className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
         >

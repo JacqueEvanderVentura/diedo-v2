@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useMemo } from 'react'
 import { Banknote, CreditCard, ArrowLeftRight, Link2, Clock, Wallet, Upload, CheckCircle2, Hash } from 'lucide-react'
 import { useConfigStore } from '@/stores/configStore'
 import { usePosStore } from '@/stores/posStore'
@@ -16,7 +16,7 @@ const REF_LABELS = {
 
 export function PaymentSection({ error }) {
   const allMethods = useConfigStore((s) => s.paymentMethods)
-  const paymentMethods = allMethods.filter((m) => m.enabled)
+  const paymentMethods = useMemo(() => allMethods.filter((m) => m.enabled), [allMethods])
   const paymentMethod = usePosStore((s) => s.paymentMethod)
   const setPaymentMethod = usePosStore((s) => s.setPaymentMethod)
   const transferProof = usePosStore((s) => s.transferProof)

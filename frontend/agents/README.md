@@ -13,7 +13,7 @@ tocar el código. Siempre presente en el repo (junto con `/docs`).
 - **Animaciones:** framer-motion + Lenis (scroll suave global).
 - **Fonts:** Inter (UI) + Outfit (headings), self-host woff2 en `public/fonts`.
 - **Datos:** mock en `src/data`, consumidos vía `src/services/apiClient.js` + `endpoints.js`.
-- **Moneda:** DOP$ (usar `formatDOP` de `src/lib/format.js`).
+- **Moneda:** RD$ (usar `formatDOP` de `src/lib/format.js`).
 - **Idioma:** Español en toda la UI.
 
 ## Reglas UX no negociables

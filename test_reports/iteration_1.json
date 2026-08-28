@@ -4,13 +4,13 @@
   "frontend_issues": {
     "ui_bugs": [
       {"component": "CartDrawer / CartPanel header (mobile 390px)", "issue": "The drawer close (X) button is absolutely positioned at top-right and overlaps the CartPanel header actions — the 'Limpiar' button is clipped/covered ('Lim...' visible under the X), making it hard/impossible to tap on mobile.", "selector": "[data-testid=\"pos-cart-drawer-close\"] over [data-testid=\"cart-clear\"]", "priority": "MEDIUM"},
-      {"component": "ExpenseModal toast", "issue": "Success toast shows unformatted amount: 'Gasto registrado: TEST_Compra insumos · DOP$ 500' instead of formatDOP style 'DOP$ 500.00' used everywhere else.", "selector": "[data-sonner-toast]", "priority": "LOW"}
+      {"component": "ExpenseModal toast", "issue": "Success toast shows unformatted amount: 'Gasto registrado: TEST_Compra insumos · RD$ 500' instead of formatDOP style 'RD$ 500.00' used everywhere else.", "selector": "[data-sonner-toast]", "priority": "LOW"}
     ],
     "integration_issues": [],
     "design_issues": [
       {"screen": "Dashboard (all viewports)", "issues": ["Recharts console warning repeated on every render: 'The width(-1) and height(-1) of chart should be greater than 0...' — ResponsiveContainer measures a zero/negative-size parent on first paint (add minHeight/explicit height to the chart wrapper). Chart still renders correctly."]},
       {"screen": "Dashboard (mobile 390px)", "issues": ["Period filter pills wrap to two lines ('Esta semana', 'Este mes') making the segmented control uneven in height — consider smaller text/horizontal scroll."]},
-      {"screen": "POS cart (desktop)", "issues": ["With a 100% discount the Total becomes DOP$ 0.00 and 'Cobrar · DOP$ 0.00' remains enabled — business rule may want to block a zero-value sale (informational)."]}
+      {"screen": "POS cart (desktop)", "issues": ["With a 100% discount the Total becomes RD$ 0.00 and 'Cobrar · RD$ 0.00' remains enabled — business rule may want to block a zero-value sale (informational)."]}
     ]
   },
   "test_report_links": [],
@@ -30,6 +30,6 @@
   "should_call_test_agent_after_fix": false,
   "should_main_agent_self_test": true,
   "test_credentials": "N/A - no authentication in app",
-  "context_for_next_testing_agent": "Always run localStorage.clear() before POS tests (posStore persists the cart under key 'diedo-pos'). Selector caution: '[data-testid^=\"pos-product-\"]' also matches 'pos-product-grid' (counts are off by one). On mobile, both CartSidebar (hidden) and CartDrawer contain the same testids — use visible-scoped locators. Verified prices are formatted 'DOP$ 1,200.00', ITBIS 18%, and the desktop cart is a real right-side sticky sidebar (x=1520, width=400 at 1920px).",
+  "context_for_next_testing_agent": "Always run localStorage.clear() before POS tests (posStore persists the cart under key 'diedo-pos'). Selector caution: '[data-testid^=\"pos-product-\"]' also matches 'pos-product-grid' (counts are off by one). On mobile, both CartSidebar (hidden) and CartDrawer contain the same testids — use visible-scoped locators. Verified prices are formatted 'RD$ 1,200.00', ITBIS 18%, and the desktop cart is a real right-side sticky sidebar (x=1520, width=400 at 1920px).",
   "rca_of_the_issue": "No functional defects found. Mobile drawer overlap RCA: CartDrawer places an absolutely positioned close button at right-4/top-4 over the CartPanel header row which already contains 'Item' and 'Limpiar' buttons, with no reserved padding."
 }
