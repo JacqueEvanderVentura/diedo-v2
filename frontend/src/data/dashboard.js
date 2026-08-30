@@ -1,10 +1,3 @@
-export const CURRENT_USER = {
-  id: 'u1',
-  name: 'Leonedis Hamburgo',
-  role: 'Administrador',
-  initials: 'LH',
-}
-
 export const DASHBOARD_FILTERS = [
   { id: 'today', label: 'Hoy' },
   { id: 'week', label: 'Esta semana' },

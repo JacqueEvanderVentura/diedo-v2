@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { useAgendaStore, todayKey } from '@/stores/agendaStore'
 import { useRrhhStore } from '@/stores/rrhhStore'
-import { usePosStore } from '@/stores/posStore'
+import { useCustomersStore } from '@/stores/customersStore'
 import { useCatalogStore } from '@/stores/catalogStore'
 import { useConfigStore } from '@/stores/configStore'
 import { AppointmentShareCard } from './AppointmentShareCard'
@@ -53,7 +53,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
   const addAppointment = useAgendaStore((s) => s.addAppointment)
   const addAppointments = useAgendaStore((s) => s.addAppointments)
   const updateAppointment = useAgendaStore((s) => s.updateAppointment)
-  const customers = usePosStore((s) => s.customers)
+  const customers = useCustomersStore((s) => s.customers)
   const allProducts = useCatalogStore((s) => s.products)
   const branches = useConfigStore((s) => s.branches)
   const employees = useRrhhStore((s) => s.employees)

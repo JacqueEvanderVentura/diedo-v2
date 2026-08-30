@@ -1,0 +1,7 @@
+{
+  "branches": [
+    {"seedKey": "north", "code": "NORTH", "name": "Sucursal Norte", "timezone": "America/Santo_Domingo"},
+    {"seedKey": "downtown", "code": "DOWNTOWN", "name": "Sucursal Centro", "timezone": "America/Santo_Domingo"},
+    {"seedKey": "east", "code": "EAST", "name": "Sucursal Este", "timezone": "America/Santo_Domingo"}
+  ]
+}

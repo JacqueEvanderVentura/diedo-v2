@@ -6,11 +6,11 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { useSelfBookingStore } from '@/stores/selfBookingStore'
-import { usePosStore } from '@/stores/posStore'
+import { useCustomersStore } from '@/stores/customersStore'
 import { buildBookingUrl, buildProfileUrl, buildConfirmationEmail } from '../lib/selfBooking'
 
 export function BookingLinkModal({ open, onClose, branchId, branchName }) {
-  const customers = usePosStore((s) => s.customers)
+  const customers = useCustomersStore((s) => s.customers)
   const profiles = useSelfBookingStore((s) => s.profiles)
   const lookupByDocument = useSelfBookingStore((s) => s.lookupByDocument)
   const sendBookingLinkEmail = useSelfBookingStore((s) => s.sendBookingLinkEmail)

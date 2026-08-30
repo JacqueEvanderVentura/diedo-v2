@@ -5,7 +5,8 @@ import { useCatalogStore, deriveLowStock } from '@/stores/catalogStore'
 import { useAgendaStore, todayKey } from '@/stores/agendaStore'
 import { usePosStore } from '@/stores/posStore'
 import { useConfigStore } from '@/stores/configStore'
-import { DASHBOARD_FILTERS, CURRENT_USER, KPIS, SALES_TREND } from '@/data/dashboard'
+import { DASHBOARD_FILTERS, KPIS, SALES_TREND } from '@/data/dashboard'
+import { useSessionStore } from '@/stores/sessionStore'
 import { buildBranchFilterOptions } from '@/lib/branches'
 import { Select } from '@/components/ui/Select'
 import { KpiCard } from '../components/KpiCard'
@@ -24,6 +25,7 @@ function greeting() {
 }
 
 export default function DashboardPage() {
+  const sessionUser = useSessionStore((s) => s.user)
   const period = useDashboardStore((s) => s.period)
   const branchId = useDashboardStore((s) => s.branchId)
   const setPeriod = useDashboardStore((s) => s.setPeriod)
@@ -89,7 +91,7 @@ export default function DashboardPage() {
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="font-heading text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-            {greeting()}, {CURRENT_USER.name}
+            {greeting()}, {sessionUser?.name || 'Usuario'}
           </h2>
           <p className="mt-1 text-sm text-slate-400 sm:text-base">
             Este es el resumen de tu empresa en tiempo real.

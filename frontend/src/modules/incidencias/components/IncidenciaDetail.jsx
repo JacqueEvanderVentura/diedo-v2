@@ -6,9 +6,9 @@ import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { MentionInput } from '@/components/ui/MentionInput'
 import { MentionText } from '@/components/ui/MentionText'
-import { CURRENT_USER } from '@/data/dashboard'
 import { initials, priorityMeta, statusMeta, typeMeta, INCIDENCIA_STATUSES } from '@/data/incidencias'
 import { cn } from '@/lib/utils'
+import { currentSessionActor } from '@/lib/sessionActor'
 
 function formatDate(iso) {
   try {
@@ -38,7 +38,7 @@ export function IncidenciaDetail({ item, branchName, activoName, onStatusChange,
 
   const sendComment = () => {
     if (!comment.trim()) return
-    onComment(item.id, CURRENT_USER.name, comment)
+    onComment(item.id, currentSessionActor().name, comment)
     setComment('')
   }
 
@@ -146,7 +146,7 @@ export function IncidenciaDetail({ item, branchName, activoName, onStatusChange,
           <span className="text-xs font-medium text-slate-500">Cambiar estado:</span>
           <Select
             value={item.status}
-            onChange={(status) => onStatusChange(item.id, status, CURRENT_USER.name)}
+            onChange={(status) => onStatusChange(item.id, status, currentSessionActor().name)}
             options={STATUS_OPTIONS}
             size="sm"
             menuMinWidth={180}

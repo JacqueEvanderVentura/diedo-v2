@@ -18,6 +18,10 @@ node_modules/
 
 # Testing
 /coverage
+.coverage
+.playwright-cli/
+test-results/
+playwright-report/
 
 # Next.js
 /.next/
@@ -51,6 +55,7 @@ __pycache__/
 *pyc*
 venv/
 .venv/
+backend/.local/
 
 # Development tools
 chainlit.md

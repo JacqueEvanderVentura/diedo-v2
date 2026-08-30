@@ -7,8 +7,8 @@ import { useIncidenciasStore } from '@/stores/incidenciasStore'
 import { useNotificationsStore } from '@/stores/notificationsStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useActivosStore } from '@/stores/activosStore'
-import { CURRENT_USER } from '@/data/dashboard'
 import { extractMentionedUserIds, plainMessagePreview } from '@/lib/mentions'
+import { currentSessionActor } from '@/lib/sessionActor'
 import { IncidenciaStats } from '../components/IncidenciaStats'
 import { IncidenciaList } from '../components/IncidenciaList'
 import { IncidenciaDetail } from '../components/IncidenciaDetail'
@@ -52,7 +52,7 @@ export default function IncidenciasPage() {
     const userIds = extractMentionedUserIds(message)
     if (!userIds.length) return
     addMentionNotifications({
-      authorId: CURRENT_USER.id,
+      authorId: currentSessionActor().id,
       authorName: author,
       userIds,
       incidenciaId: id,

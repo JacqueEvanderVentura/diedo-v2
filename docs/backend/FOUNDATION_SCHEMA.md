@@ -1,6 +1,9 @@
 # Foundation schema
 
-Status: implemented locally on 2026-08-21.
+Status: foundation and initial Phase 1/2 slices implemented; Phases 0, 1, and 2 remain reopened.
+
+The current schema and contracts are usable, but this document is not evidence that the full
+cross-module stories or API/demo parity in the Plan V2 have been completed.
 
 This document defines the physical PostgreSQL boundary that can be implemented before selecting the
 first commercial ERP flow. It complements [`GLOBAL.md`](GLOBAL.md) and the logical domain documents;
@@ -16,12 +19,19 @@ The first migration installs only stable, cross-cutting concepts:
 - modularity: `module_definitions` and `module_entitlements`;
 - regional configuration: `regional_packs`, `regional_rule_versions`, and
   `legal_entity_regional_rules`;
-- append-only evidence: `audit_entries`.
+- append-only evidence: `audit_entries`;
+- Phase 0 reliability: composite identity integrity in `auth_sessions` and
+  `demo_seed_registry` ownership for canonical fixtures;
+- Phase 1 configuration: workspace default tax rate, branch configuration,
+  `payment_methods` and `user_invitations`;
+- Phase 2 master data: `customers`, `customer_branch_assignments`, `employees`,
+  `employee_branch_assignments`, `employee_supervisors`, `employee_schedules`, and owner-scoped
+  `attachments`.
 
-No CRM, catalog, sales, purchasing, inventory, accounting, HR, payroll, POS, appointment, or lodging
-tables are included. Their unresolved state machines and evidence requirements remain implementation
-gates in the domain documentation. Attachment metadata is also deferred until its ownership,
-classification, retention, and local storage boundary are selected with the first consuming flow.
+No sales, purchasing, inventory, accounting, payroll, POS, appointment, or lodging transaction
+tables are included. Catalog is the separately documented pre-existing slice. Customer and employee
+records are deliberately limited to the Phase 2 shared identity boundary; salary, banking, payroll,
+evaluations and the remaining domain state machines stay deferred.
 
 ## Physical decisions
 
@@ -32,6 +42,8 @@ classification, retention, and local storage boundary are selected with the firs
 - Every workspace-owned aggregate stores `workspace_id` directly.
 - Composite foreign keys include `workspace_id` when referencing another workspace-owned aggregate.
   This makes cross-workspace references invalid in PostgreSQL even if an application query is wrong.
+- `auth_sessions` additionally references membership and platform user as one composite identity, so
+  a valid user cannot be paired with another user's membership.
 - Database names are lowercase `snake_case`; API schemas expose `camelCase`.
 - Lifecycle values use checked text columns instead of PostgreSQL enum types so future transitions can
   be migrated without enum coupling.
@@ -58,13 +70,36 @@ The command is limited to development and test environments and is safe to repea
 - one legal entity and main branch;
 - one local external identity and active workspace membership;
 - a system administrator role, workspace scope, and foundation permissions;
-- global module metadata, enabling only `foundation` and `iam`;
+- global module metadata, enabling `foundation`, `iam`, `catalog`, `crm` and `hr`;
 - a Dominican Republic regional pack in `planned` state, with no unverified fiscal rules activated.
 
 By default the bootstrap creates no password. In development or test, setting
-`LOCAL_BOOTSTRAP_ADMIN_PASSWORD` sets the local owner's Argon2 password once when it is still empty.
+`LOCAL_BOOTSTRAP_ADMIN_PASSWORD` sets or rotates the local owner's Argon2 password for that explicit
+bootstrap run.
 The bootstrap never creates an API key, customer, employee, invoice, payment, stock, accounting, or
 fiscal record.
+
+## Canonical demo seed
+
+`demo-data/v1/manifest.json` is the source of truth for the synthetic reference workspace. It
+contains schema/seed versions, per-file counts and SHA-256 checksums. Backend loading validates
+Pydantic contracts and checksums; frontend generation consumes the same files. Phase 2 adds five
+canonical customers and thirteen basic employees while keeping future HR-only fields isolated in
+fixture metadata.
+
+`schemaVersion` records the exact Alembic revision expected by that application build. After a new
+migration is validated with the canonical seed, update the manifest and regenerate the frontend
+snapshot with `npm run generate:demo`.
+
+Run only in development or test with `DEMO_SEED_ENABLED=true`:
+
+```bash
+python -m app.scripts.seed_demo
+```
+
+The command is idempotent and uses stable UUIDs plus `demo_seed_registry`; it updates only entities
+claimed by that registry. With the flag false it performs no writes. Password material always comes
+from the local/test environment and is not present in fixtures.
 
 ## Runtime verification
 
@@ -72,9 +107,12 @@ Development and test environments expose `GET /dev/foundation`. It reads Postgre
 installed organization counts and enabled modules. The route is not registered in staging or
 production.
 
+`GET /health/ready` separately validates PostgreSQL connectivity and the expected Alembic revision
+(`20260829_0007`). It returns `503` when the schema is incompatible; authenticated capabilities stay
+in `/api/v1/auth/me` rather than readiness.
+
 ## Next design decision
 
-Before adding another migration, select one end-to-end flow and close its documented implementation
-gaps. The recommended first candidate is the workspace administration flow because it exercises the
-foundation without introducing money, stock, tax, or payroll invariants. The alternative is a
-customer-and-catalog foundation slice if early product discovery needs commercial data sooner.
+The initial shared-master schema is implemented. Before opening the catalog/inventory/asset cut
+described as Fase 3, complete the real cross-module stories, attachment authorization, API/demo
+parity, and the remaining gates in the full-stack Plan V2.

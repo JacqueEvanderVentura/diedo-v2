@@ -4,12 +4,13 @@ import { toast } from 'sonner'
 import { AlertTriangle, Calendar, Check, X } from 'lucide-react'
 import { useRrhhStore } from '@/stores/rrhhStore'
 import { useConfigStore } from '@/stores/configStore'
-import { CURRENT_USER_ID, REQUEST_STATUS_META } from '@/data/rrhh'
+import { REQUEST_STATUS_META } from '@/data/rrhh'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { fullName, daysBetween } from '../lib/rrhh'
+import { useSessionStore } from '@/stores/sessionStore'
 
 const APPROVER_ROLES = ['Administrador', 'Gerente', 'Supervisor']
 
@@ -20,9 +21,10 @@ export default function SolicitudesPage() {
   const addVacationRequest = useRrhhStore((s) => s.addVacationRequest)
   const reviewVacationRequest = useRrhhStore((s) => s.reviewVacationRequest)
   const users = useConfigStore((s) => s.users)
+  const currentUserId = useSessionStore((s) => s.user?.userId || s.user?.id)
 
-  const currentUser = users.find((u) => u.id === CURRENT_USER_ID)
-  const linkedEmployee = getEmployeeByUserId(CURRENT_USER_ID)
+  const currentUser = users.find((u) => u.id === currentUserId)
+  const linkedEmployee = getEmployeeByUserId(currentUserId)
   const canApprove = APPROVER_ROLES.includes(currentUser?.role)
 
   const [startDate, setStartDate] = useState('')
@@ -156,10 +158,10 @@ export default function SolicitudesPage() {
                     <p className="text-sm text-slate-600">{r.startDate} — {r.endDate} · {r.reason}</p>
                   </div>
                   <div className="flex gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => { reviewVacationRequest(r.id, 'rechazada', CURRENT_USER_ID); toast.success('Solicitud rechazada') }}>
+                    <Button size="sm" variant="secondary" onClick={() => { reviewVacationRequest(r.id, 'rechazada', currentUserId); toast.success('Solicitud rechazada') }}>
                       <X className="h-4 w-4" /> Rechazar
                     </Button>
-                    <Button size="sm" onClick={() => { reviewVacationRequest(r.id, 'aprobada', CURRENT_USER_ID); toast.success('Solicitud aprobada') }}>
+                    <Button size="sm" onClick={() => { reviewVacationRequest(r.id, 'aprobada', currentUserId); toast.success('Solicitud aprobada') }}>
                       <Check className="h-4 w-4" /> Aprobar
                     </Button>
                   </div>

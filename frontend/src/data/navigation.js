@@ -1,9 +1,10 @@
 // Navigation registry — grouped. A group with `children` renders as an
 // expandable section; an item with `to` renders as a direct link.
 export const NAV_GROUPS = [
-  { id: 'dashboard', label: 'Dashboard', to: '/dashboard', icon: 'LayoutDashboard' },
+  { id: 'dashboard', module: 'foundation', label: 'Dashboard', to: '/dashboard', icon: 'LayoutDashboard' },
   {
     id: 'pos',
+    module: 'pos',
     label: 'Terminal POS',
     icon: 'ShoppingCart',
     children: [
@@ -14,6 +15,7 @@ export const NAV_GROUPS = [
   },
   {
     id: 'agenda',
+    module: 'appointments',
     label: 'Agenda',
     icon: 'CalendarDays',
     children: [
@@ -23,6 +25,7 @@ export const NAV_GROUPS = [
   },
   {
     id: 'crm',
+    module: 'crm',
     label: 'CRM',
     icon: 'Users',
     children: [
@@ -38,6 +41,7 @@ export const NAV_GROUPS = [
   },
   {
     id: 'rrhh',
+    module: 'hr',
     label: 'RRHH',
     icon: 'CircleUser',
     children: [
@@ -48,11 +52,12 @@ export const NAV_GROUPS = [
       { label: 'Documentos', to: '/rrhh/documentos' },
     ],
   },
-  { id: 'inventarios', label: 'Inventarios', to: '/inventarios', icon: 'Package' },
-  { id: 'compras', label: 'Compras', to: '/compras', icon: 'Truck' },
-  { id: 'incidencias', label: 'Incidencias', to: '/incidencias', icon: 'LifeBuoy' },
+  { id: 'inventarios', module: 'catalog', label: 'Inventarios', to: '/inventarios', icon: 'Package' },
+  { id: 'compras', module: 'purchasing', label: 'Compras', to: '/compras', icon: 'Truck' },
+  { id: 'incidencias', module: 'incidents', label: 'Incidencias', to: '/incidencias', icon: 'LifeBuoy' },
   {
     id: 'finanzas',
+    module: 'accounting',
     label: 'Finanzas',
     icon: 'Wallet',
     children: [
@@ -66,6 +71,7 @@ export const NAV_GROUPS = [
   },
   {
     id: 'reportes',
+    module: 'reporting',
     label: 'Reportes',
     icon: 'BarChart3',
     children: [
@@ -79,14 +85,15 @@ export const NAV_GROUPS = [
   },
   {
     id: 'configuracion',
+    module: 'foundation',
     label: 'Configuración',
     icon: 'Settings',
     children: [
-      { label: 'General', to: '/configuracion' },
-      { label: 'Categorías', to: '/configuracion/categorias' },
-      { label: 'Usuarios', to: '/configuracion/usuarios' },
-      { label: 'Sucursales', to: '/configuracion/sucursales' },
-      { label: 'Permisos', to: '/configuracion/permisos' },
+      { label: 'General', to: '/configuracion', permission: 'workspace.read' },
+      { label: 'Categorías', to: '/configuracion/categorias', module: 'catalog', permission: 'catalog.read' },
+      { label: 'Usuarios', to: '/configuracion/usuarios', module: 'iam', permission: 'membership.read' },
+      { label: 'Sucursales', to: '/configuracion/sucursales', permission: 'branch.read' },
+      { label: 'Permisos', to: '/configuracion/permisos', module: 'iam', permission: 'role.read' },
     ],
   },
 ]

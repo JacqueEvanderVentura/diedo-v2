@@ -4,8 +4,9 @@ import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useConfigStore } from '@/stores/configStore'
+import { authApi } from '@/services/authApi'
 
-export function ChangePasswordModal({ open, onClose, userId }) {
+export function ChangePasswordModal({ open, onClose, userId, online = false }) {
   const changeOwnPassword = useConfigStore((s) => s.changeOwnPassword)
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
@@ -26,31 +27,35 @@ export function ChangePasswordModal({ open, onClose, userId }) {
     onClose?.()
   }
 
-  const submit = () => {
+  const submit = async () => {
     setErr('')
     if (!current.trim()) return setErr('Ingresa tu contraseña actual.')
-    if (!next || next.length < 6) return setErr('La nueva contraseña debe tener al menos 6 caracteres.')
+    if (!next || next.length < (online ? 12 : 6)) return setErr(`La nueva contraseña debe tener al menos ${online ? 12 : 6} caracteres.`)
     if (next !== confirm) return setErr('Las contraseñas nuevas no coinciden.')
     if (current === next) return setErr('La nueva contraseña debe ser diferente a la actual.')
 
     setSaving(true)
-    const result = changeOwnPassword(userId, current, next)
-    setSaving(false)
-
-    if (!result.ok) {
-      setErr(result.error)
-      return
+    try {
+      if (online) {
+        await authApi.changePassword(current, next)
+      } else {
+        const result = changeOwnPassword(userId, current, next)
+        if (!result.ok) return setErr(result.error)
+      }
+      toast.success('Contraseña actualizada correctamente.')
+      handleClose()
+    } catch (error) {
+      setErr(error.message || 'No se pudo cambiar la contraseña.')
+    } finally {
+      setSaving(false)
     }
-
-    toast.success('Contraseña actualizada correctamente.')
-    handleClose()
   }
 
   return (
     <Modal open={open} onClose={handleClose} title="Cambiar contraseña" testId="change-password-modal">
       <div className="space-y-4">
         <p className="text-sm text-slate-500">
-          Usa una contraseña segura de al menos 6 caracteres. Solo tú puedes cambiar tu propia clave.
+          Usa una contraseña segura de al menos {online ? 12 : 6} caracteres. Solo tú puedes cambiar tu propia clave.
         </p>
 
         <div>

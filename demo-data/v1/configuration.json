@@ -1,0 +1,8 @@
+{
+  "workspace": {"businessName": "Diedo Demo", "taxDefaultRate": 18, "locale": "es-DO", "currency": "DOP"},
+  "paymentMethods": [
+    {"seedKey": "cash", "code": "cash", "name": "Efectivo", "icon": "Banknote", "enabled": true, "system": true},
+    {"seedKey": "card", "code": "card", "name": "Tarjeta", "icon": "CreditCard", "enabled": true, "system": true},
+    {"seedKey": "transfer", "code": "transfer", "name": "Transferencia", "icon": "Landmark", "enabled": true, "system": true}
+  ]
+}

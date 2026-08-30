@@ -5,6 +5,7 @@ import path from 'path'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const pagesBase = process.env.GITHUB_PAGES === 'true' ? '/diedo-v2/' : '/'
+  const apiProxyTarget = env.API_PROXY_TARGET || 'http://127.0.0.1:8000'
 
   return {
     base: pagesBase,
@@ -17,22 +18,24 @@ export default defineConfig(({ mode }) => {
     define: {
       'import.meta.env.VITE_HAS_SERPER': JSON.stringify(Boolean(env.SERPER_API_KEY)),
     },
+    test: {
+      include: ['tests/**/*.test.js'],
+    },
     server: {
       host: '0.0.0.0',
       port: 3000,
       strictPort: true,
       allowedHosts: true,
-      hmr: {
-        clientPort: 443,
-        protocol: 'wss',
-      },
       watch: {
         usePolling: true,
       },
       proxy: {
         '/api-backend': {
-          target: 'http://127.0.0.1:8000',
+          target: apiProxyTarget,
           changeOrigin: true,
+          cookiePathRewrite: {
+            '/api/v1/auth': '/api-backend/api/v1/auth',
+          },
           rewrite: (p) => p.replace(/^\/api-backend/, ''),
         },
         '/api/serp': {
@@ -41,6 +44,7 @@ export default defineConfig(({ mode }) => {
           rewrite: (p) => p.replace(/^\/api\/serp/, ''),
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq) => {
+              proxyReq.removeHeader('cookie')
               const key = env.SERPAPI_KEY
               if (key) {
                 const sep = proxyReq.path.includes('?') ? '&' : '?'
@@ -55,6 +59,7 @@ export default defineConfig(({ mode }) => {
           rewrite: (p) => p.replace(/^\/api\/serper/, ''),
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq, req) => {
+              proxyReq.removeHeader('cookie')
               const key = env.SERPER_API_KEY
               if (key) {
                 proxyReq.setHeader('X-API-KEY', key)

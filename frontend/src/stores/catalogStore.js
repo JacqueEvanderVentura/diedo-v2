@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { ephemeralJsonStorage } from '@/services/storagePolicy'
 import { PRODUCTS, SUPPLIES } from '@/data/products'
 import { catalogApi } from '@/services/catalogApi'
 import { lookupsApi } from '@/services/lookupsApi'
@@ -230,6 +231,6 @@ export const useCatalogStore = create(
 
       getLowStock: () => deriveLowStock(get().products),
     }),
-    { name: 'diedo-catalog', partialize: (s) => ({ products: s.products, apiContext: { hydrated: false } }) }
+    { name: 'diedo-catalog', storage: ephemeralJsonStorage, partialize: (s) => ({ products: s.products, apiContext: { hydrated: false } }) }
   )
 )

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, ShoppingBag } from 'lucide-react'
 import { usePosStore } from '@/stores/posStore'
+import { useCustomersStore } from '@/stores/customersStore'
 import { fmtDateTime } from '../lib/crm'
 import { formatDOP } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
@@ -70,7 +71,7 @@ function CustomerSalesTable({ sales }) {
 }
 
 export default function ComprasPage() {
-  const customers = usePosStore((s) => s.customers)
+  const customers = useCustomersStore((s) => s.customers)
   const sales = usePosStore((s) => s.sales)
   const [query, setQuery] = useState('')
   const [branchFilter, setBranchFilter] = useState('all')

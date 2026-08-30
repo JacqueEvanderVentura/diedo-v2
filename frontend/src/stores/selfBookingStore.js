@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { ephemeralJsonStorage, ephemeralStorage } from '@/services/storagePolicy'
 import { useAgendaStore } from '@/stores/agendaStore'
-import { usePosStore } from '@/stores/posStore'
+import { useCustomersStore } from '@/stores/customersStore'
 import { normalizeDocumentId, buildBookingUrl, buildProfileUrl, buildConfirmationEmail } from '@/modules/agenda/lib/selfBooking'
 
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
@@ -77,26 +78,24 @@ export const useSelfBookingStore = create(
         return profile
       },
 
-      ensureCustomer: (profile) => {
-        const pos = usePosStore.getState()
+      ensureCustomer: async (profile) => {
+        const customerStore = useCustomersStore.getState()
         if (profile.customerId) {
-          const found = pos.customers.find((c) => c.id === profile.customerId)
+          const found = customerStore.customers.find((c) => c.id === profile.customerId)
           if (found) return found
         }
-        const byPhone = profile.phone && pos.customers.find((c) => c.phone === profile.phone)
+        const byPhone = profile.phone && customerStore.customers.find((c) => c.phone === profile.phone)
         if (byPhone) {
           get().linkProfileToCustomer(profile.id, byPhone.id)
           return byPhone
         }
-        const customer = {
-          id: genId('cust'),
+        const customer = await customerStore.addCustomer({
           name: profile.name,
           phone: profile.phone || null,
           email: profile.email || null,
           points: 0,
           documentId: profile.documentId,
-        }
-        pos.addCustomer(customer)
+        })
         get().linkProfileToCustomer(profile.id, customer.id)
         return customer
       },
@@ -106,8 +105,8 @@ export const useSelfBookingStore = create(
           profiles: s.profiles.map((p) => (p.id === profileId ? { ...p, customerId } : p)),
         })),
 
-      bookAppointment: ({ profile, branchId, service, date, time, employeeId, duration }) => {
-        const customer = get().ensureCustomer(profile)
+      bookAppointment: async ({ profile, branchId, service, date, time, employeeId, duration }) => {
+        const customer = await get().ensureCustomer(profile)
         const agenda = useAgendaStore.getState()
         const appointment = {
           date,
@@ -182,6 +181,7 @@ export const useSelfBookingStore = create(
     }),
     {
       name: 'diedo-self-booking',
+      storage: ephemeralJsonStorage,
       version: 1,
       migrate: (persisted) => persisted ?? {},
       partialize: (s) => ({ profiles: s.profiles, claims: s.claims, emails: s.emails }),
@@ -192,12 +192,9 @@ export const useSelfBookingStore = create(
 export const SELF_DOC_STORAGE_KEY = 'diedo-self-doc'
 
 export function rememberDocument(documentId) {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(SELF_DOC_STORAGE_KEY, normalizeDocumentId(documentId))
-  }
+  ephemeralStorage.setItem(SELF_DOC_STORAGE_KEY, normalizeDocumentId(documentId))
 }
 
 export function recallDocument() {
-  if (typeof window === 'undefined') return ''
-  return localStorage.getItem(SELF_DOC_STORAGE_KEY) || ''
+  return ephemeralStorage.getItem(SELF_DOC_STORAGE_KEY) || ''
 }

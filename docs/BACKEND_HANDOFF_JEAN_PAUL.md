@@ -82,6 +82,7 @@ Login: **`owner@erp.dev`** (password from `LOCAL_BOOTSTRAP_ADMIN_PASSWORD` in `b
 | `docs/backend/GLOBAL.md` | Architecture, errors, migrations, conventions |
 | `docs/backend/IAM_API.md` | Auth, users, roles, permissions |
 | `docs/backend/CATALOG_API.md` | Categories, products (identity only) |
+| `docs/backend/MASTER_DATA_API.md` | Customers, basic employees, schedules, attachments |
 | `docs/backend/FOUNDATION_SCHEMA.md` | Workspace / branch / legal entity model |
 | `backend/README.md` | Runbook, bootstrap, tests |
 
@@ -161,8 +162,8 @@ Frontend client code:
 | GET | `/api/v1/permissions/matrix` | `PermisosPage` (IAM section when online) |
 | PUT | `/api/v1/roles/{roleId}/permissions` | `PermisosPage` save |
 
-**Important:** Backend permissions are **codes** (`membership.read`, `catalog.manage`, …) grouped in modules (`foundation`, `iam`, `catalog`).  
-Frontend **also** has a separate **local-only** matrix in `frontend/src/data/permisos.js` for POS, Agenda, CRM, etc. Those modules do **not** hit your API yet. Do not delete them — they gate UI until each domain has a real backend.
+**Important:** Backend permissions are **codes** (`membership.read`, `catalog.manage`, …) grouped in modules (`foundation`, `iam`, `catalog`, `crm`, `hr`).
+Frontend **also** has a separate **local-only** matrix in `frontend/src/data/permisos.js` for transactional modules that have not migrated yet. Customers and basic employees already use the Phase 2 API; preserve the remaining demo gates until each domain has a real backend.
 
 ### 4.5 Lookups
 

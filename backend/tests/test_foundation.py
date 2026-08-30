@@ -46,8 +46,8 @@ def test_local_bootstrap_is_idempotent_and_installs_minimum_access_model() -> No
         )
 
     assert second == first
-    assert second.enabled_modules == ("foundation", "iam", "catalog")
-    assert permission_count == 14
+    assert second.enabled_modules == ("foundation", "iam", "catalog", "crm", "hr")
+    assert permission_count == 19
     assert assigned_permission_count == permission_count
     assert second.workspace_id.version == 7
 
@@ -144,7 +144,7 @@ def test_development_foundation_endpoint_reports_seeded_database(client: TestCli
     assert body["legalEntityCount"] >= 1
     assert body["branchCount"] >= 1
     assert body["activeMembershipCount"] >= 1
-    assert body["enabledModules"] == ["catalog", "foundation", "iam"]
+    assert body["enabledModules"] == ["catalog", "crm", "foundation", "hr", "iam"]
 
 
 def test_foundation_endpoint_returns_service_unavailable_on_query_failure() -> None:

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { ephemeralJsonStorage } from '@/services/storagePolicy'
 
 const genId = () => `act-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 
@@ -80,6 +81,6 @@ export const useActivosStore = create(
         }
       },
     }),
-    { name: 'diedo-activos', partialize: (s) => ({ activos: s.activos }) }
+    { name: 'diedo-activos', storage: ephemeralJsonStorage, partialize: (s) => ({ activos: s.activos }) }
   )
 )

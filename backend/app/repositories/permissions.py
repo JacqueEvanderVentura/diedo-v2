@@ -148,14 +148,23 @@ class PermissionsRepository:
         ]
 
     def get_role_for_update(self, workspace_id: UUID, role_id: UUID) -> Role | None:
-        return self._session.scalar(
-            select(Role)
-            .where(
-                Role.workspace_id == workspace_id,
-                Role.id == role_id,
-                Role.status == "active",
+        roles = self.get_roles_for_update(workspace_id, {role_id})
+        return roles[0] if roles else None
+
+    def get_roles_for_update(self, workspace_id: UUID, role_ids: set[UUID]) -> list[Role]:
+        if not role_ids:
+            return []
+        return list(
+            self._session.scalars(
+                select(Role)
+                .where(
+                    Role.workspace_id == workspace_id,
+                    Role.id.in_(sorted(role_ids)),
+                    Role.status == "active",
+                )
+                .order_by(Role.id)
+                .with_for_update()
             )
-            .with_for_update()
         )
 
     def permissions_by_ids(self, permission_ids: set[UUID]) -> dict[UUID, str]:

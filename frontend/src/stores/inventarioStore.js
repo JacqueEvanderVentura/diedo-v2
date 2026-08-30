@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { ephemeralJsonStorage } from '@/services/storagePolicy'
 import { PRODUCTS, SUPPLIES } from '@/data/products'
 import { useCatalogStore } from '@/stores/catalogStore'
 
@@ -77,6 +78,7 @@ export const useInventarioStore = create(
     }),
     {
       name: 'diedo-inventario',
+      storage: ephemeralJsonStorage,
       partialize: (s) => ({ movements: s.movements }),
       merge: (persisted, current) => {
         const state = { ...current, ...(persisted || {}) }

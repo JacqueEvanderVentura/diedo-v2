@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { ephemeralJsonStorage } from '@/services/storagePolicy'
 
 const genId = () => `ntf-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const now = () => new Date().toISOString()
@@ -7,7 +8,7 @@ const now = () => new Date().toISOString()
 const SEED_NOTIFICATIONS = [
   {
     id: 'ntf-seed-1',
-    userId: 'u1',
+    userId: 'admin',
     type: 'mention',
     title: 'María Recepción te mencionó',
     body: 'INC-1193: Revisa el estado de la máquina de vapor.',
@@ -62,6 +63,7 @@ export const useNotificationsStore = create(
     }),
     {
       name: 'diedo-notifications',
+      storage: ephemeralJsonStorage,
       merge: (persisted, current) => {
         const state = { ...current, ...(persisted || {}) }
         if (!Array.isArray(state.notifications) || state.notifications.length === 0) {

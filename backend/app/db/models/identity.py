@@ -37,6 +37,12 @@ class WorkspaceMembership(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Bas
     __tablename__ = "workspace_memberships"
     __table_args__ = (
         UniqueConstraint("workspace_id", "id", name="uq_memberships_workspace_id_id"),
+        UniqueConstraint(
+            "workspace_id",
+            "id",
+            "platform_user_id",
+            name="uq_memberships_workspace_id_user",
+        ),
         UniqueConstraint("workspace_id", "platform_user_id", name="uq_memberships_workspace_user"),
         CheckConstraint(
             "status IN ('invited', 'active', 'suspended', 'revoked', 'expired')",
@@ -145,6 +151,7 @@ class AccessScope(UuidPrimaryKeyMixin, TimestampMixin, Base):
             ["workspace_id", "legal_entity_id", "branch_id"],
             ["branches.workspace_id", "branches.legal_entity_id", "branches.id"],
             ondelete="RESTRICT",
+            onupdate="CASCADE",
             name="fk_access_scopes_workspace_entity_branch",
         ),
         CheckConstraint(
@@ -244,10 +251,14 @@ class AuthSession(UuidPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "auth_sessions"
     __table_args__ = (
         ForeignKeyConstraint(
-            ["workspace_id", "membership_id"],
-            ["workspace_memberships.workspace_id", "workspace_memberships.id"],
+            ["workspace_id", "membership_id", "platform_user_id"],
+            [
+                "workspace_memberships.workspace_id",
+                "workspace_memberships.id",
+                "workspace_memberships.platform_user_id",
+            ],
             ondelete="RESTRICT",
-            name="fk_auth_sessions_workspace_membership",
+            name="fk_auth_sessions_membership_identity",
         ),
         CheckConstraint("expires_at > created_at", name="valid_expiry"),
         Index("ix_auth_sessions_membership_expiry", "membership_id", "expires_at"),

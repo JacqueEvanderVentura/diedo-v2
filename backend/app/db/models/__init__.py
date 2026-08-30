@@ -1,5 +1,6 @@
 """Persistence model registry used by Alembic metadata discovery."""
 
+from app.db.models.administration import DemoSeedRegistry, PaymentMethod, UserInvitation
 from app.db.models.audit import AuditEntry
 from app.db.models.catalog import Item, ItemBranchAssignment, ItemCategory, UnitOfMeasure
 from app.db.models.foundation import (
@@ -23,12 +24,29 @@ from app.db.models.identity import (
     RolePermission,
     WorkspaceMembership,
 )
+from app.db.models.master_data import (
+    Attachment,
+    Customer,
+    CustomerBranchAssignment,
+    Employee,
+    EmployeeBranchAssignment,
+    EmployeeSchedule,
+    EmployeeSupervisor,
+)
 
 __all__ = [
     "AccessScope",
+    "Attachment",
     "AuthSession",
     "AuditEntry",
     "Branch",
+    "Customer",
+    "CustomerBranchAssignment",
+    "DemoSeedRegistry",
+    "Employee",
+    "EmployeeBranchAssignment",
+    "EmployeeSchedule",
+    "EmployeeSupervisor",
     "Item",
     "ItemBranchAssignment",
     "ItemCategory",
@@ -38,6 +56,7 @@ __all__ = [
     "ModuleDefinition",
     "ModuleEntitlement",
     "Permission",
+    "PaymentMethod",
     "PlatformUser",
     "RegionalPack",
     "RegionalRuleVersion",
@@ -47,4 +66,5 @@ __all__ = [
     "Workspace",
     "WorkspaceMembership",
     "UnitOfMeasure",
+    "UserInvitation",
 ]

@@ -4,11 +4,11 @@ import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
-import { CURRENT_USER } from '@/data/dashboard'
 import { INCIDENCIA_PRIORITIES, INCIDENCIA_TYPES } from '@/data/incidencias'
 import { useConfigStore } from '@/stores/configStore'
 import { useActivosStore } from '@/stores/activosStore'
 import { cn } from '@/lib/utils'
+import { currentSessionActor } from '@/lib/sessionActor'
 
 const PRIORITY_OPTIONS = INCIDENCIA_PRIORITIES.map((p) => ({ value: p.id, label: p.name }))
 const TYPE_OPTIONS = INCIDENCIA_TYPES.map((t) => ({ value: t.id, label: t.name }))
@@ -107,7 +107,7 @@ export function IncidenciaFormModal({ open, onClose, onSubmit }) {
       description: form.description.trim(),
       images: form.images,
       intervenientes: form.intervenientes,
-      reportedBy: CURRENT_USER.name,
+      reportedBy: currentSessionActor().name,
     })
     toast.success('Incidencia creada correctamente')
     onClose()

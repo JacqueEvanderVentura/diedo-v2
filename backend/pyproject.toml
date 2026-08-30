@@ -28,6 +28,7 @@ markers = [
 [tool.coverage.run]
 branch = true
 source = ["app"]
+omit = ["app/scripts/run_full_stack_test_server.py"]
 
 [tool.coverage.report]
 show_missing = true

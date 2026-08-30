@@ -3,16 +3,16 @@ import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { usePosStore } from '@/stores/posStore'
+import { useCustomersStore } from '@/stores/customersStore'
 
-const genId = () => `cust-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const EMPTY = { name: '', phone: '', email: '', points: '', notes: '' }
 
 export function CustomerFormModal({ open, onClose, customer }) {
-  const addCustomer = usePosStore((s) => s.addCustomer)
-  const updateCustomer = usePosStore((s) => s.updateCustomer)
+  const addCustomer = useCustomersStore((s) => s.addCustomer)
+  const updateCustomer = useCustomersStore((s) => s.updateCustomer)
   const [form, setForm] = useState(EMPTY)
   const [err, setErr] = useState('')
+  const [saving, setSaving] = useState(false)
   const editing = !!customer
 
   useEffect(() => {
@@ -28,7 +28,7 @@ export function CustomerFormModal({ open, onClose, customer }) {
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.name.trim()) return setErr('Ingresa el nombre del cliente.')
     const payload = {
       name: form.name.trim(),
@@ -37,14 +37,21 @@ export function CustomerFormModal({ open, onClose, customer }) {
       points: Number(form.points) || 0,
       notes: form.notes.trim() || '',
     }
-    if (editing) {
-      updateCustomer(customer.id, payload)
-      toast.success(`Cliente "${payload.name}" actualizado`)
-    } else {
-      addCustomer({ id: genId(), ...payload })
-      toast.success(`Cliente "${payload.name}" creado`)
+    setSaving(true)
+    try {
+      if (editing) {
+        await updateCustomer(customer.id, payload)
+        toast.success(`Cliente "${payload.name}" actualizado`)
+      } else {
+        await addCustomer(payload)
+        toast.success(`Cliente "${payload.name}" creado`)
+      }
+      onClose()
+    } catch (error) {
+      setErr(error.message || 'No se pudo guardar el cliente.')
+    } finally {
+      setSaving(false)
     }
-    onClose()
   }
 
   return (
@@ -77,7 +84,9 @@ export function CustomerFormModal({ open, onClose, customer }) {
 
         <div className="flex gap-3 pt-1">
           <Button variant="secondary" className="flex-1" onClick={onClose} data-testid="customer-form-cancel">Cancelar</Button>
-          <Button className="flex-1" onClick={submit} data-testid="customer-form-save">{editing ? 'Guardar cambios' : 'Crear cliente'}</Button>
+          <Button className="flex-1" onClick={submit} disabled={saving} data-testid="customer-form-save">
+            {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear cliente'}
+          </Button>
         </div>
       </div>
     </Modal>

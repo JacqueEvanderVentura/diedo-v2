@@ -4,7 +4,7 @@ from dataclasses import asdict
 from app.config import settings
 from app.core.security import hash_password
 from app.db.session import session_scope
-from app.services.local_demo_data import seed_local_demo_data
+from app.services.demo_seed import seed_demo_data
 
 
 def main() -> None:
@@ -17,7 +17,7 @@ def main() -> None:
 
     password_hash = hash_password(configured_password.get_secret_value())
     with session_scope() as session:
-        summary = seed_local_demo_data(session, password_hash)
+        summary = seed_demo_data(session, password_hash, enabled=True)
 
     print(json.dumps(asdict(summary), default=str, indent=2, ensure_ascii=False))
 

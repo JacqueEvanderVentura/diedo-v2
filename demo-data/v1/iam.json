@@ -1,0 +1,18 @@
+{
+  "rolePermissions": {
+    "manager": ["workspace.read", "workspace.update", "legal_entity.read", "legal_entity.manage", "branch.read", "branch.manage", "membership.read", "membership.manage", "role.read", "catalog.read", "catalog.manage", "customer.read", "customer.manage", "employee.read", "employee.manage", "employee.schedule.manage"],
+    "supervisor": ["workspace.read", "legal_entity.read", "branch.read", "membership.read", "catalog.read", "customer.read", "customer.manage", "employee.read", "employee.schedule.manage"],
+    "cashier": ["workspace.read", "branch.read", "catalog.read", "customer.read", "customer.manage", "employee.read"],
+    "seller": ["workspace.read", "branch.read", "catalog.read", "customer.read", "customer.manage", "employee.read"]
+  },
+  "users": [
+    {"seedKey": "admin", "displayName": "Alex Demo", "email": "demo.alex.admin@example.com", "roleCode": "workspace_admin", "branchCodes": [], "workspaceWide": true, "status": "active"},
+    {"seedKey": "manager-north", "displayName": "Mar Demo", "email": "demo.mar.manager@example.com", "roleCode": "manager", "branchCodes": ["HQ", "NORTH"], "workspaceWide": false, "status": "active"},
+    {"seedKey": "manager-center", "displayName": "Sol Demo", "email": "demo.sol.manager@example.com", "roleCode": "manager", "branchCodes": ["DOWNTOWN"], "workspaceWide": false, "status": "active"},
+    {"seedKey": "supervisor", "displayName": "Luz Demo", "email": "demo.luz.supervisor@example.com", "roleCode": "supervisor", "branchCodes": ["NORTH"], "workspaceWide": false, "status": "active"},
+    {"seedKey": "cashier", "displayName": "Paz Demo", "email": "demo.paz.cashier@example.com", "roleCode": "cashier", "branchCodes": ["HQ"], "workspaceWide": false, "status": "active"},
+    {"seedKey": "seller-east", "displayName": "Rio Demo", "email": "demo.rio.seller@example.com", "roleCode": "seller", "branchCodes": ["EAST"], "workspaceWide": false, "status": "active"},
+    {"seedKey": "seller-center", "displayName": "Cielo Demo", "email": "demo.cielo.seller@example.com", "roleCode": "seller", "branchCodes": ["DOWNTOWN", "EAST"], "workspaceWide": false, "status": "active"},
+    {"seedKey": "suspended", "displayName": "Nube Demo", "email": "demo.nube.suspended@example.com", "roleCode": "supervisor", "branchCodes": ["EAST"], "workspaceWide": false, "status": "suspended"}
+  ]
+}

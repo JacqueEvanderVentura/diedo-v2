@@ -21,6 +21,7 @@ function typeName(id) {
 
 export default function CategoriasPage({ embedded = false }) {
   const isOnline = useSessionStore((s) => s.isOnline())
+  const canManageCategories = useSessionStore((s) => s.hasWorkspacePermission('catalog.manage'))
   const localCategories = useConfigStore((s) => s.categories)
   const addCategory = useConfigStore((s) => s.addCategory)
   const updateCategory = useConfigStore((s) => s.updateCategory)
@@ -61,6 +62,10 @@ export default function CategoriasPage({ embedded = false }) {
 
   const handleSubmit = async (data) => {
     if (isOnline) {
+      if (!canManageCategories) {
+        toast.error('Gestionar categorías requiere alcance sobre todo el workspace.')
+        return false
+      }
       try {
         if (editing?.api) {
           const updated = await catalogApi.updateCategory(
@@ -83,10 +88,9 @@ export default function CategoriasPage({ embedded = false }) {
         }
       } catch (err) {
         toast.error(err.message || 'No se pudo guardar la categoría.')
-        return
+        return false
       }
-      setModalOpen(false)
-      return
+      return true
     }
 
     if (editing) {
@@ -96,11 +100,15 @@ export default function CategoriasPage({ embedded = false }) {
       addCategory(data)
       toast.success('Categoría creada')
     }
-    setModalOpen(false)
+    return true
   }
 
   const handleDelete = async (c) => {
     if (isOnline && c.api) {
+      if (!canManageCategories) {
+        toast.error('Gestionar categorías requiere alcance sobre todo el workspace.')
+        return
+      }
       try {
         await catalogApi.updateCategory(c.id, { version: c.version, status: 'archived' })
         setApiCategories((prev) => prev.filter((row) => row.id !== c.id))
@@ -122,8 +130,16 @@ export default function CategoriasPage({ embedded = false }) {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar categorías..." className="w-full rounded-xl border-0 bg-slate-50 py-2.5 pl-10 pr-4 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-600" />
         </div>
-        <Button onClick={() => { setEditing(null); setModalOpen(true) }} data-testid="categoria-new-btn"><Plus className="h-4 w-4" /> Nueva Categoría</Button>
+        {(!isOnline || canManageCategories) && (
+          <Button onClick={() => { setEditing(null); setModalOpen(true) }} data-testid="categoria-new-btn"><Plus className="h-4 w-4" /> Nueva Categoría</Button>
+        )}
       </div>
+
+      {isOnline && !canManageCategories && (
+        <p className="text-sm text-slate-500" data-testid="categorias-read-only">
+          Puedes consultar las categorías, pero gestionarlas requiere una asignación sobre todo el workspace.
+        </p>
+      )}
 
       {loading && <p className="text-sm text-slate-400">Cargando categorías…</p>}
 
@@ -146,22 +162,26 @@ export default function CategoriasPage({ embedded = false }) {
                     </div>
                   </div>
                 </div>
-                <div className="flex shrink-0 gap-1">
-                  <button onClick={() => { setEditing(c); setModalOpen(true) }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></button>
-                  <button onClick={() => handleDelete(c)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
-                </div>
+                {(!isOnline || canManageCategories) && (
+                  <div className="flex shrink-0 gap-1">
+                    <button type="button" aria-label={`Editar ${c.name}`} data-testid={`categoria-edit-${c.id}`} onClick={() => { setEditing(c); setModalOpen(true) }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></button>
+                    <button type="button" aria-label={`Archivar ${c.name}`} data-testid={`categoria-delete-${c.id}`} onClick={() => handleDelete(c)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                )}
               </div>
             </Card>
           )
         })}
       </div>
 
-      <CategoryFormModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        category={editing}
-        onSubmit={handleSubmit}
-      />
+      {(!isOnline || canManageCategories) && (
+        <CategoryFormModal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          category={editing}
+          onSubmit={handleSubmit}
+        />
+      )}
     </div>
   )
 }

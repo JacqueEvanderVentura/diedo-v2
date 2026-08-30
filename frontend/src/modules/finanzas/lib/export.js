@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import * as XLSX from 'xlsx'
+import writeExcelFile from 'write-excel-file/browser'
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob)
@@ -33,18 +33,22 @@ export function exportCsv({ title, columns, rows, filename }) {
   downloadBlob(blob, `${sanitizeFilename(filename || title)}.csv`)
 }
 
-export function exportXlsx({ title, columns, rows, filename, sheetName = 'Datos' }) {
-  const data = rows.map((row) => {
-    const obj = {}
-    columns.forEach((c) => {
-      obj[c.label] = row[c.key] ?? ''
+export async function exportXlsx({ title, columns, rows, filename, sheetName = 'Datos' }) {
+  const header = columns.map((column) => ({ value: column.label, fontWeight: 'bold' }))
+  const data = rows.map((row) =>
+    columns.map((column) => {
+      const value = row[column.key]
+      return ['string', 'number', 'boolean'].includes(typeof value) || value instanceof Date
+        ? value
+        : value == null
+          ? null
+          : String(value)
     })
-    return obj
-  })
-  const ws = XLSX.utils.json_to_sheet(data)
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, sheetName)
-  XLSX.writeFile(wb, `${sanitizeFilename(filename || title)}.xlsx`)
+  )
+  const safeSheetName = sheetName.replace(/[\\/*?:[\]]/g, '_').slice(0, 31) || 'Datos'
+  await writeExcelFile([header, ...data], { sheet: safeSheetName }).toFile(
+    `${sanitizeFilename(filename || title)}.xlsx`
+  )
 }
 
 export function exportPdf({ title, columns, rows, filename, subtitle }) {

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { ephemeralJsonStorage } from '@/services/storagePolicy'
 
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const now = () => new Date().toISOString()
@@ -126,7 +127,7 @@ export const useComprasStore = create(
 
       getRequestTotal: requestTotal,
     }),
-    { name: 'diedo-compras' }
+    { name: 'diedo-compras', storage: ephemeralJsonStorage }
   )
 )
 

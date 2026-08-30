@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { ephemeralJsonStorage } from '@/services/storagePolicy'
 import { BRANCHES, CATEGORIES, PAYMENT_METHODS } from '@/data/products'
 import { PERMISSION_MODULES, buildDefaultMatrix, USER_ROLES } from '@/data/permisos'
 import { DEFAULT_WHATSAPP_TEMPLATES } from '@/data/whatsappTemplates'
@@ -83,11 +84,9 @@ const SEED_CATEGORIES = CATEGORIES.filter((c) => c.id !== 'all').map((c, i) => (
 const SEED_METHODS = PAYMENT_METHODS.map((m) => ({ ...m, enabled: true, core: true }))
 
 const SEED_USERS = [
-  { id: 'u1', name: 'Leonedis Hamburgo', email: 'leonedis@charm.do', role: 'Administrador', active: true, branchIds: ['charm-dn', 'charm-santiago', 'charm-este'], lastAccess: null, password: 'admin123' },
-  { id: 'u2', name: 'María Recepción', email: 'maria@charm.do', role: 'Supervisor', active: true, branchIds: ['charm-dn'], lastAccess: null, password: 'maria123' },
-  { id: 'u3', name: 'Carlos Cajero', email: 'carlos@charm.do', role: 'Cajero', active: true, branchIds: ['charm-dn'], lastAccess: null, password: 'carlos123' },
-  { id: 'u4', name: 'Admin Charm', email: 'admin@charm.do', role: 'Gerente', active: false, branchIds: ['charm-dn', 'charm-santiago'], lastAccess: null, password: 'admin123' },
-  { id: 'u5', name: 'Ana Vendedora', email: 'ana@charm.do', role: 'Vendedor', active: true, branchIds: ['charm-este'], lastAccess: null, password: 'ana123' },
+  { id: 'u1', name: 'Alex Demo', email: 'alex.admin.demo@example.test', role: 'Administrador', active: true, branchIds: ['charm-dn', 'charm-santiago', 'charm-este'], lastAccess: null },
+  { id: 'u2', name: 'Mar Demo', email: 'mar.manager.demo@example.test', role: 'Supervisor', active: true, branchIds: ['charm-dn'], lastAccess: null },
+  { id: 'u3', name: 'Sol Demo', email: 'sol.cashier.demo@example.test', role: 'Cajero', active: true, branchIds: ['charm-dn'], lastAccess: null },
 ]
 
 const SEED_SETTINGS = { businessName: 'Diedo App', taxDefault: 18, region: 'República Dominicana', currency: 'RD$' }
@@ -124,6 +123,7 @@ export const useConfigStore = create(
       whatsappTemplates: structuredClone(DEFAULT_WHATSAPP_TEMPLATES),
 
       // ---- branches ----
+      setBranches: (branches) => set({ branches: branches.map(normalizeBranch) }),
       addBranch: (data) =>
         set((s) => ({
           branches: [...s.branches, { id: genId('br'), ...normalizeBranch(data) }],
@@ -160,7 +160,7 @@ export const useConfigStore = create(
         set((s) => ({ paymentMethods: s.paymentMethods.filter((m) => m.id !== id || m.core) })),
 
       // ---- users ----
-      addUser: (data) =>
+      addUser: ({ password: _password, ...data }) =>
         set((s) => ({
           users: [
             {
@@ -179,14 +179,10 @@ export const useConfigStore = create(
         })),
       deleteUser: (id) => set((s) => ({ users: s.users.filter((u) => u.id !== id) })),
 
-      changeOwnPassword: (userId, currentPassword, newPassword) => {
+      changeOwnPassword: (userId, _currentPassword, newPassword) => {
         const user = get().users.find((u) => u.id === userId)
         if (!user) return { ok: false, error: 'Usuario no encontrado.' }
-        if ((user.password || '') !== currentPassword) return { ok: false, error: 'La contraseña actual no es correcta.' }
         if (!newPassword || newPassword.length < 6) return { ok: false, error: 'La nueva contraseña debe tener al menos 6 caracteres.' }
-        set((s) => ({
-          users: s.users.map((u) => (u.id === userId ? { ...u, password: newPassword } : u)),
-        }))
         return { ok: true }
       },
 
@@ -233,6 +229,7 @@ export const useConfigStore = create(
     }),
     {
       name: 'diedo-config',
+      storage: ephemeralJsonStorage,
       merge: (persisted, current) => {
         const state = { ...current, ...(persisted || {}) }
         const defaults = buildDefaultMatrix()
@@ -251,12 +248,7 @@ export const useConfigStore = create(
           })
           state.whatsappTemplates = mergedWa
         }
-        if (Array.isArray(state.users)) {
-          state.users = state.users.map((u) => ({
-            ...u,
-            password: u.password || 'changeme',
-          }))
-        }
+        if (Array.isArray(state.users)) state.users = state.users.map(({ password: _password, ...user }) => user)
         return state
       },
     }

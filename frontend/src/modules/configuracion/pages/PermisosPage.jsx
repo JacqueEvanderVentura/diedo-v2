@@ -20,12 +20,14 @@ import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable
 import { useSortedRows } from '@/hooks/useTableControls'
 import { cn } from '@/lib/utils'
 
-function PermCell({ granted, onClick, disabled }) {
+function PermCell({ granted, onClick, disabled = false, testId, label }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
+      data-testid={testId}
+      aria-label={label}
       className={cn(
         'mx-auto flex h-8 w-8 items-center justify-center rounded-lg transition-colors',
         granted ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'bg-red-50 text-red-400 hover:bg-red-100',
@@ -107,7 +109,7 @@ function PermModuleCard({ mod, actions, highlightRole, permissions, togglePermis
   )
 }
 
-function ApiPermModuleCard({ mod, roles, grants, onToggle, highlightRoleId }) {
+function ApiPermModuleCard({ mod, roles, grants, onToggle, highlightRoleId, canEdit }) {
   return (
     <Card className="overflow-hidden" data-testid={`api-perm-module-${mod.code}`}>
       <div className="border-b border-slate-100 px-6 py-4">
@@ -135,7 +137,13 @@ function ApiPermModuleCard({ mod, roles, grants, onToggle, highlightRoleId }) {
                   const granted = grants[role.id]?.has(perm.id)
                   return (
                     <td key={role.id} className={cn('px-3 py-2 text-center', highlightRoleId === role.id && 'bg-blue-50/30')}>
-                      <PermCell granted={granted} onClick={() => onToggle(role.id, perm.id)} />
+                      <PermCell
+                        granted={granted}
+                        onClick={() => onToggle(role.id, perm.id)}
+                        disabled={!canEdit}
+                        testId={`api-perm-${role.id}-${perm.id}`}
+                        label={`${perm.name}: ${role.name}`}
+                      />
                     </td>
                   )
                 })}
@@ -148,61 +156,12 @@ function ApiPermModuleCard({ mod, roles, grants, onToggle, highlightRoleId }) {
   )
 }
 
-export default function PermisosPage({ embedded = false }) {
-  const isOnline = useSessionStore((s) => s.isOnline())
+function DemoPermissionMatrix() {
   const permissions = useConfigStore((s) => s.permissions)
   const togglePermission = useConfigStore((s) => s.togglePermission)
   const getPermissionSummary = useConfigStore((s) => s.getPermissionSummary)
   const [highlightRole, setHighlightRole] = useState('Administrador')
   const [actionSearch, setActionSearch] = useState('')
-
-  const [apiMatrix, setApiMatrix] = useState(null)
-  const [apiGrants, setApiGrants] = useState({})
-  const [apiRoleVersions, setApiRoleVersions] = useState({})
-  const [dirtyRoles, setDirtyRoles] = useState(new Set())
-  const [highlightRoleId, setHighlightRoleId] = useState(null)
-  const [saving, setSaving] = useState(false)
-
-  const loadMatrix = useCallback(async () => {
-    try {
-      const matrix = await permissionsApi.matrix()
-      const grants = {}
-      const versions = {}
-      matrix.roles.forEach((role) => {
-        grants[role.id] = new Set()
-        versions[role.id] = role.version
-      })
-      matrix.modules.forEach((mod) => {
-        mod.permissions.forEach((perm) => {
-          perm.grantedRoleIds.forEach((roleId) => {
-            if (!grants[roleId]) grants[roleId] = new Set()
-            grants[roleId].add(perm.id)
-          })
-        })
-      })
-      setApiMatrix(matrix)
-      setApiGrants(grants)
-      setApiRoleVersions(versions)
-      setHighlightRoleId(matrix.roles[0]?.id || null)
-      setDirtyRoles(new Set())
-    } catch (err) {
-      toast.error(err.message || 'No se pudo cargar la matriz de permisos.')
-    }
-  }, [])
-
-  useEffect(() => {
-    if (isOnline) loadMatrix()
-  }, [isOnline, loadMatrix])
-
-  const toggleApiGrant = (roleId, permissionId) => {
-    setApiGrants((prev) => {
-      const next = { ...prev, [roleId]: new Set(prev[roleId] || []) }
-      if (next[roleId].has(permissionId)) next[roleId].delete(permissionId)
-      else next[roleId].add(permissionId)
-      return next
-    })
-    setDirtyRoles((prev) => new Set(prev).add(roleId))
-  }
 
   const summary = useMemo(() => getPermissionSummary(), [permissions, getPermissionSummary])
 
@@ -212,66 +171,8 @@ export default function PermisosPage({ embedded = false }) {
     return actions.filter((a) => a.toLowerCase().includes(q))
   }
 
-  const save = async () => {
-    if (isOnline && dirtyRoles.size) {
-      setSaving(true)
-      try {
-        for (const roleId of dirtyRoles) {
-          await permissionsApi.replaceRolePermissions(roleId, {
-            permissionIds: Array.from(apiGrants[roleId] || []),
-            version: apiRoleVersions[roleId],
-          })
-        }
-        toast.success('Permisos IAM guardados')
-        await loadMatrix()
-      } catch (err) {
-        toast.error(err.message || 'No se pudieron guardar los permisos IAM.')
-      } finally {
-        setSaving(false)
-      }
-      return
-    }
-    toast.success('Permisos locales guardados correctamente')
-  }
-
   return (
-    <div className={configPageClass(embedded)} data-testid="permisos-page">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <p className="text-sm text-slate-500">Haz clic en las celdas para activar o desactivar permisos</p>
-        <Button onClick={save} disabled={saving} data-testid="permisos-save"><Save className="h-4 w-4" /> {saving ? 'Guardando…' : 'Guardar Cambios'}</Button>
-      </div>
-
-      {isOnline && apiMatrix && (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold uppercase text-slate-400">Roles API</span>
-            {apiMatrix.roles.map((role) => (
-              <button
-                key={role.id}
-                type="button"
-                onClick={() => setHighlightRoleId(role.id)}
-                className={cn(
-                  'inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors',
-                  highlightRoleId === role.id ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                )}
-              >
-                {role.name}
-              </button>
-            ))}
-          </div>
-          {apiMatrix.modules.map((mod) => (
-            <ApiPermModuleCard
-              key={mod.code}
-              mod={mod}
-              roles={apiMatrix.roles}
-              grants={apiGrants}
-              onToggle={toggleApiGrant}
-              highlightRoleId={highlightRoleId}
-            />
-          ))}
-        </div>
-      )}
-
+    <>
       <div className="flex flex-wrap gap-2">
         {USER_ROLES.map((role) => (
           <button
@@ -329,6 +230,148 @@ export default function PermisosPage({ embedded = false }) {
           ))}
         </div>
       </Card>
+    </>
+  )
+}
+
+export default function PermisosPage({ embedded = false }) {
+  const isOnline = useSessionStore((s) => s.isOnline())
+  const isDemo = useSessionStore((s) => s.isDemo())
+  const hasRoleManagePermission = useSessionStore((s) => s.hasPermission('role.manage'))
+  const canManageRoles = useSessionStore((s) => s.hasWorkspacePermission('role.manage'))
+  const refreshCurrentUser = useSessionStore((s) => s.refreshCurrentUser)
+
+  const [apiMatrix, setApiMatrix] = useState(null)
+  const [apiGrants, setApiGrants] = useState({})
+  const [apiRoleVersions, setApiRoleVersions] = useState({})
+  const [dirtyRoles, setDirtyRoles] = useState(new Set())
+  const [highlightRoleId, setHighlightRoleId] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  const loadMatrix = useCallback(async ({ notifyError = true } = {}) => {
+    try {
+      const matrix = await permissionsApi.matrix()
+      const grants = {}
+      const versions = {}
+      matrix.roles.forEach((role) => {
+        grants[role.id] = new Set()
+        versions[role.id] = role.version
+      })
+      matrix.modules.forEach((mod) => {
+        mod.permissions.forEach((perm) => {
+          perm.grantedRoleIds.forEach((roleId) => {
+            if (!grants[roleId]) grants[roleId] = new Set()
+            grants[roleId].add(perm.id)
+          })
+        })
+      })
+      setApiMatrix(matrix)
+      setApiGrants(grants)
+      setApiRoleVersions(versions)
+      setHighlightRoleId(matrix.roles[0]?.id || null)
+      setDirtyRoles(new Set())
+      return true
+    } catch (err) {
+      if (notifyError) toast.error(err.message || 'No se pudo cargar la matriz de permisos.')
+      return false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isOnline) loadMatrix()
+  }, [isOnline, loadMatrix])
+
+  const toggleApiGrant = (roleId, permissionId) => {
+    setApiGrants((prev) => {
+      const next = { ...prev, [roleId]: new Set(prev[roleId] || []) }
+      if (next[roleId].has(permissionId)) next[roleId].delete(permissionId)
+      else next[roleId].add(permissionId)
+      return next
+    })
+    setDirtyRoles((prev) => new Set(prev).add(roleId))
+  }
+
+  const save = async () => {
+    if (isOnline) {
+      if (!canManageRoles || !apiMatrix || dirtyRoles.size === 0) return
+      setSaving(true)
+      try {
+        await permissionsApi.replaceBatch({
+          roles: Array.from(dirtyRoles, (roleId) => ({
+            roleId,
+            permissionIds: Array.from(apiGrants[roleId] || []),
+            version: apiRoleVersions[roleId],
+          })),
+        })
+        const reloaded = await loadMatrix({ notifyError: false })
+        if (!reloaded) throw new Error('Los permisos se guardaron, pero no se pudo recargar la matriz.')
+        await refreshCurrentUser()
+        toast.success('Permisos IAM guardados')
+      } catch (err) {
+        toast.error(err.message || 'No se pudieron guardar los permisos IAM.')
+        setApiMatrix(null)
+        setApiGrants({})
+        setApiRoleVersions({})
+        setDirtyRoles(new Set())
+        const reconciled = await loadMatrix({ notifyError: false })
+        if (!reconciled) toast.error('No se pudo reconciliar la matriz. Recarga la página antes de continuar.')
+      } finally {
+        setSaving(false)
+      }
+      return
+    }
+    if (isDemo) toast.success('Permisos locales guardados correctamente')
+  }
+
+  const canEditApi = isOnline && canManageRoles && !saving
+  const canSave = isDemo || (canEditApi && Boolean(apiMatrix) && dirtyRoles.size > 0)
+
+  return (
+    <div className={configPageClass(embedded)} data-testid="permisos-page">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <p className="text-sm text-slate-500" data-testid="permisos-access-note">
+          {isOnline && !canManageRoles
+            ? hasRoleManagePermission
+              ? 'Puedes consultar los permisos, pero gestionarlos requiere una asignación sobre todo el workspace.'
+              : 'Puedes consultar los permisos, pero no tienes acceso para modificarlos.'
+            : 'Haz clic en las celdas para activar o desactivar permisos'}
+        </p>
+        <Button onClick={save} disabled={saving || !canSave} data-testid="permisos-save"><Save className="h-4 w-4" /> {saving ? 'Guardando…' : 'Guardar Cambios'}</Button>
+      </div>
+
+      {isOnline && apiMatrix && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold uppercase text-slate-400">Roles API</span>
+            {apiMatrix.roles.map((role) => (
+              <button
+                key={role.id}
+                type="button"
+                onClick={() => setHighlightRoleId(role.id)}
+                className={cn(
+                  'inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors',
+                  highlightRoleId === role.id ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                )}
+              >
+                {role.name}
+              </button>
+            ))}
+          </div>
+          {apiMatrix.modules.map((mod) => (
+            <ApiPermModuleCard
+              key={mod.code}
+              mod={mod}
+              roles={apiMatrix.roles}
+              grants={apiGrants}
+              onToggle={toggleApiGrant}
+              highlightRoleId={highlightRoleId}
+              canEdit={canEditApi}
+            />
+          ))}
+        </div>
+      )}
+
+      {isDemo && <DemoPermissionMatrix />}
     </div>
   )
 }

@@ -1,14 +1,14 @@
-import { useState, useEffect, useLayoutEffect, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import * as Icons from 'lucide-react'
-import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { NAV_GROUPS } from '@/data/navigation'
 import { useUiStore } from '@/stores/uiStore'
 import { usePosStore } from '@/stores/posStore'
 import { useConfigStore } from '@/stores/configStore'
-import { CURRENT_USER } from '@/data/dashboard'
+import { useSessionStore } from '@/stores/sessionStore'
+import { isModuleAvailable } from '@/services/moduleAvailability'
 import { DiedoIcon } from '@/components/brand/DiedoIcon'
 
 const PILL_SPRING = { type: 'spring', stiffness: 420, damping: 34 }
@@ -206,6 +206,28 @@ function CollapseToggle({ collapsed, pinned, onClick }) {
 function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinned }) {
   const location = useLocation()
   const businessName = useConfigStore((s) => s.settings.businessName)
+  const sessionUser = useSessionStore((s) => s.user)
+  const sessionStatus = useSessionStore((s) => s.status)
+  const logout = useSessionStore((s) => s.logout)
+  const enabledModules = sessionUser?.enabledModules
+  const effectivePermissionCodes = sessionUser?.effectivePermissionCodes
+  const navigation = useMemo(() => {
+    if (sessionStatus === 'demo') return NAV_GROUPS
+    const modules = new Set(enabledModules || [])
+    const permissions = new Set(effectivePermissionCodes || [])
+    return NAV_GROUPS.filter((group) => isModuleAvailable(group.module, modules))
+      .map((group) => ({
+        ...group,
+        children: group.children?.filter((child) => {
+          const moduleCode = child.module || group.module
+          return (
+            isModuleAvailable(moduleCode, modules) &&
+            (!child.permission || permissions.has(child.permission))
+          )
+        }),
+      }))
+      .filter((group) => !group.children || group.children.length > 0)
+  }, [effectivePermissionCodes, enabledModules, sessionStatus])
   const [open, setOpen] = useState(() => deriveOpenGroups(location.pathname))
   const navRef = useRef(null)
   const canAnimate = useRef(false)
@@ -276,7 +298,7 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
         <DiedoIcon className="h-9 w-9 shrink-0" />
         {!collapsed && (
           <div className="min-w-0 flex-1 leading-tight">
-            <p className="truncate font-heading text-base font-bold tracking-tight text-slate-900">{businessName || 'Diedo App'}</p>
+            <p className="truncate font-heading text-base font-bold tracking-tight text-slate-900">{sessionUser?.workspace?.name || businessName || 'Diedo App'}</p>
             <p className="truncate text-[11px] font-medium text-slate-400">Admin Console</p>
           </div>
         )}
@@ -298,7 +320,7 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
       <nav className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto scrollbar-thin">
         <div ref={navRef} className="relative flex flex-col gap-1 overflow-hidden px-3 py-2">
           {!collapsed && <ActivePill box={pill.box} animate={pill.animate} />}
-          {NAV_GROUPS.map((g) =>
+          {navigation.map((g) =>
             g.children ? (
               <GroupItem
                 key={g.id}
@@ -319,16 +341,16 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
       <div className="shrink-0 overflow-hidden border-t border-slate-100 p-3">
         <div className={cn('flex items-center gap-3 rounded-xl p-2 transition-all duration-200 ease-out', collapsed && 'justify-center')}>
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
-            {CURRENT_USER.initials}
+            {sessionUser?.initials || '??'}
           </div>
           {!collapsed && (
             <>
               <div className="min-w-0 flex-1 leading-tight">
-                <p className="truncate text-sm font-semibold text-slate-800">{CURRENT_USER.name}</p>
-                <p className="text-xs text-slate-400">{CURRENT_USER.role}</p>
+                <p className="truncate text-sm font-semibold text-slate-800">{sessionUser?.name || 'Usuario'}</p>
+                <p className="text-xs text-slate-400">{sessionUser?.role || '—'}</p>
               </div>
               <button
-                onClick={() => toast('Sesión cerrada (simulado)')}
+                onClick={() => logout()}
                 data-testid="sidebar-logout"
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
               >

@@ -4,7 +4,6 @@ import { CalendarCheck, UserX, CalendarClock, Percent, Globe, Ban, Eye, Pencil }
 import { useAgendaStore, toKey, statusMeta } from '@/stores/agendaStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useRrhhStore } from '@/stores/rrhhStore'
-import { EMPLOYEES as AGENDA_EMPLOYEES } from '@/data/agenda'
 import { ReportFilterBar } from '../components/ReportFilterBar'
 import { Pagination } from '../components/Pagination'
 import { StatCard, ChartCard } from '../components/ReportPrimitives'
@@ -86,7 +85,7 @@ export default function AgendaReportPage() {
   const employeeName = (id) => {
     const rrhh = employees.find((e) => e.id === id)
     if (rrhh) return `${rrhh.firstName} ${rrhh.lastName}`
-    return AGENDA_EMPLOYEES.find((e) => e.id === id)?.name || '—'
+    return '—'
   }
 
   const attendedVsTotal = filtered.length > 0

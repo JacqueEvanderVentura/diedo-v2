@@ -5,12 +5,21 @@ from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db.session import get_session
+from app.services.attachment_storage import AttachmentStorage, LocalAttachmentStorage
 from app.services.auth import AuthPrincipal, AuthService
 from app.services.authorization import AuthorizationService, PermissionGrant
 from app.services.errors import AuthenticationError
 
 DatabaseSession = Annotated[Session, Depends(get_session)]
+
+
+def get_attachment_storage() -> AttachmentStorage:
+    return LocalAttachmentStorage(settings.attachment_storage_root)
+
+
+AttachmentStorageDep = Annotated[AttachmentStorage, Depends(get_attachment_storage)]
 
 _bearer = HTTPBearer(
     auto_error=False,
@@ -57,6 +66,30 @@ RoleManageGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("role.manage")),
 ]
+WorkspaceReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("workspace.read")),
+]
+WorkspaceUpdateGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("workspace.update")),
+]
+LegalEntityReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("legal_entity.read")),
+]
+LegalEntityManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("legal_entity.manage")),
+]
+BranchReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("branch.read")),
+]
+BranchManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("branch.manage")),
+]
 CatalogReadGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("catalog.read")),
@@ -64,4 +97,24 @@ CatalogReadGrant = Annotated[
 CatalogManageGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("catalog.manage")),
+]
+CustomerReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("customer.read")),
+]
+CustomerManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("customer.manage")),
+]
+EmployeeReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("employee.read")),
+]
+EmployeeManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("employee.manage")),
+]
+EmployeeScheduleManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("employee.schedule.manage")),
 ]

@@ -13,37 +13,47 @@ const empty = () => ({ name: '', description: '', type: 'producto', color: CATEG
 export function CategoryFormModal({ open, onClose, category, onSubmit }) {
   const [form, setForm] = useState(empty())
   const [err, setErr] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const editing = !!category
 
   useEffect(() => {
     if (!open) return
     setForm(category ? { ...empty(), ...category } : empty())
     setErr('')
+    setSubmitting(false)
   }, [open, category])
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.name.trim()) return setErr('Ingresa el nombre de la categoría.')
-    onSubmit(form)
-    onClose()
+    setErr('')
+    setSubmitting(true)
+    try {
+      const saved = await onSubmit(form)
+      if (saved !== false) onClose()
+    } catch (error) {
+      setErr(error?.message || 'No se pudo guardar la categoría.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={editing ? 'Editar Categoría' : 'Nueva Categoría'} testId="categoria-modal">
+    <Modal open={open} onClose={() => { if (!submitting) onClose() }} title={editing ? 'Editar Categoría' : 'Nueva Categoría'} testId="categoria-modal">
       <p className="mb-4 text-sm text-slate-500">Crea una nueva categoría para clasificar tus gastos, ingresos o productos.</p>
       <div className="space-y-4">
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Nombre *</label>
-          <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Nombre de la categoría" data-testid="categoria-field-name" />
+          <Input value={form.name} disabled={submitting} onChange={(e) => set('name', e.target.value)} placeholder="Nombre de la categoría" data-testid="categoria-field-name" />
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Descripción</label>
-          <Input value={form.description} onChange={(e) => set('description', e.target.value)} placeholder="Descripción breve" />
+          <Input value={form.description} disabled={submitting} onChange={(e) => set('description', e.target.value)} placeholder="Descripción breve" data-testid="categoria-field-description" />
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Tipo</label>
-          <Select value={form.type} onChange={(v) => set('type', v)} options={TYPE_OPTIONS} />
+          <Select value={form.type} disabled={submitting} onChange={(v) => set('type', v)} options={TYPE_OPTIONS} />
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Color</label>
@@ -52,8 +62,9 @@ export function CategoryFormModal({ open, onClose, category, onSubmit }) {
               <button
                 key={c.id}
                 type="button"
+                disabled={submitting}
                 onClick={() => set('color', c.id)}
-                className={cn('h-8 w-8 rounded-full ring-2 ring-offset-2 transition-all', form.color === c.id ? 'ring-blue-600 scale-110' : 'ring-transparent')}
+                className={cn('h-8 w-8 rounded-full ring-2 ring-offset-2 transition-all disabled:cursor-not-allowed disabled:opacity-50', form.color === c.id ? 'ring-blue-600 scale-110' : 'ring-transparent')}
                 style={{ backgroundColor: c.fg }}
               />
             ))}
@@ -61,8 +72,10 @@ export function CategoryFormModal({ open, onClose, category, onSubmit }) {
         </div>
         {err && <p className="text-sm text-red-500">{err}</p>}
         <div className="flex gap-3">
-          <Button variant="secondary" className="flex-1" onClick={onClose}>Cancelar</Button>
-          <Button className="flex-1" onClick={submit} data-testid="categoria-save">{editing ? 'Guardar' : 'Crear Categoría'}</Button>
+          <Button variant="secondary" className="flex-1" onClick={onClose} disabled={submitting}>Cancelar</Button>
+          <Button className="flex-1" onClick={submit} disabled={submitting} data-testid="categoria-save">
+            {submitting ? 'Guardando…' : editing ? 'Guardar' : 'Crear Categoría'}
+          </Button>
         </div>
       </div>
     </Modal>

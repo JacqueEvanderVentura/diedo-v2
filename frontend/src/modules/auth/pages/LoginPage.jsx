@@ -43,7 +43,7 @@ export default function LoginPage() {
           </div>
           <h1 className="font-heading text-2xl font-bold text-slate-900">Iniciar sesión</h1>
           <p className="mt-2 text-sm text-slate-500">
-            Conecta con la API local. Si el backend no está disponible, la app sigue en modo demo.
+            Conecta con la API local. El modo demo solo se activa mediante configuración explícita.
           </p>
         </div>
 
@@ -81,7 +81,7 @@ export default function LoginPage() {
         </form>
 
         <p className="mt-6 text-center text-xs text-slate-400">
-          Usuarios demo: <code>*.demo@erp.dev</code> tras <code>seed_local_demo</code>
+          Los usuarios demo se generan desde el manifiesto versionado cuando el seed está habilitado.
         </p>
       </Card>
     </div>

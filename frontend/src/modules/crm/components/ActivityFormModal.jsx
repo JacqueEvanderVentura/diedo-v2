@@ -7,15 +7,16 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { useCrmStore } from '@/stores/crmStore'
 import { useConfigStore } from '@/stores/configStore'
-import { usePosStore } from '@/stores/posStore'
+import { useCustomersStore } from '@/stores/customersStore'
 import { ACTIVITY_TYPES, ACTIVITY_TYPE_META } from '@/data/crm'
+import { currentSessionActor } from '@/lib/sessionActor'
 
 const empty = () => ({
   type: 'tarea',
   title: '',
   description: '',
   customerName: '',
-  assignedUserId: 'u1',
+  assignedUserId: currentSessionActor().id,
   dueAt: '',
 })
 
@@ -30,7 +31,7 @@ export function ActivityFormModal({ open, onClose, activity }) {
   const addActivity = useCrmStore((s) => s.addActivity)
   const updateActivity = useCrmStore((s) => s.updateActivity)
   const users = useConfigStore((s) => s.users)
-  const customers = usePosStore((s) => s.customers)
+  const customers = useCustomersStore((s) => s.customers)
 
   const [form, setForm] = useState(empty())
   const editing = !!activity
@@ -44,7 +45,7 @@ export function ActivityFormModal({ open, onClose, activity }) {
               title: activity.title || '',
               description: activity.description || '',
               customerName: activity.customerName || '',
-              assignedUserId: activity.assignedUserId || 'u1',
+              assignedUserId: activity.assignedUserId || currentSessionActor().id,
               dueAt: toLocalInput(activity.dueAt),
             }
           : empty()

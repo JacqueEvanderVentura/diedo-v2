@@ -4,7 +4,7 @@ import { Bell, CheckCheck } from 'lucide-react'
 import { DropdownPanel } from '@/components/ui/DropdownPanel'
 import { useNotificationsStore } from '@/stores/notificationsStore'
 import { useIncidenciasStore } from '@/stores/incidenciasStore'
-import { CURRENT_USER } from '@/data/dashboard'
+import { useSessionStore } from '@/stores/sessionStore'
 import { cn } from '@/lib/utils'
 
 function fmtWhen(iso) {
@@ -25,13 +25,14 @@ export function NotificationsPanel() {
   const markRead = useNotificationsStore((s) => s.markRead)
   const markAllRead = useNotificationsStore((s) => s.markAllRead)
   const setSelectedId = useIncidenciasStore((s) => s.setSelectedId)
+  const currentUserId = useSessionStore((s) => s.user?.userId || s.user?.id)
 
   const notifications = useMemo(
     () =>
       allNotifications
-        .filter((n) => n.userId === CURRENT_USER.id)
+        .filter((n) => n.userId === currentUserId)
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
-    [allNotifications]
+    [allNotifications, currentUserId]
   )
 
   const unread = notifications.filter((n) => !n.read).length
@@ -86,7 +87,7 @@ export function NotificationsPanel() {
           {unread > 0 && (
             <button
               type="button"
-              onClick={() => markAllRead(CURRENT_USER.id)}
+              onClick={() => markAllRead(currentUserId)}
               className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
             >
               <CheckCheck className="h-3.5 w-3.5" />

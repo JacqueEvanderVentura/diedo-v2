@@ -112,21 +112,25 @@ export default function AgendarPage() {
     setStep(3)
   }
 
-  const confirm = () => {
+  const confirm = async () => {
     if (!service || !form.time) return toast.error('Completa la cita')
     const profile = upsertProfile(form)
-    bookAppointment({
-      profile,
-      branchId: branch.id,
-      service,
-      date: form.date,
-      time: form.time,
-      employeeId: form.employeeId,
-      duration: 30,
-    })
-    rememberDocument(profile.documentId)
-    setDone(true)
-    toast.success('¡Cita agendada!')
+    try {
+      await bookAppointment({
+        profile,
+        branchId: branch.id,
+        service,
+        date: form.date,
+        time: form.time,
+        employeeId: form.employeeId,
+        duration: 30,
+      })
+      rememberDocument(profile.documentId)
+      setDone(true)
+      toast.success('¡Cita agendada!')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo agendar la cita')
+    }
   }
 
   if (done) {

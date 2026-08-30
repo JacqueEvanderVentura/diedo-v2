@@ -35,7 +35,13 @@ class Settings(BaseSettings):
     jwt_audience: str = "erp-clients"
     access_token_minutes: int = Field(default=15, ge=5, le=60)
     refresh_token_days: int = Field(default=30, ge=1, le=90)
+    refresh_cookie_name: str = "erp_refresh"
+    refresh_cookie_path: str = "/api/v1/auth"
     local_bootstrap_admin_password: SecretStr | None = None
+    demo_seed_enabled: bool = False
+    expected_schema_revision: str = "20260829_0007"
+    attachment_storage_root: Path = _BACKEND_ROOT / ".local" / "attachments"
+    attachment_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1, le=10 * 1024 * 1024)
 
     @model_validator(mode="after")
     def require_deployment_jwt_secret(self) -> Settings:
@@ -51,6 +57,15 @@ class Settings(BaseSettings):
     @property
     def docs_enabled(self) -> bool:
         return self.app_env != "production"
+
+    @property
+    def secure_cookies(self) -> bool:
+        return self.app_env in {"staging", "production"}
+
+    @property
+    def expose_demo_invitation_tokens(self) -> bool:
+        """Expose one-use invitation tokens only in an explicit local demo/test mode."""
+        return self.demo_seed_enabled and self.app_env in {"development", "test"}
 
 
 @lru_cache

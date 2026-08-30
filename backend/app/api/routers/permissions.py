@@ -15,12 +15,14 @@ from app.schemas.permissions import (
     PermissionMatrixItem,
     PermissionMatrixResponse,
     PermissionModule,
+    ReplaceRolePermissionsBatchRequest,
+    ReplaceRolePermissionsBatchResponse,
     ReplaceRolePermissionsRequest,
     RolePermissionSummaryItem,
     RolePermissionSummaryResponse,
     RoleResponse,
 )
-from app.services.permissions import PermissionsService
+from app.services.permissions import PermissionsService, RolePermissionReplacement
 
 roles_router = APIRouter(prefix="/api/v1/roles", tags=["roles and permissions"])
 permissions_router = APIRouter(prefix="/api/v1/permissions", tags=["roles and permissions"])
@@ -118,12 +120,43 @@ def permission_matrix(
             PermissionModule(
                 code=module.code,
                 name=module.name,
+                enabled=module.enabled,
                 permissions=[_permission_response(permission) for permission in module.permissions],
             )
             for module in matrix.modules
         ],
         total_permissions=matrix.total_permissions,
     )
+
+
+@roles_router.put(
+    "/permissions:batch",
+    summary="Reemplazar permisos de varios roles en una sola transacción",
+    responses={
+        **_SECURITY_RESPONSES,
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
+)
+def replace_role_permissions_batch(
+    payload: ReplaceRolePermissionsBatchRequest,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: RoleManageGrant,
+) -> ReplaceRolePermissionsBatchResponse:
+    roles = PermissionsService(database).replace_role_permissions_batch(
+        principal=principal,
+        grant=grant,
+        replacements=[
+            RolePermissionReplacement(
+                role_id=item.role_id,
+                permission_ids=frozenset(item.permission_ids),
+                expected_version=item.version,
+            )
+            for item in payload.roles
+        ],
+    )
+    return ReplaceRolePermissionsBatchResponse(roles=[_role_response(role) for role in roles])
 
 
 @roles_router.put(

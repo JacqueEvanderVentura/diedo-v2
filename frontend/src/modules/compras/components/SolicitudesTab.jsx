@@ -28,6 +28,7 @@ import { PurchaseRequestModal } from './PurchaseRequestModal'
 import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
 import { useSortedRows } from '@/hooks/useTableControls'
 import { cn } from '@/lib/utils'
+import { currentSessionActor } from '@/lib/sessionActor'
 
 const toneClass = {
   warning: 'bg-amber-100 text-amber-700',
@@ -96,12 +97,12 @@ export function SolicitudesTab() {
   const selected = purchaseRequests.find((r) => r.id === selectedId) || filtered[0] || null
 
   const handleApprove = (id) => {
-    reviewPurchaseRequest(id, 'aprobada', 'u1')
+    reviewPurchaseRequest(id, 'aprobada', currentSessionActor().id)
     toast.success('Solicitud aprobada')
   }
 
   const handleReject = (id) => {
-    reviewPurchaseRequest(id, 'rechazada', 'u1')
+    reviewPurchaseRequest(id, 'rechazada', currentSessionActor().id)
     toast.success('Solicitud rechazada')
   }
 

@@ -10,7 +10,6 @@ import { useAgendaStore } from '@/stores/agendaStore'
 import { useRrhhStore } from '@/stores/rrhhStore'
 import { useCatalogStore } from '@/stores/catalogStore'
 import { useInventarioStore } from '@/stores/inventarioStore'
-import { EMPLOYEES as AGENDA_EMPLOYEES } from '@/data/agenda'
 import { ReportFilterBar } from '../components/ReportFilterBar'
 import { StatCard, ChartCard } from '../components/ReportPrimitives'
 import { buildPersonalReport } from '../lib/personalReport'
@@ -47,7 +46,7 @@ export default function PersonalPage() {
   const [tab, setTab] = useState('usuarios')
 
   const report = useMemo(
-    () => buildPersonalReport({ sales, appointments, users, employees, agendaStaff: AGENDA_EMPLOYEES, movements, supplies, branchId, period, search }),
+    () => buildPersonalReport({ sales, appointments, users, employees, movements, supplies, branchId, period, search }),
     [sales, appointments, users, employees, movements, supplies, branchId, period, search]
   )
 

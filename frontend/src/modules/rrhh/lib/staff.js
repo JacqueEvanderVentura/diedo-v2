@@ -1,6 +1,5 @@
 import { useMemo } from 'react'
 import { useRrhhStore } from '@/stores/rrhhStore'
-import { EMPLOYEES as LEGACY_EMPLOYEES } from '@/data/agenda'
 import { fullName } from './rrhh'
 
 export function getEmployeeBranchIds(emp) {
@@ -22,19 +21,11 @@ export function employeeWorksAtBranch(emp, branchId) {
   return getEmployeeBranchIds(emp).includes(branchId)
 }
 
-export function staffOptionsForBranch(employees, branchId, { includeLegacy = true } = {}) {
-  const rrhh = employees
+export function staffOptionsForBranch(employees, branchId) {
+  return employees
     .filter((e) => e.active && employeeWorksAtBranch(e, branchId))
     .map((e) => ({ id: e.id, name: fullName(e) }))
-
-  if (!includeLegacy) return rrhh.sort((a, b) => a.name.localeCompare(b.name))
-
-  const legacy = branchId === 'charm-dn' ? LEGACY_EMPLOYEES : []
-  const seen = new Set(rrhh.map((e) => e.id))
-  legacy.forEach((e) => {
-    if (!seen.has(e.id)) rrhh.push(e)
-  })
-  return rrhh.sort((a, b) => a.name.localeCompare(b.name))
+    .sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export function allStaffOptions(employees) {
@@ -48,7 +39,7 @@ export function resolveStaffName(id, employees = []) {
   if (!id) return '—'
   const rrhh = employees.find((e) => e.id === id)
   if (rrhh) return fullName(rrhh)
-  return LEGACY_EMPLOYEES.find((e) => e.id === id)?.name || '—'
+  return '—'
 }
 
 export function useBranchStaff(branchId) {

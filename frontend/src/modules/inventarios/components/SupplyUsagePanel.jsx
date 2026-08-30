@@ -4,7 +4,6 @@ import { useCatalogStore } from '@/stores/catalogStore'
 import { useInventarioStore } from '@/stores/inventarioStore'
 import { useAgendaStore } from '@/stores/agendaStore'
 import { useRrhhStore } from '@/stores/rrhhStore'
-import { EMPLOYEES as LEGACY_EMPLOYEES } from '@/data/agenda'
 import { allStaffOptions, getEmployeeBranchIds } from '@/modules/rrhh/lib/staff'
 import { computeSupplyUsageKpis } from '../lib/supplyUsage'
 import { Card } from '@/components/ui/Card'
@@ -31,14 +30,7 @@ export function SupplyUsagePanel() {
   const [search, setSearch] = useState('')
   const [branchFilter, setBranchFilter] = useState('all')
 
-  const employees = useMemo(() => {
-    const merged = allStaffOptions(rrhhEmployees)
-    const seen = new Set(merged.map((e) => e.id))
-    LEGACY_EMPLOYEES.forEach((e) => {
-      if (!seen.has(e.id)) merged.push(e)
-    })
-    return merged
-  }, [rrhhEmployees])
+  const employees = useMemo(() => allStaffOptions(rrhhEmployees), [rrhhEmployees])
 
   const rows = useMemo(
     () => computeSupplyUsageKpis({ movements, appointments, supplies, employees }),

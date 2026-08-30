@@ -94,13 +94,13 @@ export function AppRoutes() {
 
       <Route path="/login" element={<LoginPage />} />
 
-      <Route element={<AuthGate />}>
-
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-
       <Route path="/agendar" element={<AgendarPage />} />
 
       <Route path="/agendar/perfil" element={<PerfilPublicoPage />} />
+
+      <Route element={<AuthGate />}>
+
+      <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
       <Route element={<AppFrame />}>
 

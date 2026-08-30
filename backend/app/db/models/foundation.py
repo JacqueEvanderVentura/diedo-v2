@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -11,6 +12,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    Numeric,
     String,
     UniqueConstraint,
     text,
@@ -30,6 +32,10 @@ class Workspace(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             name="status_values",
         ),
         CheckConstraint("char_length(default_currency) = 3", name="currency_length"),
+        CheckConstraint(
+            "tax_default_rate >= 0 AND tax_default_rate <= 100",
+            name="tax_default_rate_range",
+        ),
     )
 
     slug: Mapped[str] = mapped_column(String(63), nullable=False, unique=True)
@@ -40,6 +46,9 @@ class Workspace(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     default_currency: Mapped[str] = mapped_column(String(3), nullable=False)
     timezone: Mapped[str] = mapped_column(String(64), nullable=False)
     locale: Mapped[str] = mapped_column(String(16), nullable=False)
+    tax_default_rate: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("0"), server_default=text("0")
+    )
 
 
 class LegalEntity(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
@@ -75,11 +84,44 @@ class LegalEntityIdentity(UuidPrimaryKeyMixin, TimestampMixin, Base):
             "(identifier_type IS NULL) = (identifier_value IS NULL)",
             name="identifier_pair",
         ),
+        CheckConstraint(
+            "NOT is_primary OR identifier_value IS NOT NULL",
+            name="primary_requires_identifier",
+        ),
+        CheckConstraint(
+            "upper(jurisdiction_code) = jurisdiction_code",
+            name="jurisdiction_uppercase",
+        ),
+        CheckConstraint(
+            "identifier_type IS NULL OR upper(identifier_type) = identifier_type",
+            name="identifier_type_uppercase",
+        ),
+        CheckConstraint(
+            "NOT (jurisdiction_code = 'DO' AND identifier_type = 'RNC') "
+            "OR identifier_value ~ '^[0-9]{9}$'",
+            name="do_rnc_format",
+        ),
         CheckConstraint("valid_to IS NULL OR valid_to >= valid_from", name="valid_period"),
         Index(
             "ix_entity_identities_workspace_entity",
             "workspace_id",
             "legal_entity_id",
+        ),
+        Index(
+            "uq_entity_identities_current_primary",
+            "workspace_id",
+            "legal_entity_id",
+            unique=True,
+            postgresql_where=text("is_primary AND valid_to IS NULL"),
+        ),
+        Index(
+            "uq_entity_identities_workspace_identifier",
+            "workspace_id",
+            "jurisdiction_code",
+            "identifier_type",
+            "identifier_value",
+            unique=True,
+            postgresql_where=text("identifier_value IS NOT NULL"),
         ),
     )
 
@@ -126,6 +168,12 @@ class Branch(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
         String(24), nullable=False, default="active", server_default=text("'active'")
     )
     timezone: Mapped[str] = mapped_column(String(64), nullable=False)
+    configuration: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
 
 
 class ModuleDefinition(UuidPrimaryKeyMixin, TimestampMixin, Base):

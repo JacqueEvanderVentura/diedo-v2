@@ -115,6 +115,46 @@ _PERMISSIONS = (
         "Create and change categories and products in the authorized scope.",
         20,
     ),
+    (
+        "customer.read",
+        "crm",
+        "read",
+        "Ver clientes",
+        "View customers in the authorized scope.",
+        10,
+    ),
+    (
+        "customer.manage",
+        "crm",
+        "manage",
+        "Gestionar clientes",
+        "Create, change, and archive customers in the authorized scope.",
+        20,
+    ),
+    (
+        "employee.read",
+        "hr",
+        "read",
+        "Ver empleados básicos",
+        "View basic employee records and schedules in the authorized scope.",
+        10,
+    ),
+    (
+        "employee.manage",
+        "hr",
+        "manage",
+        "Gestionar empleados básicos",
+        "Create, change, and archive basic employee records.",
+        20,
+    ),
+    (
+        "employee.schedule.manage",
+        "hr",
+        "manage",
+        "Gestionar horarios",
+        "Replace employee weekly schedules in the authorized scope.",
+        30,
+    ),
 )
 
 _ROLE_TEMPLATES = (
@@ -130,13 +170,13 @@ _LOCAL_OWNER_EMAIL = "owner@erp.dev"
 _MODULES: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
     ("foundation", "Foundation", "core", "available", ()),
     ("iam", "Identity and access", "core", "available", ("foundation",)),
-    ("crm", "Customer relationship management", "optional", "planned", ("foundation",)),
+    ("crm", "Customer relationship management", "optional", "available", ("foundation",)),
     ("catalog", "Product and service catalog", "optional", "available", ("foundation",)),
     ("sales", "Sales", "optional", "planned", ("crm", "catalog")),
     ("purchasing", "Purchasing", "optional", "planned", ("catalog",)),
     ("inventory", "Inventory", "optional", "planned", ("catalog", "purchasing")),
     ("accounting", "Accounting", "optional", "planned", ("sales", "purchasing")),
-    ("hr", "Human resources", "optional", "planned", ("foundation",)),
+    ("hr", "Human resources", "optional", "available", ("foundation",)),
     ("payroll", "Payroll", "optional", "planned", ("hr", "accounting")),
     ("pos", "Point of sale", "optional", "planned", ("sales", "inventory")),
     ("appointments", "Appointments", "optional", "planned", ("crm", "catalog")),
@@ -273,6 +313,9 @@ def bootstrap_local_foundation(
     )
     if membership is None:
         raise RuntimeError("Local membership could not be loaded after bootstrap.")
+    membership.status = "active"
+    membership.revoked_at = None
+    membership.activated_at = membership.activated_at or now
     membership.is_default = True
 
     for role_code, role_name, is_system in _ROLE_TEMPLATES:
@@ -334,7 +377,7 @@ def bootstrap_local_foundation(
         },
     )
 
-    enabled_modules = ("foundation", "iam", "catalog")
+    enabled_modules = ("foundation", "iam", "catalog", "crm", "hr")
     for module_code in enabled_modules:
         module_id = session.scalar(
             select(ModuleDefinition.id).where(ModuleDefinition.code == module_code)

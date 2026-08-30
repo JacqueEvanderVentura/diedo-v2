@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { CURRENT_USER } from '@/data/dashboard'
+import { ephemeralJsonStorage } from '@/services/storagePolicy'
+import { currentSessionActor } from '@/lib/sessionActor'
 import { backfillHistory, buildCreateChanges, diffAppointmentChanges } from '@/modules/agenda/lib/audit'
 import {
   removeAppointmentReceivable,
@@ -11,7 +12,7 @@ import {
 const genId = () => `apt-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const genLogId = () => `log-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 
-export const MOCK_USER = CURRENT_USER.name
+export const MOCK_USER = 'Alex Demo'
 const DEFAULT_BRANCH_ID = 'charm-dn'
 
 export const toKey = (d) => {
@@ -38,7 +39,8 @@ export const statusMeta = (id) => APPOINTMENT_STATUSES.find((s) => s.id === id) 
 
 function auditActor(source) {
   if (source === 'self') return { userId: null, userName: 'Portal de agendación' }
-  return { userId: CURRENT_USER.id, userName: CURRENT_USER.name }
+  const actor = currentSessionActor()
+  return { userId: actor.id, userName: actor.name }
 }
 
 function stampAudit(action, prev = {}, source = 'staff') {
@@ -274,6 +276,7 @@ export const useAgendaStore = create(
     }),
     {
       name: 'diedo-agenda',
+      storage: ephemeralJsonStorage,
       version: 6,
       migrate: (persisted) => persisted ?? {},
       partialize: (s) => ({ appointments: s.appointments }),

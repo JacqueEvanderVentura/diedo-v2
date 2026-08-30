@@ -11,6 +11,8 @@ import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { cn } from '@/lib/utils'
+import { currentSessionActor } from '@/lib/sessionActor'
+import { useSessionStore } from '@/stores/sessionStore'
 
 function DealCard({ opp, onDragStart }) {
   const meta = STAGE_META[opp.stage]
@@ -41,6 +43,7 @@ export default function PipelinePage() {
   const updateOpportunityStage = useCrmStore((s) => s.updateOpportunityStage)
   const addOpportunity = useCrmStore((s) => s.addOpportunity)
   const leads = useCrmStore((s) => s.leads)
+  const sessionBranchId = useSessionStore((s) => s.user?.branchIds?.[0])
 
   const [modalOpen, setModalOpen] = useState(false)
   const [branchFilter, setBranchFilter] = useState('all')
@@ -85,8 +88,8 @@ export default function PipelinePage() {
       value: Number(form.value) || 0,
       leadId: form.leadId || null,
       stage: form.stage,
-      branchId: 'charm-dn',
-      assignedUserId: 'u1',
+      branchId: sessionBranchId || branches.find((branch) => branch.active)?.id || branches[0]?.id,
+      assignedUserId: currentSessionActor().id,
     })
     setModalOpen(false)
     setForm({ title: '', customerName: '', value: '', leadId: '', stage: 'nuevo' })

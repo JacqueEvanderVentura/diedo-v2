@@ -1,14 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { Users, ChevronRight, Search, Check, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
-import { usePosStore } from '@/stores/posStore'
+import { useCustomersStore } from '@/stores/customersStore'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { DropdownPanel } from '@/components/ui/DropdownPanel'
 import { cn } from '@/lib/utils'
-
-const genId = () => `cust-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 
 export function CustomerPicker({
   value,
@@ -17,8 +15,8 @@ export function CustomerPicker({
   testIdPrefix = 'customer-picker',
   className,
 }) {
-  const customers = usePosStore((s) => s.customers)
-  const addCustomer = usePosStore((s) => s.addCustomer)
+  const customers = useCustomersStore((s) => s.customers)
+  const addCustomer = useCustomersStore((s) => s.addCustomer)
 
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -26,6 +24,7 @@ export function CustomerPicker({
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [err, setErr] = useState('')
+  const [saving, setSaving] = useState(false)
   const btnRef = useRef(null)
   const menuRef = useRef(null)
 
@@ -61,16 +60,22 @@ export function CustomerPicker({
     setModalOpen(true)
   }
 
-  const submitCreate = () => {
+  const submitCreate = async () => {
     if (!name.trim()) return setErr('Ingresa el nombre del cliente.')
-    const c = { id: genId(), name: name.trim(), phone: phone.trim() || null }
-    addCustomer(c)
-    onChange?.(c)
-    toast.success(`Cliente "${c.name}" creado y seleccionado`)
-    setName('')
-    setPhone('')
-    setErr('')
-    setModalOpen(false)
+    setSaving(true)
+    try {
+      const customer = await addCustomer({ name: name.trim(), phone: phone.trim() || null })
+      onChange?.(customer)
+      toast.success(`Cliente "${customer.name}" creado y seleccionado`)
+      setName('')
+      setPhone('')
+      setErr('')
+      setModalOpen(false)
+    } catch (error) {
+      setErr(error.message || 'No se pudo crear el cliente.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -185,8 +190,8 @@ export function CustomerPicker({
             <Button variant="secondary" className="flex-1" onClick={() => setModalOpen(false)} data-testid={`${testIdPrefix}-new-cancel`}>
               Cancelar
             </Button>
-            <Button className="flex-1" onClick={submitCreate} data-testid={`${testIdPrefix}-new-save`}>
-              Crear y seleccionar
+            <Button className="flex-1" onClick={submitCreate} disabled={saving} data-testid={`${testIdPrefix}-new-save`}>
+              {saving ? 'Creando…' : 'Crear y seleccionar'}
             </Button>
           </div>
         </div>

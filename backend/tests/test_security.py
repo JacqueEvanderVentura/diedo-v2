@@ -17,7 +17,10 @@ from app.core.security import (
     verify_password,
 )
 from app.schemas.auth import LoginRequest
-from app.schemas.permissions import ReplaceRolePermissionsRequest
+from app.schemas.permissions import (
+    ReplaceRolePermissionsBatchRequest,
+    ReplaceRolePermissionsRequest,
+)
 from app.schemas.users import CreateUserRequest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -120,8 +123,7 @@ def test_iam_schemas_normalize_and_reject_ambiguous_collections() -> None:
             "displayName": "  Pablo   Lara  ",
             "email": "pablo@example.com",
             "password": "long-password-not-secret",
-            "roleId": role_id,
-            "branchIds": [branch_id],
+            "roleAssignments": [{"roleId": role_id, "scopeType": "branch", "branchId": branch_id}],
         }
     )
     assert created.display_name == "Pablo Lara"
@@ -132,12 +134,47 @@ def test_iam_schemas_normalize_and_reject_ambiguous_collections() -> None:
                 "displayName": "Pablo Lara",
                 "email": "pablo@example.com",
                 "password": "long-password-not-secret",
-                "roleId": role_id,
-                "branchIds": [branch_id, branch_id],
+                "roleAssignments": [
+                    {"roleId": role_id, "scopeType": "branch", "branchId": branch_id},
+                    {"roleId": role_id, "scopeType": "branch", "branchId": branch_id},
+                ],
+            }
+        )
+    with pytest.raises(ValidationError):
+        CreateUserRequest.model_validate(
+            {
+                "displayName": "Pablo Lara",
+                "email": "pablo@example.com",
+                "password": "long-password-not-secret",
+                "roleAssignments": [
+                    {
+                        "roleId": role_id,
+                        "scopeType": "workspace",
+                        "branchId": branch_id,
+                    }
+                ],
+            }
+        )
+    with pytest.raises(ValidationError):
+        CreateUserRequest.model_validate(
+            {
+                "displayName": "Pablo Lara",
+                "email": "pablo@example.com",
+                "password": "long-password-not-secret",
+                "roleAssignments": [{"roleId": role_id, "scopeType": "legalEntity"}],
             }
         )
     with pytest.raises(ValidationError):
         ReplaceRolePermissionsRequest(permission_ids=[role_id, role_id], version=1)
+    with pytest.raises(ValidationError):
+        ReplaceRolePermissionsBatchRequest.model_validate(
+            {
+                "roles": [
+                    {"roleId": role_id, "permissionIds": [], "version": 1},
+                    {"roleId": role_id, "permissionIds": [], "version": 1},
+                ]
+            }
+        )
 
 
 def test_openapi_marks_only_protected_iam_routes_as_bearer(app_client: TestClient) -> None:

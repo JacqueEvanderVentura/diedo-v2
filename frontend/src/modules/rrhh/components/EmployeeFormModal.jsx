@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { useConfigStore } from '@/stores/configStore'
-import { usePosStore } from '@/stores/posStore'
-import { DEPARTMENTS, BANK_ACCOUNT_TYPES } from '@/data/rrhh'
+import { useSessionStore } from '@/stores/sessionStore'
+import { DEPARTMENTS } from '@/data/rrhh'
 import { fullName } from '../lib/rrhh'
 import { emptyWorkSchedule } from '../lib/schedule'
 import { EmployeeScheduleEditor } from './EmployeeScheduleEditor'
@@ -21,18 +21,10 @@ const empty = () => ({
   department: 'Operaciones',
   branchIds: ['charm-dn'],
   contractType: 'Indefinido',
-  initialSalary: '',
-  salary: '',
-  vacationDays: '15',
   usuarioId: '',
   jefeIds: [],
-  clienteId: '',
   active: true,
   hireDate: new Date().toISOString().slice(0, 10),
-  bankName: '',
-  bankAccountType: 'ahorro',
-  bankAccountNumber: '',
-  bankDocument: '',
   workSchedule: emptyWorkSchedule(),
 })
 
@@ -60,10 +52,12 @@ function CheckboxGrid({ options, selected, onToggle }) {
 
 export function EmployeeFormModal({ open, onClose, employee, employees, onSubmit }) {
   const branches = useConfigStore((s) => s.branches)
-  const users = useConfigStore((s) => s.users)
-  const customers = usePosStore((s) => s.customers)
+  const demoUsers = useConfigStore((s) => s.users)
+  const sessionStatus = useSessionStore((s) => s.status)
+  const sessionUser = useSessionStore((s) => s.user)
   const [form, setForm] = useState(empty())
   const [err, setErr] = useState('')
+  const [saving, setSaving] = useState(false)
   const editing = !!employee
 
   useEffect(() => {
@@ -75,15 +69,7 @@ export function EmployeeFormModal({ open, onClose, employee, employees, onSubmit
         ...employee,
         branchIds: employee.branchIds?.length ? employee.branchIds : employee.branchId ? [employee.branchId] : ['charm-dn'],
         jefeIds: employee.jefeIds?.length ? employee.jefeIds : employee.jefeId ? [employee.jefeId] : [],
-        initialSalary: String(employee.initialSalary ?? employee.salary ?? ''),
-        salary: String(employee.salary ?? ''),
-        vacationDays: String(employee.vacationDays ?? ''),
         usuarioId: employee.usuarioId || '',
-        clienteId: employee.clienteId || '',
-        bankName: employee.bankName || '',
-        bankAccountType: employee.bankAccountType || 'ahorro',
-        bankAccountNumber: employee.bankAccountNumber || '',
-        bankDocument: employee.bankDocument || '',
         workSchedule: employee.workSchedule || emptyWorkSchedule(),
       })
     } else {
@@ -107,21 +93,24 @@ export function EmployeeFormModal({ open, onClose, employee, employees, onSubmit
     }))
   }
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.firstName.trim()) return setErr('Ingresa el nombre.')
     if (!form.lastName.trim()) return setErr('Ingresa el apellido.')
     if (!form.position.trim()) return setErr('Ingresa el cargo.')
     if (!form.branchIds.length) return setErr('Selecciona al menos una sucursal.')
-    onSubmit({
-      ...form,
-      initialSalary: Number(form.initialSalary) || Number(form.salary) || 0,
-      salary: Number(form.salary) || 0,
-      vacationDays: Number(form.vacationDays) || 0,
-      usuarioId: form.usuarioId || null,
-      clienteId: form.clienteId || null,
-    })
-    toast.success(editing ? 'Empleado actualizado' : 'Empleado creado')
-    onClose()
+    setSaving(true)
+    try {
+      await onSubmit({
+        ...form,
+        usuarioId: form.usuarioId || null,
+      })
+      toast.success(editing ? 'Empleado actualizado' : 'Empleado creado')
+      onClose()
+    } catch (error) {
+      setErr(error.message || 'No se pudo guardar el empleado.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const jefeOptions = employees
@@ -129,6 +118,14 @@ export function EmployeeFormModal({ open, onClose, employee, employees, onSubmit
     .map((e) => ({ value: e.id, label: fullName(e) }))
 
   const branchOptions = branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))
+  const users = sessionStatus === 'online'
+    ? [
+        ...(sessionUser?.userId ? [{ id: sessionUser.userId, name: sessionUser.name }] : []),
+        ...(employee?.usuarioId && employee.usuarioId !== sessionUser?.userId
+          ? [{ id: employee.usuarioId, name: 'Usuario vinculado actual' }]
+          : []),
+      ]
+    : demoUsers
 
   return (
     <Modal open={open} onClose={onClose} title={editing ? 'Editar Empleado' : 'Nuevo Empleado'} wide testId="employee-modal">
@@ -188,46 +185,6 @@ export function EmployeeFormModal({ open, onClose, employee, employees, onSubmit
         </section>
 
         <section>
-          <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">Compensación</h3>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-400">Salario inicial (RD$)</label>
-              <Input type="number" value={form.initialSalary} onChange={(e) => set('initialSalary', e.target.value)} placeholder="0" />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-400">Salario actual (RD$)</label>
-              <Input type="number" value={form.salary} onChange={(e) => set('salary', e.target.value)} placeholder="0" />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-400">Días de vacaciones</label>
-              <Input type="number" value={form.vacationDays} onChange={(e) => set('vacationDays', e.target.value)} placeholder="15" />
-            </div>
-          </div>
-        </section>
-
-        <section>
-          <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">Datos bancarios</h3>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-400">Banco</label>
-              <Input value={form.bankName} onChange={(e) => set('bankName', e.target.value)} placeholder="Banco Popular" />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-400">Tipo de cuenta</label>
-              <Select value={form.bankAccountType} onChange={(v) => set('bankAccountType', v)} options={BANK_ACCOUNT_TYPES.map((t) => ({ value: t.id, label: t.label }))} />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-400">Número de cuenta</label>
-              <Input value={form.bankAccountNumber} onChange={(e) => set('bankAccountNumber', e.target.value)} placeholder="****1234" />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-400">Documento titular</label>
-              <Input value={form.bankDocument} onChange={(e) => set('bankDocument', e.target.value)} placeholder="Cédula del titular" />
-            </div>
-          </div>
-        </section>
-
-        <section>
           <EmployeeScheduleEditor
             value={form.workSchedule}
             onChange={(workSchedule) => set('workSchedule', workSchedule)}
@@ -235,8 +192,8 @@ export function EmployeeFormModal({ open, onClose, employee, employees, onSubmit
         </section>
 
         <section>
-          <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">Vínculos</h3>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">Vínculo de plataforma</h3>
+          <div className="grid grid-cols-1 gap-4">
             <div>
               <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-400">Usuario asignado</label>
               <Select
@@ -244,15 +201,6 @@ export function EmployeeFormModal({ open, onClose, employee, employees, onSubmit
                 onChange={(v) => set('usuarioId', v)}
                 placeholder="Sin usuario"
                 options={[{ value: '', label: 'Sin usuario' }, ...users.map((u) => ({ value: u.id, label: u.name }))]}
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-400">Cliente asociado</label>
-              <Select
-                value={form.clienteId}
-                onChange={(v) => set('clienteId', v)}
-                placeholder="Sin cliente"
-                options={[{ value: '', label: 'Sin cliente' }, ...customers.slice(0, 50).map((c) => ({ value: c.id, label: c.name }))]}
               />
             </div>
           </div>
@@ -265,7 +213,9 @@ export function EmployeeFormModal({ open, onClose, employee, employees, onSubmit
 
       <div className="mt-6 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-        <Button onClick={submit}>{editing ? 'Guardar cambios' : 'Crear empleado'}</Button>
+        <Button onClick={submit} disabled={saving}>
+          {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear empleado'}
+        </Button>
       </div>
     </Modal>
   )

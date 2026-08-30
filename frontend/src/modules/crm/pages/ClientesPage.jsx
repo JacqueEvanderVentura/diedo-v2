@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { Plus, Search, Users, Star, Phone, Mail, ChevronLeft, ChevronRight } from 'lucide-react'
 import { usePosStore } from '@/stores/posStore'
+import { useCustomersStore } from '@/stores/customersStore'
 import { useConfigStore } from '@/stores/configStore'
 import { CUSTOMER_STATUS_META, CUSTOMER_STATUSES } from '@/data/crm'
 import { formatDOP, formatNumber } from '@/lib/format'
@@ -26,6 +27,7 @@ import {
 import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
 import { useSortedRows } from '@/hooks/useTableControls'
 import { cn } from '@/lib/utils'
+import { DataSourceNotice } from '@/components/ui/DataSourceNotice'
 
 const PAGE_SIZE = 10
 
@@ -40,7 +42,9 @@ function Chip({ label, value, tone }) {
 }
 
 export default function ClientesPage() {
-  const customers = usePosStore((s) => s.customers)
+  const customers = useCustomersStore((s) => s.customers)
+  const dataState = useCustomersStore((s) => s.dataState)
+  const hydrateCustomers = useCustomersStore((s) => s.hydrate)
   const sales = usePosStore((s) => s.sales)
   const branches = useConfigStore((s) => s.branches)
 
@@ -102,6 +106,7 @@ export default function ClientesPage() {
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8">
+      <DataSourceNotice state={dataState} onRetry={() => hydrateCustomers({ force: true })} />
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Chip label="Clientes" value={stats.total} tone="brand" />
         <Chip label="Prospectos" value={stats.prospectos} tone="slate" />

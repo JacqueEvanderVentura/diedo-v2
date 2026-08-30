@@ -4,7 +4,6 @@ import { Plus, Search, Pencil, Trash2, Share2, CalendarDays } from 'lucide-react
 import { useAgendaStore, statusMeta, APPOINTMENT_STATUSES } from '@/stores/agendaStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useRrhhStore } from '@/stores/rrhhStore'
-import { EMPLOYEES as LEGACY_EMPLOYEES } from '@/data/agenda'
 import { staffOptionsForBranch, allStaffOptions, resolveStaffName } from '@/modules/rrhh/lib/staff'
 import { formatDOP } from '@/lib/format'
 import { Button } from '@/components/ui/Button'
@@ -124,9 +123,6 @@ export default function GestionCitasPage() {
   const employeeOptions = useMemo(() => {
     if (branchId === 'all') {
       const all = allStaffOptions(rrhhEmployees)
-      const legacy = LEGACY_EMPLOYEES.map((e) => ({ value: e.id, label: e.name }))
-      const seen = new Set(all.map((e) => e.id))
-      legacy.forEach((e) => { if (!seen.has(e.value)) all.push({ id: e.value, name: e.label }) })
       return [{ value: 'all', label: 'Todos los empleados' }, ...all.map((e) => ({ value: e.id, label: e.name }))]
     }
     const branchStaff = staffOptionsForBranch(rrhhEmployees, branchId)

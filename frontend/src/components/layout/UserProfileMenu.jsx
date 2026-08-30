@@ -42,8 +42,9 @@ export function UserProfileMenu() {
 
   const users = useConfigStore((s) => s.users)
   const permissions = useConfigStore((s) => s.permissions)
-  const sessionUser = useSessionStore((s) => s.getDisplayUser())
-  const isOnline = useSessionStore((s) => s.isOnline())
+  const sessionUser = useSessionStore((s) => s.user)
+  const status = useSessionStore((s) => s.status)
+  const isOnline = status === 'online'
   const logoutSession = useSessionStore((s) => s.logout)
 
   const user = useMemo(() => {
@@ -62,10 +63,13 @@ export function UserProfileMenu() {
       .slice(0, 2)
       .toUpperCase()
 
-  const showProfile = canViewProfile(permissions, displayRole)
-  const showEditProfile = canEditProfile(permissions, displayRole)
-  const showChangePassword = canChangeOwnPassword(permissions, displayRole) && !isOnline
-  const showConfig = hasPermission(permissions, displayRole, 'configuracion', 'Ver')
+  const effectivePermissions = new Set(sessionUser?.effectivePermissionCodes || [])
+  const showProfile = isOnline || canViewProfile(permissions, displayRole)
+  const showEditProfile = isOnline || canEditProfile(permissions, displayRole)
+  const showChangePassword = isOnline || canChangeOwnPassword(permissions, displayRole)
+  const showConfig = isOnline
+    ? effectivePermissions.has('workspace.read')
+    : hasPermission(permissions, displayRole, 'configuracion', 'Ver')
 
   useEffect(() => {
     if (!open) return
@@ -161,8 +165,8 @@ export function UserProfileMenu() {
         <MenuItem icon={LogOut} label="Cerrar sesión" onClick={logout} danger testId="profile-menu-logout" />
       </DropdownPanel>
 
-      <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} user={user} permissions={permissions} />
-      <ChangePasswordModal open={passwordOpen} onClose={() => setPasswordOpen(false)} userId={user.id} />
+      <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} user={user} permissions={permissions} online={isOnline} />
+      <ChangePasswordModal open={passwordOpen} onClose={() => setPasswordOpen(false)} userId={user.id} online={isOnline} />
     </>
   )
 }

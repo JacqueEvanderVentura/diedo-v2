@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { ephemeralJsonStorage } from '@/services/storagePolicy'
 import { statusMeta } from '@/data/incidencias'
 
 const genId = () => `inc-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
@@ -222,6 +223,6 @@ export const useIncidenciasStore = create(
         }))
       },
     }),
-    { name: 'diedo-incidencias', partialize: (s) => ({ incidencias: s.incidencias, selectedId: s.selectedId }) }
+    { name: 'diedo-incidencias', storage: ephemeralJsonStorage, partialize: (s) => ({ incidencias: s.incidencias, selectedId: s.selectedId }) }
   )
 )

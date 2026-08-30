@@ -129,7 +129,14 @@ function LeadsListaTab() {
                       <Button size="sm" variant="secondary" onClick={() => { addToPipeline(lead.id); toast.success('Enviado al pipeline') }}>
                         <Briefcase className="h-3.5 w-3.5" /> Pipeline
                       </Button>
-                      <Button size="sm" onClick={() => { convertToCustomer(lead.id); toast.success('Convertido a cliente') }}>
+                      <Button size="sm" onClick={async () => {
+                        try {
+                          await convertToCustomer(lead.id)
+                          toast.success('Convertido a cliente')
+                        } catch (error) {
+                          toast.error(error.message || 'No se pudo convertir el lead')
+                        }
+                      }}>
                         <UserCheck className="h-3.5 w-3.5" /> Convertir
                       </Button>
                     </>

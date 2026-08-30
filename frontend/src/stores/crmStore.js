@@ -1,9 +1,11 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { ephemeralJsonStorage } from '@/services/storagePolicy'
+import { currentSessionActor } from '@/lib/sessionActor'
 import { computeAutoScore, effectiveScore } from '@/modules/crm/lib/scoring'
 import { recordSerpUsage } from '@/modules/crm/lib/serpQuota'
 import { DEFAULT_SCORING_WEIGHTS } from '@/data/crm'
-import { usePosStore } from '@/stores/posStore'
+import { useCustomersStore } from '@/stores/customersStore'
 
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const now = () => new Date().toISOString()
@@ -32,7 +34,7 @@ function normalizeLead(raw, weights) {
     scoreReasons: reasons,
     scoreNotes: raw.scoreNotes || '',
     branchId: raw.branchId || 'charm-dn',
-    assignedUserId: raw.assignedUserId || 'u1',
+    assignedUserId: raw.assignedUserId || currentSessionActor().id,
     createdAt: raw.createdAt || now(),
     updatedAt: raw.updatedAt || now(),
     customerId: raw.customerId || null,
@@ -158,12 +160,10 @@ export const useCrmStore = create(
           }),
         })),
 
-      convertToCustomer: (leadId) => {
+      convertToCustomer: async (leadId) => {
         const lead = get().leads.find((l) => l.id === leadId)
         if (!lead) return null
-        const customerId = genId('cust')
-        const customer = {
-          id: customerId,
+        const customer = await useCustomersStore.getState().addCustomer({
           name: lead.company || lead.name,
           phone: lead.phone,
           email: lead.email,
@@ -172,12 +172,12 @@ export const useCrmStore = create(
           customerType: 'b2b',
           customerStatus: 'prospecto',
           branchId: lead.branchId,
+          branchIds: lead.branchId ? [lead.branchId] : undefined,
           leadId: lead.id,
-        }
-        usePosStore.getState().addCustomer(customer)
+        })
         set((s) => ({
           leads: s.leads.map((l) =>
-            l.id === leadId ? { ...l, status: 'convertido', customerId, updatedAt: now() } : l
+            l.id === leadId ? { ...l, status: 'convertido', customerId: customer.id, updatedAt: now() } : l
           ),
         }))
         return customer
@@ -231,7 +231,7 @@ export const useCrmStore = create(
           id: genId('act'),
           createdAt: now(),
           completedAt: null,
-          assignedUserId: 'u1',
+          assignedUserId: currentSessionActor().id,
           ...data,
         }
         set((s) => ({ activities: [act, ...s.activities] }))
@@ -296,6 +296,7 @@ export const useCrmStore = create(
     }),
     {
       name: 'diedo-crm',
+      storage: ephemeralJsonStorage,
       version: 1,
       migrate: (persisted) => {
         if (!persisted?.leads) return persisted

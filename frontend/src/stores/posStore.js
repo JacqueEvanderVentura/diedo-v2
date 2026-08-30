@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { CUSTOMERS } from '@/data/customers'
+import { ephemeralJsonStorage } from '@/services/storagePolicy'
+import { WALK_IN_CUSTOMER } from '@/stores/customersStore'
 import { useCatalogStore, isPosSellable } from '@/stores/catalogStore'
 import { buildShiftMovements } from '@/modules/pos/lib/caja'
 import { getReceivableStatus, normalizeReceivable, getBalance } from '@/modules/pos/lib/receivables'
@@ -11,9 +12,9 @@ import {
   snapshotCart,
   EMPTY_CART_PATCH,
 } from '@/modules/pos/lib/openAccount'
-import { CURRENT_USER } from '@/data/dashboard'
+import { currentSessionActor } from '@/lib/sessionActor'
 
-const DEFAULT_CUSTOMER = CUSTOMERS[0]
+const DEFAULT_CUSTOMER = WALK_IN_CUSTOMER
 const now = () => new Date().toISOString()
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const agendaReceivableId = (appointmentId) => `cxc-agenda-${appointmentId}`
@@ -105,7 +106,7 @@ const SEED_SALES = [
   { id: 'sale-h7', branchId: 'charm-este', total: 900, method: 'efectivo', soldBy: 'Carlos Cajero', customer: { id: 'c1', name: 'María Fernández' }, reference: null, items: [{ name: '1 sesión axilas', qty: 1, price: 900, listPrice: 900 }], createdAt: daysAgo(9) },
 ]
 
-// POS store — cart + caja (register) + expenses + receivables (CxC) + customers. Persisted.
+// POS store — cart + caja (register) + expenses + receivables (CxC). Persisted only in memory.
 export const usePosStore = create(
   persist(
     (set, get) => ({
@@ -113,7 +114,6 @@ export const usePosStore = create(
       branchId: 'charm-dn',
       items: [],
       customer: DEFAULT_CUSTOMER,
-      customers: CUSTOMERS,
       discountMode: 'pct', // 'pct' | 'amount'
       discountValue: 0,
       taxPct: 18,
@@ -145,12 +145,6 @@ export const usePosStore = create(
       // ---- cart actions ----
       setBranch: (branchId) => set({ branchId }),
       setCustomer: (customer) => set({ customer }),
-      addCustomer: (customer) => set((s) => ({ customers: [customer, ...s.customers], customer })),
-      updateCustomer: (id, data) =>
-        set((s) => ({
-          customers: s.customers.map((c) => (c.id === id ? { ...c, ...data } : c)),
-          customer: s.customer?.id === id ? { ...s.customer, ...data } : s.customer,
-        })),
       setDiscountMode: (discountMode) => set({ discountMode }),
       setDiscountValue: (v) => set({ discountValue: Math.max(0, Number(v) || 0) }),
       setPaymentMethod: (paymentMethod) => set({ paymentMethod, transferProof: paymentMethod === 'transferencia' ? get().transferProof : null }),
@@ -529,7 +523,7 @@ export const usePosStore = create(
           discountPct: discountPct ?? 0,
           taxPct: taxPct ?? get().taxPct,
           taxAmt: taxAmt ?? 0,
-          soldBy: CURRENT_USER.name,
+          soldBy: currentSessionActor().name,
           createdAt: now(),
         }
         set((s) => {
@@ -760,6 +754,7 @@ export const usePosStore = create(
     }),
     {
       name: 'diedo-pos',
+      storage: ephemeralJsonStorage,
       version: 7,
       migrate: (persisted) => persisted ?? {},
       merge: (persisted, current) => {
@@ -823,7 +818,6 @@ export const usePosStore = create(
         branchId: s.branchId,
         items: s.items,
         customer: s.customer,
-        customers: s.customers,
         documentKind: s.documentKind,
         isFinalized: s.isFinalized,
         heldCarts: s.heldCarts,

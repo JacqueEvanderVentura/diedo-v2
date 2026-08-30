@@ -21,7 +21,12 @@ def test_readiness_checks_postgres(client: TestClient) -> None:
     response = client.get("/health/ready")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ready", "database": "ok"}
+    assert response.json() == {
+        "status": "ready",
+        "database": "ok",
+        "schemaStatus": "compatible",
+        "schemaRevision": "20260829_0007",
+    }
 
 
 def test_declarative_base_uses_stable_constraint_names() -> None:

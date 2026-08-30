@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Search, Pencil, Mail, Phone, Users, Building2, Clock } from 'lucide-react'
+import { Plus, Search, Pencil, Mail, Phone, Users, Clock } from 'lucide-react'
 import { useRrhhStore } from '@/stores/rrhhStore'
 import { useConfigStore } from '@/stores/configStore'
 import { Card } from '@/components/ui/Card'
@@ -9,8 +9,8 @@ import { EmployeeFormModal } from '../components/EmployeeFormModal'
 import { fullName, initials } from '../lib/rrhh'
 import { countEmployeesByBranch, getDirectReports, getEmployeeBranchIds, getJefeIds } from '../lib/staff'
 import { hasConfiguredSchedule, summarizeSchedule } from '../lib/schedule'
-import { formatDOP } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { DataSourceNotice } from '@/components/ui/DataSourceNotice'
 
 function StatChip({ label, value, active, onClick }) {
   return (
@@ -30,6 +30,8 @@ function StatChip({ label, value, active, onClick }) {
 
 export default function DirectorioPage() {
   const employees = useRrhhStore((s) => s.employees)
+  const dataState = useRrhhStore((s) => s.employeesDataState)
+  const hydrateEmployees = useRrhhStore((s) => s.hydrateEmployees)
   const addEmployee = useRrhhStore((s) => s.addEmployee)
   const updateEmployee = useRrhhStore((s) => s.updateEmployee)
   const branches = useConfigStore((s) => s.branches)
@@ -55,15 +57,15 @@ export default function DirectorioPage() {
   const openNew = () => { setEditing(null); setModalOpen(true) }
   const openEdit = (emp) => { setEditing(emp); setModalOpen(true) }
 
-  const handleSubmit = (data) => {
-    if (editing) updateEmployee(editing.id, data)
-    else addEmployee(data)
-  }
+  const handleSubmit = (data) => editing
+    ? updateEmployee(editing.id, data)
+    : addEmployee(data)
 
   const jefeName = (id) => fullName(employees.find((e) => e.id === id))
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="rrhh-directorio">
+      <DataSourceNotice state={dataState} onRetry={() => hydrateEmployees({ force: true })} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
         <StatChip label="Total empleados" value={counts.total} active={branchFilter === 'all'} onClick={() => setBranchFilter('all')} />
         <StatChip label="Activos" value={counts.active} active={false} />
@@ -128,8 +130,6 @@ export default function DirectorioPage() {
                 <p><span className="text-slate-400">Ingreso:</span> {emp.hireDate}</p>
                 {emp.email && <p className="flex items-center gap-2"><Mail className="h-3.5 w-3.5 text-slate-400" />{emp.email}</p>}
                 {emp.phone && <p className="flex items-center gap-2"><Phone className="h-3.5 w-3.5 text-slate-400" />{emp.phone}</p>}
-                <p><span className="text-slate-400">Salario inicial:</span> {formatDOP(emp.initialSalary)}</p>
-                <p><span className="text-slate-400">Salario actual:</span> {formatDOP(emp.salary)}</p>
                 {jefes.length > 0 && (
                   <p className="flex items-start gap-2">
                     <Users className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
@@ -140,12 +140,6 @@ export default function DirectorioPage() {
                   <p className="flex items-center gap-2 text-blue-600">
                     <Users className="h-3.5 w-3.5" />
                     {reports.length} reporte{reports.length !== 1 ? 's' : ''} directo{reports.length !== 1 ? 's' : ''}
-                  </p>
-                )}
-                {emp.bankName && (
-                  <p className="flex items-center gap-2">
-                    <Building2 className="h-3.5 w-3.5 text-slate-400" />
-                    {emp.bankName} · {emp.bankAccountType} {emp.bankAccountNumber}
                   </p>
                 )}
                 <p className="flex items-start gap-2">

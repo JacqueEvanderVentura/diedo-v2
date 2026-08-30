@@ -3,7 +3,6 @@ import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { useConfigStore } from '@/stores/configStore'
 import { useRrhhStore } from '@/stores/rrhhStore'
-import { EMPLOYEES as AGENDA_EMPLOYEES } from '@/data/agenda'
 import { statusMeta } from '@/stores/agendaStore'
 import { actionLabel, fmtAuditWhen, sourceLabel } from '@/modules/agenda/lib/audit'
 import { cn } from '@/lib/utils'
@@ -11,7 +10,7 @@ import { cn } from '@/lib/utils'
 function resolveEmployeeName(id, employees) {
   const rrhh = employees.find((e) => e.id === id)
   if (rrhh) return `${rrhh.firstName} ${rrhh.lastName}`
-  return AGENDA_EMPLOYEES.find((e) => e.id === id)?.name || id || '—'
+  return id || '—'
 }
 
 export function AppointmentAuditModal({ open, onClose, appointment }) {

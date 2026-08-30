@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { ephemeralJsonStorage } from '@/services/storagePolicy'
 import { isThisMonth } from '@/modules/finanzas/lib/finanzas'
 
 const genId = (p = 'fin') => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
@@ -329,6 +330,7 @@ export const useFinanzasStore = create(
     }),
     {
       name: 'diedo-finanzas',
+      storage: ephemeralJsonStorage,
       partialize: (s) => ({
         expenses: s.expenses,
         fixedExpenses: s.fixedExpenses,

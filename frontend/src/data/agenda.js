@@ -7,17 +7,6 @@ export const CABINAS = [
   { id: 'walkin', name: 'Cliente sin cita' },
 ]
 
-export const EMPLOYEES = [
-  { id: 'emp1', name: 'Jasmin Beltre Familia' },
-  { id: 'emp2', name: 'Yocarlin Charlotte Felix Nuñez' },
-  { id: 'emp3', name: 'Criswaily Mesa' },
-  { id: 'emp4', name: 'Yaritza Castillo' },
-  { id: 'emp5', name: 'Leaisi Ferreira' },
-  { id: 'emp6', name: 'Leanny Rosa Ramirez' },
-  { id: 'emp7', name: 'Helen Jissel Vega Kelly' },
-  { id: 'emp8', name: 'Teresa De la Cruz Morillo' },
-]
-
 export const DURATION_OPTIONS = [
   { value: 30, label: '30 Minutos' },
   { value: 45, label: '45 Minutos' },
@@ -43,4 +32,3 @@ export const CALENDAR_STATUSES = [
 ]
 
 export const cabinaName = (id) => CABINAS.find((c) => c.id === id)?.name || '—'
-export const employeeName = (id) => EMPLOYEES.find((e) => e.id === id)?.name || '—'

@@ -10,3 +10,5 @@ class HealthResponse(ApiModel):
 class ReadinessResponse(ApiModel):
     status: Literal["ready"] = "ready"
     database: Literal["ok"] = "ok"
+    schema_status: Literal["compatible"] = "compatible"
+    schema_revision: str

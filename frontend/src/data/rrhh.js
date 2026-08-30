@@ -1,5 +1,3 @@
-export const CURRENT_USER_ID = 'u1'
-
 export const DEPARTMENTS = ['Operaciones', 'Administración', 'Ventas', 'Laser', 'Recursos Humanos', 'Finanzas']
 
 export const REQUEST_STATUSES = ['pendiente', 'aprobada', 'rechazada', 'cancelada']

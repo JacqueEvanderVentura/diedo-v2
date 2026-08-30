@@ -7,11 +7,14 @@ import { useConfigStore } from '@/stores/configStore'
 import { branchName } from '@/lib/branches'
 import { canEditProfile } from '@/lib/permissions'
 import { toast } from 'sonner'
+import { authApi } from '@/services/authApi'
+import { useSessionStore } from '@/stores/sessionStore'
 
-export function ProfileModal({ open, onClose, user, permissions }) {
+export function ProfileModal({ open, onClose, user, permissions, online = false }) {
   const branches = useConfigStore((s) => s.branches)
   const updateOwnProfile = useConfigStore((s) => s.updateOwnProfile)
-  const canEdit = canEditProfile(permissions, user?.role)
+  const refreshCurrentUser = useSessionStore((s) => s.refreshCurrentUser)
+  const canEdit = online || canEditProfile(permissions, user?.role)
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -30,16 +33,26 @@ export function ProfileModal({ open, onClose, user, permissions }) {
 
   const handleClose = () => onClose?.()
 
-  const submit = () => {
+  const submit = async () => {
     if (!canEdit || !user) return
     if (!name.trim()) return toast.error('Ingresa tu nombre.')
     if (!email.trim()) return toast.error('Ingresa tu correo.')
 
     setSaving(true)
-    updateOwnProfile(user.id, { name: name.trim(), email: email.trim() })
-    setSaving(false)
-    toast.success('Perfil actualizado.')
-    handleClose()
+    try {
+      if (online) {
+        await authApi.updateProfile(name.trim())
+        await refreshCurrentUser()
+      } else {
+        updateOwnProfile(user.id, { name: name.trim(), email: email.trim() })
+      }
+      toast.success('Perfil actualizado.')
+      handleClose()
+    } catch (error) {
+      toast.error(error.message || 'No se pudo actualizar el perfil.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (!user) return null
@@ -74,7 +87,8 @@ export function ProfileModal({ open, onClose, user, permissions }) {
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-600">Correo</label>
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={online} />
+              {online && <p className="mt-1 text-xs text-slate-400">El correo requiere un flujo de verificación y no se cambia aquí.</p>}
             </div>
           </div>
         ) : (

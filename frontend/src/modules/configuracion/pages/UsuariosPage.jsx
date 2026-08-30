@@ -1,11 +1,17 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, Shield, Search } from 'lucide-react'
+import { KeyRound, MailPlus, Pencil, Plus, Search, Shield, Trash2 } from 'lucide-react'
 import { useConfigStore, USER_ROLES } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { usersApi } from '@/services/usersApi'
-import { mapUserFromApi, mapUserSummary } from '@/services/adapters/iam'
+import {
+  mapUserFromApi,
+  mapUserSummary,
+  normalizeRoleAssignments,
+  roleAssignmentsToPayload,
+  validateRoleAssignments,
+} from '@/services/adapters/iam'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -29,10 +35,175 @@ import { configPageClass } from '../lib/pageShell'
 import { cn } from '@/lib/utils'
 
 const ROLE_TONE = { Administrador: 'brand', Gerente: 'success', Supervisor: 'warning', Cajero: 'neutral', Vendedor: 'neutral' }
-const EMPTY = { name: '', email: '', password: '', role: 'Vendedor', roleId: '', active: true, branchIds: [] }
+const SCOPE_OPTIONS = [
+  { value: 'workspace', label: 'Workspace completo (global)' },
+  { value: 'legalEntity', label: 'Entidad legal específica' },
+  { value: 'branch', label: 'Sucursal específica' },
+]
+
+let assignmentSequence = 0
+
+const emptyRoleAssignment = () => ({
+  clientId: `role-assignment-${++assignmentSequence}`,
+  roleId: '',
+  roleName: '',
+  scopeType: 'branch',
+  legalEntityId: '',
+  branchId: '',
+})
+
+const emptyForm = () => ({
+  name: '',
+  email: '',
+  password: '',
+  role: 'Vendedor',
+  roleId: '',
+  active: true,
+  branchIds: [],
+  roleAssignments: [emptyRoleAssignment()],
+})
+
+function RoleAssignmentSummary({ user, mobile = false }) {
+  const assignments = user.roleAssignments || []
+  const labels = user.roleAssignmentLabels || [user.role || 'Sin asignaciones']
+  return (
+    <div className={cn('flex flex-wrap gap-1', mobile && 'justify-end')} data-testid={`usuario-role-scopes-${mobile ? 'mobile' : 'table'}-${user.id}`}>
+      {labels.map((label, index) => (
+        <Badge key={`${user.id}-role-${index}`} tone={ROLE_TONE[assignments[index]?.roleName || user.role] || 'neutral'}>
+          {label}
+        </Badge>
+      ))}
+    </div>
+  )
+}
+
+function RoleAssignmentsEditor({ assignments, options, onChange, disabled }) {
+  const roles = options?.roles || []
+  const legalEntities = options?.legalEntities || []
+  const branches = options?.branches || []
+  const workspaceOnlyRoleIds = useMemo(
+    () => new Set(roles.filter((role) => role.code === 'workspace_admin').map((role) => role.id)),
+    [roles]
+  )
+
+  const update = (index, patch) => {
+    onChange(assignments.map((assignment, row) => (row === index ? { ...assignment, ...patch } : assignment)))
+  }
+
+  const changeScope = (index, scopeType) => {
+    update(index, { scopeType, legalEntityId: '', branchId: '' })
+  }
+
+  const remove = (index) => {
+    if (assignments.length === 1) return
+    onChange(assignments.filter((_, row) => row !== index))
+  }
+
+  return (
+    <div className="space-y-3" data-testid="usuario-role-assignments">
+      <div>
+        <p className="text-sm font-medium text-slate-600">Roles y alcances *</p>
+        <p className="mt-1 text-xs text-slate-400">
+          Cada fila es una asignación independiente. El alcance global debe elegirse explícitamente.
+        </p>
+      </div>
+
+      {assignments.map((assignment, index) => (
+        <div key={assignment.id || assignment.clientId} className="rounded-xl border border-slate-100 bg-slate-50/60 p-3" data-testid={`usuario-assignment-${index}`}>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <span className="text-xs font-bold uppercase tracking-wide text-slate-400">Asignación {index + 1}</span>
+            <button
+              type="button"
+              onClick={() => remove(index)}
+              disabled={disabled || assignments.length === 1}
+              aria-label={`Quitar asignación ${index + 1}`}
+              data-testid={`usuario-assignment-remove-${index}`}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-slate-500">Rol</label>
+              <Select
+                value={assignment.roleId}
+                onChange={(roleId) => {
+                  const role = roles.find((item) => item.id === roleId)
+                  update(index, {
+                    roleId,
+                    roleCode: role?.code || '',
+                    roleName: role?.name || '',
+                    ...(role?.code === 'workspace_admin'
+                      ? { scopeType: 'workspace', legalEntityId: '', branchId: '' }
+                      : {}),
+                  })
+                }}
+                options={roles}
+                disabled={disabled}
+                data-testid={`usuario-assignment-role-${index}`}
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-slate-500">Alcance</label>
+              <Select
+                value={assignment.scopeType}
+                onChange={(scopeType) => changeScope(index, scopeType)}
+                options={SCOPE_OPTIONS}
+                disabled={disabled || workspaceOnlyRoleIds.has(assignment.roleId)}
+                data-testid={`usuario-assignment-scope-${index}`}
+              />
+              {workspaceOnlyRoleIds.has(assignment.roleId) && (
+                <p className="mt-1.5 text-xs text-slate-400" data-testid={`usuario-assignment-workspace-only-${index}`}>
+                  Administrador siempre administra todo el workspace.
+                </p>
+              )}
+            </div>
+            {assignment.scopeType === 'legalEntity' && (
+              <div className="md:col-span-2">
+                <label className="mb-1.5 block text-xs font-semibold text-slate-500">Entidad legal</label>
+                <Select
+                  value={assignment.legalEntityId}
+                  onChange={(legalEntityId) => update(index, { legalEntityId })}
+                  options={legalEntities}
+                  disabled={disabled}
+                  data-testid={`usuario-assignment-target-${index}`}
+                />
+              </div>
+            )}
+            {assignment.scopeType === 'branch' && (
+              <div className="md:col-span-2">
+                <label className="mb-1.5 block text-xs font-semibold text-slate-500">Sucursal</label>
+                <Select
+                  value={assignment.branchId}
+                  onChange={(branchId) => update(index, { branchId })}
+                  options={branches}
+                  disabled={disabled}
+                  data-testid={`usuario-assignment-target-${index}`}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        onClick={() => onChange([...assignments, emptyRoleAssignment()])}
+        disabled={disabled}
+        data-testid="usuario-assignment-add"
+      >
+        <Plus className="h-4 w-4" /> Agregar asignación
+      </Button>
+    </div>
+  )
+}
 
 export default function UsuariosPage({ embedded = false }) {
   const isOnline = useSessionStore((s) => s.isOnline())
+  const canManageMemberships = useSessionStore((s) => s.hasPermission('membership.manage'))
   const localUsers = useConfigStore((s) => s.users)
   const localBranches = useConfigStore((s) => s.branches)
   const addUser = useConfigStore((s) => s.addUser)
@@ -43,29 +214,44 @@ export default function UsuariosPage({ embedded = false }) {
   const [apiStats, setApiStats] = useState(null)
   const [formOptions, setFormOptions] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [pendingAction, setPendingAction] = useState(null)
 
   const users = isOnline ? apiUsers : localUsers
-  const branches = isOnline && formOptions?.branches?.length
-    ? formOptions.branches.map((b) => ({ id: b.id, name: b.name }))
-    : localBranches
+  const apiBranches = useMemo(() => {
+    const source = formOptions?.branches?.length
+      ? formOptions.branches
+      : apiUsers.flatMap((user) => user.branchIds.map((id, index) => ({ id, name: user.branchLabels[index] || id })))
+    return Array.from(new Map(source.map((branch) => [branch.id, { id: branch.id, name: branch.name }])).values())
+  }, [apiUsers, formOptions])
+  const branches = isOnline ? apiBranches : localBranches
 
-  const loadApiData = useCallback(async () => {
+  const loadApiData = useCallback(async ({ notifyError = true } = {}) => {
     setLoading(true)
     try {
-      const [listRes, summary, options] = await Promise.all([
+      const optionsRequest = canManageMemberships
+        ? usersApi.formOptions().then((data) => ({ data })).catch((error) => ({ error }))
+        : Promise.resolve({ data: null })
+      const [listRes, summary, optionsResult] = await Promise.all([
         usersApi.list({ pageSize: 100, sortBy: 'displayName' }),
         usersApi.summary(),
-        usersApi.formOptions(),
+        optionsRequest,
       ])
-      setApiUsers((listRes.items || []).map(mapUserFromApi))
+      const options = optionsResult.data || null
+      setApiUsers((listRes.items || []).map((item) => mapUserFromApi(item, options || { branches: item.branches || [] })))
       setApiStats(mapUserSummary(summary))
       setFormOptions(options)
+      if (optionsResult.error && notifyError) {
+        toast.error(optionsResult.error.message || 'No se pudieron cargar las opciones del editor de usuarios.')
+      }
+      return true
     } catch (err) {
-      toast.error(err.message || 'No se pudieron cargar los usuarios.')
+      if (notifyError) toast.error(err.message || 'No se pudieron cargar los usuarios.')
+      return false
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [canManageMemberships])
 
   useEffect(() => {
     if (isOnline) loadApiData()
@@ -74,16 +260,28 @@ export default function UsuariosPage({ embedded = false }) {
   const [query, setQuery] = useState('')
   const [branchFilter, setBranchFilter] = useState('all')
   const [modalOpen, setModalOpen] = useState(false)
+  const [inviteMode, setInviteMode] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState(EMPTY)
+  const [form, setForm] = useState(() => emptyForm())
   const [err, setErr] = useState('')
 
   useEffect(() => {
     if (modalOpen) {
-      setForm(editing ? { ...EMPTY, ...editing, password: '' } : EMPTY)
+      const initial = emptyForm()
+      if (editing) {
+        const assignments = normalizeRoleAssignments(editing.roleAssignments)
+        setForm({
+          ...initial,
+          ...editing,
+          password: '',
+          roleAssignments: assignments.length ? assignments : [emptyRoleAssignment()],
+        })
+      } else {
+        setForm(initial)
+      }
       setErr('')
     }
-  }, [modalOpen, editing])
+  }, [modalOpen, editing, isOnline])
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -114,7 +312,7 @@ export default function UsuariosPage({ embedded = false }) {
     defaultSort: { key: 'name', dir: 'asc' },
     accessors: {
       name: (u) => u.name,
-      role: (u) => u.role || '',
+      role: (u) => u.roleAssignmentLabels?.join(' ') || u.role || '',
       branches: (u) => branchLabel(u.branchIds, u.branchLabels),
       lastAccess: (u) => u.lastAccess || '',
       status: (u) => (u.active ? 1 : 0),
@@ -133,34 +331,66 @@ export default function UsuariosPage({ embedded = false }) {
   }
 
   const submit = async () => {
+    if (submitting) return
+    setErr('')
     if (!form.name.trim()) return setErr('Ingresa el nombre.')
     if (!form.email.trim()) return setErr('Ingresa el email.')
-    if (!editing && (!form.password || form.password.length < (isOnline ? 12 : 6))) {
+    if (!editing && !inviteMode && (!form.password || form.password.length < (isOnline ? 12 : 6))) {
       return setErr(isOnline ? 'La contraseña debe tener al menos 12 caracteres.' : 'La contraseña debe tener al menos 6 caracteres.')
     }
 
     if (isOnline) {
-      if (editing) return setErr('La edición de usuarios aún no está disponible en la API.')
-      if (!form.roleId) return setErr('Selecciona un rol.')
-      if (!form.branchIds.length) return setErr('Selecciona al menos una sucursal.')
+      if (!canManageMemberships) return setErr('No tienes permiso para gestionar usuarios.')
+      const assignmentError = validateRoleAssignments(form.roleAssignments, formOptions?.roles)
+      if (assignmentError) return setErr(assignmentError)
+      const roleAssignments = roleAssignmentsToPayload(form.roleAssignments)
+      setSubmitting(true)
       try {
-        await usersApi.create({
-          displayName: form.name.trim(),
-          email: form.email.trim(),
-          password: form.password,
-          roleId: form.roleId,
-          branchIds: form.branchIds,
-        })
-        toast.success('Usuario creado')
+        let successMessage
+        if (editing) {
+          await usersApi.update(editing.id, {
+            roleAssignments,
+            status: form.active ? 'active' : 'suspended',
+            version: editing.version,
+          })
+          successMessage = 'Usuario actualizado'
+        } else if (inviteMode) {
+          const invitation = await usersApi.invite({
+            displayName: form.name.trim(),
+            email: form.email.trim(),
+            roleAssignments,
+          })
+          let copied = false
+          if (invitation.acceptToken && navigator.clipboard) {
+            try {
+              await navigator.clipboard.writeText(invitation.acceptToken)
+              copied = true
+            } catch {
+              // La invitación ya fue creada; un fallo del portapapeles no debe reenviarla.
+            }
+          }
+          successMessage = copied ? 'Invitación creada; token copiado al portapapeles' : 'Invitación creada'
+        } else {
+          await usersApi.create({
+            displayName: form.name.trim(),
+            email: form.email.trim(),
+            password: form.password,
+            roleAssignments,
+          })
+          successMessage = 'Usuario creado'
+        }
         setModalOpen(false)
-        loadApiData()
+        toast.success(successMessage)
+        await loadApiData()
       } catch (e) {
         setErr(e.message || 'No se pudo crear el usuario.')
+      } finally {
+        setSubmitting(false)
       }
       return
     }
 
-    const { password, roleId, ...data } = form
+    const { password, roleId, roleAssignments, ...data } = form
     if (editing) {
       updateUser(editing.id, data)
       toast.success('Usuario actualizado')
@@ -169,6 +399,44 @@ export default function UsuariosPage({ embedded = false }) {
       toast.success('Usuario creado')
     }
     setModalOpen(false)
+  }
+
+  const toggleOnlineStatus = async (user) => {
+    if (!canManageMemberships || pendingAction) return
+    setPendingAction(`status:${user.id}`)
+    try {
+      await usersApi.update(user.id, {
+        status: user.active ? 'suspended' : 'active',
+        version: user.version,
+      })
+      toast.success(user.active ? 'Usuario suspendido' : 'Usuario reactivado')
+      await loadApiData()
+    } catch (error) {
+      toast.error(error.message || 'No se pudo cambiar el estado del usuario.')
+    } finally {
+      setPendingAction(null)
+    }
+  }
+
+  const resetOnlinePassword = async (user) => {
+    if (!canManageMemberships || pendingAction) return
+    const password = window.prompt(`Nueva contraseña temporal para ${user.name} (mínimo 12 caracteres):`)
+    if (password === null) return
+    if (password.length < 12) return toast.error('La contraseña debe tener al menos 12 caracteres.')
+    setPendingAction(`password:${user.id}`)
+    try {
+      await usersApi.resetPassword(user.id, password)
+      const reloaded = await loadApiData()
+      if (!reloaded) {
+        toast.error('La contraseña cambió, pero no se pudo refrescar la versión del usuario. Recarga antes de editarlo.')
+        return
+      }
+      toast.success('Contraseña restablecida y sesiones revocadas')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo restablecer la contraseña.')
+    } finally {
+      setPendingAction(null)
+    }
   }
 
   return (
@@ -183,6 +451,9 @@ export default function UsuariosPage({ embedded = false }) {
           Permisos
         </Link>
         .
+        {isOnline && !canManageMemberships && (
+          <span className="ml-2 text-xs font-semibold text-slate-500">Modo consulta</span>
+        )}
         {isOnline && <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">API</span>}
       </div>
 
@@ -201,7 +472,27 @@ export default function UsuariosPage({ embedded = false }) {
           </div>
           <Select value={branchFilter} onChange={setBranchFilter} options={buildBranchFilterOptions(branches)} size="sm" className="min-w-[180px]" data-testid="usuarios-branch-filter" />
         </div>
-        <Button onClick={() => { setEditing(null); setModalOpen(true) }} data-testid="usuario-new-btn"><Plus className="h-4 w-4" /> Nuevo Usuario</Button>
+        {(!isOnline || canManageMemberships) && (
+          <div className="flex gap-2">
+            {isOnline && (
+              <Button
+                variant="secondary"
+                onClick={() => { setInviteMode(true); setEditing(null); setModalOpen(true) }}
+                disabled={loading || !formOptions}
+                data-testid="usuario-invite-btn"
+              >
+                <MailPlus className="h-4 w-4" /> Invitar
+              </Button>
+            )}
+            <Button
+              onClick={() => { setInviteMode(false); setEditing(null); setModalOpen(true) }}
+              disabled={isOnline && (loading || !formOptions)}
+              data-testid="usuario-new-btn"
+            >
+              <Plus className="h-4 w-4" /> Nuevo Usuario
+            </Button>
+          </div>
+        )}
       </div>
 
       {loading && <p className="text-sm text-slate-400">Cargando usuarios…</p>}
@@ -230,7 +521,7 @@ export default function UsuariosPage({ embedded = false }) {
                         <div><p className="font-semibold text-slate-800">{u.name}</p><p className="text-xs text-slate-400">{u.email}</p></div>
                       </div>
                     </td>
-                    <td className="px-6 py-4"><Badge tone={ROLE_TONE[u.role] || 'neutral'}>{u.role}</Badge></td>
+                    <td className="px-6 py-4"><RoleAssignmentSummary user={u} /></td>
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-1">
                         {(u.branchLabels || u.branchIds || []).map((bid, i) => (
@@ -243,19 +534,46 @@ export default function UsuariosPage({ embedded = false }) {
                     <td className="px-6 py-4 text-slate-400">{u.lastAccess || '—'}</td>
                     <td className="px-6 py-4">
                       {isOnline ? (
-                        <Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Inactivo'}</Badge>
+                        canManageMemberships ? (
+                          <button
+                            onClick={() => toggleOnlineStatus(u)}
+                            disabled={Boolean(pendingAction)}
+                            data-testid={`usuario-status-${u.id}`}
+                          >
+                            <Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Suspendido'}</Badge>
+                          </button>
+                        ) : <Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Suspendido'}</Badge>
                       ) : (
                         <button onClick={() => updateUser(u.id, { active: !u.active })}><Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Inactivo'}</Badge></button>
                       )}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex justify-end gap-1">
-                        {!isOnline && (
-                          <>
-                            <button onClick={() => { setEditing(u); setModalOpen(true) }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></button>
-                            <button onClick={() => { deleteUser(u.id); toast.success('Usuario eliminado') }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
-                          </>
+                        {(!isOnline || canManageMemberships) && (
+                          <button
+                            onClick={() => { setInviteMode(false); setEditing(u); setModalOpen(true) }}
+                            disabled={Boolean(pendingAction)}
+                            aria-label={`Editar ${u.name}`}
+                            data-testid={`usuario-edit-${u.id}`}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
                         )}
+                        {isOnline ? (
+                          canManageMemberships && (
+                            <button
+                              title="Restablecer contraseña"
+                              aria-label={`Restablecer contraseña de ${u.name}`}
+                              onClick={() => resetOnlinePassword(u)}
+                              disabled={Boolean(pendingAction)}
+                              data-testid={`usuario-password-${u.id}`}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-amber-50 hover:text-amber-600 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              <KeyRound className="h-4 w-4" />
+                            </button>
+                          )
+                        ) : <button onClick={() => { deleteUser(u.id); toast.success('Usuario eliminado') }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>}
                       </div>
                     </td>
                   </tr>
@@ -272,14 +590,16 @@ export default function UsuariosPage({ embedded = false }) {
                   subtitle={u.email}
                   badge={
                     <div className="flex flex-wrap justify-end gap-1">
-                      <Badge tone={ROLE_TONE[u.role] || 'neutral'}>{u.role}</Badge>
+                      <RoleAssignmentSummary user={u} mobile />
                       {!isOnline ? (
                         <button onClick={() => updateUser(u.id, { active: !u.active })}>
                           <Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Inactivo'}</Badge>
                         </button>
-                      ) : (
-                        <Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Inactivo'}</Badge>
-                      )}
+                      ) : canManageMemberships ? (
+                        <button onClick={() => toggleOnlineStatus(u)} disabled={Boolean(pendingAction)}>
+                          <Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Suspendido'}</Badge>
+                        </button>
+                      ) : <Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Suspendido'}</Badge>}
                     </div>
                   }
                 />
@@ -295,27 +615,32 @@ export default function UsuariosPage({ embedded = false }) {
                   </MobileField>
                   <MobileField label="Último acceso">{u.lastAccess || '—'}</MobileField>
                 </MobileCardGrid>
-                {!isOnline && (
-                  <MobileCardFooter>
+                {(!isOnline || canManageMemberships) && <MobileCardFooter>
                     <span />
                     <div className="flex gap-1">
-                      <button onClick={() => { setEditing(u); setModalOpen(true) }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></button>
-                      <button onClick={() => { deleteUser(u.id); toast.success('Usuario eliminado') }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+                      <button onClick={() => { setInviteMode(false); setEditing(u); setModalOpen(true) }} disabled={Boolean(pendingAction)} aria-label={`Editar ${u.name}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-40"><Pencil className="h-4 w-4" /></button>
+                      {isOnline ? <button onClick={() => resetOnlinePassword(u)} disabled={Boolean(pendingAction)} aria-label={`Restablecer contraseña de ${u.name}`}><KeyRound className="h-4 w-4" /></button> : <button onClick={() => { deleteUser(u.id); toast.success('Usuario eliminado') }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>}
                     </div>
-                  </MobileCardFooter>
-                )}
+                </MobileCardFooter>}
               </MobileCard>
             ))}
           </ResponsiveCards>
         </ResponsiveList>
       </Card>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Editar Usuario' : 'Nuevo Usuario'} wide testId="usuario-modal">
+      <Modal open={modalOpen} onClose={() => { if (!submitting) setModalOpen(false) }} title={editing ? 'Editar Usuario' : inviteMode ? 'Invitar Usuario' : 'Nuevo Usuario'} wide testId="usuario-modal">
         <div className="space-y-4">
-          <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Nombre Completo *</label><Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Nombre del usuario" /></div>
-          <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Email *</label><Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="email@ejemplo.com" /></div>
-          {!editing && <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Contraseña *</label><Input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} placeholder={isOnline ? 'Mínimo 12 caracteres' : 'Mínimo 6 caracteres'} /></div>}
-          <div>
+          <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Nombre Completo *</label><Input value={form.name} disabled={submitting || Boolean(editing && isOnline)} onChange={(e) => set('name', e.target.value)} placeholder="Nombre del usuario" data-testid="usuario-name" /></div>
+          <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Email *</label><Input type="email" value={form.email} disabled={submitting || Boolean(editing && isOnline)} onChange={(e) => set('email', e.target.value)} placeholder="email@ejemplo.com" data-testid="usuario-email" /></div>
+          {!editing && !inviteMode && <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Contraseña *</label><Input type="password" value={form.password} disabled={submitting} onChange={(e) => set('password', e.target.value)} placeholder={isOnline ? 'Mínimo 12 caracteres' : 'Mínimo 6 caracteres'} data-testid="usuario-password-input" /></div>}
+          {isOnline ? (
+            <RoleAssignmentsEditor
+              assignments={form.roleAssignments}
+              options={formOptions}
+              onChange={(roleAssignments) => set('roleAssignments', roleAssignments)}
+              disabled={submitting}
+            />
+          ) : <><div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Rol</label>
             <div className="flex flex-wrap gap-2">
               {roleOptions.map((r) => (
@@ -344,11 +669,13 @@ export default function UsuariosPage({ embedded = false }) {
                 </label>
               ))}
             </div>
-          </div>
-          {err && <p className="text-sm text-red-500">{err}</p>}
+          </div></>}
+          {err && <p className="text-sm text-red-500" data-testid="usuario-form-error">{err}</p>}
           <div className="flex gap-3">
-            <Button variant="secondary" className="flex-1" onClick={() => setModalOpen(false)}>Cancelar</Button>
-            <Button className="flex-1" onClick={submit}>{editing ? 'Guardar' : 'Crear Usuario'}</Button>
+            <Button variant="secondary" className="flex-1" onClick={() => setModalOpen(false)} disabled={submitting}>Cancelar</Button>
+            <Button className="flex-1" onClick={submit} disabled={submitting} data-testid="usuario-submit">
+              {submitting ? 'Guardando…' : editing ? 'Guardar' : inviteMode ? 'Crear invitación' : 'Crear Usuario'}
+            </Button>
           </div>
         </div>
       </Modal>

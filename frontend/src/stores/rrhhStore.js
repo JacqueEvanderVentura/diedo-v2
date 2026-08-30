@@ -1,47 +1,16 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { ephemeralJsonStorage, registerSensitiveStateCleaner } from '@/services/storagePolicy'
+import { employeesGateway } from '@/services/masterDataApi'
+import { employeeToApiPayload, mapEmployeeFromApi, mapEmployeeFromDemo } from '@/services/adapters/masterData'
+import { useSessionStore } from '@/stores/sessionStore'
 import { debtBalance, debtStatus } from '@/modules/rrhh/lib/rrhh'
-import { normalizeWorkSchedule, YAFREISY_SCHEDULE } from '@/modules/rrhh/lib/schedule'
+import { normalizeWorkSchedule } from '@/modules/rrhh/lib/schedule'
 
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const now = () => new Date().toISOString()
 const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10)
 const daysFromNow = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10)
-
-const SEED_EMPLOYEES = [
-  { id: 'emp-1', firstName: 'Leonedis', lastName: 'Hamburgo', email: 'leonedis@charm.do', phone: '8095550100', position: 'Director General', department: 'Administración', branchIds: ['charm-dn', 'charm-santiago', 'charm-este'], contractType: 'Indefinido', initialSalary: 75000, salary: 85000, vacationDays: 15, usuarioId: 'u1', jefeIds: [], clienteId: null, active: true, hireDate: '2020-01-15', bankName: 'Banco Popular', bankAccountType: 'ahorro', bankAccountNumber: '****4521', bankDocument: '00112345678' },
-  { id: 'emp-2', firstName: 'Starling', lastName: 'Subervi', email: 'starlingflores94@gmail.com', phone: '8096168273', position: 'Supervisor', department: 'Operaciones', branchIds: ['charm-dn'], contractType: 'Indefinido', initialSalary: 38000, salary: 45000, vacationDays: 15, usuarioId: null, jefeIds: ['emp-1'], clienteId: null, active: true, hireDate: '2021-03-10', bankName: 'Banreservas', bankAccountType: 'ahorro', bankAccountNumber: '****8832', bankDocument: '40298765432' },
-  { id: 'emp-3', firstName: 'Jefferson', lastName: 'Ramírez', email: 'jefferson@charm.do', phone: '8095551020', position: 'Barbero', department: 'Operaciones', branchIds: ['charm-dn'], contractType: 'Indefinido', initialSalary: 24000, salary: 28000, vacationDays: 10, usuarioId: null, jefeIds: ['emp-2', 'emp-1'], clienteId: null, active: true, hireDate: '2022-06-01' },
-  { id: 'emp-4', firstName: 'Loreinni', lastName: 'Rosario', email: 'loreinni@charm.do', phone: '8295551030', position: 'Asistente De Barbero', department: 'Operaciones', branchIds: ['charm-santiago'], contractType: 'Indefinido', initialSalary: 20000, salary: 22000, vacationDays: 12, usuarioId: null, jefeIds: ['emp-2'], clienteId: null, active: true, hireDate: '2023-01-20' },
-  { id: 'emp-5', firstName: 'Jasmin', lastName: 'Fernández', email: 'jasmin@charm.do', phone: '8495551040', position: 'Recepcionista', department: 'Administración', branchIds: ['charm-dn'], contractType: 'Indefinido', initialSalary: 22000, salary: 25000, vacationDays: 15, usuarioId: 'u2', jefeIds: ['emp-1'], clienteId: null, active: true, hireDate: '2021-08-05' },
-  { id: 'emp-6', firstName: 'Yocarlin', lastName: 'Charlotte', email: 'yocarlin@charm.do', phone: '8095551050', position: 'Especialista Laser', department: 'Laser', branchIds: ['charm-dn', 'charm-este'], contractType: 'Indefinido', initialSalary: 30000, salary: 35000, vacationDays: 8, usuarioId: null, jefeIds: ['emp-1'], clienteId: null, active: true, hireDate: '2022-11-12', bankName: 'BHD', bankAccountType: 'corriente', bankAccountNumber: '****1190', bankDocument: '22300111222' },
-  { id: 'emp-7', firstName: 'Emperatriz', lastName: 'Gomez', email: 'emperatriz@charm.do', phone: '8095551060', position: 'Asistente De Barbero', department: 'Operaciones', branchIds: ['charm-dn'], contractType: 'Indefinido', initialSalary: 18000, salary: 20000, vacationDays: 15, usuarioId: null, jefeIds: ['emp-2'], clienteId: null, active: true, hireDate: '2023-04-18' },
-  { id: 'emp-8', firstName: 'Carlos', lastName: 'Méndez', email: 'carlos@charm.do', phone: '8095551070', position: 'Cajero', department: 'Ventas', branchIds: ['charm-dn'], contractType: 'Indefinido', initialSalary: 21000, salary: 24000, vacationDays: 10, usuarioId: 'u3', jefeIds: ['emp-1'], clienteId: null, active: true, hireDate: '2022-02-28' },
-  { id: 'emp-9', firstName: 'Ana', lastName: 'Jiménez', email: 'ana@charm.do', phone: '8095551080', position: 'Vendedora', department: 'Ventas', branchIds: ['charm-este'], contractType: 'Indefinido', initialSalary: 20000, salary: 23000, vacationDays: 12, usuarioId: 'u5', jefeIds: ['emp-1'], clienteId: null, active: true, hireDate: '2023-07-01' },
-  { id: 'emp-10', firstName: 'Fiordaliza', lastName: 'Peña', email: 'fiordaliza@charm.do', phone: '8095551090', position: 'Estilista', department: 'Operaciones', branchIds: ['charm-santiago'], contractType: 'Indefinido', initialSalary: 24000, salary: 26000, vacationDays: 0, usuarioId: null, jefeIds: ['emp-2'], clienteId: null, active: false, hireDate: '2020-09-15' },
-  { id: 'emp-11', firstName: 'María', lastName: 'López', email: 'maria.rrhh@charm.do', phone: '8095551100', position: 'Analista RRHH', department: 'Recursos Humanos', branchIds: ['charm-dn'], contractType: 'Indefinido', initialSalary: 34000, salary: 38000, vacationDays: 15, usuarioId: null, jefeIds: ['emp-1'], clienteId: null, active: true, hireDate: '2021-05-20' },
-  { id: 'emp-12', firstName: 'Pedro', lastName: 'Santos', email: 'pedro@charm.do', phone: '8095551110', position: 'Contador', department: 'Finanzas', branchIds: ['charm-dn', 'charm-santiago'], contractType: 'Indefinido', initialSalary: 38000, salary: 42000, vacationDays: 14, usuarioId: null, jefeIds: ['emp-1'], clienteId: null, active: true, hireDate: '2019-11-01' },
-  {
-    id: 'emp-13',
-    firstName: 'Yafreisy',
-    lastName: 'Rodríguez',
-    email: 'yafreisy@charm.do',
-    phone: '8095551120',
-    position: 'Especialista Laser',
-    department: 'Laser',
-    branchIds: ['charm-dn'],
-    contractType: 'Indefinido',
-    initialSalary: 28000,
-    salary: 32000,
-    vacationDays: 10,
-    usuarioId: null,
-    jefeIds: ['emp-1'],
-    clienteId: null,
-    active: true,
-    hireDate: '2023-09-01',
-    workSchedule: YAFREISY_SCHEDULE,
-  },
-].map((e) => ({ ...e, createdAt: daysAgo(400), updatedAt: daysAgo(1) }))
 
 const SEED_REQUESTS = [
   { id: 'vr-1', employeeId: 'emp-1', startDate: daysFromNow(14), endDate: daysFromNow(18), reason: 'Vacaciones familiares', status: 'aprobada', createdAt: daysAgo(10), reviewedAt: daysAgo(8), reviewedBy: 'u1' },
@@ -93,6 +62,11 @@ function normalizeEmployee(data) {
     usuarioId: data.usuarioId || null,
     clienteId: data.clienteId || null,
     active: data.active !== false,
+    status: data.status || (data.active === false ? 'inactive' : 'active'),
+    version: data.version || 1,
+    scheduleVersion: data.scheduleVersion || 1,
+    scheduleTimezone: data.scheduleTimezone || 'America/Santo_Domingo',
+    attachmentCount: data.attachmentCount || 0,
     hireDate: data.hireDate || now().slice(0, 10),
     bankName: data.bankName?.trim() || '',
     bankAccountType: data.bankAccountType || 'ahorro',
@@ -100,35 +74,122 @@ function normalizeEmployee(data) {
     bankDocument: data.bankDocument?.trim() || '',
     workSchedule: normalizeWorkSchedule(data.workSchedule),
     createdAt: data.createdAt || now(),
-    updatedAt: now(),
+    updatedAt: data.updatedAt || now(),
+    api: data.api === true,
+    source: data.source || (data.api ? 'api' : undefined),
   }
 }
 
 export const useRrhhStore = create(
   persist(
     (set, get) => ({
-      employees: SEED_EMPLOYEES,
+      employees: [],
+      employeesDataState: employeesGateway.getState(),
+      hydratingEmployees: false,
       vacationRequests: SEED_REQUESTS,
       employeeDebts: SEED_DEBTS,
       documentHistory: [],
       payrollRuns: [],
       performanceReviews: SEED_REVIEWS,
-      currentUserId: 'u1',
-
       getEmployeeByUserId: (userId) => get().employees.find((e) => e.usuarioId === userId),
 
-      addEmployee: (data) => {
-        const emp = normalizeEmployee(data)
+      hydrateEmployees: async ({ force = false } = {}) => {
+        if (get().hydratingEmployees || (!force && get().employeesDataState.status !== 'loading')) {
+          return get().employees
+        }
+        set({ hydratingEmployees: true })
+        try {
+          const result = await employeesGateway.read('employees')
+          const mapper = result.source === 'demo' ? mapEmployeeFromDemo : mapEmployeeFromApi
+          const employees = result.data.map((item) => normalizeEmployee(mapper(item)))
+          set({ employees, employeesDataState: employeesGateway.getState(), hydratingEmployees: false })
+          return employees
+        } catch (error) {
+          set({ employeesDataState: employeesGateway.getState(), hydratingEmployees: false })
+          throw error
+        }
+      },
+
+      addEmployee: async (data) => {
+        let emp
+        if (useSessionStore.getState().status === 'demo') {
+          emp = normalizeEmployee({ ...data, source: 'demo' })
+        } else {
+          const branchIds = useSessionStore.getState().user?.branchIds || []
+          const response = await employeesGateway.mutate(
+            'createEmployee',
+            employeeToApiPayload(data, branchIds)
+          )
+          emp = normalizeEmployee(mapEmployeeFromApi(response))
+        }
         set((s) => ({ employees: [emp, ...s.employees] }))
         return emp
       },
 
-      updateEmployee: (id, data) =>
-        set((s) => ({
-          employees: s.employees.map((e) => (e.id === id ? normalizeEmployee({ ...e, ...data, id }) : e)),
-        })),
+      updateEmployee: async (id, data) => {
+        const current = get().employees.find((employee) => employee.id === id)
+        if (!current) throw new Error('Empleado no encontrado.')
+        let employee
+        if (useSessionStore.getState().status === 'demo') {
+          employee = normalizeEmployee({ ...current, ...data, id, source: 'demo' })
+        } else {
+          const complete = { ...current, ...data }
+          const { schedule, timezone, ...basicPayload } = employeeToApiPayload(complete)
+          const response = await employeesGateway.mutate('updateEmployee', id, {
+            ...basicPayload,
+            version: current.version,
+          })
+          employee = normalizeEmployee(mapEmployeeFromApi(response))
+          const scheduleChanged = Object.hasOwn(data, 'workSchedule')
+            && JSON.stringify(normalizeWorkSchedule(data.workSchedule))
+              !== JSON.stringify(normalizeWorkSchedule(current.workSchedule))
+          if (scheduleChanged) {
+            const updatedSchedule = await employeesGateway.mutate('updateEmployeeSchedule', id, {
+              timezone,
+              week: schedule,
+              version: current.scheduleVersion,
+            })
+            employee = normalizeEmployee({
+              ...employee,
+              workSchedule: updatedSchedule.week,
+              scheduleTimezone: updatedSchedule.timezone,
+              scheduleVersion: updatedSchedule.version,
+            })
+          }
+        }
+        set((state) => ({
+          employees: state.employees.map((item) => (item.id === id ? employee : item)),
+        }))
+        return employee
+      },
 
-      deleteEmployee: (id) => set((s) => ({ employees: s.employees.filter((e) => e.id !== id) })),
+      deleteEmployee: async (id) => {
+        const current = get().employees.find((employee) => employee.id === id)
+        if (!current) return
+        if (useSessionStore.getState().status === 'demo') {
+          set((state) => ({ employees: state.employees.filter((employee) => employee.id !== id) }))
+          return
+        }
+        const response = await employeesGateway.mutate('updateEmployee', id, {
+          version: current.version,
+          status: 'archived',
+        })
+        const employee = normalizeEmployee(mapEmployeeFromApi(response))
+        set((state) => ({
+          employees: state.employees.map((item) => (item.id === id ? employee : item)),
+        }))
+      },
+
+      clearSensitive: () => set({
+        employees: [],
+        employeesDataState: employeesGateway.getState(),
+        hydratingEmployees: false,
+        vacationRequests: [],
+        employeeDebts: [],
+        documentHistory: [],
+        payrollRuns: [],
+        performanceReviews: [],
+      }),
 
       addVacationRequest: (data) => {
         const req = { id: genId('vr'), status: 'pendiente', createdAt: now(), reviewedAt: null, reviewedBy: null, ...data }
@@ -218,21 +279,19 @@ export const useRrhhStore = create(
     }),
     {
       name: 'diedo-rrhh',
-      version: 3,
+      storage: ephemeralJsonStorage,
+      version: 4,
       migrate: (persisted) => persisted ?? {},
       merge: (persisted, current) => {
         const state = { ...current, ...(persisted || {}) }
-        if (Array.isArray(state.employees)) {
-          state.employees = state.employees.map((e) => normalizeEmployee(e))
-          const hasYafreisy = state.employees.some((e) => e.id === 'emp-13')
-          if (!hasYafreisy) {
-            state.employees = [...state.employees, normalizeEmployee(SEED_EMPLOYEES.find((e) => e.id === 'emp-13'))]
-          }
-        }
+        state.employees = []
+        state.employeesDataState = employeesGateway.getState()
         return state
       },
     }
   )
 )
+
+registerSensitiveStateCleaner(() => useRrhhStore.getState().clearSensitive())
 
 export { debtBalance, debtStatus }

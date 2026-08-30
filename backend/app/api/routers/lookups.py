@@ -2,7 +2,7 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from app.api.deps import DatabaseSession, MembershipManageGrant
+from app.api.deps import BranchReadGrant, DatabaseSession, MembershipManageGrant
 from app.schemas.common import ErrorResponse, SimpleOptionResponse
 from app.services.users import UsersService
 
@@ -36,7 +36,7 @@ def role_options(
 )
 def branch_options(
     database: DatabaseSession,
-    grant: MembershipManageGrant,
+    grant: BranchReadGrant,
 ) -> list[SimpleOptionResponse]:
     return [
         SimpleOptionResponse(id=branch.id, name=branch.name)

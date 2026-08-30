@@ -1,0 +1,22 @@
+{
+  "seedVersion": "v1",
+  "schemaVersion": "20260829_0007",
+  "workspaceSlug": "local-erp",
+  "modules": ["foundation", "iam", "configuration", "crm", "hr"],
+  "files": [
+    {"name": "agenda.json", "sha256": "bcedc7da27dca581475b9342c5e857428e8fac347fbab59c5a048fdb1b3e8f0d", "count": 0},
+    {"name": "catalog.json", "sha256": "bcedc7da27dca581475b9342c5e857428e8fac347fbab59c5a048fdb1b3e8f0d", "count": 0},
+    {"name": "configuration.json", "sha256": "9ef51f0f6e553020991a9c23f39192b362ad5fd75d93aac586f653b9e68b1a5b", "count": 3},
+    {"name": "crm.json", "sha256": "bcedc7da27dca581475b9342c5e857428e8fac347fbab59c5a048fdb1b3e8f0d", "count": 0},
+    {"name": "customers.json", "sha256": "a3eb4a3b6c9655ea07f6373b906b7a0895cacfc1463779d9131a64803109d886", "count": 5},
+    {"name": "employees.json", "sha256": "b001d29acf87bd0722a9e24bea8bc37d5a693ed4785ab2f2c9533eec8a747946", "count": 13},
+    {"name": "finance.json", "sha256": "bcedc7da27dca581475b9342c5e857428e8fac347fbab59c5a048fdb1b3e8f0d", "count": 0},
+    {"name": "foundation.json", "sha256": "1812c24d5ebbd611189af4a315b2e4155009c0a001fcd328bb7df1b96b8fe9f3", "count": 3},
+    {"name": "hr.json", "sha256": "bcedc7da27dca581475b9342c5e857428e8fac347fbab59c5a048fdb1b3e8f0d", "count": 0},
+    {"name": "iam.json", "sha256": "765e59678672bb64549ebb942d6ddf7f8714c814494ae0896dd62dc478b5db20", "count": 8},
+    {"name": "incidents.json", "sha256": "bcedc7da27dca581475b9342c5e857428e8fac347fbab59c5a048fdb1b3e8f0d", "count": 0},
+    {"name": "inventory.json", "sha256": "bcedc7da27dca581475b9342c5e857428e8fac347fbab59c5a048fdb1b3e8f0d", "count": 0},
+    {"name": "pos.json", "sha256": "bcedc7da27dca581475b9342c5e857428e8fac347fbab59c5a048fdb1b3e8f0d", "count": 0},
+    {"name": "purchasing.json", "sha256": "bcedc7da27dca581475b9342c5e857428e8fac347fbab59c5a048fdb1b3e8f0d", "count": 0}
+  ]
+}

@@ -3,10 +3,10 @@ import { computeSupplyUsageKpis } from '@/modules/inventarios/lib/supplyUsage'
 
 const ATTENDED = new Set(['completada', 'asistio', 'confirmada'])
 
-function staffDisplayName(id, employees = [], agendaStaff = []) {
+function staffDisplayName(id, employees = []) {
   const rrhh = employees.find((e) => e.id === id)
   if (rrhh) return `${rrhh.firstName} ${rrhh.lastName}`.trim()
-  return agendaStaff.find((e) => e.id === id)?.name || id || 'Sin asignar'
+  return id || 'Sin asignar'
 }
 
 export function buildPersonalReport({
@@ -14,7 +14,6 @@ export function buildPersonalReport({
   appointments = [],
   users = [],
   employees = [],
-  agendaStaff = [],
   movements = [],
   supplies = [],
   branchId = '',
@@ -57,7 +56,7 @@ export function buildPersonalReport({
 
   const byEmployee = [...new Set(periodAppts.map((a) => a.employeeId).filter(Boolean))]
     .map((empId) => {
-      const name = staffDisplayName(empId, employees, agendaStaff)
+      const name = staffDisplayName(empId, employees)
       const rrhh = employees.find((e) => e.id === empId)
       const served = periodAppts.filter((a) => a.employeeId === empId && ATTENDED.has(a.status))
       const noShows = periodAppts.filter((a) => a.employeeId === empId && a.status === 'noshow')
@@ -89,7 +88,6 @@ export function buildPersonalReport({
     supplies,
     employees: [
       ...employees.map((e) => ({ id: e.id, name: `${e.firstName} ${e.lastName}`.trim() })),
-      ...agendaStaff.map((e) => ({ id: e.id, name: e.name })),
     ],
   }).filter((row) => {
     if (!q) return true
