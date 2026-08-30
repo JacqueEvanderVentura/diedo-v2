@@ -14,6 +14,7 @@ registra por separado para evitar confundir esa numeración con el plan Backend 
 | [fase-3.md](./fase-3.md) | Inventarios + catálogo compartido (`catalogStore`) |
 | [integracion-fases-0-1.md](./integracion-fases-0-1.md) | Evidencia histórica/parcial de confiabilidad, sesión, IAM y configuración; reabierta en el plan V2 |
 | [integracion-fase-2.md](./integracion-fase-2.md) | Evidencia histórica/parcial de clientes, empleados básicos y adjuntos; reabierta en el plan V2 |
+| [integracion-agenda.md](./integracion-agenda.md) | Contrato y ciclo de sincronización de Calendario y Gestión de citas |
 
 Planes cortos en la raíz del repo: `fase1_plan.txt`, `fase2_plan.txt`, `fase3_plan.txt`.
 

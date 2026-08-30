@@ -18,8 +18,11 @@ import { isProximoAppointment } from '../lib/appointments'
 import { ResponsiveList, ResponsiveTable, ResponsiveCards } from '@/components/ui/ResponsiveList'
 import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
 import { useSortedRows } from '@/hooks/useTableControls'
+import { DataSourceNotice } from '@/components/ui/DataSourceNotice'
+import { useAgendaPolling } from '../hooks/useAgendaPolling'
+import { useSessionStore } from '@/stores/sessionStore'
 
-function ActionButtons({ apt, onEdit, onDelete, onShare }) {
+function ActionButtons({ apt, onEdit, onDelete, onShare, canManage }) {
   return (
     <div className="flex items-center justify-end gap-1">
       <WhatsAppMenuButton
@@ -43,29 +46,33 @@ function ActionButtons({ apt, onEdit, onDelete, onShare }) {
       >
         <Share2 className="h-4 w-4" />
       </button>
-      <button
-        type="button"
-        onClick={() => onEdit(apt)}
-        title="Editar"
-        data-testid={`gestion-edit-${apt.id}`}
-        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600"
-      >
-        <Pencil className="h-4 w-4" />
-      </button>
-      <button
-        type="button"
-        onClick={() => onDelete(apt)}
-        title="Eliminar"
-        data-testid={`gestion-delete-${apt.id}`}
-        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
+      {canManage && (
+        <>
+          <button
+            type="button"
+            onClick={() => onEdit(apt)}
+            title="Editar"
+            data-testid={`gestion-edit-${apt.id}`}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onDelete(apt)}
+            title="Cancelar"
+            data-testid={`gestion-delete-${apt.id}`}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </>
+      )}
     </div>
   )
 }
 
-function AppointmentMobileCard({ apt, branchName, staffName, onEdit, onDelete, onShare }) {
+function AppointmentMobileCard({ apt, branchName, staffName, onEdit, onDelete, onShare, canManage }) {
   const st = statusMeta(apt.status)
   const proximo = isProximoAppointment(apt)
 
@@ -98,7 +105,7 @@ function AppointmentMobileCard({ apt, branchName, staffName, onEdit, onDelete, o
       </div>
       <div className="mt-3 flex items-center justify-between border-t border-slate-50 pt-3">
         <span className="font-heading text-sm font-bold text-blue-600">{formatDOP(apt.price || 0)}</span>
-        <ActionButtons apt={apt} onEdit={onEdit} onDelete={onDelete} onShare={onShare} />
+        <ActionButtons apt={apt} onEdit={onEdit} onDelete={onDelete} onShare={onShare} canManage={canManage} />
       </div>
     </div>
   )
@@ -107,8 +114,11 @@ function AppointmentMobileCard({ apt, branchName, staffName, onEdit, onDelete, o
 export default function GestionCitasPage() {
   const appointments = useAgendaStore((s) => s.appointments)
   const deleteAppointment = useAgendaStore((s) => s.deleteAppointment)
+  const dataState = useAgendaStore((s) => s.dataState)
+  const hydrateAppointments = useAgendaStore((s) => s.hydrateAppointments)
   const rrhhEmployees = useRrhhStore((s) => s.employees)
   const branches = useConfigStore((s) => s.branches)
+  const canManage = useSessionStore((s) => s.hasPermission('appointment.manage'))
 
   const [search, setSearch] = useState('')
   const [employeeId, setEmployeeId] = useState('all')
@@ -117,6 +127,12 @@ export default function GestionCitasPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [shareTarget, setShareTarget] = useState(null)
+
+  const appointmentQuery = useMemo(
+    () => branchId === 'all' ? {} : { branchId },
+    [branchId]
+  )
+  useAgendaPolling(appointmentQuery)
 
   const staffName = (id) => resolveStaffName(id, rrhhEmployees)
 
@@ -170,20 +186,28 @@ export default function GestionCitasPage() {
     setModalOpen(true)
   }
 
-  const remove = (apt) => {
-    if (!window.confirm(`¿Eliminar la cita de ${apt.customerName}?`)) return
-    deleteAppointment(apt.id)
-    toast.success('Cita eliminada')
+  const remove = async (apt) => {
+    if (!window.confirm(`¿Cancelar la cita de ${apt.customerName}?`)) return
+    try {
+      await deleteAppointment(apt.id)
+      toast.success('Cita cancelada')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo cancelar la cita')
+    }
   }
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="gestion-citas-page">
+      <DataSourceNotice
+        state={dataState}
+        onRetry={() => hydrateAppointments({ force: true, params: appointmentQuery })}
+      />
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-heading text-2xl font-bold text-slate-900">Gestión de citas</h1>
           <p className="mt-1 text-sm text-slate-500">{displayRows.length} cita{displayRows.length !== 1 ? 's' : ''} en el listado</p>
         </div>
-        <Button onClick={openNew} data-testid="gestion-new">
+        <Button onClick={openNew} disabled={!canManage} data-testid="gestion-new">
           <Plus className="h-4 w-4" /> Nueva cita
         </Button>
       </div>
@@ -262,7 +286,7 @@ export default function GestionCitasPage() {
                         </td>
                         <td className="whitespace-nowrap px-6 py-4 text-right font-heading font-bold text-blue-600">{formatDOP(apt.price || 0)}</td>
                         <td className="px-6 py-4">
-                          <ActionButtons apt={apt} onEdit={openEdit} onDelete={remove} onShare={setShareTarget} />
+                          <ActionButtons apt={apt} onEdit={openEdit} onDelete={remove} onShare={setShareTarget} canManage={canManage} />
                         </td>
                       </tr>
                     )
@@ -282,6 +306,7 @@ export default function GestionCitasPage() {
                 onEdit={openEdit}
                 onDelete={remove}
                 onShare={setShareTarget}
+                canManage={canManage}
               />
             ))}
           </ResponsiveCards>

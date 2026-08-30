@@ -8,6 +8,7 @@ from app.schemas.common import ApiModel
 
 CatalogStatus = Literal["active", "inactive", "archived"]
 CreateCatalogStatus = Literal["active", "inactive"]
+CatalogItemType = Literal["product", "service", "membership", "other"]
 SortDirection = Literal["asc", "desc"]
 CategorySortField = Literal["name", "status", "createdAt", "updatedAt"]
 ProductSortField = Literal["name", "sku", "status", "createdAt", "updatedAt"]
@@ -119,6 +120,7 @@ class ProductBranchReference(ApiModel):
 
 class ProductResponse(ApiModel):
     id: UUID
+    item_type: CatalogItemType
     name: str
     description: str | None
     sku: str | None
@@ -140,6 +142,7 @@ class PaginatedProductsResponse(ApiModel):
 
 
 class CreateProductRequest(ApiModel):
+    item_type: CatalogItemType = "product"
     name: str = Field(min_length=2, max_length=160)
     description: str | None = Field(default=None, max_length=1000)
     sku: str | None = Field(default=None, max_length=64)
@@ -176,6 +179,7 @@ class CreateProductRequest(ApiModel):
 
 class UpdateProductRequest(ApiModel):
     version: int = Field(ge=1)
+    item_type: CatalogItemType | None = None
     name: str | None = Field(default=None, min_length=2, max_length=160)
     description: str | None = Field(default=None, max_length=1000)
     sku: str | None = Field(default=None, max_length=64)
@@ -217,6 +221,7 @@ class UpdateProductRequest(ApiModel):
         if not changed_fields:
             raise ValueError("Debes enviar al menos un cambio.")
         non_nullable_fields = {
+            "item_type",
             "name",
             "category_id",
             "unit_of_measure_id",

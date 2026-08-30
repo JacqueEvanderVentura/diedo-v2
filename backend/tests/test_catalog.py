@@ -194,11 +194,13 @@ def _create_product(
     unit_id: UUID,
     branch_ids: list[UUID],
     sku: str | None,
+    item_type: str = "product",
 ) -> dict[str, object]:
     response = client.post(
         "/api/v1/catalog/products",
         headers=headers,
         json={
+            "itemType": item_type,
             "name": name,
             "description": "Producto de prueba",
             "sku": sku,
@@ -226,6 +228,7 @@ def test_catalog_schema_and_normalization_rules() -> None:
     )
     assert product.name == "Jabón líquido"
     assert product.sku == "SKU-01"
+    assert product.item_type == "product"
 
     with pytest.raises(ValidationError):
         CreateProductRequest(
@@ -402,7 +405,9 @@ def test_catalog_crud_filters_concurrency_and_audit(client: TestClient) -> None:
         unit_id=unit_id,
         branch_ids=[branches["HQ"], branches["NORTH"]],
         sku=f"sku-{unique}",
+        item_type="service",
     )
+    assert product["itemType"] == "service"
     assert product["sku"] == f"SKU-{unique.upper()}"
     assert {UUID(branch["id"]) for branch in product["branches"]} == {
         branches["HQ"],
@@ -487,12 +492,14 @@ def test_catalog_crud_filters_concurrency_and_audit(client: TestClient) -> None:
             "description": None,
             "sku": f"edit-{unique}",
             "branchIds": [str(branches["HQ"])],
+            "itemType": "product",
             "status": "inactive",
         },
     )
     assert product_update.status_code == 200
     product = product_update.json()
     assert product["description"] is None
+    assert product["itemType"] == "product"
     assert product["status"] == "inactive"
     assert product["version"] == 2
     assert [UUID(branch["id"]) for branch in product["branches"]] == [branches["HQ"]]

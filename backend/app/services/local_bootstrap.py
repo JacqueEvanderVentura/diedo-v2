@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (
     AccessScope,
+    AppointmentResource,
     Branch,
     LegalEntity,
     ModuleDefinition,
@@ -22,6 +23,7 @@ from app.db.models import (
     Workspace,
     WorkspaceMembership,
 )
+from app.db.models.agenda import DEFAULT_APPOINTMENT_RESOURCES
 
 _PERMISSIONS = (
     (
@@ -227,6 +229,22 @@ _PERMISSIONS = (
         "Generate HR document records.",
         120,
     ),
+    (
+        "appointment.read",
+        "appointments",
+        "read",
+        "Ver agenda",
+        "View appointment resources, calendar, and appointment management.",
+        10,
+    ),
+    (
+        "appointment.manage",
+        "appointments",
+        "manage",
+        "Gestionar citas",
+        "Create, reschedule, update, and cancel appointments.",
+        20,
+    ),
 )
 
 _ROLE_TEMPLATES = (
@@ -251,7 +269,7 @@ _MODULES: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
     ("hr", "Human resources", "optional", "available", ("foundation",)),
     ("payroll", "Payroll", "optional", "planned", ("hr", "accounting")),
     ("pos", "Point of sale", "optional", "planned", ("sales", "inventory")),
-    ("appointments", "Appointments", "optional", "planned", ("crm", "catalog")),
+    ("appointments", "Appointments", "optional", "available", ("crm", "catalog", "hr")),
     ("lodging", "Lodging", "optional", "planned", ("crm", "catalog", "sales")),
 )
 
@@ -365,6 +383,7 @@ def bootstrap_local_foundation(
     )
     if branch is None:
         raise RuntimeError("Local branch could not be loaded after bootstrap.")
+    _upsert_appointment_resources(session, workspace.id, branch.id)
 
     _insert_do_nothing(
         session,
@@ -449,7 +468,7 @@ def bootstrap_local_foundation(
         },
     )
 
-    enabled_modules = ("foundation", "iam", "catalog", "crm", "hr")
+    enabled_modules = ("foundation", "iam", "catalog", "crm", "hr", "appointments")
     for module_code in enabled_modules:
         module_id = session.scalar(
             select(ModuleDefinition.id).where(ModuleDefinition.code == module_code)
@@ -564,6 +583,31 @@ def _upsert_units_of_measure(session: Session, workspace_id: UUID) -> None:
                 set_={
                     "name": name,
                     "symbol": symbol,
+                    "status": "active",
+                    "updated_at": func.now(),
+                },
+            )
+        )
+        session.execute(statement)
+
+
+def _upsert_appointment_resources(session: Session, workspace_id: UUID, branch_id: UUID) -> None:
+    for code, name in DEFAULT_APPOINTMENT_RESOURCES:
+        statement = (
+            insert(AppointmentResource)
+            .values(
+                workspace_id=workspace_id,
+                branch_id=branch_id,
+                code=code,
+                name=name,
+                resource_type="room",
+                status="active",
+            )
+            .on_conflict_do_update(
+                constraint="uq_appointment_resources_scope_code",
+                set_={
+                    "name": name,
+                    "resource_type": "room",
                     "status": "active",
                     "updated_at": func.now(),
                 },

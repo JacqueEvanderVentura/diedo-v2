@@ -1,7 +1,7 @@
 // Generated from demo-data/v1; do not edit.
 export const DEMO_SNAPSHOT = Object.freeze({
   "seedVersion": "v1",
-  "schemaVersion": "20260830_0008",
+  "schemaVersion": "20260830_0009",
   "workspaceSlug": "local-erp",
   "foundation": {
     "branches": [
@@ -52,7 +52,9 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "hr.debt.read",
         "hr.debt.manage",
         "hr.document.read",
-        "hr.document.manage"
+        "hr.document.manage",
+        "appointment.read",
+        "appointment.manage"
       ],
       "supervisor": [
         "workspace.read",
@@ -66,7 +68,9 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "employee.schedule.manage",
         "hr.overview.read",
         "hr.leave.request",
-        "hr.leave.review"
+        "hr.leave.review",
+        "appointment.read",
+        "appointment.manage"
       ],
       "cashier": [
         "workspace.read",
@@ -75,7 +79,9 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "customer.read",
         "customer.manage",
         "employee.read",
-        "hr.leave.request"
+        "hr.leave.request",
+        "appointment.read",
+        "appointment.manage"
       ],
       "seller": [
         "workspace.read",
@@ -84,7 +90,9 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "customer.read",
         "customer.manage",
         "employee.read",
-        "hr.leave.request"
+        "hr.leave.request",
+        "appointment.read",
+        "appointment.manage"
       ]
     },
     "users": [
@@ -209,6 +217,371 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "icon": "Landmark",
         "enabled": true,
         "system": true
+      }
+    ]
+  },
+  "catalog": {
+    "categories": [
+      {
+        "seedKey": "depto-laser",
+        "name": "Depto laser",
+        "description": "Paquetes y ciclos de depilación láser.",
+        "status": "active"
+      },
+      {
+        "seedKey": "laser",
+        "name": "Laser",
+        "description": "Sesiones individuales de depilación láser.",
+        "status": "active"
+      },
+      {
+        "seedKey": "otros",
+        "name": "Otros",
+        "description": "Servicios complementarios y membresías.",
+        "status": "active"
+      },
+      {
+        "seedKey": "ventas",
+        "name": "Ventas",
+        "description": "Promociones y servicios comerciales.",
+        "status": "active"
+      },
+      {
+        "seedKey": "productos",
+        "name": "Productos",
+        "description": "Productos disponibles para venta en sucursal.",
+        "status": "active"
+      },
+      {
+        "seedKey": "insumos",
+        "name": "Insumos",
+        "description": "Materiales de consumo interno y cabina.",
+        "status": "active"
+      }
+    ],
+    "items": [
+      {
+        "seedKey": "remaining-cycle-half",
+        "sku": "10",
+        "name": "50% Restante de Ciclo",
+        "description": "Pago del saldo restante de un ciclo de sesiones.",
+        "itemType": "service",
+        "categorySeedKey": "depto-laser",
+        "unitCode": "unit",
+        "branchCodes": [
+          "HQ",
+          "DOWNTOWN"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "underarm-session",
+        "sku": "8",
+        "name": "1 sesión axilas",
+        "description": "Sesión individual de depilación láser para axilas.",
+        "itemType": "service",
+        "categorySeedKey": "laser",
+        "unitCode": "unit",
+        "branchCodes": [
+          "HQ",
+          "DOWNTOWN"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "charm-membership",
+        "sku": null,
+        "name": "Membresía Charm",
+        "description": "Membresía comercial disponible en toda la red.",
+        "itemType": "membership",
+        "categorySeedKey": "otros",
+        "unitCode": "unit",
+        "branchCodes": [
+          "HQ",
+          "NORTH",
+          "DOWNTOWN",
+          "EAST"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "full-legs-session",
+        "sku": "9",
+        "name": "1 sesión piernas completas",
+        "description": "Sesión individual de depilación láser para piernas completas.",
+        "itemType": "service",
+        "categorySeedKey": "laser",
+        "unitCode": "unit",
+        "branchCodes": [
+          "HQ",
+          "NORTH"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "brazilian-package-12",
+        "sku": "3",
+        "name": "Paq. 12 sesiones Brasileño (íntimo)",
+        "description": "Paquete de doce sesiones de depilación brasileña.",
+        "itemType": "service",
+        "categorySeedKey": "depto-laser",
+        "unitCode": "unit",
+        "branchCodes": [
+          "DOWNTOWN",
+          "EAST"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "full-face-package-12",
+        "sku": "6",
+        "name": "Paq. 12 sesiones Rostro completo",
+        "description": "Paquete de doce sesiones para rostro completo.",
+        "itemType": "service",
+        "categorySeedKey": "depto-laser",
+        "unitCode": "unit",
+        "branchCodes": [
+          "NORTH",
+          "DOWNTOWN"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "full-body-package-12",
+        "sku": "10B",
+        "name": "Paq 12 sesiones cuerpo completo",
+        "description": "Paquete de doce sesiones para cuerpo completo.",
+        "itemType": "service",
+        "categorySeedKey": "depto-laser",
+        "unitCode": "unit",
+        "branchCodes": [
+          "HQ",
+          "NORTH"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "face-session",
+        "sku": "26",
+        "name": "1 Sesión rostro",
+        "description": "Sesión individual de depilación láser para rostro.",
+        "itemType": "service",
+        "categorySeedKey": "laser",
+        "unitCode": "unit",
+        "branchCodes": [
+          "HQ",
+          "EAST"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "full-body-vip-package-12",
+        "sku": "5",
+        "name": "Paq. 12 sesiones - Cuerpo completo VIP",
+        "description": "Paquete VIP de doce sesiones para cuerpo completo.",
+        "itemType": "service",
+        "categorySeedKey": "depto-laser",
+        "unitCode": "unit",
+        "branchCodes": [
+          "HQ",
+          "DOWNTOWN"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "two-full-body-half-package",
+        "sku": "25",
+        "name": "50% Paquete de 2 Cuerpos Completos",
+        "description": "Pago parcial de promoción para dos paquetes de cuerpo completo.",
+        "itemType": "service",
+        "categorySeedKey": "ventas",
+        "unitCode": "unit",
+        "branchCodes": [
+          "HQ",
+          "EAST"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "hydrating-facial",
+        "sku": "2",
+        "name": "Facial hidratante",
+        "description": "Tratamiento facial de hidratación profunda.",
+        "itemType": "service",
+        "categorySeedKey": "otros",
+        "unitCode": "unit",
+        "branchCodes": [
+          "HQ",
+          "NORTH"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "upper-lip-session",
+        "sku": "12",
+        "name": "Depilación bigote",
+        "description": "Sesión individual de depilación para labio superior.",
+        "itemType": "service",
+        "categorySeedKey": "laser",
+        "unitCode": "unit",
+        "branchCodes": [
+          "DOWNTOWN",
+          "EAST"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "milk-cream",
+        "sku": "PRD-01",
+        "name": "Crema de leche",
+        "description": "Crema corporal disponible para venta.",
+        "itemType": "product",
+        "categorySeedKey": "productos",
+        "unitCode": "unit",
+        "branchCodes": [
+          "HQ",
+          "DOWNTOWN"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "red-bull",
+        "sku": "PRD-02",
+        "name": "Red Bull",
+        "description": "Bebida energizante para venta en recepción.",
+        "itemType": "product",
+        "categorySeedKey": "productos",
+        "unitCode": "unit",
+        "branchCodes": [
+          "HQ",
+          "NORTH",
+          "DOWNTOWN",
+          "EAST"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "coca-cola",
+        "sku": "PRD-03",
+        "name": "Coca cola normal",
+        "description": "Bebida gaseosa para venta en recepción.",
+        "itemType": "product",
+        "categorySeedKey": "productos",
+        "unitCode": "unit",
+        "branchCodes": [
+          "HQ",
+          "NORTH",
+          "DOWNTOWN",
+          "EAST"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "hamburger",
+        "sku": "PRD-04",
+        "name": "Hamburguesa",
+        "description": "Producto de cafetería para venta en sucursal.",
+        "itemType": "product",
+        "categorySeedKey": "productos",
+        "unitCode": "unit",
+        "branchCodes": [
+          "HQ",
+          "NORTH"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "vitamin-c-serum",
+        "sku": "PRD-05",
+        "name": "Serum vitamina C",
+        "description": "Serum facial de vitamina C para venta minorista.",
+        "itemType": "product",
+        "categorySeedKey": "productos",
+        "unitCode": "unit",
+        "branchCodes": [
+          "HQ",
+          "DOWNTOWN",
+          "EAST"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "spf50-sunscreen",
+        "sku": "PRD-06",
+        "name": "Bloqueador solar SPF50",
+        "description": "Protector solar SPF50 para cuidado posterior al tratamiento.",
+        "itemType": "product",
+        "categorySeedKey": "productos",
+        "unitCode": "unit",
+        "branchCodes": [
+          "HQ",
+          "NORTH",
+          "EAST"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "nitrile-gloves",
+        "sku": "INS-01",
+        "name": "Guantes de nitrilo (caja)",
+        "description": "Caja de guantes de nitrilo para uso clínico.",
+        "itemType": "other",
+        "categorySeedKey": "insumos",
+        "unitCode": "unit",
+        "branchCodes": [
+          "HQ",
+          "NORTH",
+          "DOWNTOWN",
+          "EAST"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "laser-conductive-gel",
+        "sku": "INS-02",
+        "name": "Gel conductor láser",
+        "description": "Gel conductor para sesiones de depilación láser.",
+        "itemType": "other",
+        "categorySeedKey": "insumos",
+        "unitCode": "l",
+        "branchCodes": [
+          "HQ",
+          "DOWNTOWN",
+          "EAST"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "disposable-towels",
+        "sku": "INS-03",
+        "name": "Toallas desechables (paquete)",
+        "description": "Paquete de toallas desechables para cabina.",
+        "itemType": "other",
+        "categorySeedKey": "insumos",
+        "unitCode": "unit",
+        "branchCodes": [
+          "HQ",
+          "NORTH",
+          "DOWNTOWN",
+          "EAST"
+        ],
+        "status": "active"
+      },
+      {
+        "seedKey": "isopropyl-alcohol",
+        "sku": "INS-04",
+        "name": "Alcohol isopropílico 70%",
+        "description": "Alcohol isopropílico para limpieza de superficies y equipos.",
+        "itemType": "other",
+        "categorySeedKey": "insumos",
+        "unitCode": "l",
+        "branchCodes": [
+          "HQ",
+          "NORTH",
+          "DOWNTOWN",
+          "EAST"
+        ],
+        "status": "active"
       }
     ]
   },

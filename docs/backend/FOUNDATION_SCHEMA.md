@@ -83,9 +83,10 @@ fiscal record.
 
 `demo-data/v1/manifest.json` is the source of truth for the synthetic reference workspace. It
 contains schema/seed versions, per-file counts and SHA-256 checksums. Backend loading validates
-Pydantic contracts and checksums; frontend generation consumes the same files. Phase 2 adds five
-canonical customers and thirteen basic employees while keeping future HR-only fields isolated in
-fixture metadata.
+Pydantic contracts and checksums; frontend generation consumes the same files. The canonical data
+includes five customers, thirteen basic employees, six catalog categories, and twenty-two catalog
+items with deterministic assignments across HQ, NORTH, DOWNTOWN, and EAST. Future HR-only fields
+remain isolated in fixture metadata.
 
 `schemaVersion` records the exact Alembic revision expected by that application build. After a new
 migration is validated with the canonical seed, update the manifest and regenerate the frontend

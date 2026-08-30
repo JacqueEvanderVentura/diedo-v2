@@ -68,7 +68,7 @@ export const useCatalogStore = create(
 
       hydrateFromApi: async (categories = [], configBranches = []) => {
         const [productsRes, units, apiBranches] = await Promise.all([
-          catalogApi.listProducts({ pageSize: 100 }),
+          catalogApi.listAllProducts(),
           catalogApi.listUnitsOfMeasure(),
           lookupsApi.branches(),
         ])
@@ -108,6 +108,7 @@ export const useCatalogStore = create(
         if (existing?.apiSynced && existing.version) {
           apiProduct = await catalogApi.updateProduct(existing.id, {
             version: existing.version,
+            itemType: form.type === 'supply' ? 'other' : form.type,
             name: form.name.trim(),
             sku: form.sku || null,
             categoryId,
@@ -117,6 +118,7 @@ export const useCatalogStore = create(
           })
         } else {
           apiProduct = await catalogApi.createProduct({
+            itemType: form.type === 'supply' ? 'other' : form.type,
             name: form.name.trim(),
             sku: form.sku || null,
             categoryId,

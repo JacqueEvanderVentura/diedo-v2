@@ -62,6 +62,7 @@ def _unit_response(unit: UnitOfMeasureRecord) -> UnitOfMeasureResponse:
 def _product_response(product: ProductRecord) -> ProductResponse:
     return ProductResponse(
         id=product.id,
+        item_type=product.item_type,  # type: ignore[arg-type]
         name=product.name,
         description=product.description,
         sku=product.sku,
@@ -247,6 +248,7 @@ def create_product(
     product = CatalogService(database).create_product(
         principal=principal,
         grant=grant,
+        item_type=payload.item_type,
         name=payload.name,
         description=payload.description,
         sku=payload.sku,

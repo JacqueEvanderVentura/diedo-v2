@@ -154,3 +154,11 @@ HrDocumentManageGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("hr.document.manage")),
 ]
+AppointmentReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("appointment.read")),
+]
+AppointmentManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("appointment.manage")),
+]

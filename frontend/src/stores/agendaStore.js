@@ -1,6 +1,7 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
-import { ephemeralJsonStorage } from '@/services/storagePolicy'
+import { appointmentsGateway } from '@/services/appointmentsApi'
+import { useSessionStore } from '@/stores/sessionStore'
+import { registerSensitiveStateCleaner } from '@/services/storagePolicy'
 import { currentSessionActor } from '@/lib/sessionActor'
 import { backfillHistory, buildCreateChanges, diffAppointmentChanges } from '@/modules/agenda/lib/audit'
 import {
@@ -11,19 +12,20 @@ import {
 
 const genId = () => `apt-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const genLogId = () => `log-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
+const appointmentReads = new Map()
 
 export const MOCK_USER = 'Alex Demo'
 const DEFAULT_BRANCH_ID = 'charm-dn'
 
-export const toKey = (d) => {
-  const dt = d instanceof Date ? d : new Date(d)
-  const y = dt.getFullYear()
-  const m = String(dt.getMonth() + 1).padStart(2, '0')
-  const day = String(dt.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+export const toKey = (date) => {
+  const value = date instanceof Date ? date : new Date(date)
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
+
 export const todayKey = () => toKey(new Date())
-const shift = (n) => toKey(new Date(Date.now() + n * 86400000))
 
 export const APPOINTMENT_STATUSES = [
   { id: 'pendiente', name: 'Pendiente', tone: 'warning' },
@@ -35,7 +37,8 @@ export const APPOINTMENT_STATUSES = [
   { id: 'retrasada', name: 'Retrasada', tone: 'warning' },
   { id: 'reprogramada', name: 'Reprogramada', tone: 'brand' },
 ]
-export const statusMeta = (id) => APPOINTMENT_STATUSES.find((s) => s.id === id) || APPOINTMENT_STATUSES[0]
+
+export const statusMeta = (id) => APPOINTMENT_STATUSES.find((status) => status.id === id) || APPOINTMENT_STATUSES[0]
 
 function auditActor(source) {
   if (source === 'self') return { userId: null, userName: 'Portal de agendación' }
@@ -43,91 +46,40 @@ function auditActor(source) {
   return { userId: actor.id, userName: actor.name }
 }
 
-function stampAudit(action, prev = {}, source = 'staff') {
-  const now = new Date().toISOString()
+function stampAudit(action, previous = {}, source = 'staff') {
+  const timestamp = new Date().toISOString()
   const actor = auditActor(source)
   if (action === 'create') {
     return {
       createdBy: actor.userName,
       updatedBy: actor.userName,
-      createdAt: now,
-      updatedAt: now,
+      createdAt: timestamp,
+      updatedAt: timestamp,
     }
   }
   return {
-    createdBy: prev.createdBy || actor.userName,
-    createdAt: prev.createdAt || now,
+    createdBy: previous.createdBy || actor.userName,
+    createdAt: previous.createdAt || timestamp,
     updatedBy: actor.userName,
-    updatedAt: now,
+    updatedAt: timestamp,
   }
 }
-
-function appendHistory(prevHistory, entry) {
-  return [...(prevHistory || []), entry]
-}
-
-function withAuditDefaults(appointment) {
-  if (!appointment) return appointment
-  const now = new Date().toISOString()
-  return {
-    branchId: appointment.branchId || DEFAULT_BRANCH_ID,
-    createdBy: appointment.createdBy || MOCK_USER,
-    updatedBy: appointment.updatedBy || MOCK_USER,
-    createdAt: appointment.createdAt || now,
-    updatedAt: appointment.updatedAt || now,
-    history: appointment.history?.length ? appointment.history : backfillHistory(appointment),
-    ...appointment,
-  }
-}
-
-const base = (extra) => ({
-  notes: '',
-  cabinaId: 'cab1',
-  employeeId: '',
-  customerPhone: '',
-  branchId: DEFAULT_BRANCH_ID,
-  pendingPayment: false,
-  pendingAmount: 0,
-  firstTime: false,
-  freeTrial: false,
-  completed: false,
-  recurrence: 'none',
-  repeatCount: 2,
-  reminderSent: true,
-  source: 'staff',
-  createdBy: MOCK_USER,
-  updatedBy: MOCK_USER,
-  createdAt: '2026-01-15T10:00:00.000Z',
-  updatedAt: '2026-01-15T10:00:00.000Z',
-  history: [],
-  ...extra,
-})
-
-const SEED = [
-  base({ id: 'apt-seed-1', _seedOffset: 0, date: todayKey(), time: '09:30', duration: 30, customerId: 'c1', customerName: 'María Fernández', customerPhone: '809-555-0101', serviceId: 'p2', serviceName: '1 sesión axilas', price: 900, status: 'confirmada', cabinaId: 'cab1', employeeId: 'emp1' }),
-  base({ id: 'apt-seed-2', _seedOffset: 0, date: todayKey(), time: '11:00', duration: 60, customerId: 'c3', customerName: 'Ana Cristina Vargas', customerPhone: '809-555-0202', serviceId: 'p11', serviceName: 'Facial hidratante', price: 2500, status: 'pendiente', notes: 'Primera visita', cabinaId: 'cab2', employeeId: 'emp3', firstTime: true }),
-  base({ id: 'apt-seed-3', _seedOffset: 0, date: todayKey(), time: '15:00', duration: 45, customerId: 'c5', customerName: 'Carla Jiménez', serviceId: 'p8', serviceName: '1 Sesión rostro', price: 700, status: 'pendiente', cabinaId: 'cab3', employeeId: 'emp4' }),
-  base({ id: 'apt-seed-4', _seedOffset: 0, date: todayKey(), time: '12:30', duration: 30, customerId: 'c2', customerName: 'Catherine Pamela Reyes', serviceId: 'p3', serviceName: 'Cita de continuación (seguimiento)', price: 0, status: 'confirmada', cabinaId: 'cab1', employeeId: 'emp2' }),
-  base({ id: 'apt-seed-5', _seedOffset: 0, date: todayKey(), time: '17:00', duration: 60, customerId: 'c4', customerName: 'Dianeri Pérez A.', serviceId: 'p9', serviceName: 'Paq. 12 sesiones - Cuerpo completo VIP', price: 23000, status: 'confirmada', cabinaId: 'cab4', employeeId: 'emp5', pendingPayment: true, pendingAmount: 7000 }),
-  base({ id: 'apt-seed-6', _seedOffset: 1, date: shift(1), time: '10:00', duration: 60, customerId: 'c2', customerName: 'José Ramírez', serviceId: 'p4', serviceName: '1 sesión piernas completas', price: 1200, status: 'confirmada', cabinaId: 'cab2', employeeId: 'emp6', branchId: 'charm-santiago' }),
-  base({ id: 'apt-seed-7', _seedOffset: 2, date: shift(2), time: '13:30', duration: 30, customerId: 'c4', customerName: 'Luis Alberto Peña', serviceId: 'p12', serviceName: 'Depilación bigote', price: 500, status: 'pendiente', cabinaId: 'cab1', employeeId: 'emp7', branchId: 'charm-este' }),
-  base({ id: 'apt-seed-8', _seedOffset: -1, date: shift(-1), time: '11:00', duration: 60, customerId: 'c1', customerName: 'Nicole Sosa', serviceId: 'p10', serviceName: 'Cuerpo completo - pago', price: 0, status: 'completada', cabinaId: 'cab3', employeeId: 'emp8', freeTrial: true }),
-]
 
 function normalizeAppointment(data) {
   return {
     notes: data.notes || '',
-    cabinaId: data.cabinaId || 'cab1',
-    employeeId: data.employeeId || '',
+    cabinaId: data.cabinaId || data.resourceId || null,
+    resourceId: data.resourceId || data.cabinaId || null,
+    employeeId: data.employeeId || null,
     customerPhone: data.customerPhone || '',
     branchId: data.branchId || DEFAULT_BRANCH_ID,
-    pendingPayment: !!data.pendingPayment,
+    pendingPayment: data.pendingPayment === true,
     pendingAmount: Number(data.pendingAmount) || 0,
-    firstTime: !!data.firstTime,
-    freeTrial: !!data.freeTrial,
-    completed: !!data.completed,
+    firstTime: data.firstTime === true,
+    freeTrial: data.freeTrial === true,
+    completed: data.completed === true,
     recurrence: data.recurrence || 'none',
-    repeatCount: Number(data.repeatCount) || 2,
+    repeatCount: Number(data.repeatCount) || 1,
     reminderSent: data.reminderSent !== false,
     source: data.source || 'staff',
     date: data.date,
@@ -142,159 +94,243 @@ function normalizeAppointment(data) {
   }
 }
 
-export const useAgendaStore = create(
-  persist(
-    (set, get) => ({
-      appointments: SEED,
+function createDemoAppointment(data) {
+  const normalized = normalizeAppointment(data)
+  const audit = stampAudit('create', {}, normalized.source)
+  const payload = { id: genId(), version: 1, ...normalized, ...audit }
+  return {
+    ...payload,
+    history: [{
+      id: genLogId(),
+      at: audit.createdAt,
+      ...auditActor(normalized.source),
+      action: 'create',
+      changes: buildCreateChanges(payload),
+    }],
+  }
+}
 
-      addAppointment: (data) => {
-        let created = null
-        set((s) => {
-          const normalized = normalizeAppointment(data)
-          const source = normalized.source || 'staff'
-          const audit = stampAudit('create', {}, source)
-          const payload = { id: genId(), ...normalized, ...audit }
-          const history = [
-            {
-              id: genLogId(),
-              at: audit.createdAt,
-              ...auditActor(source),
-              action: 'create',
-              changes: buildCreateChanges(payload),
-            },
-          ]
-          created = { ...payload, history }
-          return {
-            appointments: [created, ...s.appointments],
-          }
-        })
-        syncAppointmentReceivable(created)
-      },
+function updateDemoAppointment(current, data) {
+  const merged = {
+    ...current,
+    ...data,
+    cabinaId: data.cabinaId || data.resourceId || current.cabinaId,
+    resourceId: data.resourceId || data.cabinaId || current.resourceId,
+    duration: data.duration === undefined ? current.duration : Number(data.duration) || 0,
+    price: data.price === undefined ? current.price : Number(data.price) || 0,
+    pendingAmount: data.pendingAmount === undefined ? current.pendingAmount : Number(data.pendingAmount) || 0,
+    version: (current.version || 1) + 1,
+  }
+  const changes = diffAppointmentChanges(current, merged)
+  const audit = stampAudit('update', current, current.source || 'staff')
+  return {
+    ...merged,
+    ...audit,
+    history: changes.length
+      ? [...(current.history || backfillHistory(current)), {
+          id: genLogId(),
+          at: audit.updatedAt,
+          ...auditActor(current.source || 'staff'),
+          action: 'update',
+          changes,
+        }]
+      : current.history || backfillHistory(current),
+  }
+}
 
-      addAppointments: (list) => {
-        const created = []
-        set((s) => {
-          const next = list.map((d) => {
-            const normalized = normalizeAppointment(d)
-            const source = normalized.source || 'staff'
-            const audit = stampAudit('create', {}, source)
-            const payload = { id: genId(), ...normalized, ...audit }
-            return {
-              ...payload,
-              history: [
-                {
-                  id: genLogId(),
-                  at: audit.createdAt,
-                  ...auditActor(source),
-                  action: 'create',
-                  changes: buildCreateChanges(payload),
-                },
-              ],
-            }
-          })
-          created.push(...next)
-          return {
-            appointments: [...next, ...s.appointments],
-          }
-        })
-        created.forEach(syncAppointmentReceivable)
-      },
+function matchesScope(appointment, params = {}) {
+  if (params.branchId && appointment.branchId !== params.branchId) return false
+  if (params.dateFrom && appointment.date < params.dateFrom) return false
+  if (params.dateTo && appointment.date > params.dateTo) return false
+  if (params.employeeId && appointment.employeeId !== params.employeeId) return false
+  if (params.status && appointment.status !== params.status) return false
+  return true
+}
 
-      updateAppointment: (id, data) => {
-        let updated = null
-        set((s) => ({
-          appointments: s.appointments.map((a) => {
-            if (a.id !== id) return a
-            const merged = {
-              ...a,
-              ...data,
-              duration: data.duration === undefined ? a.duration : Number(data.duration) || 0,
-              price: data.price === undefined ? a.price : Number(data.price) || 0,
-              pendingAmount: data.pendingAmount === undefined ? a.pendingAmount : Number(data.pendingAmount) || 0,
-            }
-            const changes = diffAppointmentChanges(a, merged)
-            const audit = stampAudit('update', a, a.source || 'staff')
-            if (!changes.length) {
-              updated = { ...merged, ...audit }
-              return updated
-            }
-            const entry = {
-              id: genLogId(),
-              at: audit.updatedAt,
-              ...auditActor(a.source || 'staff'),
-              action: 'update',
-              changes,
-            }
-            updated = {
-              ...merged,
-              ...audit,
-              history: appendHistory(a.history, entry),
-            }
-            return updated
-          }),
+function mergeScopedAppointments(current, incoming, params = {}) {
+  const incomingIds = new Set(incoming.map((appointment) => appointment.id))
+  const hasScope = Boolean(params.branchId || params.dateFrom || params.dateTo || params.employeeId || params.status)
+  const retained = hasScope
+    ? current.filter((appointment) => !matchesScope(appointment, params) && !incomingIds.has(appointment.id))
+    : []
+  return [...incoming, ...retained]
+}
+
+function replaceAppointment(items, appointment) {
+  const found = items.some((item) => item.id === appointment.id)
+  return found
+    ? items.map((item) => item.id === appointment.id ? appointment : item)
+    : [appointment, ...items]
+}
+
+function mutationScope(appointment) {
+  return appointment?.branchId && appointment?.date
+    ? { branchId: appointment.branchId, dateFrom: appointment.date, dateTo: appointment.date }
+    : {}
+}
+
+export const useAgendaStore = create((set, get) => ({
+  appointments: [],
+  resources: [],
+  dataState: appointmentsGateway.getState(),
+  hydrating: false,
+  resourceLoadingByBranch: {},
+
+  hydrateAppointments: ({ force = false, params = {} } = {}) => {
+    const requestKey = JSON.stringify(params)
+    if (appointmentReads.has(requestKey)) return appointmentReads.get(requestKey)
+    if (!force && get().dataState.status !== 'loading') return Promise.resolve(get().appointments)
+
+    const request = (async () => {
+      set({ hydrating: true })
+      try {
+        const result = await appointmentsGateway.read('appointments', params)
+        const appointments = result.data.map((appointment) => ({
+          ...appointment,
+          history: appointment.history?.length ? appointment.history : backfillHistory(appointment),
         }))
-        if (updated) syncAppointmentReceivable(updated)
-      },
+        set((state) => ({
+          appointments: mergeScopedAppointments(state.appointments, appointments, params),
+          dataState: appointmentsGateway.getState(),
+        }))
+        syncAllAgendaReceivables(appointments)
+        return appointments
+      } catch (error) {
+        set({ dataState: appointmentsGateway.getState() })
+        throw error
+      } finally {
+        if (appointmentReads.get(requestKey) === request) appointmentReads.delete(requestKey)
+        set({ hydrating: appointmentReads.size > 0 })
+      }
+    })()
+    appointmentReads.set(requestKey, request)
+    return request
+  },
 
-      deleteAppointment: (id) => {
-        set((s) => ({ appointments: s.appointments.filter((a) => a.id !== id) }))
-        removeAppointmentReceivable(id)
-      },
-
-      setStatus: (id, status) =>
-        set((s) => ({
-          appointments: s.appointments.map((a) => {
-            if (a.id !== id || a.status === status) return a
-            const audit = stampAudit('update', a, a.source || 'staff')
-            const entry = {
-              id: genLogId(),
-              at: audit.updatedAt,
-              ...auditActor(a.source || 'staff'),
-              action: 'status',
-              changes: [
-                {
-                  field: 'status',
-                  label: 'Estado',
-                  from: statusMeta(a.status).name,
-                  to: statusMeta(status).name,
-                },
-              ],
-            }
-            return {
-              ...a,
-              status,
-              ...audit,
-              history: appendHistory(a.history, entry),
-            }
-          }),
-        })),
-
-      getByDate: (dateKey) =>
-        get().appointments.filter((a) => a.date === dateKey).sort((a, b) => a.time.localeCompare(b.time)),
-
-      getToday: () => get().getByDate(todayKey()),
-    }),
-    {
-      name: 'diedo-agenda',
-      storage: ephemeralJsonStorage,
-      version: 6,
-      migrate: (persisted) => persisted ?? {},
-      partialize: (s) => ({ appointments: s.appointments }),
-      merge: (persisted, current) => {
-        const state = { ...current, ...(persisted || {}) }
-        if (Array.isArray(state.appointments)) {
-          state.appointments = state.appointments.map((a) => {
-            let apt = a && a._seedOffset !== undefined ? { ...a, date: shift(a._seedOffset) } : a
-            apt = withAuditDefaults({ ...apt, source: apt.source || 'staff' })
-            if (!apt.history?.length) {
-              apt = { ...apt, history: backfillHistory(apt) }
-            }
-            return apt
-          })
-          queueMicrotask(() => syncAllAgendaReceivables(state.appointments))
-        }
-        return state
-      },
+  hydrateResources: async ({ branchId, force = false } = {}) => {
+    if (!branchId) return []
+    const alreadyLoaded = get().resources.some((resource) => resource.branchId === branchId)
+    if ((!force && alreadyLoaded) || get().resourceLoadingByBranch[branchId]) {
+      return get().resources.filter((resource) => resource.branchId === branchId)
     }
-  )
-)
+    set((state) => ({
+      resourceLoadingByBranch: { ...state.resourceLoadingByBranch, [branchId]: true },
+    }))
+    try {
+      const result = await appointmentsGateway.read('appointmentResources', { branchId })
+      set((state) => ({
+        resources: [
+          ...state.resources.filter((resource) => resource.branchId !== branchId),
+          ...result.data,
+        ],
+        resourceLoadingByBranch: { ...state.resourceLoadingByBranch, [branchId]: false },
+      }))
+      return result.data
+    } catch (error) {
+      set((state) => ({
+        resourceLoadingByBranch: { ...state.resourceLoadingByBranch, [branchId]: false },
+      }))
+      throw error
+    }
+  },
+
+  addAppointment: async (data) => {
+    if (useSessionStore.getState().status === 'demo') {
+      const created = createDemoAppointment(data)
+      set((state) => ({ appointments: [created, ...state.appointments] }))
+      syncAppointmentReceivable(created)
+      return created
+    }
+    try {
+      const created = await appointmentsGateway.mutate('createAppointment', data)
+      set((state) => ({
+        appointments: created.reduce((items, appointment) => replaceAppointment(items, appointment), state.appointments),
+      }))
+      created.forEach(syncAppointmentReceivable)
+      const first = created[0]
+      if (first) await get().hydrateAppointments({ force: true, params: {
+        branchId: first.branchId,
+        dateFrom: created.reduce((min, item) => item.date < min ? item.date : min, first.date),
+        dateTo: created.reduce((max, item) => item.date > max ? item.date : max, first.date),
+      } }).catch(() => {})
+      return created.length === 1 ? created[0] : created
+    } catch (error) {
+      await get().hydrateAppointments({ force: true, params: mutationScope(data) }).catch(() => {})
+      throw error
+    }
+  },
+
+  addAppointments: async (list) => {
+    if (!Array.isArray(list) || list.length === 0) return []
+    if (useSessionStore.getState().status !== 'demo') {
+      throw new Error('Las series deben enviarse como una sola cita con recurrencia.')
+    }
+    const created = list.map(createDemoAppointment)
+    set((state) => ({ appointments: [...created, ...state.appointments] }))
+    created.forEach(syncAppointmentReceivable)
+    return created
+  },
+
+  updateAppointment: async (id, data) => {
+    const current = get().appointments.find((appointment) => appointment.id === id)
+    if (!current) throw new Error('Cita no encontrada.')
+    if (useSessionStore.getState().status === 'demo') {
+      const updated = updateDemoAppointment(current, data)
+      set((state) => ({ appointments: replaceAppointment(state.appointments, updated) }))
+      syncAppointmentReceivable(updated)
+      return updated
+    }
+    try {
+      const updated = await appointmentsGateway.mutate('updateAppointment', id, { ...current, ...data }, current.version)
+      set((state) => ({ appointments: replaceAppointment(state.appointments, updated) }))
+      syncAppointmentReceivable(updated)
+      await get().hydrateAppointments({ force: true, params: mutationScope(updated) }).catch(() => {})
+      return updated
+    } catch (error) {
+      await get().hydrateAppointments({ force: true, params: mutationScope({ ...current, ...data }) }).catch(() => {})
+      throw error
+    }
+  },
+
+  deleteAppointment: async (id) => {
+    const current = get().appointments.find((appointment) => appointment.id === id)
+    if (!current) return null
+    if (useSessionStore.getState().status === 'demo') {
+      const cancelled = updateDemoAppointment(current, { status: 'cancelada' })
+      set((state) => ({ appointments: replaceAppointment(state.appointments, cancelled) }))
+      removeAppointmentReceivable(id)
+      return cancelled
+    }
+    try {
+      const cancelled = await appointmentsGateway.mutate('cancelAppointment', id, current.version)
+      set((state) => ({ appointments: replaceAppointment(state.appointments, cancelled) }))
+      removeAppointmentReceivable(id)
+      await get().hydrateAppointments({ force: true, params: mutationScope(cancelled) }).catch(() => {})
+      return cancelled
+    } catch (error) {
+      await get().hydrateAppointments({ force: true, params: mutationScope(current) }).catch(() => {})
+      throw error
+    }
+  },
+
+  setStatus: async (id, status) => get().updateAppointment(id, { status }),
+
+  getByDate: (dateKey) => get().appointments
+    .filter((appointment) => appointment.date === dateKey)
+    .sort((a, b) => a.time.localeCompare(b.time)),
+
+  getToday: () => get().getByDate(todayKey()),
+
+  clearSensitive: () => {
+    appointmentReads.clear()
+    set({
+      appointments: [],
+      resources: [],
+      dataState: appointmentsGateway.getState(),
+      hydrating: false,
+      resourceLoadingByBranch: {},
+    })
+  },
+}))
+
+registerSensitiveStateCleaner(() => useAgendaStore.getState().clearSensitive())

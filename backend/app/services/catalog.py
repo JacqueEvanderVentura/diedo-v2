@@ -241,6 +241,7 @@ class CatalogService:
         *,
         principal: AuthPrincipal,
         grant: PermissionGrant,
+        item_type: str,
         name: str,
         description: str | None,
         sku: str | None,
@@ -266,6 +267,7 @@ class CatalogService:
             product_id = self._repository.create_product(
                 workspace_id=grant.workspace_id,
                 actor_platform_user_id=principal.platform_user_id,
+                item_type=item_type,
                 name=normalize_catalog_name(name),
                 description=normalize_optional_text(description),
                 sku=normalized_sku,

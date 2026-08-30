@@ -1,4 +1,4 @@
-const API_CONNECTED_MODULE_SET = new Set(['foundation', 'iam', 'catalog', 'crm', 'hr'])
+const API_CONNECTED_MODULE_SET = new Set(['foundation', 'iam', 'catalog', 'crm', 'hr', 'appointments'])
 
 export const API_CONNECTED_MODULES = Object.freeze([...API_CONNECTED_MODULE_SET])
 
@@ -13,6 +13,9 @@ export function isModuleAvailable(moduleCode, enabledModules = []) {
 }
 
 export function routeRequirement(pathname) {
+  if (pathname === '/agenda' || pathname.startsWith('/agenda/')) {
+    return { module: 'appointments', permission: 'appointment.read' }
+  }
   if (pathname.startsWith('/rrhh/cuentas-por-cobrar')) {
     return { module: 'hr', permission: 'hr.debt.read' }
   }

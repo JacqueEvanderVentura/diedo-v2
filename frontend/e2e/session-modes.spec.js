@@ -63,6 +63,8 @@ const me = {
     'employee.read',
     'employee.manage',
     'employee.schedule.manage',
+    'appointment.read',
+    'appointment.manage',
   ],
   workspacePermissionCodes: [
     'workspace.read',
@@ -80,8 +82,10 @@ const me = {
     'employee.read',
     'employee.manage',
     'employee.schedule.manage',
+    'appointment.read',
+    'appointment.manage',
   ],
-  enabledModules: ['foundation', 'iam', 'catalog', 'crm', 'hr'],
+  enabledModules: ['foundation', 'iam', 'catalog', 'crm', 'hr', 'appointments'],
 }
 
 const adminRoleId = '01900000-0000-7000-8000-000000000004'
@@ -94,6 +98,28 @@ const category = {
   id: categoryId,
   name: 'Servicios',
   description: 'Servicios generales',
+  status: 'active',
+  version: 1,
+  createdAt: '2026-08-29T12:00:00Z',
+  updatedAt: '2026-08-29T12:00:00Z',
+}
+
+const catalogUnit = {
+  id: '01900000-0000-7000-8000-000000000013',
+  code: 'unit',
+  name: 'Unidad',
+  symbol: 'ud',
+}
+
+const appointmentService = {
+  id: '01900000-0000-7000-8000-000000000014',
+  itemType: 'service',
+  name: 'Consulta terapéutica',
+  description: null,
+  sku: 'SVC-01',
+  category: { id: categoryId, name: 'Servicios' },
+  unitOfMeasure: catalogUnit,
+  branches: [me.visibleBranches[0]],
   status: 'active',
   version: 1,
   createdAt: '2026-08-29T12:00:00Z',
@@ -137,10 +163,14 @@ async function mockOnline(page, {
   currentUser = me,
   metrics,
   batchStatus = 200,
+  appointmentCreateStatus = 201,
+  catalogItems = [appointmentService],
+  resourcesByBranch,
 } = {}) {
   await page.route('**/api-backend/**', async (route) => {
     const request = route.request()
-    const pathname = new URL(request.url()).pathname
+    const requestUrl = new URL(request.url())
+    const pathname = requestUrl.pathname
     if (pathname.endsWith('/health/ready')) return route.fulfill({ status: 200, json: ready })
     if (pathname.endsWith('/api/v1/auth/refresh')) {
       return route.fulfill({
@@ -192,6 +222,69 @@ async function mockOnline(page, {
         json: { items: [], page: 1, pageSize: 50, totalItems: 0, totalPages: 0 },
       })
     }
+    if (pathname.endsWith('/api/v1/catalog/products') && request.method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        json: {
+          items: catalogItems,
+          page: 1,
+          pageSize: 100,
+          totalItems: catalogItems.length,
+          totalPages: catalogItems.length ? 1 : 0,
+        },
+      })
+    }
+    if (pathname.endsWith('/api/v1/catalog/units-of-measure')) {
+      return route.fulfill({ status: 200, json: [catalogUnit] })
+    }
+    if (pathname.endsWith('/api/v1/lookups/branches')) {
+      return route.fulfill({
+        status: 200,
+        json: currentUser.visibleBranches.map((branch) => ({ id: branch.id, name: branch.name })),
+      })
+    }
+    if (pathname.endsWith('/api/v1/appointment-resources') && request.method() === 'GET') {
+      const branchId = requestUrl.searchParams.get('branchId')
+      const configuredResources = resourcesByBranch?.[branchId]
+      return route.fulfill({
+        status: 200,
+        json: {
+          items: configuredResources ?? [{
+            id: '01900000-0000-7000-8000-000000000020',
+            branchId,
+            code: 'CAB-1',
+            name: 'Cabina 1',
+            resourceType: 'room',
+            status: 'active',
+            version: 1,
+          }],
+        },
+      })
+    }
+    if (pathname.endsWith('/api/v1/appointments') && request.method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        json: { items: [], page: 1, pageSize: 200, totalItems: 0, totalPages: 0 },
+      })
+    }
+    if (pathname.endsWith('/api/v1/appointments') && request.method() === 'POST') {
+      if (metrics) {
+        metrics.appointmentIdempotencyKeys = [
+          ...(metrics.appointmentIdempotencyKeys || []),
+          request.headers()['idempotency-key'],
+        ]
+        metrics.appointmentBodies = [
+          ...(metrics.appointmentBodies || []),
+          request.postDataJSON(),
+        ]
+      }
+      return route.fulfill({
+        status: appointmentCreateStatus,
+        json: appointmentCreateStatus === 201
+          ? { items: [] }
+          : { message: 'Ese horario ya está ocupado por otra cita.', parameter: 'time' },
+      })
+    }
     return route.fulfill({ status: 404, json: { message: 'Mock no configurado' } })
   })
 }
@@ -222,6 +315,81 @@ test('modo online muestra módulos habilitados y conserva los aún no migrados',
   await page.goto('/crm')
   await expect(page).toHaveURL(/\/crm$/)
   await expect(page.getByRole('heading', { name: 'CRM', exact: true, level: 1 })).toBeVisible()
+})
+
+test('Agenda conserva el modal abierto y muestra el conflicto transaccional de horario', async ({ page }) => {
+  const metrics = { me: 0, matrix: 0 }
+  await page.setViewportSize({ width: 1280, height: 1200 })
+  await mockOnline(page, { appointmentCreateStatus: 409, metrics })
+  await page.goto('/agenda/gestion')
+  await page.getByTestId('gestion-new').click()
+
+  await expect(page.getByTestId('appointment-form-modal')).toBeVisible()
+  await expect(page.getByTestId('appointment-field-cabina')).toContainText('Cabina 1')
+  await page.getByTestId('appointment-field-service').click()
+  await page.getByRole('option', { name: /Consulta terapéutica/ }).click()
+  await page.getByTestId('appointment-field-date').fill('2026-09-03')
+  await page.getByTestId('appointment-field-time').fill('14:00')
+  await page.getByTestId('appointment-form-save').click()
+
+  await expect(page.getByTestId('appointment-form-error')).toHaveText('Ese horario ya está ocupado por otra cita.')
+  await expect(page.getByTestId('appointment-form-modal')).toBeVisible()
+  expect(metrics.appointmentIdempotencyKeys).toHaveLength(1)
+  expect(metrics.appointmentIdempotencyKeys[0]).toMatch(/^.{8,128}$/)
+  expect(metrics.appointmentBodies[0].serviceId).toBe(appointmentService.id)
+})
+
+test('Agenda filtra servicios por sucursal y bloquea sucursales sin cabinas', async ({ page }) => {
+  const centerBranch = {
+    id: '01900000-0000-7000-8000-000000000105',
+    legalEntityId: me.visibleBranches[0].legalEntityId,
+    code: 'CENTER',
+    name: 'Centro',
+  }
+  const scopedUser = {
+    ...me,
+    visibleBranches: [me.visibleBranches[0], centerBranch],
+  }
+  const mainService = appointmentService
+  const centerService = {
+    ...appointmentService,
+    id: '01900000-0000-7000-8000-000000000114',
+    name: 'Servicio exclusivo Centro',
+    sku: 'SVC-CENTER',
+    branches: [centerBranch],
+  }
+  await page.setViewportSize({ width: 1280, height: 1200 })
+  await mockOnline(page, {
+    currentUser: scopedUser,
+    catalogItems: [mainService, centerService],
+    resourcesByBranch: {
+      [me.visibleBranches[0].id]: [],
+      [centerBranch.id]: [{
+        id: '01900000-0000-7000-8000-000000000120',
+        branchId: centerBranch.id,
+        code: 'CENTER-1',
+        name: 'Cabina Centro',
+        resourceType: 'room',
+        status: 'active',
+        version: 1,
+      }],
+    },
+  })
+  await page.goto('/agenda/gestion')
+  await page.getByTestId('gestion-new').click()
+
+  await expect(page.getByTestId('appointment-no-resources')).toBeVisible()
+  await page.getByTestId('appointment-field-service').click()
+  await expect(page.getByRole('option', { name: /Consulta terapéutica/ })).toBeVisible()
+  await expect(page.getByRole('option', { name: /Servicio exclusivo Centro/ })).toHaveCount(0)
+  await page.getByRole('option', { name: /Consulta terapéutica/ }).click()
+
+  await page.getByTestId('appointment-field-branch').click()
+  await page.getByRole('option', { name: 'Centro' }).click()
+  await expect(page.getByTestId('appointment-field-cabina')).toContainText('Cabina Centro')
+  await page.getByTestId('appointment-field-service').click()
+  await expect(page.getByRole('option', { name: /Servicio exclusivo Centro/ })).toBeVisible()
+  await expect(page.getByRole('option', { name: /Consulta terapéutica/ })).toHaveCount(0)
 })
 
 test('refresh 401 no inventa usuario y redirige al login', async ({ page }) => {

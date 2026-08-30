@@ -119,6 +119,30 @@ class EmployeesFixture(ApiModel):
     items: list[DemoEmployeeFixture]
 
 
+class DemoCatalogCategoryFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    name: str = Field(min_length=2, max_length=160)
+    description: str | None = Field(default=None, max_length=500)
+    status: Literal["active", "inactive"] = "active"
+
+
+class DemoCatalogItemFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    sku: str | None = Field(default=None, min_length=1, max_length=64)
+    name: str = Field(min_length=2, max_length=160)
+    description: str | None = Field(default=None, max_length=1000)
+    item_type: Literal["product", "service", "membership", "asset_template", "other"]
+    category_seed_key: str
+    unit_code: str
+    branch_codes: list[str] = Field(min_length=1, max_length=100)
+    status: Literal["active", "inactive"] = "active"
+
+
+class CatalogFixture(ApiModel):
+    categories: list[DemoCatalogCategoryFixture]
+    items: list[DemoCatalogItemFixture]
+
+
 class DemoLeaveRequestFixture(ApiModel):
     seed_key: str
     employee_seed_key: str
@@ -169,6 +193,7 @@ class DemoBundle:
     foundation: FoundationFixture
     iam: IamFixture
     configuration: ConfigurationFixture
+    catalog: CatalogFixture
     customers: CustomersFixture
     employees: EmployeesFixture
     hr: HrFixture
@@ -183,6 +208,7 @@ def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
         "foundation.json",
         "iam.json",
         "configuration.json",
+        "catalog.json",
         "customers.json",
         "employees.json",
     }
@@ -192,7 +218,9 @@ def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
         path = (root / entry.name).resolve()
         if path.parent != root:
             raise ValueError("Demo manifest paths must remain inside the version directory.")
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        # Git may materialize CRLF on Windows. Checksums describe the canonical LF fixture.
+        canonical_bytes = path.read_bytes().replace(b"\r\n", b"\n")
+        digest = hashlib.sha256(canonical_bytes).hexdigest()
         if digest != entry.sha256:
             raise ValueError(f"Checksum mismatch for {entry.name}.")
         json.loads(path.read_text(encoding="utf-8"))
@@ -204,6 +232,9 @@ def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
         iam=IamFixture.model_validate_json((root / "iam.json").read_text(encoding="utf-8")),
         configuration=ConfigurationFixture.model_validate_json(
             (root / "configuration.json").read_text(encoding="utf-8")
+        ),
+        catalog=CatalogFixture.model_validate_json(
+            (root / "catalog.json").read_text(encoding="utf-8")
         ),
         customers=CustomersFixture.model_validate_json(
             (root / "customers.json").read_text(encoding="utf-8")

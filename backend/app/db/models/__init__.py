@@ -1,6 +1,7 @@
 """Persistence model registry used by Alembic metadata discovery."""
 
 from app.db.models.administration import DemoSeedRegistry, PaymentMethod, UserInvitation
+from app.db.models.agenda import Appointment, AppointmentEvent, AppointmentResource
 from app.db.models.audit import AuditEntry
 from app.db.models.catalog import Item, ItemBranchAssignment, ItemCategory, UnitOfMeasure
 from app.db.models.foundation import (
@@ -44,6 +45,9 @@ from app.db.models.master_data import (
 __all__ = [
     "AccessScope",
     "Attachment",
+    "Appointment",
+    "AppointmentEvent",
+    "AppointmentResource",
     "AuthSession",
     "AuditEntry",
     "Branch",

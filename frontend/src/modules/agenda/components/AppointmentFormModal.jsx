@@ -5,7 +5,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
-import { useAgendaStore, todayKey } from '@/stores/agendaStore'
+import { APPOINTMENT_STATUSES, useAgendaStore, todayKey } from '@/stores/agendaStore'
 import { useRrhhStore } from '@/stores/rrhhStore'
 import { useCustomersStore } from '@/stores/customersStore'
 import { useCatalogStore } from '@/stores/catalogStore'
@@ -14,17 +14,19 @@ import { AppointmentShareCard } from './AppointmentShareCard'
 import { AppointmentShareActions } from './AppointmentShareActions'
 import { CustomerPicker } from '@/components/customers/CustomerPicker'
 import {
-  CABINAS,
   DURATION_OPTIONS,
   RECURRENCE_OPTIONS,
   REPEAT_COUNTS,
-  CALENDAR_STATUSES,
 } from '@/data/agenda'
 import { useBranchStaff } from '@/modules/rrhh/lib/staff'
 import { getAvailableSlots, fitsInSchedule } from '../lib/selfBooking'
 import { formatDOP } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { addDaysKey, addMonthsKey } from '../lib/calendar'
+import { isAppointmentConflict } from '@/services/adapters/appointments'
+import { useSessionStore } from '@/stores/sessionStore'
+import { servicesForBranch } from '../lib/serviceAvailability'
+
+const EMPTY_SLOT = Object.freeze({})
 
 const empty = (date, customerId, slot = {}) => ({
   date: slot.date || date || todayKey(),
@@ -35,8 +37,8 @@ const empty = (date, customerId, slot = {}) => ({
   customerPhone: '',
   serviceId: '',
   employeeId: slot.employeeId || '',
-  branchId: slot.branchId || 'charm-dn',
-  cabinaId: slot.cabinaId || 'cab1',
+  branchId: slot.branchId || '',
+  cabinaId: slot.cabinaId || '',
   status: 'confirmada',
   notes: '',
   pendingPayment: false,
@@ -49,34 +51,59 @@ const empty = (date, customerId, slot = {}) => ({
   reminderSent: true,
 })
 
-export function AppointmentFormModal({ open, onClose, appointment, defaultDate, defaultCustomerId, defaultSlot = {}, wide }) {
+export function AppointmentFormModal({ open, onClose, appointment, defaultDate, defaultCustomerId, defaultSlot = EMPTY_SLOT, wide = true }) {
   const addAppointment = useAgendaStore((s) => s.addAppointment)
-  const addAppointments = useAgendaStore((s) => s.addAppointments)
   const updateAppointment = useAgendaStore((s) => s.updateAppointment)
+  const resources = useAgendaStore((s) => s.resources)
+  const resourceLoadingByBranch = useAgendaStore((s) => s.resourceLoadingByBranch)
+  const hydrateResources = useAgendaStore((s) => s.hydrateResources)
   const customers = useCustomersStore((s) => s.customers)
   const allProducts = useCatalogStore((s) => s.products)
   const branches = useConfigStore((s) => s.branches)
   const employees = useRrhhStore((s) => s.employees)
   const vacationRequests = useRrhhStore((s) => s.vacationRequests)
   const appointments = useAgendaStore((s) => s.appointments)
-  const services = useMemo(() => allProducts.filter((p) => p.type === 'service'), [allProducts])
+  const canManage = useSessionStore((s) => s.hasPermission('appointment.manage'))
+  const sessionStatus = useSessionStore((s) => s.status)
+  const catalogHydrated = useCatalogStore((s) => s.apiContext.hydrated)
 
   const [form, setForm] = useState(empty())
   const [err, setErr] = useState('')
+  const [saving, setSaving] = useState(false)
   const editing = !!appointment
+  const servicesReady = sessionStatus === 'demo' || catalogHydrated
+  const services = useMemo(
+    () => servicesForBranch(allProducts, form.branchId, { online: sessionStatus === 'online' }),
+    [allProducts, form.branchId, sessionStatus]
+  )
 
   useEffect(() => {
     if (open) {
-      setForm(appointment ? { ...appointment } : empty(defaultDate, defaultCustomerId, defaultSlot))
+      const branchId = appointment?.branchId || defaultSlot.branchId || branches[0]?.id || ''
+      setForm(appointment
+        ? { ...appointment, branchId }
+        : empty(defaultDate, defaultCustomerId, { ...defaultSlot, branchId }))
       setErr('')
+      setSaving(false)
     }
-  }, [open, appointment, defaultDate, defaultCustomerId, defaultSlot])
+  }, [open, appointment, defaultDate, defaultCustomerId, defaultSlot, branches])
 
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+  const set = (key, value) => {
+    setForm((current) => ({ ...current, [key]: value }))
+    setErr('')
+  }
 
   const selectedService = useMemo(() => services.find((s) => s.id === form.serviceId), [services, form.serviceId])
+  const statusOptions = editing
+    ? APPOINTMENT_STATUSES
+    : APPOINTMENT_STATUSES.filter((status) => ['pendiente', 'confirmada'].includes(status.id))
   const price = selectedService?.price || form.price || 0
   const branchStaff = useBranchStaff(form.branchId)
+  const branchResources = useMemo(
+    () => resources.filter((resource) => resource.branchId === form.branchId && resource.active !== false),
+    [form.branchId, resources]
+  )
+  const resourcesLoading = resourceLoadingByBranch[form.branchId] === true
   const selectedEmployee = useMemo(
     () => employees.find((e) => e.id === form.employeeId),
     [employees, form.employeeId]
@@ -113,6 +140,44 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     }
   }, [form.branchId, branchStaff, form.employeeId])
 
+  useEffect(() => {
+    if (!open || !form.branchId) return
+    hydrateResources({ branchId: form.branchId }).catch(() => {})
+  }, [form.branchId, hydrateResources, open])
+
+  useEffect(() => {
+    if (!open || !form.branchId || resourcesLoading) return
+    const currentResourceIsValid = branchResources.some(
+      (resource) => resource.id === form.cabinaId
+    )
+    if (!currentResourceIsValid) {
+      setForm((current) => ({
+        ...current,
+        cabinaId: branchResources[0]?.id || '',
+      }))
+    }
+  }, [branchResources, form.branchId, form.cabinaId, open, resourcesLoading])
+
+  useEffect(() => {
+    if (!open || !servicesReady || !form.serviceId) return
+    if (!services.some((service) => service.id === form.serviceId)) {
+      setForm((current) => ({ ...current, serviceId: '', serviceName: '', price: 0 }))
+    }
+  }, [form.serviceId, open, services, servicesReady])
+
+  const changeBranch = (branchId) => {
+    setForm((current) => ({
+      ...current,
+      branchId,
+      serviceId: '',
+      serviceName: '',
+      price: 0,
+      cabinaId: '',
+      employeeId: '',
+    }))
+    setErr('')
+  }
+
   const pickCustomer = (c) => {
     setForm((f) => ({
       ...f,
@@ -142,22 +207,14 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     }
   }
 
-  const buildSeries = (payload) => {
-    const count = payload.recurrence === 'none' ? 1 : Number(payload.repeatCount) || 2
-    const list = []
-    for (let i = 0; i < count; i++) {
-      const date =
-        payload.recurrence === 'weekly'
-          ? addDaysKey(payload.date, i * 7)
-          : payload.recurrence === 'monthly'
-            ? addMonthsKey(payload.date, i)
-            : payload.date
-      list.push({ ...payload, date })
+  const submit = async () => {
+    if (saving) return
+    if (!form.branchId) return setErr('Selecciona una sucursal.')
+    if (!resourcesLoading && branchResources.length === 0) {
+      return setErr('La sucursal seleccionada no tiene cabinas o recursos activos.')
     }
-    return list
-  }
-
-  const submit = () => {
+    if (!form.cabinaId) return setErr('Selecciona una cabina o recurso.')
+    if (!selectedService) return setErr('Selecciona un servicio disponible en esa sucursal.')
     if (!form.date) return setErr('Selecciona una fecha.')
     if (!form.time) return setErr('Selecciona una hora.')
     if (
@@ -171,20 +228,31 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     ) {
       return setErr('La hora seleccionada está fuera del horario del empleado.')
     }
-    if (form.employeeId && availableSlots.length > 0 && !availableSlots.includes(form.time)) {
+    if (form.employeeId && !availableSlots.includes(form.time)) {
       return setErr('Ese horario ya no está disponible para el empleado.')
     }
     const payload = buildPayload()
-    if (editing) {
-      updateAppointment(appointment.id, payload)
-      toast.success('Cita actualizada')
-    } else {
-      const series = buildSeries(payload)
-      if (series.length > 1) addAppointments(series)
-      else addAppointment(payload)
-      toast.success(series.length > 1 ? `${series.length} citas agendadas` : 'Cita agendada')
+    setSaving(true)
+    setErr('')
+    try {
+      if (editing) {
+        await updateAppointment(appointment.id, payload)
+        toast.success('Cita actualizada')
+      } else {
+        const created = await addAppointment(payload)
+        const count = Array.isArray(created) ? created.length : 1
+        toast.success(count > 1 ? `${count} citas agendadas` : 'Cita agendada')
+      }
+      onClose()
+    } catch (error) {
+      if (isAppointmentConflict(error)) {
+        setErr(error.message || 'Ese horario acaba de ser ocupado. Selecciona otro disponible.')
+      } else {
+        setErr(error.message || 'No se pudo guardar la cita. Intenta nuevamente.')
+      }
+    } finally {
+      setSaving(false)
     }
-    onClose()
   }
 
   const previewAppointment = useMemo(
@@ -217,6 +285,11 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
               options={services.map((s) => ({ value: s.id, label: `${s.name} — ${formatDOP(s.price)}` }))}
               data-testid="appointment-field-service"
             />
+            {servicesReady && form.branchId && services.length === 0 && (
+              <p className="mt-1.5 text-xs text-amber-600" data-testid="appointment-no-services">
+                Esta sucursal no tiene servicios activos configurados.
+              </p>
+            )}
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Empleado</label>
@@ -235,7 +308,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Sucursal</label>
             <Select
               value={form.branchId}
-              onChange={(v) => set('branchId', v)}
+              onChange={changeBranch}
               placeholder="Seleccionar sucursal"
               options={branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))}
               data-testid="appointment-field-branch"
@@ -247,9 +320,14 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
               value={form.cabinaId}
               onChange={(v) => set('cabinaId', v)}
               placeholder="Seleccionar Cabina"
-              options={CABINAS.map((c) => ({ value: c.id, label: c.name }))}
+              options={branchResources.map((resource) => ({ value: resource.id, label: resource.name }))}
               data-testid="appointment-field-cabina"
             />
+            {!resourcesLoading && form.branchId && branchResources.length === 0 && (
+              <p className="mt-1.5 text-xs text-amber-600" data-testid="appointment-no-resources">
+                Esta sucursal no tiene cabinas o recursos activos.
+              </p>
+            )}
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Fecha</label>
@@ -332,15 +410,33 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Estatus</label>
             <Select
               value={form.status}
-              onChange={(v) => set('status', v)}
-              options={CALENDAR_STATUSES.map((s) => ({ value: s.id, label: s.name }))}
+              onChange={(value) => {
+                setForm((current) => ({ ...current, status: value, completed: value === 'completada' }))
+                setErr('')
+              }}
+              options={statusOptions.map((s) => ({ value: s.id, label: s.name }))}
               data-testid="appointment-field-status"
             />
           </div>
-          <label className="flex items-center gap-2 pt-8 text-sm font-medium text-slate-600">
-            <input type="checkbox" checked={form.completed} onChange={(e) => set('completed', e.target.checked)} data-testid="appointment-field-completed" />
-            Completada
-          </label>
+          {editing && (
+            <label className="flex items-center gap-2 pt-8 text-sm font-medium text-slate-600">
+              <input
+                type="checkbox"
+                checked={form.completed}
+                onChange={(event) => {
+                  const completed = event.target.checked
+                  setForm((current) => ({
+                    ...current,
+                    completed,
+                    status: completed ? 'completada' : 'confirmada',
+                  }))
+                  setErr('')
+                }}
+                data-testid="appointment-field-completed"
+              />
+              Completada
+            </label>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -381,14 +477,19 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
           </div>
         </div>
 
-        {err && <p className="text-sm font-medium text-red-500" data-testid="appointment-form-error">{err}</p>}
+        {err && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700" data-testid="appointment-form-error">{err}</p>}
+        {!canManage && (
+          <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+            Tienes acceso de solo lectura a esta cita.
+          </p>
+        )}
 
         <div className="flex gap-2 pt-2">
           <Button variant="secondary" className="flex-1" onClick={onClose} data-testid="appointment-form-cancel">
             <X className="h-4 w-4" /> Cancelar
           </Button>
-          <Button className="flex-1" onClick={submit} data-testid="appointment-form-save">
-            <Save className="h-4 w-4" /> Guardar
+          <Button className="flex-1" onClick={submit} disabled={saving || !canManage} data-testid="appointment-form-save">
+            <Save className="h-4 w-4" /> {saving ? 'Guardando…' : 'Guardar'}
           </Button>
         </div>
       </div>

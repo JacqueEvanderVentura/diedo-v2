@@ -94,6 +94,8 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - Employees: `GET/POST/PATCH http://localhost:8000/api/v1/employees`
 - Employee schedules and attachments: nested under `http://localhost:8000/api/v1/employees/{id}`
 - HR overview, profiles, leave, debts, and documents: `http://localhost:8000/api/v1/hr`
+- Appointment resources: `GET http://localhost:8000/api/v1/appointment-resources`
+- Calendar and appointment management: `GET/POST/PATCH http://localhost:8000/api/v1/appointments`
 - Swagger UI: `http://localhost:8000/swagger/index.html`
 - OpenAPI JSON: `http://localhost:8000/swagger.json`
 
@@ -109,6 +111,8 @@ The Phase 2 customer, basic employee, schedule, attachment, scope, and retention
 documented in [`../docs/backend/MASTER_DATA_API.md`](../docs/backend/MASTER_DATA_API.md).
 The HR profile, leave, employee receivables, and document contracts are documented in
 [`../docs/backend/HR_API.md`](../docs/backend/HR_API.md).
+The branch-scoped calendar, appointment management, recurrence, and concurrency contracts are
+documented in [`../docs/backend/AGENDA_API.md`](../docs/backend/AGENDA_API.md).
 
 ## Quality checks
 

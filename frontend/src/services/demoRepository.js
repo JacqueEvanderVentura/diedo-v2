@@ -1,4 +1,5 @@
 import { DEMO_SNAPSHOT } from '@/data/generated/demoSnapshot'
+import { createDemoAppointments, createDemoAppointmentResources } from '@/data/agenda'
 
 export const DEMO_SEED_ENABLED = import.meta.env.VITE_DEMO_SEED_ENABLED === 'true'
 
@@ -51,8 +52,31 @@ export class DemoRepository {
     return structuredClone(this.snapshot.employees.items)
   }
 
+  catalog() {
+    return structuredClone(this.snapshot.catalog)
+  }
+
   hr() {
     return structuredClone(this.snapshot.hr)
+  }
+
+  appointments(params = {}) {
+    const search = String(params.search || '').trim().toLowerCase()
+    return createDemoAppointments().filter((appointment) => {
+      if (params.branchId && appointment.branchId !== params.branchId) return false
+      if (params.dateFrom && appointment.date < params.dateFrom) return false
+      if (params.dateTo && appointment.date > params.dateTo) return false
+      if (params.employeeId && appointment.employeeId !== params.employeeId) return false
+      if (params.status && appointment.status !== params.status) return false
+      if (!search) return true
+      return appointment.customerName.toLowerCase().includes(search)
+        || appointment.serviceName.toLowerCase().includes(search)
+        || appointment.customerPhone.includes(search)
+    })
+  }
+
+  appointmentResources({ branchId } = {}) {
+    return createDemoAppointmentResources(branchId)
   }
 }
 

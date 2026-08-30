@@ -17,6 +17,8 @@ from app.db.models import (
     UnitOfMeasure,
 )
 
+_COMMERCIAL_ITEM_TYPES = ("product", "service", "membership", "other")
+
 
 @dataclass(frozen=True)
 class CategoryRecord:
@@ -59,6 +61,7 @@ class ProductBranchRecord:
 @dataclass(frozen=True)
 class ProductRecord:
     id: UUID
+    item_type: str
     name: str
     description: str | None
     sku: str | None
@@ -292,7 +295,7 @@ class CatalogRepository:
     ) -> ProductPage:
         predicates: list[ColumnElement[bool]] = [
             Item.workspace_id == workspace_id,
-            Item.item_type == "product",
+            Item.item_type.in_(_COMMERCIAL_ITEM_TYPES),
             self._visibility_predicate(workspace_id, visible_branch_ids),
         ]
         if search:
@@ -360,7 +363,7 @@ class CatalogRepository:
             self._product_select().where(
                 Item.workspace_id == workspace_id,
                 Item.id == product_id,
-                Item.item_type == "product",
+                Item.item_type.in_(_COMMERCIAL_ITEM_TYPES),
                 self._visibility_predicate(workspace_id, visible_branch_ids),
             )
         ).one_or_none()
@@ -377,7 +380,7 @@ class CatalogRepository:
             .where(
                 Item.workspace_id == workspace_id,
                 Item.id == product_id,
-                Item.item_type == "product",
+                Item.item_type.in_(_COMMERCIAL_ITEM_TYPES),
             )
             .with_for_update()
         )
@@ -412,6 +415,7 @@ class CatalogRepository:
         *,
         workspace_id: UUID,
         actor_platform_user_id: UUID,
+        item_type: str,
         name: str,
         description: str | None,
         sku: str | None,
@@ -425,7 +429,7 @@ class CatalogRepository:
             workspace_id=workspace_id,
             category_id=category_id,
             unit_of_measure_id=unit_of_measure_id,
-            item_type="product",
+            item_type=item_type,
             name=name,
             description=description,
             sku=sku,
@@ -451,6 +455,7 @@ class CatalogRepository:
             request_id=request_id,
             details={
                 "categoryId": str(category_id),
+                "itemType": item_type,
                 "unitOfMeasureId": str(unit_of_measure_id),
                 "branchIds": [str(branch_id) for branch_id in sorted(branch_ids)],
                 "status": status,
@@ -469,6 +474,7 @@ class CatalogRepository:
         request_id: str,
     ) -> None:
         for field in (
+            "item_type",
             "name",
             "description",
             "sku",
@@ -534,6 +540,7 @@ class CatalogRepository:
                 UnitOfMeasure.code,
                 UnitOfMeasure.name,
                 UnitOfMeasure.symbol,
+                Item.item_type,
             )
             .join(
                 ItemCategory,
@@ -634,6 +641,7 @@ class CatalogRepository:
     def _product_record(row: Any, branches: tuple[ProductBranchRecord, ...]) -> ProductRecord:
         return ProductRecord(
             id=row[0],
+            item_type=row[14],
             name=row[1],
             description=row[2],
             sku=row[3],

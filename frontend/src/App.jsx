@@ -5,6 +5,9 @@ import { useLenis } from './lib/useLenis'
 import { useSessionStore } from './stores/sessionStore'
 import { useCustomersStore } from './stores/customersStore'
 import { useRrhhStore } from './stores/rrhhStore'
+import { useAgendaStore } from './stores/agendaStore'
+import { useCatalogStore } from './stores/catalogStore'
+import { useConfigStore } from './stores/configStore'
 import { configFacade } from './services/configFacade'
 
 export default function App() {
@@ -17,6 +20,8 @@ export default function App() {
   const hydrateCustomers = useCustomersStore((s) => s.hydrate)
   const hydrateEmployees = useRrhhStore((s) => s.hydrateEmployees)
   const hydrateHrData = useRrhhStore((s) => s.hydrateHrData)
+  const hydrateAppointments = useAgendaStore((s) => s.hydrateAppointments)
+  const hydrateCatalog = useCatalogStore((s) => s.hydrateFromApi)
 
   useEffect(() => {
     bootstrap()
@@ -26,12 +31,26 @@ export default function App() {
     if (!initialized) return
     configFacade.synchronizeSessionBranches({ status, workspaceId, visibleBranches })
     if (status !== 'demo' && !workspaceId) return
-    Promise.allSettled([
+    const requests = [
       hydrateCustomers({ force: true }),
       hydrateEmployees({ force: true }),
       hydrateHrData({ force: true }),
-    ])
-  }, [hydrateCustomers, hydrateEmployees, hydrateHrData, initialized, status, visibleBranches, workspaceId])
+    ]
+    if (status === 'demo' || useSessionStore.getState().hasModule('appointments')) {
+      requests.push(hydrateAppointments({ force: true }))
+    }
+    if (
+      status === 'online'
+      && useSessionStore.getState().hasModule('catalog')
+      && useSessionStore.getState().hasPermission('catalog.read')
+    ) {
+      requests.push(hydrateCatalog(
+        useConfigStore.getState().categories,
+        configFacade.branches()
+      ))
+    }
+    Promise.allSettled(requests)
+  }, [hydrateAppointments, hydrateCatalog, hydrateCustomers, hydrateEmployees, hydrateHrData, initialized, status, visibleBranches, workspaceId])
 
   return (
     <>

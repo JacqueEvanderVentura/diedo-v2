@@ -3,6 +3,9 @@ from app.core.security import hash_password, verify_password
 from app.db.models import (
     Branch,
     DemoSeedRegistry,
+    Item,
+    ItemBranchAssignment,
+    ItemCategory,
     PaymentMethod,
     PlatformUser,
     Role,
@@ -29,6 +32,9 @@ def test_demo_seed_flag_false_is_a_no_op() -> None:
     assert summary.leave_request_count == 0
     assert summary.debt_count == 0
     assert summary.document_count == 0
+    assert summary.catalog_category_count == 0
+    assert summary.catalog_item_count == 0
+    assert summary.catalog_assignment_count == 0
 
 
 @pytest.mark.integration
@@ -122,6 +128,72 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
                 DemoSeedRegistry.entity_type == "employee",
             )
         )
+        catalog_category_count = session.scalar(
+            select(func.count(DemoSeedRegistry.id)).where(
+                DemoSeedRegistry.workspace_id == second.workspace_id,
+                DemoSeedRegistry.seed_version == "v1",
+                DemoSeedRegistry.entity_type == "item_category",
+            )
+        )
+        catalog_item_count = session.scalar(
+            select(func.count(DemoSeedRegistry.id)).where(
+                DemoSeedRegistry.workspace_id == second.workspace_id,
+                DemoSeedRegistry.seed_version == "v1",
+                DemoSeedRegistry.entity_type == "item",
+            )
+        )
+        catalog_assignment_count = session.scalar(
+            select(func.count(DemoSeedRegistry.id)).where(
+                DemoSeedRegistry.workspace_id == second.workspace_id,
+                DemoSeedRegistry.seed_version == "v1",
+                DemoSeedRegistry.entity_type == "item_branch_assignment",
+            )
+        )
+        seeded_item_ids = select(DemoSeedRegistry.entity_id).where(
+            DemoSeedRegistry.workspace_id == second.workspace_id,
+            DemoSeedRegistry.seed_version == "v1",
+            DemoSeedRegistry.entity_type == "item",
+        )
+        seeded_item_types = dict(
+            session.execute(
+                select(Item.item_type, func.count(Item.id))
+                .where(
+                    Item.workspace_id == second.workspace_id,
+                    Item.id.in_(seeded_item_ids),
+                )
+                .group_by(Item.item_type)
+            ).all()
+        )
+        products_per_branch = dict(
+            session.execute(
+                select(Branch.code, func.count(ItemBranchAssignment.id))
+                .join(
+                    ItemBranchAssignment,
+                    ItemBranchAssignment.branch_id == Branch.id,
+                )
+                .join(Item, Item.id == ItemBranchAssignment.item_id)
+                .where(
+                    Branch.workspace_id == second.workspace_id,
+                    Item.id.in_(seeded_item_ids),
+                    Item.item_type == "product",
+                    ItemBranchAssignment.status == "active",
+                )
+                .group_by(Branch.code)
+            ).all()
+        )
+        persisted_category_count = session.scalar(
+            select(func.count(ItemCategory.id)).where(
+                ItemCategory.workspace_id == second.workspace_id,
+                ItemCategory.status == "active",
+                ItemCategory.id.in_(
+                    select(DemoSeedRegistry.entity_id).where(
+                        DemoSeedRegistry.workspace_id == second.workspace_id,
+                        DemoSeedRegistry.seed_version == "v1",
+                        DemoSeedRegistry.entity_type == "item_category",
+                    )
+                ),
+            )
+        )
         north_branch = session.scalar(
             select(Branch).where(
                 Branch.workspace_id == second.workspace_id,
@@ -151,6 +223,14 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
     assert first.leave_request_count == second.leave_request_count == 2
     assert first.debt_count == second.debt_count == 2
     assert first.document_count == second.document_count == 0
+    assert first.catalog_category_count == second.catalog_category_count == 6
+    assert first.catalog_item_count == second.catalog_item_count == 22
+    assert first.catalog_assignment_count == second.catalog_assignment_count == 59
+    assert catalog_category_count == persisted_category_count == 6
+    assert catalog_item_count == 22
+    assert catalog_assignment_count == 59
+    assert seeded_item_types == {"membership": 1, "other": 4, "product": 6, "service": 11}
+    assert products_per_branch == {"DOWNTOWN": 4, "EAST": 4, "HQ": 6, "NORTH": 4}
     assert north_branch is not None and north_branch.id == adopted_branch_id
     assert north_branch.name == "Sucursal Norte"
     assert north_registry is not None and north_registry.entity_id == adopted_branch_id

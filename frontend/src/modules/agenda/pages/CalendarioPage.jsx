@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { toast } from 'sonner'
 import { Clock, Plus, Search, ChevronLeft, ChevronRight, Link2 } from 'lucide-react'
 import { useAgendaStore, todayKey } from '@/stores/agendaStore'
@@ -11,14 +11,18 @@ import { WeekView } from '../components/calendar/WeekView'
 import { DayView } from '../components/calendar/DayView'
 import { MonthView } from '../components/calendar/MonthView'
 import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
+import { DataSourceNotice } from '@/components/ui/DataSourceNotice'
+import { useAgendaPolling } from '../hooks/useAgendaPolling'
+import { useSessionStore } from '@/stores/sessionStore'
 import {
   addDaysKey,
   addMonthsKey,
   formatLongDate,
   formatMonthYear,
   formatWeekRange,
-  fromKey,
+  monthGrid,
   startOfWeekMonday,
+  weekKeysMonday,
 } from '../lib/calendar'
 import { cn } from '@/lib/utils'
 
@@ -30,7 +34,12 @@ const VIEWS = [
 
 export default function CalendarioPage() {
   const appointments = useAgendaStore((s) => s.appointments)
+  const resources = useAgendaStore((s) => s.resources)
+  const dataState = useAgendaStore((s) => s.dataState)
+  const hydrateAppointments = useAgendaStore((s) => s.hydrateAppointments)
+  const hydrateResources = useAgendaStore((s) => s.hydrateResources)
   const branches = useConfigStore((s) => s.branches)
+  const canManage = useSessionStore((s) => s.hasPermission('appointment.manage'))
   const [branchId, setBranchId] = useState(branches[0]?.id || '')
   const [view, setView] = useState('week')
   const [cursor, setCursor] = useState(todayKey())
@@ -40,6 +49,36 @@ export default function CalendarioPage() {
   const [linkModalOpen, setLinkModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [defaults, setDefaults] = useState({})
+
+  useEffect(() => {
+    if (!branches.length) return
+    if (!branchId || !branches.some((branch) => branch.id === branchId)) {
+      setBranchId(branches[0].id)
+    }
+  }, [branchId, branches])
+
+  const appointmentQuery = useMemo(() => {
+    if (!branchId) return {}
+    if (view === 'day') return { branchId, dateFrom: cursor, dateTo: cursor }
+    if (view === 'week') {
+      const days = weekKeysMonday(cursor)
+      return { branchId, dateFrom: days[0], dateTo: days[days.length - 1] }
+    }
+    const days = monthGrid(cursor)
+    return { branchId, dateFrom: days[0].key, dateTo: days[days.length - 1].key }
+  }, [branchId, cursor, view])
+
+  useAgendaPolling(appointmentQuery)
+
+  useEffect(() => {
+    if (!branchId) return
+    hydrateResources({ branchId }).catch(() => {})
+  }, [branchId, hydrateResources])
+
+  const branchResources = useMemo(
+    () => resources.filter((resource) => resource.branchId === branchId && resource.active !== false),
+    [branchId, resources]
+  )
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -79,6 +118,13 @@ export default function CalendarioPage() {
 
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-4 p-4 sm:p-6">
+      <DataSourceNotice
+        state={dataState}
+        onRetry={() => Promise.all([
+          hydrateAppointments({ force: true, params: appointmentQuery }),
+          hydrateResources({ branchId, force: true }),
+        ])}
+      />
       {/* Toolbar */}
       <div className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-soft lg:flex-row lg:items-center">
         <div className="flex flex-wrap items-center gap-2">
@@ -97,7 +143,7 @@ export default function CalendarioPage() {
           <Button variant="secondary" size="sm" onClick={() => toast('Horarios (próximamente)')} data-testid="calendar-schedules">
             <Clock className="h-4 w-4" /> Horarios
           </Button>
-          <Button size="sm" onClick={() => openNew()} data-testid="calendar-multi">
+          <Button size="sm" onClick={() => openNew()} disabled={!canManage} data-testid="calendar-multi">
             <Plus className="h-4 w-4" /> Cita Múltiple
           </Button>
         </div>
@@ -180,7 +226,8 @@ export default function CalendarioPage() {
           <DayView
             dateKey={cursor}
             appointments={filtered}
-            onSlotClick={openNew}
+            resources={branchResources}
+            onSlotClick={canManage ? openNew : undefined}
             onAppointmentClick={openEdit}
           />
         )}

@@ -1,9 +1,9 @@
 {
   "rolePermissions": {
-    "manager": ["workspace.read", "workspace.update", "legal_entity.read", "legal_entity.manage", "branch.read", "branch.manage", "membership.read", "membership.manage", "role.read", "catalog.read", "catalog.manage", "customer.read", "customer.manage", "employee.read", "employee.manage", "employee.schedule.manage", "hr.overview.read", "hr.profile.read", "hr.profile.manage", "hr.leave.request", "hr.leave.review", "hr.debt.read", "hr.debt.manage", "hr.document.read", "hr.document.manage"],
-    "supervisor": ["workspace.read", "legal_entity.read", "branch.read", "membership.read", "catalog.read", "customer.read", "customer.manage", "employee.read", "employee.schedule.manage", "hr.overview.read", "hr.leave.request", "hr.leave.review"],
-    "cashier": ["workspace.read", "branch.read", "catalog.read", "customer.read", "customer.manage", "employee.read", "hr.leave.request"],
-    "seller": ["workspace.read", "branch.read", "catalog.read", "customer.read", "customer.manage", "employee.read", "hr.leave.request"]
+    "manager": ["workspace.read", "workspace.update", "legal_entity.read", "legal_entity.manage", "branch.read", "branch.manage", "membership.read", "membership.manage", "role.read", "catalog.read", "catalog.manage", "customer.read", "customer.manage", "employee.read", "employee.manage", "employee.schedule.manage", "hr.overview.read", "hr.profile.read", "hr.profile.manage", "hr.leave.request", "hr.leave.review", "hr.debt.read", "hr.debt.manage", "hr.document.read", "hr.document.manage", "appointment.read", "appointment.manage"],
+    "supervisor": ["workspace.read", "legal_entity.read", "branch.read", "membership.read", "catalog.read", "customer.read", "customer.manage", "employee.read", "employee.schedule.manage", "hr.overview.read", "hr.leave.request", "hr.leave.review", "appointment.read", "appointment.manage"],
+    "cashier": ["workspace.read", "branch.read", "catalog.read", "customer.read", "customer.manage", "employee.read", "hr.leave.request", "appointment.read", "appointment.manage"],
+    "seller": ["workspace.read", "branch.read", "catalog.read", "customer.read", "customer.manage", "employee.read", "hr.leave.request", "appointment.read", "appointment.manage"]
   },
   "users": [
     {"seedKey": "admin", "displayName": "Alex Demo", "email": "demo.alex.admin@example.com", "roleCode": "workspace_admin", "branchCodes": [], "workspaceWide": true, "status": "active"},

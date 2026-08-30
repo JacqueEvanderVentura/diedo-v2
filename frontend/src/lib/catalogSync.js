@@ -16,8 +16,9 @@ export function mergeApiProduct(apiProduct, localProduct, categoryIdToLocal) {
   const categoryLocalId =
     categoryIdToLocal.get(apiProduct.category?.id) || localProduct?.category || 'otros'
   const branchIds = (apiProduct.branches || []).map((b) => b.id)
-  const isSupply = localProduct?.type === 'supply'
-  const isService = localProduct?.type === 'service'
+  const itemType = apiProduct.itemType || localProduct?.type || 'product'
+  const isSupply = itemType === 'other' && localProduct?.type === 'supply'
+  const isService = itemType === 'service'
 
   return {
     ...(localProduct || {}),
@@ -36,7 +37,7 @@ export function mergeApiProduct(apiProduct, localProduct, categoryIdToLocal) {
     cost: localProduct?.cost ?? 0,
     stock: isService ? null : localProduct?.stock ?? 0,
     minStock: localProduct?.minStock ?? 0,
-    type: localProduct?.type ?? 'product',
+    type: isSupply ? 'supply' : itemType,
     taxPct: isSupply ? 0 : localProduct?.taxPct ?? 18,
     allowNegativeStock: localProduct?.allowNegativeStock ?? false,
     apiSynced: true,

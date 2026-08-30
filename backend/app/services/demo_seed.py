@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.models import (
     AccessScope,
+    AppointmentResource,
     Branch,
     Customer,
     CustomerBranchAssignment,
@@ -27,14 +28,19 @@ from app.db.models import (
     EmployeeSupervisor,
     HrDocumentRecord,
     HrLeaveRequest,
+    Item,
+    ItemBranchAssignment,
+    ItemCategory,
     PaymentMethod,
     Permission,
     PlatformUser,
     Role,
     RoleAssignment,
     RolePermission,
+    UnitOfMeasure,
     WorkspaceMembership,
 )
+from app.db.models.agenda import DEFAULT_APPOINTMENT_RESOURCES
 from app.services.demo_manifest import DemoBundle, DemoEmployeeFixture, load_demo_bundle
 from app.services.local_bootstrap import bootstrap_local_foundation
 
@@ -54,6 +60,9 @@ class DemoSeedSummary:
     leave_request_count: int = 0
     debt_count: int = 0
     document_count: int = 0
+    catalog_category_count: int = 0
+    catalog_item_count: int = 0
+    catalog_assignment_count: int = 0
 
 
 def seed_demo_data(
@@ -81,6 +90,12 @@ def seed_demo_data(
     )
     _seed_users(session, bundle, foundation.workspace_id, branches, password_hash)
     _seed_payment_methods(session, bundle, foundation.workspace_id)
+    catalog_assignment_count = _seed_catalog(
+        session,
+        bundle,
+        foundation.workspace_id,
+        branches,
+    )
     _seed_customers(session, bundle, foundation.workspace_id, branches)
     _seed_employees(session, bundle, foundation.workspace_id, branches)
     _seed_hr(session, bundle, foundation.workspace_id)
@@ -96,7 +111,194 @@ def seed_demo_data(
         len(bundle.hr.leave_requests),
         len(bundle.hr.debts),
         len(bundle.hr.documents),
+        len(bundle.catalog.categories),
+        len(bundle.catalog.items),
+        catalog_assignment_count,
     )
+
+
+def _seed_catalog(
+    session: Session,
+    bundle: DemoBundle,
+    workspace_id: UUID,
+    branches: dict[str, Branch],
+) -> int:
+    categories = _seed_catalog_categories(session, bundle, workspace_id)
+    units = {
+        unit.code: unit
+        for unit in session.scalars(
+            select(UnitOfMeasure).where(UnitOfMeasure.workspace_id == workspace_id)
+        )
+    }
+    assignment_count = 0
+    for fixture in bundle.catalog.items:
+        category = categories.get(fixture.category_seed_key)
+        if category is None:
+            raise RuntimeError(
+                f"Demo catalog category {fixture.category_seed_key!r} is not installed."
+            )
+        unit = units.get(fixture.unit_code)
+        if unit is None:
+            raise RuntimeError(f"Demo unit of measure {fixture.unit_code!r} is not installed.")
+        unknown_branch_codes = set(fixture.branch_codes) - branches.keys()
+        if unknown_branch_codes:
+            unknown = ", ".join(sorted(unknown_branch_codes))
+            raise RuntimeError(f"Demo catalog item references unknown branches: {unknown}.")
+
+        payload = fixture.model_dump(mode="json")
+        item_id = _stable_id(bundle.manifest.seed_version, "item", fixture.seed_key)
+        item = _registered_entity(
+            session,
+            workspace_id,
+            "item",
+            fixture.seed_key,
+            item_id,
+            payload,
+            Item,
+        )
+        sku = fixture.sku.strip().upper() if fixture.sku else None
+        if item is None:
+            item = Item(
+                id=item_id,
+                workspace_id=workspace_id,
+                category_id=category.id,
+                unit_of_measure_id=unit.id,
+                item_type=fixture.item_type,
+                name=_normalized_catalog_name(fixture.name),
+                description=fixture.description,
+                sku=sku,
+                status=fixture.status,
+            )
+            session.add(item)
+            session.flush()
+            _register(
+                session,
+                workspace_id,
+                "item",
+                fixture.seed_key,
+                item_id,
+                bundle.manifest.seed_version,
+                payload,
+            )
+        else:
+            item.category_id = category.id
+            item.unit_of_measure_id = unit.id
+            item.item_type = fixture.item_type
+            item.name = _normalized_catalog_name(fixture.name)
+            item.description = fixture.description
+            item.sku = sku
+            item.status = fixture.status
+
+        selected_branch_codes = set(fixture.branch_codes)
+        for branch_code, branch in branches.items():
+            assignment_key = f"{fixture.seed_key}:{branch_code}"
+            assignment_id = _stable_id(
+                bundle.manifest.seed_version,
+                "item_branch_assignment",
+                assignment_key,
+            )
+            assignment = session.get(ItemBranchAssignment, assignment_id)
+            if branch_code not in selected_branch_codes:
+                if assignment is not None:
+                    assignment.status = "inactive"
+                continue
+
+            assignment_payload = {
+                "itemSeedKey": fixture.seed_key,
+                "branchCode": branch_code,
+            }
+            assignment = _registered_entity(
+                session,
+                workspace_id,
+                "item_branch_assignment",
+                assignment_key,
+                assignment_id,
+                assignment_payload,
+                ItemBranchAssignment,
+            )
+            if assignment is None:
+                assignment = ItemBranchAssignment(
+                    id=assignment_id,
+                    workspace_id=workspace_id,
+                    item_id=item.id,
+                    branch_id=branch.id,
+                    status="active",
+                )
+                session.add(assignment)
+                session.flush()
+                _register(
+                    session,
+                    workspace_id,
+                    "item_branch_assignment",
+                    assignment_key,
+                    assignment_id,
+                    bundle.manifest.seed_version,
+                    assignment_payload,
+                )
+            else:
+                assignment.item_id = item.id
+                assignment.branch_id = branch.id
+                assignment.status = "active"
+            assignment_count += 1
+    session.flush()
+    return assignment_count
+
+
+def _seed_catalog_categories(
+    session: Session,
+    bundle: DemoBundle,
+    workspace_id: UUID,
+) -> dict[str, ItemCategory]:
+    categories: dict[str, ItemCategory] = {}
+    for fixture in bundle.catalog.categories:
+        payload = fixture.model_dump(mode="json")
+        category_id = _stable_id(
+            bundle.manifest.seed_version,
+            "item_category",
+            fixture.seed_key,
+        )
+        category = _registered_entity(
+            session,
+            workspace_id,
+            "item_category",
+            fixture.seed_key,
+            category_id,
+            payload,
+            ItemCategory,
+        )
+        name = _normalized_catalog_name(fixture.name)
+        if category is None:
+            category = ItemCategory(
+                id=category_id,
+                workspace_id=workspace_id,
+                name=name,
+                normalized_name=name.casefold(),
+                description=fixture.description,
+                status=fixture.status,
+            )
+            session.add(category)
+            session.flush()
+            _register(
+                session,
+                workspace_id,
+                "item_category",
+                fixture.seed_key,
+                category_id,
+                bundle.manifest.seed_version,
+                payload,
+            )
+        else:
+            category.name = name
+            category.normalized_name = name.casefold()
+            category.description = fixture.description
+            category.status = fixture.status
+        categories[fixture.seed_key] = category
+    session.flush()
+    return categories
+
+
+def _normalized_catalog_name(value: str) -> str:
+    return " ".join(value.split())
 
 
 def _seed_customers(
@@ -889,8 +1091,44 @@ def _seed_branches(
                     branch_id=branch.id,
                 )
             )
+        _seed_appointment_resources(session, bundle, workspace_id, branch)
     session.flush()
     return branches
+
+
+def _seed_appointment_resources(
+    session: Session,
+    bundle: DemoBundle,
+    workspace_id: UUID,
+    branch: Branch,
+) -> None:
+    for code, name in DEFAULT_APPOINTMENT_RESOURCES:
+        resource = session.scalar(
+            select(AppointmentResource).where(
+                AppointmentResource.workspace_id == workspace_id,
+                AppointmentResource.branch_id == branch.id,
+                AppointmentResource.code == code,
+            )
+        )
+        if resource is None:
+            resource = AppointmentResource(
+                id=_stable_id(
+                    bundle.manifest.seed_version,
+                    "appointment_resource",
+                    f"{branch.code}:{code}",
+                ),
+                workspace_id=workspace_id,
+                branch_id=branch.id,
+                code=code,
+                name=name,
+                resource_type="room",
+                status="active",
+            )
+            session.add(resource)
+        else:
+            resource.name = name
+            resource.resource_type = "room"
+            resource.status = "active"
 
 
 def _seed_role_permissions(session: Session, bundle: DemoBundle, workspace_id: UUID) -> None:

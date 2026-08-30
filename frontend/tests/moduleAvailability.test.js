@@ -8,9 +8,9 @@ import {
 
 describe('moduleAvailability', () => {
   it('limita por entitlement solamente los módulos conectados a la API', () => {
-    const enabled = new Set(['foundation', 'iam', 'catalog', 'crm', 'hr'])
+    const enabled = new Set(['foundation', 'iam', 'catalog', 'crm', 'hr', 'appointments'])
 
-    expect(API_CONNECTED_MODULES).toEqual(['foundation', 'iam', 'catalog', 'crm', 'hr'])
+    expect(API_CONNECTED_MODULES).toEqual(['foundation', 'iam', 'catalog', 'crm', 'hr', 'appointments'])
     expect(isApiConnectedModule('catalog')).toBe(true)
     expect(isModuleAvailable('catalog', enabled)).toBe(true)
     expect(isModuleAvailable('catalog', new Set())).toBe(false)
@@ -21,7 +21,6 @@ describe('moduleAvailability', () => {
 
     for (const moduleCode of [
       'pos',
-      'appointments',
       'purchasing',
       'incidents',
       'accounting',
@@ -64,6 +63,11 @@ describe('moduleAvailability', () => {
       module: 'hr',
       permission: 'hr.document.read',
     })
+    expect(routeRequirement('/agenda/calendario')).toEqual({
+      module: 'appointments',
+      permission: 'appointment.read',
+    })
+    expect(routeRequirement('/agendar')).toBeNull()
     expect(routeRequirement('/pos')).toBeNull()
     expect(routeRequirement('/crm/pipeline')).toBeNull()
     expect(routeRequirement('/finanzas')).toBeNull()
