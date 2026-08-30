@@ -1,7 +1,7 @@
 // Generated from demo-data/v1; do not edit.
 export const DEMO_SNAPSHOT = Object.freeze({
   "seedVersion": "v1",
-  "schemaVersion": "20260829_0007",
+  "schemaVersion": "20260830_0008",
   "workspaceSlug": "local-erp",
   "foundation": {
     "branches": [
@@ -43,7 +43,16 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "customer.manage",
         "employee.read",
         "employee.manage",
-        "employee.schedule.manage"
+        "employee.schedule.manage",
+        "hr.overview.read",
+        "hr.profile.read",
+        "hr.profile.manage",
+        "hr.leave.request",
+        "hr.leave.review",
+        "hr.debt.read",
+        "hr.debt.manage",
+        "hr.document.read",
+        "hr.document.manage"
       ],
       "supervisor": [
         "workspace.read",
@@ -54,7 +63,10 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "customer.read",
         "customer.manage",
         "employee.read",
-        "employee.schedule.manage"
+        "employee.schedule.manage",
+        "hr.overview.read",
+        "hr.leave.request",
+        "hr.leave.review"
       ],
       "cashier": [
         "workspace.read",
@@ -62,7 +74,8 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "catalog.read",
         "customer.read",
         "customer.manage",
-        "employee.read"
+        "employee.read",
+        "hr.leave.request"
       ],
       "seller": [
         "workspace.read",
@@ -70,7 +83,8 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "catalog.read",
         "customer.read",
         "customer.manage",
-        "employee.read"
+        "employee.read",
+        "hr.leave.request"
       ]
     },
     "users": [
@@ -665,5 +679,56 @@ export const DEMO_SNAPSHOT = Object.freeze({
         }
       }
     ]
+  },
+  "hr": {
+    "leaveRequests": [
+      {
+        "seedKey": "leave-1",
+        "employeeSeedKey": "emp-1",
+        "startDate": "2026-09-14",
+        "endDate": "2026-09-18",
+        "reason": "Vacaciones familiares",
+        "status": "aprobada",
+        "requestedByUserSeedKey": "admin",
+        "reviewedByUserSeedKey": "admin",
+        "reviewedAt": "2026-08-22T14:00:00Z"
+      },
+      {
+        "seedKey": "leave-2",
+        "employeeSeedKey": "emp-5",
+        "startDate": "2026-09-04",
+        "endDate": "2026-09-06",
+        "reason": "Asuntos personales",
+        "status": "pendiente",
+        "requestedByUserSeedKey": "manager-north"
+      }
+    ],
+    "debts": [
+      {
+        "seedKey": "debt-1",
+        "employeeSeedKey": "emp-3",
+        "concept": "Adelanto de comisión",
+        "clientName": "Cliente VIP",
+        "amount": 5000,
+        "createdByUserSeedKey": "admin",
+        "payments": [
+          {
+            "seedKey": "debt-payment-1",
+            "amount": 2000,
+            "paidOn": "2026-08-25",
+            "receivedByUserSeedKey": "admin"
+          }
+        ]
+      },
+      {
+        "seedKey": "debt-2",
+        "employeeSeedKey": "emp-7",
+        "concept": "Préstamo interno",
+        "amount": 8000,
+        "createdByUserSeedKey": "admin",
+        "payments": []
+      }
+    ],
+    "documents": []
   }
 })

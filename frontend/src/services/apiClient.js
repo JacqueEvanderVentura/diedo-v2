@@ -79,8 +79,8 @@ async function refreshAccessToken() {
   return requestRefreshedAccessToken({ retryConflict: true })
 }
 
-async function request(path, { method = 'GET', params, body, auth = true, retry = true } = {}) {
-  const headers = { Accept: 'application/json' }
+async function request(path, { method = 'GET', params, body, headers: extraHeaders = {}, auth = true, retry = true } = {}) {
+  const headers = { Accept: 'application/json', ...extraHeaders }
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
   if (body !== undefined && !isFormData) headers['Content-Type'] = 'application/json'
 
@@ -101,7 +101,7 @@ async function request(path, { method = 'GET', params, body, auth = true, retry 
       })
     }
     const refreshed = await refreshPromise
-    if (refreshed) return request(path, { method, params, body, auth, retry: false })
+    if (refreshed) return request(path, { method, params, body, headers: extraHeaders, auth, retry: false })
   }
 
   const data = await parseBody(response)

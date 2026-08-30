@@ -1,1 +1,51 @@
-{"items": []}
+{
+  "leaveRequests": [
+    {
+      "seedKey": "leave-1",
+      "employeeSeedKey": "emp-1",
+      "startDate": "2026-09-14",
+      "endDate": "2026-09-18",
+      "reason": "Vacaciones familiares",
+      "status": "aprobada",
+      "requestedByUserSeedKey": "admin",
+      "reviewedByUserSeedKey": "admin",
+      "reviewedAt": "2026-08-22T14:00:00Z"
+    },
+    {
+      "seedKey": "leave-2",
+      "employeeSeedKey": "emp-5",
+      "startDate": "2026-09-04",
+      "endDate": "2026-09-06",
+      "reason": "Asuntos personales",
+      "status": "pendiente",
+      "requestedByUserSeedKey": "manager-north"
+    }
+  ],
+  "debts": [
+    {
+      "seedKey": "debt-1",
+      "employeeSeedKey": "emp-3",
+      "concept": "Adelanto de comisión",
+      "clientName": "Cliente VIP",
+      "amount": 5000,
+      "createdByUserSeedKey": "admin",
+      "payments": [
+        {
+          "seedKey": "debt-payment-1",
+          "amount": 2000,
+          "paidOn": "2026-08-25",
+          "receivedByUserSeedKey": "admin"
+        }
+      ]
+    },
+    {
+      "seedKey": "debt-2",
+      "employeeSeedKey": "emp-7",
+      "concept": "Préstamo interno",
+      "amount": 8000,
+      "createdByUserSeedKey": "admin",
+      "payments": []
+    }
+  ],
+  "documents": []
+}

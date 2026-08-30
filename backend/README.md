@@ -93,6 +93,7 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - Customer timeline and attachments: nested under `http://localhost:8000/api/v1/customers/{id}`
 - Employees: `GET/POST/PATCH http://localhost:8000/api/v1/employees`
 - Employee schedules and attachments: nested under `http://localhost:8000/api/v1/employees/{id}`
+- HR overview, profiles, leave, debts, and documents: `http://localhost:8000/api/v1/hr`
 - Swagger UI: `http://localhost:8000/swagger/index.html`
 - OpenAPI JSON: `http://localhost:8000/swagger.json`
 
@@ -106,6 +107,8 @@ The catalog contract, filters, scope rules, and concurrency behavior are documen
 [`../docs/backend/CATALOG_API.md`](../docs/backend/CATALOG_API.md).
 The Phase 2 customer, basic employee, schedule, attachment, scope, and retention contracts are
 documented in [`../docs/backend/MASTER_DATA_API.md`](../docs/backend/MASTER_DATA_API.md).
+The HR profile, leave, employee receivables, and document contracts are documented in
+[`../docs/backend/HR_API.md`](../docs/backend/HR_API.md).
 
 ## Quality checks
 

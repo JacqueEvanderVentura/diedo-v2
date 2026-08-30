@@ -19,7 +19,7 @@ const empty = () => ({
   phone: '',
   position: '',
   department: 'Operaciones',
-  branchIds: ['charm-dn'],
+  branchIds: [],
   contractType: 'Indefinido',
   usuarioId: '',
   jefeIds: [],
@@ -27,6 +27,18 @@ const empty = () => ({
   hireDate: new Date().toISOString().slice(0, 10),
   workSchedule: emptyWorkSchedule(),
 })
+
+export function createEmployeeFormState(employee = null) {
+  if (!employee) return empty()
+  return {
+    ...empty(),
+    ...employee,
+    branchIds: employee.branchIds?.length ? employee.branchIds : employee.branchId ? [employee.branchId] : [],
+    jefeIds: employee.jefeIds?.length ? employee.jefeIds : employee.jefeId ? [employee.jefeId] : [],
+    usuarioId: employee.usuarioId || '',
+    workSchedule: employee.workSchedule || emptyWorkSchedule(),
+  }
+}
 
 function CheckboxGrid({ options, selected, onToggle }) {
   return (
@@ -50,7 +62,7 @@ function CheckboxGrid({ options, selected, onToggle }) {
   )
 }
 
-export function EmployeeFormModal({ open, onClose, employee, employees, onSubmit }) {
+export function EmployeeFormModal({ open, onClose, employee, employees, platformUsers = [], onSubmit }) {
   const branches = useConfigStore((s) => s.branches)
   const demoUsers = useConfigStore((s) => s.users)
   const sessionStatus = useSessionStore((s) => s.status)
@@ -63,18 +75,7 @@ export function EmployeeFormModal({ open, onClose, employee, employees, onSubmit
   useEffect(() => {
     if (!open) return
     setErr('')
-    if (employee) {
-      setForm({
-        ...empty(),
-        ...employee,
-        branchIds: employee.branchIds?.length ? employee.branchIds : employee.branchId ? [employee.branchId] : ['charm-dn'],
-        jefeIds: employee.jefeIds?.length ? employee.jefeIds : employee.jefeId ? [employee.jefeId] : [],
-        usuarioId: employee.usuarioId || '',
-        workSchedule: employee.workSchedule || emptyWorkSchedule(),
-      })
-    } else {
-      setForm(empty())
-    }
+    setForm(createEmployeeFormState(employee))
   }, [open, employee])
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
@@ -118,13 +119,19 @@ export function EmployeeFormModal({ open, onClose, employee, employees, onSubmit
     .map((e) => ({ value: e.id, label: fullName(e) }))
 
   const branchOptions = branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))
+  const linkedUserIds = new Set(
+    employees
+      .filter((item) => item.id !== employee?.id && item.usuarioId)
+      .map((item) => item.usuarioId)
+  )
+  const onlineUsers = [
+    ...platformUsers,
+    ...(sessionUser?.userId ? [{ id: sessionUser.userId, name: sessionUser.name }] : []),
+    ...(employee?.usuarioId ? [{ id: employee.usuarioId, name: 'Usuario vinculado actual' }] : []),
+  ]
   const users = sessionStatus === 'online'
-    ? [
-        ...(sessionUser?.userId ? [{ id: sessionUser.userId, name: sessionUser.name }] : []),
-        ...(employee?.usuarioId && employee.usuarioId !== sessionUser?.userId
-          ? [{ id: employee.usuarioId, name: 'Usuario vinculado actual' }]
-          : []),
-      ]
+    ? [...new Map(onlineUsers.map((user) => [user.id, user])).values()]
+        .filter((user) => !linkedUserIds.has(user.id))
     : demoUsers
 
   return (

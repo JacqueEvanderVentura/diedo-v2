@@ -22,10 +22,11 @@ export default function SolicitudesPage() {
   const reviewVacationRequest = useRrhhStore((s) => s.reviewVacationRequest)
   const users = useConfigStore((s) => s.users)
   const currentUserId = useSessionStore((s) => s.user?.userId || s.user?.id)
+  const hasPermission = useSessionStore((s) => s.hasPermission)
 
   const currentUser = users.find((u) => u.id === currentUserId)
   const linkedEmployee = getEmployeeByUserId(currentUserId)
-  const canApprove = APPROVER_ROLES.includes(currentUser?.role)
+  const canApprove = hasPermission('hr.leave.review') || APPROVER_ROLES.includes(currentUser?.role)
 
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -50,17 +51,30 @@ export default function SolicitudesPage() {
 
   const availableDays = (linkedEmployee?.vacationDays || 0) - usedDays
 
-  const submitRequest = () => {
+  const submitRequest = async () => {
     if (!startDate || !endDate) return toast.error('Selecciona el rango de fechas')
     if (new Date(endDate) < new Date(startDate)) return toast.error('La fecha fin debe ser posterior')
     if (!reason.trim()) return toast.error('Ingresa un motivo')
     const days = daysBetween(startDate, endDate)
     if (days > availableDays) return toast.error('No tienes suficientes días disponibles')
-    addVacationRequest({ employeeId: linkedEmployee.id, startDate, endDate, reason: reason.trim() })
-    toast.success('Solicitud enviada')
-    setStartDate('')
-    setEndDate('')
-    setReason('')
+    try {
+      await addVacationRequest({ employeeId: linkedEmployee.id, startDate, endDate, reason: reason.trim() })
+      toast.success('Solicitud enviada')
+      setStartDate('')
+      setEndDate('')
+      setReason('')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo enviar la solicitud')
+    }
+  }
+
+  const reviewRequest = async (requestId, status) => {
+    try {
+      await reviewVacationRequest(requestId, status, currentUserId)
+      toast.success(status === 'aprobada' ? 'Solicitud aprobada' : 'Solicitud rechazada')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo revisar la solicitud')
+    }
   }
 
   if (!linkedEmployee) {
@@ -158,10 +172,10 @@ export default function SolicitudesPage() {
                     <p className="text-sm text-slate-600">{r.startDate} — {r.endDate} · {r.reason}</p>
                   </div>
                   <div className="flex gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => { reviewVacationRequest(r.id, 'rechazada', currentUserId); toast.success('Solicitud rechazada') }}>
+                    <Button size="sm" variant="secondary" onClick={() => reviewRequest(r.id, 'rechazada')}>
                       <X className="h-4 w-4" /> Rechazar
                     </Button>
-                    <Button size="sm" onClick={() => { reviewVacationRequest(r.id, 'aprobada', currentUserId); toast.success('Solicitud aprobada') }}>
+                    <Button size="sm" onClick={() => reviewRequest(r.id, 'aprobada')}>
                       <Check className="h-4 w-4" /> Aprobar
                     </Button>
                   </div>

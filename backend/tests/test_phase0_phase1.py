@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid7
 
 import pytest
+from app.config import settings
 from app.core.security import hash_password
 from app.db.models import (
     AccessScope,
@@ -142,7 +143,14 @@ def test_phase1_administration_crud_and_optimistic_concurrency(client: TestClien
 
 
 @pytest.mark.integration
-def test_phase1_invitations_user_lifecycle_sessions_and_last_admin(client: TestClient) -> None:
+def test_phase1_invitations_user_lifecycle_sessions_and_last_admin(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # This lifecycle needs the one-use token to accept the invitation through
+    # the public endpoint. Token exposure is intentionally opt-in, so the test
+    # must enable demo mode instead of depending on a developer or CI env var.
+    monkeypatch.setattr(settings, "demo_seed_enabled", True)
     _bootstrap()
     admin_tokens = _login(client)
     headers = _headers(admin_tokens)

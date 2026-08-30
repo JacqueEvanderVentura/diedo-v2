@@ -48,6 +48,22 @@ describe('moduleAvailability', () => {
       module: 'hr',
       permission: 'employee.read',
     })
+    expect(routeRequirement('/rrhh')).toEqual({
+      module: 'hr',
+      permission: 'hr.overview.read',
+    })
+    expect(routeRequirement('/rrhh/solicitudes')).toEqual({
+      module: 'hr',
+      permission: 'hr.leave.request',
+    })
+    expect(routeRequirement('/rrhh/cuentas-por-cobrar')).toEqual({
+      module: 'hr',
+      permission: 'hr.debt.read',
+    })
+    expect(routeRequirement('/rrhh/documentos')).toEqual({
+      module: 'hr',
+      permission: 'hr.document.read',
+    })
     expect(routeRequirement('/pos')).toBeNull()
     expect(routeRequirement('/crm/pipeline')).toBeNull()
     expect(routeRequirement('/finanzas')).toBeNull()

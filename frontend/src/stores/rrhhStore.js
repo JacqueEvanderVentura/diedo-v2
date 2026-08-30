@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { ephemeralJsonStorage, registerSensitiveStateCleaner } from '@/services/storagePolicy'
 import { employeesGateway } from '@/services/masterDataApi'
+import { hrGateway } from '@/services/hrApi'
 import { employeeToApiPayload, mapEmployeeFromApi, mapEmployeeFromDemo } from '@/services/adapters/masterData'
 import { useSessionStore } from '@/stores/sessionStore'
 import { debtBalance, debtStatus } from '@/modules/rrhh/lib/rrhh'
@@ -10,17 +11,6 @@ import { normalizeWorkSchedule } from '@/modules/rrhh/lib/schedule'
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const now = () => new Date().toISOString()
 const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10)
-const daysFromNow = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10)
-
-const SEED_REQUESTS = [
-  { id: 'vr-1', employeeId: 'emp-1', startDate: daysFromNow(14), endDate: daysFromNow(18), reason: 'Vacaciones familiares', status: 'aprobada', createdAt: daysAgo(10), reviewedAt: daysAgo(8), reviewedBy: 'u1' },
-  { id: 'vr-2', employeeId: 'emp-5', startDate: daysFromNow(5), endDate: daysFromNow(7), reason: 'Asuntos personales', status: 'pendiente', createdAt: daysAgo(2), reviewedAt: null, reviewedBy: null },
-]
-
-const SEED_DEBTS = [
-  { id: 'debt-1', employeeId: 'emp-3', concept: 'Adelanto de comisión', clientName: 'Cliente VIP', amount: 5000, payments: [{ id: 'pay-1', amount: 2000, date: daysAgo(5) }], createdAt: daysAgo(20) },
-  { id: 'debt-2', employeeId: 'emp-7', concept: 'Préstamo interno', clientName: null, amount: 8000, payments: [], createdAt: daysAgo(15) },
-]
 
 const SEED_REVIEWS = [
   { id: 'rev-1', employeeId: 'emp-2', period: '2026-Q1', score: 4.5, notes: 'Excelente liderazgo de equipo.', status: 'publicado', createdAt: daysAgo(30) },
@@ -72,6 +62,8 @@ function normalizeEmployee(data) {
     bankAccountType: data.bankAccountType || 'ahorro',
     bankAccountNumber: data.bankAccountNumber?.trim() || '',
     bankDocument: data.bankDocument?.trim() || '',
+    profileVersion: data.profileVersion || 1,
+    profileUpdatedAt: data.profileUpdatedAt || null,
     workSchedule: normalizeWorkSchedule(data.workSchedule),
     createdAt: data.createdAt || now(),
     updatedAt: data.updatedAt || now(),
@@ -86,8 +78,15 @@ export const useRrhhStore = create(
       employees: [],
       employeesDataState: employeesGateway.getState(),
       hydratingEmployees: false,
-      vacationRequests: SEED_REQUESTS,
-      employeeDebts: SEED_DEBTS,
+      employeeProfiles: [],
+      hrDataState: hrGateway.getState(),
+      hydratingHrData: false,
+      hrOverview: null,
+      overviewDataState: hrGateway.getState(),
+      hydratingOverview: false,
+      hrDebtStats: null,
+      vacationRequests: [],
+      employeeDebts: [],
       documentHistory: [],
       payrollRuns: [],
       performanceReviews: SEED_REVIEWS,
@@ -101,11 +100,70 @@ export const useRrhhStore = create(
         try {
           const result = await employeesGateway.read('employees')
           const mapper = result.source === 'demo' ? mapEmployeeFromDemo : mapEmployeeFromApi
-          const employees = result.data.map((item) => normalizeEmployee(mapper(item)))
+          const profileByEmployee = new Map(get().employeeProfiles.map((item) => [item.employeeId, item]))
+          const employees = result.data.map((item) => {
+            const employee = normalizeEmployee(mapper(item))
+            return normalizeEmployee({ ...employee, ...(profileByEmployee.get(employee.id) || {}) })
+          })
           set({ employees, employeesDataState: employeesGateway.getState(), hydratingEmployees: false })
           return employees
         } catch (error) {
           set({ employeesDataState: employeesGateway.getState(), hydratingEmployees: false })
+          throw error
+        }
+      },
+
+      hydrateHrData: async ({ force = false } = {}) => {
+        if (get().hydratingHrData || (!force && get().hrDataState.status !== 'loading')) {
+          return {
+            vacationRequests: get().vacationRequests,
+            employeeDebts: get().employeeDebts,
+            documentHistory: get().documentHistory,
+          }
+        }
+        set({ hydratingHrData: true })
+        try {
+          const result = await hrGateway.read('hr')
+          const profileByEmployee = new Map(
+            result.data.employeeProfiles.map((item) => [item.employeeId, item])
+          )
+          set((state) => ({
+            employeeProfiles: result.data.employeeProfiles,
+            employees: state.employees.map((employee) => normalizeEmployee({
+              ...employee,
+              ...(profileByEmployee.get(employee.id) || {}),
+            })),
+            vacationRequests: result.data.vacationRequests,
+            employeeDebts: result.data.employeeDebts,
+            documentHistory: result.data.documentHistory,
+            hrOverview: result.data.overview,
+            hrDebtStats: result.data.debtStats,
+            hrDataState: hrGateway.getState(),
+            hydratingHrData: false,
+          }))
+          return result.data
+        } catch (error) {
+          set({ hrDataState: hrGateway.getState(), hydratingHrData: false })
+          throw error
+        }
+      },
+
+      hydrateOverview: async ({ force = false } = {}) => {
+        if (get().hydratingOverview || (!force && get().overviewDataState.status !== 'loading')) {
+          return get().hrOverview
+        }
+        set({ hydratingOverview: true })
+        try {
+          const result = await hrGateway.read('overview')
+          set({
+            hrOverview: result.data,
+            hrDebtStats: result.data?.debt || get().hrDebtStats,
+            overviewDataState: hrGateway.getState(),
+            hydratingOverview: false,
+          })
+          return result.data
+        } catch (error) {
+          set({ overviewDataState: hrGateway.getState(), hydratingOverview: false })
           throw error
         }
       },
@@ -122,7 +180,7 @@ export const useRrhhStore = create(
           )
           emp = normalizeEmployee(mapEmployeeFromApi(response))
         }
-        set((s) => ({ employees: [emp, ...s.employees] }))
+        set((s) => ({ employees: [emp, ...s.employees], hrOverview: null }))
         return emp
       },
 
@@ -159,6 +217,7 @@ export const useRrhhStore = create(
         }
         set((state) => ({
           employees: state.employees.map((item) => (item.id === id ? employee : item)),
+          hrOverview: null,
         }))
         return employee
       },
@@ -177,6 +236,7 @@ export const useRrhhStore = create(
         const employee = normalizeEmployee(mapEmployeeFromApi(response))
         set((state) => ({
           employees: state.employees.map((item) => (item.id === id ? employee : item)),
+          hrOverview: null,
         }))
       },
 
@@ -184,6 +244,13 @@ export const useRrhhStore = create(
         employees: [],
         employeesDataState: employeesGateway.getState(),
         hydratingEmployees: false,
+        employeeProfiles: [],
+        hrDataState: hrGateway.getState(),
+        hydratingHrData: false,
+        hrOverview: null,
+        overviewDataState: hrGateway.getState(),
+        hydratingOverview: false,
+        hrDebtStats: null,
         vacationRequests: [],
         employeeDebts: [],
         documentHistory: [],
@@ -191,9 +258,18 @@ export const useRrhhStore = create(
         performanceReviews: [],
       }),
 
-      addVacationRequest: (data) => {
-        const req = { id: genId('vr'), status: 'pendiente', createdAt: now(), reviewedAt: null, reviewedBy: null, ...data }
-        set((s) => ({ vacationRequests: [req, ...s.vacationRequests] }))
+      addVacationRequest: async (data) => {
+        const req = useSessionStore.getState().status === 'demo'
+          ? { id: genId('vr'), status: 'pendiente', createdAt: now(), reviewedAt: null, reviewedBy: null, version: 1, ...data }
+          : await hrGateway.mutate('createLeaveRequest', {
+              startDate: data.startDate,
+              endDate: data.endDate,
+              reason: data.reason,
+            })
+        set((s) => ({
+          vacationRequests: [req, ...s.vacationRequests],
+          hrOverview: null,
+        }))
         return req
       },
 
@@ -202,30 +278,64 @@ export const useRrhhStore = create(
           vacationRequests: s.vacationRequests.map((r) => (r.id === id ? { ...r, ...data } : r)),
         })),
 
-      reviewVacationRequest: (id, status, reviewerId) =>
-        set((s) => ({
-          vacationRequests: s.vacationRequests.map((r) =>
-            r.id === id ? { ...r, status, reviewedAt: now(), reviewedBy: reviewerId } : r
-          ),
-        })),
+      reviewVacationRequest: async (id, status, reviewerId) => {
+        const current = get().vacationRequests.find((request) => request.id === id)
+        if (!current) throw new Error('Solicitud no encontrada.')
+        const request = useSessionStore.getState().status === 'demo'
+          ? { ...current, status, reviewedAt: now(), reviewedBy: reviewerId, version: (current.version || 1) + 1 }
+          : await hrGateway.mutate('reviewLeaveRequest', id, {
+              status,
+              version: current.version,
+            })
+        set((state) => ({
+          vacationRequests: state.vacationRequests.map((item) => item.id === id ? request : item),
+          hrOverview: null,
+        }))
+        return request
+      },
 
-      addEmployeeDebt: (data) => {
-        const debt = { id: genId('debt'), payments: [], createdAt: now(), ...data, amount: Number(data.amount) || 0 }
-        set((s) => ({ employeeDebts: [debt, ...s.employeeDebts] }))
+      addEmployeeDebt: async (data) => {
+        const debt = useSessionStore.getState().status === 'demo'
+          ? { id: genId('debt'), payments: [], createdAt: now(), version: 1, ...data, amount: Number(data.amount) || 0 }
+          : await hrGateway.mutate('createDebt', {
+              employeeId: data.employeeId,
+              concept: data.concept,
+              clientName: data.clientName,
+              amount: Number(data.amount),
+            })
+        set((s) => ({
+          employeeDebts: [debt, ...s.employeeDebts],
+          hrDebtStats: null,
+          hrOverview: null,
+        }))
         return debt
       },
 
-      addDebtPayment: (debtId, amount) =>
-        set((s) => ({
-          employeeDebts: s.employeeDebts.map((d) =>
-            d.id === debtId
-              ? { ...d, payments: [...(d.payments || []), { id: genId('pay'), amount: Number(amount), date: now().slice(0, 10) }] }
-              : d
-          ),
-        })),
+      addDebtPayment: async (debtId, amount) => {
+        const current = get().employeeDebts.find((debt) => debt.id === debtId)
+        if (!current) throw new Error('Deuda no encontrada.')
+        const debt = useSessionStore.getState().status === 'demo'
+          ? {
+              ...current,
+              version: (current.version || 1) + 1,
+              payments: [...(current.payments || []), { id: genId('pay'), amount: Number(amount), date: now().slice(0, 10) }],
+            }
+          : await hrGateway.mutate('createDebtPayment', debtId, {
+              amount: Number(amount),
+              paidOn: now().slice(0, 10),
+            })
+        set((state) => ({
+          employeeDebts: state.employeeDebts.map((item) => item.id === debtId ? debt : item),
+          hrDebtStats: null,
+          hrOverview: null,
+        }))
+        return debt
+      },
 
-      addDocumentRecord: (data) => {
-        const doc = { id: genId('doc'), createdAt: now(), ...data }
+      addDocumentRecord: async (data) => {
+        const doc = useSessionStore.getState().status === 'demo'
+          ? { id: genId('doc'), createdAt: now(), ...data }
+          : await hrGateway.mutate('createDocument', data)
         set((s) => ({ documentHistory: [doc, ...s.documentHistory] }))
         return doc
       },
@@ -248,7 +358,15 @@ export const useRrhhStore = create(
       },
 
       getOverviewStats: () => {
-        const { employees, vacationRequests } = get()
+        const { employees, vacationRequests, hrOverview } = get()
+        if (hrOverview) {
+          return {
+            totalEmployees: Number(hrOverview.totalEmployees) || 0,
+            activeEmployees: Number(hrOverview.activeEmployees) || 0,
+            approvedVacations: Number(hrOverview.approvedVacations) || 0,
+            pendingApprovals: Number(hrOverview.pendingApprovals) || 0,
+          }
+        }
         const active = employees.filter((e) => e.active)
         const approvedVacations = vacationRequests.filter((r) => r.status === 'aprobada').length
         const pendingApprovals = vacationRequests.filter((r) => r.status === 'pendiente').length
@@ -261,7 +379,8 @@ export const useRrhhStore = create(
       },
 
       getDebtStats: () => {
-        const debts = get().employeeDebts
+        const { employeeDebts: debts, hrDebtStats } = get()
+        if (hrDebtStats) return hrDebtStats
         let totalDebt = 0
         let totalPaid = 0
         let pending = 0
@@ -286,6 +405,9 @@ export const useRrhhStore = create(
         const state = { ...current, ...(persisted || {}) }
         state.employees = []
         state.employeesDataState = employeesGateway.getState()
+        state.employeeProfiles = []
+        state.hrDataState = hrGateway.getState()
+        state.overviewDataState = hrGateway.getState()
         return state
       },
     }

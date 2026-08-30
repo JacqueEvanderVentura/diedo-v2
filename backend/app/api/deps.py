@@ -118,3 +118,39 @@ EmployeeScheduleManageGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("employee.schedule.manage")),
 ]
+HrOverviewReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("hr.overview.read")),
+]
+HrProfileReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("hr.profile.read")),
+]
+HrProfileManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("hr.profile.manage")),
+]
+HrLeaveRequestGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("hr.leave.request")),
+]
+HrLeaveReviewGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("hr.leave.review")),
+]
+HrDebtReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("hr.debt.read")),
+]
+HrDebtManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("hr.debt.manage")),
+]
+HrDocumentReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("hr.document.read")),
+]
+HrDocumentManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("hr.document.manage")),
+]

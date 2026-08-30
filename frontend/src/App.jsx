@@ -16,6 +16,7 @@ export default function App() {
   const visibleBranches = useSessionStore((s) => s.user?.visibleBranches)
   const hydrateCustomers = useCustomersStore((s) => s.hydrate)
   const hydrateEmployees = useRrhhStore((s) => s.hydrateEmployees)
+  const hydrateHrData = useRrhhStore((s) => s.hydrateHrData)
 
   useEffect(() => {
     bootstrap()
@@ -28,8 +29,9 @@ export default function App() {
     Promise.allSettled([
       hydrateCustomers({ force: true }),
       hydrateEmployees({ force: true }),
+      hydrateHrData({ force: true }),
     ])
-  }, [hydrateCustomers, hydrateEmployees, initialized, status, visibleBranches, workspaceId])
+  }, [hydrateCustomers, hydrateEmployees, hydrateHrData, initialized, status, visibleBranches, workspaceId])
 
   return (
     <>

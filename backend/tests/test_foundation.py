@@ -47,7 +47,7 @@ def test_local_bootstrap_is_idempotent_and_installs_minimum_access_model() -> No
 
     assert second == first
     assert second.enabled_modules == ("foundation", "iam", "catalog", "crm", "hr")
-    assert permission_count == 19
+    assert permission_count == 28
     assert assigned_permission_count == permission_count
     assert second.workspace_id.version == 7
 

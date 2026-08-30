@@ -72,30 +72,38 @@ export default function CuentasPorCobrarPage() {
 
   const hasPending = stats.pending > 0
 
-  const submitDebt = () => {
+  const submitDebt = async () => {
     if (!form.employeeId) return toast.error('Selecciona un empleado')
     if (!form.concept.trim()) return toast.error('Ingresa el concepto')
     if (!form.amount || Number(form.amount) <= 0) return toast.error('Ingresa un monto válido')
-    addEmployeeDebt({
-      employeeId: form.employeeId,
-      concept: form.concept.trim(),
-      clientName: form.clientName.trim() || null,
-      amount: Number(form.amount),
-    })
-    toast.success('Deuda registrada')
-    setModalOpen(false)
-    setForm({ employeeId: '', concept: '', clientName: '', amount: '' })
+    try {
+      await addEmployeeDebt({
+        employeeId: form.employeeId,
+        concept: form.concept.trim(),
+        clientName: form.clientName.trim() || null,
+        amount: Number(form.amount),
+      })
+      toast.success('Deuda registrada')
+      setModalOpen(false)
+      setForm({ employeeId: '', concept: '', clientName: '', amount: '' })
+    } catch (error) {
+      toast.error(error.message || 'No se pudo registrar la deuda')
+    }
   }
 
-  const submitPayment = () => {
+  const submitPayment = async () => {
     const amt = Number(payAmount)
     if (!amt || amt <= 0) return toast.error('Ingresa un monto válido')
     const balance = debtBalance(payModal)
     if (amt > balance) return toast.error('El monto excede el saldo pendiente')
-    addDebtPayment(payModal.id, amt)
-    toast.success('Pago registrado')
-    setPayModal(null)
-    setPayAmount('')
+    try {
+      await addDebtPayment(payModal.id, amt)
+      toast.success('Pago registrado')
+      setPayModal(null)
+      setPayAmount('')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo registrar el pago')
+    }
   }
 
   return (

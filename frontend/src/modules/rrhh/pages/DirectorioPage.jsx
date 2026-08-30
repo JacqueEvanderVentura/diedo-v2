@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, Search, Pencil, Mail, Phone, Users, Clock } from 'lucide-react'
 import { useRrhhStore } from '@/stores/rrhhStore'
 import { useConfigStore } from '@/stores/configStore'
@@ -11,6 +11,8 @@ import { countEmployeesByBranch, getDirectReports, getEmployeeBranchIds, getJefe
 import { hasConfiguredSchedule, summarizeSchedule } from '../lib/schedule'
 import { cn } from '@/lib/utils'
 import { DataSourceNotice } from '@/components/ui/DataSourceNotice'
+import { usersApi } from '@/services/usersApi'
+import { useSessionStore } from '@/stores/sessionStore'
 
 function StatChip({ label, value, active, onClick }) {
   return (
@@ -35,11 +37,34 @@ export default function DirectorioPage() {
   const addEmployee = useRrhhStore((s) => s.addEmployee)
   const updateEmployee = useRrhhStore((s) => s.updateEmployee)
   const branches = useConfigStore((s) => s.branches)
+  const sessionStatus = useSessionStore((s) => s.status)
+  const hasPermission = useSessionStore((s) => s.hasPermission)
 
   const [query, setQuery] = useState('')
   const [branchFilter, setBranchFilter] = useState('all')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [platformUsers, setPlatformUsers] = useState([])
+
+  useEffect(() => {
+    if (sessionStatus !== 'online' || !hasPermission('membership.read')) {
+      setPlatformUsers([])
+      return
+    }
+    let cancelled = false
+    usersApi.list({ pageSize: 100, status: 'active' })
+      .then((response) => {
+        if (cancelled) return
+        setPlatformUsers(response.items.map((user) => ({
+          id: user.userId,
+          name: user.displayName,
+        })))
+      })
+      .catch(() => {
+        if (!cancelled) setPlatformUsers([])
+      })
+    return () => { cancelled = true }
+  }, [hasPermission, sessionStatus])
 
   const branchMap = useMemo(() => Object.fromEntries(branches.map((b) => [b.id, b.name])), [branches])
   const counts = useMemo(() => countEmployeesByBranch(employees, branches), [employees, branches])
@@ -169,6 +194,7 @@ export default function DirectorioPage() {
         onClose={() => setModalOpen(false)}
         employee={editing}
         employees={employees}
+        platformUsers={platformUsers}
         onSubmit={handleSubmit}
       />
     </div>

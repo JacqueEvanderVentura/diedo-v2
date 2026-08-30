@@ -18,6 +18,7 @@ from app.db.models import (
     CustomerBranchAssignment,
     Employee,
     EmployeeBranchAssignment,
+    EmployeeHrProfile,
     EmployeeSchedule,
     EmployeeSupervisor,
     WorkspaceMembership,
@@ -446,6 +447,13 @@ class MasterDataRepository:
                 employee_id=employee.id,
                 timezone=timezone,
                 weekly_schedule=weekly_schedule,
+                updated_by_platform_user_id=actor_platform_user_id,
+            )
+        )
+        self._session.add(
+            EmployeeHrProfile(
+                workspace_id=workspace_id,
+                employee_id=employee.id,
                 updated_by_platform_user_id=actor_platform_user_id,
             )
         )

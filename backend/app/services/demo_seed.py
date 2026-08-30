@@ -5,6 +5,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 from uuid import UUID, uuid5
 
 from sqlalchemy import select
@@ -19,8 +20,13 @@ from app.db.models import (
     DemoSeedRegistry,
     Employee,
     EmployeeBranchAssignment,
+    EmployeeDebt,
+    EmployeeDebtPayment,
+    EmployeeHrProfile,
     EmployeeSchedule,
     EmployeeSupervisor,
+    HrDocumentRecord,
+    HrLeaveRequest,
     PaymentMethod,
     Permission,
     PlatformUser,
@@ -45,6 +51,9 @@ class DemoSeedSummary:
     payment_method_count: int
     customer_count: int = 0
     employee_count: int = 0
+    leave_request_count: int = 0
+    debt_count: int = 0
+    document_count: int = 0
 
 
 def seed_demo_data(
@@ -56,7 +65,7 @@ def seed_demo_data(
     should_seed = settings.demo_seed_enabled if enabled is None else enabled
     bundle = load_demo_bundle()
     if not should_seed:
-        return DemoSeedSummary(False, bundle.manifest.seed_version, None, 0, 0, 0, 0, 0)
+        return DemoSeedSummary(False, bundle.manifest.seed_version, None, 0, 0, 0, 0, 0, 0, 0, 0)
     if settings.app_env not in {"development", "test"}:
         raise RuntimeError("Demo seeding is disabled outside development and test.")
     if password_hash is None:
@@ -74,6 +83,7 @@ def seed_demo_data(
     _seed_payment_methods(session, bundle, foundation.workspace_id)
     _seed_customers(session, bundle, foundation.workspace_id, branches)
     _seed_employees(session, bundle, foundation.workspace_id, branches)
+    _seed_hr(session, bundle, foundation.workspace_id)
     return DemoSeedSummary(
         True,
         bundle.manifest.seed_version,
@@ -83,6 +93,9 @@ def seed_demo_data(
         len(bundle.configuration.payment_methods),
         len(bundle.customers.items),
         len(bundle.employees.items),
+        len(bundle.hr.leave_requests),
+        len(bundle.hr.debts),
+        len(bundle.hr.documents),
     )
 
 
@@ -314,6 +327,7 @@ def _seed_employees(
             fixture.branch_codes,
         )
         _sync_employee_schedule(session, bundle, workspace_id, fixture, employee, actor_id)
+        _sync_employee_hr_profile(session, bundle, workspace_id, fixture, employee, actor_id)
 
     for fixture in bundle.employees.items:
         _sync_employee_supervisors(
@@ -325,6 +339,299 @@ def _seed_employees(
             employees,
             fixture.supervisor_seed_keys,
         )
+    session.flush()
+
+
+def _sync_employee_hr_profile(
+    session: Session,
+    bundle: DemoBundle,
+    workspace_id: UUID,
+    fixture: DemoEmployeeFixture,
+    employee: Employee,
+    actor_id: UUID,
+) -> None:
+    payload = fixture.future_hr
+    entity_id = _stable_id(bundle.manifest.seed_version, "employee_hr_profile", fixture.seed_key)
+    profile = _registered_entity(
+        session,
+        workspace_id,
+        "employee_hr_profile",
+        fixture.seed_key,
+        entity_id,
+        payload,
+        EmployeeHrProfile,
+    )
+    values = {
+        "initial_salary": Decimal(str(payload.get("initialSalary", 0))),
+        "current_salary": Decimal(str(payload.get("salary", 0))),
+        "vacation_days": int(payload.get("vacationDays", 0)),
+        "bank_name": payload.get("bankName"),
+        "bank_account_type": payload.get("bankAccountType"),
+        "bank_account_number": payload.get("bankAccountNumber"),
+        "bank_document": payload.get("bankDocument"),
+    }
+    if profile is None:
+        profile = session.scalar(
+            select(EmployeeHrProfile).where(
+                EmployeeHrProfile.workspace_id == workspace_id,
+                EmployeeHrProfile.employee_id == employee.id,
+            )
+        )
+        if profile is None:
+            profile = EmployeeHrProfile(
+                id=entity_id,
+                workspace_id=workspace_id,
+                employee_id=employee.id,
+                updated_by_platform_user_id=actor_id,
+                **values,
+            )
+            session.add(profile)
+        else:
+            profile.id = entity_id
+            for field, value in values.items():
+                setattr(profile, field, value)
+            profile.updated_by_platform_user_id = actor_id
+        session.flush()
+        _register(
+            session,
+            workspace_id,
+            "employee_hr_profile",
+            fixture.seed_key,
+            entity_id,
+            bundle.manifest.seed_version,
+            payload,
+        )
+    else:
+        for field, value in values.items():
+            setattr(profile, field, value)
+        profile.updated_by_platform_user_id = actor_id
+
+
+def _seed_hr(session: Session, bundle: DemoBundle, workspace_id: UUID) -> None:
+    for leave_fixture in bundle.hr.leave_requests:
+        payload = leave_fixture.model_dump(mode="json")
+        entity_id = _stable_id(
+            bundle.manifest.seed_version, "hr_leave_request", leave_fixture.seed_key
+        )
+        record = _registered_entity(
+            session,
+            workspace_id,
+            "hr_leave_request",
+            leave_fixture.seed_key,
+            entity_id,
+            payload,
+            HrLeaveRequest,
+        )
+        employee_id = _stable_id(
+            bundle.manifest.seed_version, "employee", leave_fixture.employee_seed_key
+        )
+        requester_id = _stable_id(
+            bundle.manifest.seed_version,
+            "platform_user",
+            leave_fixture.requested_by_user_seed_key,
+        )
+        reviewer_id = (
+            _stable_id(
+                bundle.manifest.seed_version,
+                "platform_user",
+                leave_fixture.reviewed_by_user_seed_key,
+            )
+            if leave_fixture.reviewed_by_user_seed_key
+            else None
+        )
+        if record is None:
+            record = HrLeaveRequest(
+                id=entity_id,
+                workspace_id=workspace_id,
+                employee_id=employee_id,
+                start_date=leave_fixture.start_date,
+                end_date=leave_fixture.end_date,
+                reason=leave_fixture.reason,
+                status=leave_fixture.status,
+                requested_by_platform_user_id=requester_id,
+                reviewed_by_platform_user_id=reviewer_id,
+                reviewed_at=leave_fixture.reviewed_at,
+            )
+            session.add(record)
+            session.flush()
+            _register(
+                session,
+                workspace_id,
+                "hr_leave_request",
+                leave_fixture.seed_key,
+                entity_id,
+                bundle.manifest.seed_version,
+                payload,
+            )
+        else:
+            record.employee_id = employee_id
+            record.start_date = leave_fixture.start_date
+            record.end_date = leave_fixture.end_date
+            record.reason = leave_fixture.reason
+            record.status = leave_fixture.status
+            record.requested_by_platform_user_id = requester_id
+            record.reviewed_by_platform_user_id = reviewer_id
+            record.reviewed_at = leave_fixture.reviewed_at
+
+    for debt_fixture in bundle.hr.debts:
+        payload = debt_fixture.model_dump(mode="json")
+        debt_id = _stable_id(bundle.manifest.seed_version, "employee_debt", debt_fixture.seed_key)
+        debt = _registered_entity(
+            session,
+            workspace_id,
+            "employee_debt",
+            debt_fixture.seed_key,
+            debt_id,
+            payload,
+            EmployeeDebt,
+        )
+        employee_id = _stable_id(
+            bundle.manifest.seed_version, "employee", debt_fixture.employee_seed_key
+        )
+        actor_id = _stable_id(
+            bundle.manifest.seed_version,
+            "platform_user",
+            debt_fixture.created_by_user_seed_key,
+        )
+        if debt is None:
+            debt = EmployeeDebt(
+                id=debt_id,
+                workspace_id=workspace_id,
+                employee_id=employee_id,
+                concept=debt_fixture.concept,
+                client_name=debt_fixture.client_name,
+                amount=debt_fixture.amount,
+                idempotency_key=(
+                    f"demo:{bundle.manifest.seed_version}:debt:{debt_fixture.seed_key}"
+                ),
+                created_by_platform_user_id=actor_id,
+            )
+            session.add(debt)
+            session.flush()
+            _register(
+                session,
+                workspace_id,
+                "employee_debt",
+                debt_fixture.seed_key,
+                debt_id,
+                bundle.manifest.seed_version,
+                payload,
+            )
+        else:
+            debt.employee_id = employee_id
+            debt.concept = debt_fixture.concept
+            debt.client_name = debt_fixture.client_name
+            debt.amount = debt_fixture.amount
+            debt.created_by_platform_user_id = actor_id
+
+        for payment_fixture in debt_fixture.payments:
+            payment_payload = payment_fixture.model_dump(mode="json")
+            payment_id = _stable_id(
+                bundle.manifest.seed_version,
+                "employee_debt_payment",
+                payment_fixture.seed_key,
+            )
+            payment = _registered_entity(
+                session,
+                workspace_id,
+                "employee_debt_payment",
+                payment_fixture.seed_key,
+                payment_id,
+                payment_payload,
+                EmployeeDebtPayment,
+            )
+            received_by_id = _stable_id(
+                bundle.manifest.seed_version,
+                "platform_user",
+                payment_fixture.received_by_user_seed_key,
+            )
+            if payment is None:
+                payment = EmployeeDebtPayment(
+                    id=payment_id,
+                    workspace_id=workspace_id,
+                    debt_id=debt.id,
+                    amount=payment_fixture.amount,
+                    paid_on=payment_fixture.paid_on,
+                    idempotency_key=(
+                        f"demo:{bundle.manifest.seed_version}:payment:{payment_fixture.seed_key}"
+                    ),
+                    received_by_platform_user_id=received_by_id,
+                )
+                session.add(payment)
+                session.flush()
+                _register(
+                    session,
+                    workspace_id,
+                    "employee_debt_payment",
+                    payment_fixture.seed_key,
+                    payment_id,
+                    bundle.manifest.seed_version,
+                    payment_payload,
+                )
+            else:
+                payment.debt_id = debt.id
+                payment.amount = payment_fixture.amount
+                payment.paid_on = payment_fixture.paid_on
+                payment.received_by_platform_user_id = received_by_id
+
+    for document_fixture in bundle.hr.documents:
+        payload = document_fixture.model_dump(mode="json")
+        document_id = _stable_id(
+            bundle.manifest.seed_version, "hr_document", document_fixture.seed_key
+        )
+        document = _registered_entity(
+            session,
+            workspace_id,
+            "hr_document",
+            document_fixture.seed_key,
+            document_id,
+            payload,
+            HrDocumentRecord,
+        )
+        employee_id = _stable_id(
+            bundle.manifest.seed_version, "employee", document_fixture.employee_seed_key
+        )
+        actor_id = _stable_id(
+            bundle.manifest.seed_version,
+            "platform_user",
+            document_fixture.created_by_user_seed_key,
+        )
+        snapshot = {"employeeSeedKey": document_fixture.employee_seed_key}
+        if document is None:
+            document = HrDocumentRecord(
+                id=document_id,
+                workspace_id=workspace_id,
+                employee_id=employee_id,
+                template_id=document_fixture.template_id,
+                issue_date=document_fixture.issue_date,
+                include_salary=document_fixture.include_salary,
+                reference_code=(
+                    f"DEMO-{document_fixture.issue_date.year}-{document_fixture.seed_key.upper()}"
+                ),
+                snapshot=snapshot,
+                idempotency_key=(
+                    f"demo:{bundle.manifest.seed_version}:document:{document_fixture.seed_key}"
+                ),
+                created_by_platform_user_id=actor_id,
+            )
+            session.add(document)
+            session.flush()
+            _register(
+                session,
+                workspace_id,
+                "hr_document",
+                document_fixture.seed_key,
+                document_id,
+                bundle.manifest.seed_version,
+                payload,
+            )
+        else:
+            document.employee_id = employee_id
+            document.template_id = document_fixture.template_id
+            document.issue_date = document_fixture.issue_date
+            document.include_salary = document_fixture.include_salary
+            document.snapshot = snapshot
+            document.created_by_platform_user_id = actor_id
     session.flush()
 
 
@@ -507,10 +814,35 @@ def _seed_branches(
     }
     for fixture in bundle.foundation.branches:
         payload = fixture.model_dump(mode="json")
-        entity_id = _stable_id(bundle.manifest.seed_version, "branch", fixture.seed_key)
-        branch = _registered_entity(
-            session, workspace_id, "branch", fixture.seed_key, entity_id, payload, Branch
+        existing_branch = branches.get(fixture.code)
+        registered_entity_id = session.scalar(
+            select(DemoSeedRegistry.entity_id).where(
+                DemoSeedRegistry.workspace_id == workspace_id,
+                DemoSeedRegistry.entity_type == "branch",
+                DemoSeedRegistry.seed_key == fixture.seed_key,
+            )
         )
+        entity_id = (
+            registered_entity_id
+            or (existing_branch.id if existing_branch is not None else None)
+            or _stable_id(bundle.manifest.seed_version, "branch", fixture.seed_key)
+        )
+        branch: Branch | None
+        if registered_entity_id is None and existing_branch is not None:
+            branch = existing_branch
+            _register(
+                session,
+                workspace_id,
+                "branch",
+                fixture.seed_key,
+                branch.id,
+                bundle.manifest.seed_version,
+                payload,
+            )
+        else:
+            branch = _registered_entity(
+                session, workspace_id, "branch", fixture.seed_key, entity_id, payload, Branch
+            )
         if branch is None:
             branch = Branch(
                 id=entity_id,

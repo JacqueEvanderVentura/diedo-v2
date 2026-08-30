@@ -1,19 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Users,
   Calendar,
   Clock,
-  AlertTriangle,
+  DollarSign,
   ChevronRight,
   FileText,
-  TrendingUp,
-  LifeBuoy,
 } from 'lucide-react'
 import { useRrhhStore } from '@/stores/rrhhStore'
-import { useIncidenciasStore } from '@/stores/incidenciasStore'
-import { priorityMeta, statusMeta } from '@/data/incidencias'
-import { fullName, initials, fmtDateShort } from '../lib/rrhh'
+import { fullName, initials } from '../lib/rrhh'
 import { getEmployeeBranchIds } from '../lib/staff'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -30,6 +26,8 @@ import { cn } from '@/lib/utils'
 import { DataFilterBar } from '@/components/ui/DataFilterBar'
 import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
 import { useSortedRows } from '@/hooks/useTableControls'
+import { formatDOP } from '@/lib/format'
+import { DataSourceNotice } from '@/components/ui/DataSourceNotice'
 
 function KpiCard({ label, sublabel, value, icon: Icon, tone }) {
   const tones = {
@@ -54,23 +52,29 @@ function KpiCard({ label, sublabel, value, icon: Icon, tone }) {
 
 const QUICK_LINKS = [
   { title: 'Directorio', to: '/rrhh/directorio', icon: Users, tone: 'brand' },
-  { title: 'Nómina', to: '/rrhh/nomina', icon: FileText, tone: 'emerald' },
-  { title: 'Performance', to: '/rrhh/performance', icon: TrendingUp, tone: 'cyan' },
-  { title: 'Incidencias', to: '/incidencias', icon: LifeBuoy, tone: 'danger' },
+  { title: 'Solicitudes', to: '/rrhh/solicitudes', icon: Calendar, tone: 'cyan' },
+  { title: 'Ctas. por cobrar', to: '/rrhh/cuentas-por-cobrar', icon: DollarSign, tone: 'emerald' },
+  { title: 'Documentos', to: '/rrhh/documentos', icon: FileText, tone: 'brand' },
 ]
 
 export default function RrhhOverviewPage() {
   const employees = useRrhhStore((s) => s.employees)
   const vacationRequests = useRrhhStore((s) => s.vacationRequests)
   const getOverviewStats = useRrhhStore((s) => s.getOverviewStats)
-  const incidencias = useIncidenciasStore((s) => s.incidencias)
-  const getStats = useIncidenciasStore((s) => s.getStats)
+  const getDebtStats = useRrhhStore((s) => s.getDebtStats)
+  const hrOverview = useRrhhStore((s) => s.hrOverview)
+  const overviewDataState = useRrhhStore((s) => s.overviewDataState)
+  const hydrateOverview = useRrhhStore((s) => s.hydrateOverview)
 
   const [employeeSearch, setEmployeeSearch] = useState('')
   const [branchFilter, setBranchFilter] = useState('all')
 
+  useEffect(() => {
+    hydrateOverview({ force: true }).catch(() => {})
+  }, [hydrateOverview])
+
   const rrhhStats = useMemo(() => getOverviewStats(), [employees, vacationRequests, getOverviewStats])
-  const incStats = useMemo(() => getStats(), [incidencias, getStats])
+  const debtStats = useMemo(() => hrOverview?.debt || getDebtStats(), [getDebtStats, hrOverview])
 
   const activeEmployees = useMemo(() => employees.filter((e) => e.active), [employees])
 
@@ -93,19 +97,19 @@ export default function RrhhOverviewPage() {
     },
   })
 
-  const recentRequests = useMemo(() => vacationRequests.slice(0, 3), [vacationRequests])
-  const recentIncidencias = useMemo(
-    () => [...incidencias].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 3),
-    [incidencias]
+  const recentRequests = useMemo(
+    () => (hrOverview?.recentRequests || vacationRequests).slice(0, 3),
+    [hrOverview, vacationRequests]
   )
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="rrhh-overview">
+      <DataSourceNotice state={overviewDataState} onRetry={() => hydrateOverview({ force: true })} />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Empleados" value={rrhhStats.totalEmployees} icon={Users} tone="brand" />
         <KpiCard label="Ausencias / Vacaciones" sublabel="Solicitudes aprobadas" value={rrhhStats.approvedVacations} icon={Calendar} tone="warning" />
         <KpiCard label="Aprobaciones Pendientes" sublabel="Requieren atención" value={rrhhStats.pendingApprovals} icon={Clock} tone="info" />
-        <KpiCard label="Incidencias Activas" sublabel={`Críticas: ${incStats.criticas}`} value={incStats.abiertas + incStats.enProceso} icon={AlertTriangle} tone="danger" />
+        <KpiCard label="Deuda pendiente" sublabel={`${debtStats.employeesWithDebt} empleados`} value={formatDOP(debtStats.pending)} icon={DollarSign} tone="danger" />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -209,47 +213,37 @@ export default function RrhhOverviewPage() {
       <Card className="p-6">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h3 className="font-heading font-semibold text-slate-900">Incidencias / Reportes</h3>
-            <Badge tone="danger">{incStats.abiertas + incStats.enProceso} ACTIVAS</Badge>
+            <h3 className="font-heading font-semibold text-slate-900">Cuentas por cobrar</h3>
+            <Badge tone={debtStats.pending > 0 ? 'warning' : 'success'}>{debtStats.employeesWithDebt} EMPLEADOS</Badge>
           </div>
-          <Link to="/incidencias" className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800">
-            <FileText className="h-4 w-4" /> Ver Todas
+          <Link to="/rrhh/cuentas-por-cobrar" className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800">
+            <DollarSign className="h-4 w-4" /> Ver detalle
           </Link>
         </div>
-        <div className="space-y-3">
-          {recentIncidencias.map((inc) => {
-            const pMeta = priorityMeta(inc.priority)
-            const sMeta = statusMeta(inc.status)
-            return (
-              <div key={inc.id} className="flex flex-wrap items-center justify-between gap-4 rounded-lg bg-slate-50 p-4">
-                <div className="flex items-center gap-4">
-                  <div className={cn('flex h-10 w-10 items-center justify-center rounded-lg', pMeta.tone === 'alta' ? 'bg-red-50' : 'bg-amber-50')}>
-                    <AlertTriangle className={cn('h-5 w-5', pMeta.tone === 'alta' ? 'text-red-600' : 'text-amber-600')} />
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase text-slate-400">Código</p>
-                    <p className="font-medium text-slate-900">{inc.code}</p>
-                  </div>
-                </div>
-                <div className="hidden sm:block">
-                  <p className="text-xs uppercase text-slate-400">Fecha</p>
-                  <p className="text-sm text-slate-700">{fmtDateShort(inc.createdAt)}</p>
-                </div>
-                <div className="hidden md:block">
-                  <p className="text-xs uppercase text-slate-400">Prioridad</p>
-                  <p className={cn('text-sm font-medium', pMeta.tone === 'alta' ? 'text-red-600' : 'text-amber-600')}>{pMeta.label}</p>
-                </div>
-                <Badge tone="neutral">{sMeta.label}</Badge>
-              </div>
-            )
-          })}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-lg bg-slate-50 p-4">
+            <p className="text-xs font-semibold uppercase text-slate-400">Total deuda</p>
+            <p className="mt-1 font-heading text-lg font-bold text-slate-900">{formatDOP(debtStats.totalDebt)}</p>
+          </div>
+          <div className="rounded-lg bg-slate-50 p-4">
+            <p className="text-xs font-semibold uppercase text-slate-400">Pagado</p>
+            <p className="mt-1 font-heading text-lg font-bold text-emerald-600">{formatDOP(debtStats.totalPaid)}</p>
+          </div>
+          <div className="rounded-lg bg-slate-50 p-4">
+            <p className="text-xs font-semibold uppercase text-slate-400">Pendiente</p>
+            <p className="mt-1 font-heading text-lg font-bold text-amber-600">{formatDOP(debtStats.pending)}</p>
+          </div>
+          <div className="rounded-lg bg-slate-50 p-4">
+            <p className="text-xs font-semibold uppercase text-slate-400">Empleados con deuda</p>
+            <p className="mt-1 font-heading text-lg font-bold text-slate-900">{debtStats.employeesWithDebt}</p>
+          </div>
         </div>
       </Card>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {QUICK_LINKS.map((link) => {
           const Icon = link.icon
-          const tones = { brand: 'bg-blue-50 text-blue-600', emerald: 'bg-emerald-50 text-emerald-600', cyan: 'bg-cyan-50 text-cyan-600', danger: 'bg-red-50 text-red-600' }
+          const tones = { brand: 'bg-blue-50 text-blue-600', emerald: 'bg-emerald-50 text-emerald-600', cyan: 'bg-cyan-50 text-cyan-600' }
           return (
             <Link key={link.to} to={link.to}>
               <Card className="flex items-center justify-between p-4 transition-colors hover:border-blue-200">

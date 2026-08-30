@@ -11,6 +11,7 @@ from app.db.models import (
 )
 from app.db.session import session_scope
 from app.services.demo_seed import seed_demo_data
+from app.services.local_bootstrap import bootstrap_local_foundation
 from app.services.local_demo_data import seed_local_demo_data
 from sqlalchemy import func, select
 
@@ -25,12 +26,37 @@ def test_demo_seed_flag_false_is_a_no_op() -> None:
     assert summary.payment_method_count == 0
     assert summary.customer_count == 0
     assert summary.employee_count == 0
+    assert summary.leave_request_count == 0
+    assert summary.debt_count == 0
+    assert summary.document_count == 0
 
 
 @pytest.mark.integration
 def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
     first_password_hash = hash_password("first-local-demo-password-not-a-secret")
     current_password = "current-local-demo-password-not-a-secret"
+
+    with session_scope() as session:
+        foundation = bootstrap_local_foundation(session, first_password_hash)
+        adopted_branch = session.scalar(
+            select(Branch).where(
+                Branch.workspace_id == foundation.workspace_id,
+                Branch.code == "NORTH",
+            )
+        )
+        if adopted_branch is None:
+            adopted_branch = Branch(
+                workspace_id=foundation.workspace_id,
+                legal_entity_id=foundation.legal_entity_id,
+                code="NORTH",
+                name="Sucursal norte sin registro de seed",
+                status="active",
+                timezone="America/Santo_Domingo",
+                configuration={},
+            )
+            session.add(adopted_branch)
+            session.flush()
+        adopted_branch_id = adopted_branch.id
 
     with session_scope() as session:
         first = seed_local_demo_data(session, first_password_hash)
@@ -96,6 +122,19 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
                 DemoSeedRegistry.entity_type == "employee",
             )
         )
+        north_branch = session.scalar(
+            select(Branch).where(
+                Branch.workspace_id == second.workspace_id,
+                Branch.code == "NORTH",
+            )
+        )
+        north_registry = session.scalar(
+            select(DemoSeedRegistry).where(
+                DemoSeedRegistry.workspace_id == second.workspace_id,
+                DemoSeedRegistry.entity_type == "branch",
+                DemoSeedRegistry.seed_key == "north",
+            )
+        )
 
     assert second.workspace_id == first.workspace_id
     assert owner is not None
@@ -109,4 +148,10 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
     assert registry_count is not None and registry_count >= 1
     assert first.customer_count == second.customer_count == customer_count == 5
     assert first.employee_count == second.employee_count == employee_count == 13
+    assert first.leave_request_count == second.leave_request_count == 2
+    assert first.debt_count == second.debt_count == 2
+    assert first.document_count == second.document_count == 0
+    assert north_branch is not None and north_branch.id == adopted_branch_id
+    assert north_branch.name == "Sucursal Norte"
+    assert north_registry is not None and north_registry.entity_id == adopted_branch_id
     assert all(verify_password(current_password, user.password_hash) for user in demo_users)

@@ -14,6 +14,13 @@ from app.db.models.foundation import (
     RegionalRuleVersion,
     Workspace,
 )
+from app.db.models.hr import (
+    EmployeeDebt,
+    EmployeeDebtPayment,
+    EmployeeHrProfile,
+    HrDocumentRecord,
+    HrLeaveRequest,
+)
 from app.db.models.identity import (
     AccessScope,
     AuthSession,
@@ -45,8 +52,13 @@ __all__ = [
     "DemoSeedRegistry",
     "Employee",
     "EmployeeBranchAssignment",
+    "EmployeeDebt",
+    "EmployeeDebtPayment",
+    "EmployeeHrProfile",
     "EmployeeSchedule",
     "EmployeeSupervisor",
+    "HrDocumentRecord",
+    "HrLeaveRequest",
     "Item",
     "ItemBranchAssignment",
     "ItemCategory",

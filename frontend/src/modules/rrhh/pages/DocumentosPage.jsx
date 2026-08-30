@@ -36,10 +36,19 @@ export default function DocumentosPage() {
 
   const showSalaryToggle = templateId === 'bancaria'
 
-  const saveToHistory = () => {
+  const saveToHistory = async () => {
     if (!employee) return toast.error('Selecciona un empleado')
-    addDocumentRecord({ templateId, employeeId, issueDate, includeSalary })
-    toast.success('Documento guardado en historial')
+    try {
+      await addDocumentRecord({
+        templateId,
+        employeeId,
+        issueDate,
+        includeSalary: showSalaryToggle && includeSalary,
+      })
+      toast.success('Documento guardado en historial')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo guardar el documento')
+    }
   }
 
   const downloadPdf = () => {

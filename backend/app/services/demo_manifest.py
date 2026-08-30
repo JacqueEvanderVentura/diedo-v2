@@ -3,7 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal
 
@@ -118,6 +119,50 @@ class EmployeesFixture(ApiModel):
     items: list[DemoEmployeeFixture]
 
 
+class DemoLeaveRequestFixture(ApiModel):
+    seed_key: str
+    employee_seed_key: str
+    start_date: date
+    end_date: date
+    reason: str
+    status: Literal["pendiente", "aprobada", "rechazada", "cancelada"]
+    requested_by_user_seed_key: str
+    reviewed_by_user_seed_key: str | None = None
+    reviewed_at: datetime | None = None
+
+
+class DemoDebtPaymentFixture(ApiModel):
+    seed_key: str
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    paid_on: date
+    received_by_user_seed_key: str
+
+
+class DemoEmployeeDebtFixture(ApiModel):
+    seed_key: str
+    employee_seed_key: str
+    concept: str
+    client_name: str | None = None
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    created_by_user_seed_key: str
+    payments: list[DemoDebtPaymentFixture] = Field(default_factory=list)
+
+
+class DemoHrDocumentFixture(ApiModel):
+    seed_key: str
+    employee_seed_key: str
+    template_id: Literal["certificado", "bancaria", "recomendacion", "vacaciones"]
+    issue_date: date
+    include_salary: bool = False
+    created_by_user_seed_key: str
+
+
+class HrFixture(ApiModel):
+    leave_requests: list[DemoLeaveRequestFixture] = Field(default_factory=list)
+    debts: list[DemoEmployeeDebtFixture] = Field(default_factory=list)
+    documents: list[DemoHrDocumentFixture] = Field(default_factory=list)
+
+
 @dataclass(frozen=True)
 class DemoBundle:
     manifest: DemoManifest
@@ -126,6 +171,7 @@ class DemoBundle:
     configuration: ConfigurationFixture
     customers: CustomersFixture
     employees: EmployeesFixture
+    hr: HrFixture
 
 
 def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
@@ -165,4 +211,5 @@ def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
         employees=EmployeesFixture.model_validate_json(
             (root / "employees.json").read_text(encoding="utf-8")
         ),
+        hr=HrFixture.model_validate_json((root / "hr.json").read_text(encoding="utf-8")),
     )

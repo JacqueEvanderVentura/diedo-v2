@@ -13,11 +13,23 @@ export function isModuleAvailable(moduleCode, enabledModules = []) {
 }
 
 export function routeRequirement(pathname) {
+  if (pathname.startsWith('/rrhh/cuentas-por-cobrar')) {
+    return { module: 'hr', permission: 'hr.debt.read' }
+  }
+  if (pathname.startsWith('/rrhh/documentos')) {
+    return { module: 'hr', permission: 'hr.document.read' }
+  }
+  if (pathname.startsWith('/rrhh/solicitudes')) {
+    return { module: 'hr', permission: 'hr.leave.request' }
+  }
   if (pathname.startsWith('/crm/clientes')) {
     return { module: 'crm', permission: 'customer.read' }
   }
   if (pathname.startsWith('/rrhh/directorio')) {
     return { module: 'hr', permission: 'employee.read' }
+  }
+  if (pathname === '/rrhh') {
+    return { module: 'hr', permission: 'hr.overview.read' }
   }
   if (pathname.startsWith('/configuracion/usuarios')) {
     return { module: 'iam', permission: 'membership.read' }

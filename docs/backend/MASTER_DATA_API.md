@@ -56,7 +56,9 @@ payments can append authorized projections in later phases without changing the 
 The basic employee contract contains employee number, first/last name, email, phone, position,
 department, contract type, hire date, assigned branches, supervisors, status, optional
 `platformUserId`, timestamps, and versions. Salary, vacation balances, banking, payroll, debts,
-and evaluations are deliberately absent until Phase 9 permissions and legal rules are defined.
+and evaluations stay outside this basic contract. Implemented HR profiles, vacation requests,
+employee debts, and documents are defined in [HR_API.md](HR_API.md); payroll and evaluations remain
+separate future domains.
 
 An employee can link to at most one platform user, and a platform user can link to at most one
 employee in the workspace. The database requires that the platform user has a membership in that
@@ -104,4 +106,3 @@ branch scope, domain read permission, and attachment ownership.
   hidden resources 404; duplicate links, invariant violations, and stale versions 409.
 - Lists return `items`, `page`, `pageSize`, `totalItems`, and `totalPages`.
 - Expected failures use `{ "message": "...", "parameter": "optionalField" }`.
-

@@ -50,6 +50,10 @@ export class DemoRepository {
   employees() {
     return structuredClone(this.snapshot.employees.items)
   }
+
+  hr() {
+    return structuredClone(this.snapshot.hr)
+  }
 }
 
 export const demoRepository = new DemoRepository()
