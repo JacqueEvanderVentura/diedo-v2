@@ -5,7 +5,7 @@ export function AuthGate() {
   const location = useLocation()
   const initialized = useSessionStore((s) => s.initialized)
   const status = useSessionStore((s) => s.status)
-  const isAuthenticated = useSessionStore((s) => s.isAuthenticated())
+  const isAuthenticated = useSessionStore((s) => Boolean(s.accessToken && s.user))
 
   if (!initialized) {
     return (

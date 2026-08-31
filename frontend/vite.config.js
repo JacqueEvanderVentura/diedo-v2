@@ -4,7 +4,8 @@ import path from 'path'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const pagesBase = process.env.GITHUB_PAGES === 'true' ? '/diedo-v2/' : '/'
+  const isGitHubPages = process.env.GITHUB_PAGES === 'true'
+  const pagesBase = isGitHubPages ? '/diedo-v2/' : '/'
 
   return {
     base: pagesBase,
@@ -16,6 +17,7 @@ export default defineConfig(({ mode }) => {
     },
     define: {
       'import.meta.env.VITE_HAS_SERPER': JSON.stringify(Boolean(env.SERPER_API_KEY)),
+      'import.meta.env.VITE_STATIC_HOST': JSON.stringify(isGitHubPages),
     },
     server: {
       host: '0.0.0.0',

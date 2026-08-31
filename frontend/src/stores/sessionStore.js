@@ -6,6 +6,14 @@ import { authApi } from '@/services/authApi'
 import { checkHealthReady } from '@/services/healthApi'
 import { mapSessionUser } from '@/services/adapters/iam'
 
+/** Stable fallback — returning a fresh object from selectors causes React max-update loops. */
+const FALLBACK_DISPLAY_USER = Object.freeze({
+  ...CURRENT_USER,
+  email: '',
+  active: true,
+  branchIds: Object.freeze([]),
+})
+
 export const useSessionStore = create(
   persist(
     (set, get) => ({
@@ -27,15 +35,22 @@ export const useSessionStore = create(
       getDisplayUser: () => {
         const { status, user } = get()
         if (status === 'online' && user) return user
-        return { ...CURRENT_USER, email: '', active: true, branchIds: [] }
+        return FALLBACK_DISPLAY_USER
       },
 
       bootstrap: async () => {
         if (get().initialized) return
         set({ bootError: null })
 
+        // GitHub Pages is static — no /api-backend proxy. Skip the health probe.
+        if (import.meta.env.VITE_STATIC_HOST === 'true' || import.meta.env.VITE_STATIC_HOST === true) {
+          set({ status: 'offline', initialized: true, user: null })
+          return
+        }
+
         const ready = await checkHealthReady()
         if (!ready) {
+          // No API available — continue with local UI data.
           set({ status: 'offline', initialized: true, user: null })
           return
         }

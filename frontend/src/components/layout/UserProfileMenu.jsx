@@ -42,8 +42,9 @@ export function UserProfileMenu() {
 
   const users = useConfigStore((s) => s.users)
   const permissions = useConfigStore((s) => s.permissions)
-  const sessionUser = useSessionStore((s) => s.getDisplayUser())
-  const isOnline = useSessionStore((s) => s.isOnline())
+  const sessionStatus = useSessionStore((s) => s.status)
+  const sessionUser = useSessionStore((s) => (s.status === 'online' && s.user ? s.user : s.getDisplayUser()))
+  const isOnline = sessionStatus === 'online'
   const logoutSession = useSessionStore((s) => s.logout)
 
   const user = useMemo(() => {
