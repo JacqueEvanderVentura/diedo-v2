@@ -20,11 +20,13 @@ export function SupplierFormModal({ open, onClose, supplier, onSubmit }) {
   const branches = useConfigStore((s) => s.branches)
   const [form, setForm] = useState(empty())
   const [err, setErr] = useState('')
+  const [saving, setSaving] = useState(false)
   const editing = !!supplier
 
   useEffect(() => {
     if (!open) return
     setErr('')
+    setSaving(false)
     setForm(supplier ? { ...empty(), ...supplier, branchIds: supplier.branchIds || [] } : empty())
   }, [open, supplier])
 
@@ -35,12 +37,20 @@ export function SupplierFormModal({ open, onClose, supplier, onSubmit }) {
       branchIds: f.branchIds.includes(id) ? f.branchIds.filter((b) => b !== id) : [...f.branchIds, id],
     }))
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.name.trim()) return setErr('Ingresa el nombre del proveedor.')
     if (!form.branchIds.length) return setErr('Selecciona al menos una sucursal autorizada.')
-    onSubmit(form)
-    toast.success(editing ? 'Proveedor actualizado' : 'Proveedor registrado')
-    onClose()
+    setSaving(true)
+    setErr('')
+    try {
+      await onSubmit(form)
+      toast.success(editing ? 'Proveedor actualizado' : 'Proveedor registrado')
+      onClose()
+    } catch (error) {
+      setErr(error.message || 'No se pudo guardar el proveedor.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -91,8 +101,10 @@ export function SupplierFormModal({ open, onClose, supplier, onSubmit }) {
         </div>
       </div>
       <div className="mt-6 flex justify-end gap-2">
-        <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-        <Button onClick={submit}>{editing ? 'Guardar cambios' : 'Registrar proveedor'}</Button>
+        <Button variant="secondary" onClick={onClose} disabled={saving}>Cancelar</Button>
+        <Button onClick={submit} disabled={saving}>
+          {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Registrar proveedor'}
+        </Button>
       </div>
     </Modal>
   )

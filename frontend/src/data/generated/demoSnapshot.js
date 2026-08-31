@@ -1,7 +1,7 @@
 // Generated from demo-data/v1; do not edit.
 export const DEMO_SNAPSHOT = Object.freeze({
   "seedVersion": "v1",
-  "schemaVersion": "20260831_0010",
+  "schemaVersion": "20260831_0011",
   "workspaceSlug": "local-erp",
   "foundation": {
     "branches": [
@@ -42,6 +42,11 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "inventory.read",
         "inventory.manage",
         "inventory.move",
+        "purchasing.read",
+        "purchasing.suppliers.manage",
+        "purchasing.requests.create",
+        "purchasing.requests.review",
+        "purchasing.settings.manage",
         "customer.read",
         "customer.manage",
         "employee.read",
@@ -67,6 +72,8 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "catalog.read",
         "inventory.read",
         "inventory.move",
+        "purchasing.read",
+        "purchasing.requests.create",
         "customer.read",
         "customer.manage",
         "employee.read",
@@ -82,6 +89,8 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "branch.read",
         "catalog.read",
         "inventory.read",
+        "purchasing.read",
+        "purchasing.requests.create",
         "customer.read",
         "customer.manage",
         "employee.read",
@@ -94,6 +103,8 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "branch.read",
         "catalog.read",
         "inventory.read",
+        "purchasing.read",
+        "purchasing.requests.create",
         "customer.read",
         "customer.manage",
         "employee.read",
@@ -967,6 +978,94 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "notes": "Fuera de servicio"
       }
     ]
+  },
+  "purchasing": {
+    "suppliers": [
+      {
+        "seedKey": "distribuidora-caribe",
+        "name": "Distribuidora del Caribe",
+        "rnc": "131-12345-6",
+        "contactName": "Juan Pérez",
+        "phone": "809-555-0199",
+        "email": "ventas@proveedor.com",
+        "address": "Calle Central #12, Santo Domingo",
+        "branchCodes": [
+          "HQ",
+          "NORTH"
+        ],
+        "productCount": 24,
+        "active": true
+      },
+      {
+        "seedKey": "beauty-supply-rd",
+        "name": "Beauty Supply RD",
+        "rnc": "101-99887-2",
+        "contactName": "María López",
+        "phone": "829-555-4400",
+        "email": "pedidos@beautysupply.do",
+        "address": "Av. Winston Churchill, Santo Domingo",
+        "branchCodes": [
+          "HQ"
+        ],
+        "productCount": 12,
+        "active": true
+      }
+    ],
+    "requests": [
+      {
+        "seedKey": "reposicion-insumos-laser",
+        "number": "SC-20260830-0001",
+        "supplierSeedKey": "distribuidora-caribe",
+        "branchCode": "HQ",
+        "requesterUserSeedKey": "admin",
+        "requesterName": "Leonedis Hamburgo",
+        "items": [
+          {
+            "name": "Cera depilatoria premium",
+            "qty": 10,
+            "unit": "unidad",
+            "price": 450
+          },
+          {
+            "name": "Guantes desechables",
+            "qty": 5,
+            "unit": "caja",
+            "price": 320
+          }
+        ],
+        "status": "pendiente",
+        "priority": "normal",
+        "notes": "Reposición mensual de insumos láser.",
+        "createdAt": "2026-08-30T14:00:00Z"
+      },
+      {
+        "seedKey": "shampoo-profesional",
+        "number": "SC-20260827-0002",
+        "supplierSeedKey": "beauty-supply-rd",
+        "branchCode": "HQ",
+        "requesterUserSeedKey": "cashier",
+        "requesterName": "María Recepción",
+        "items": [
+          {
+            "name": "Shampoo profesional",
+            "qty": 20,
+            "unit": "unidad",
+            "price": 280
+          }
+        ],
+        "status": "aprobada",
+        "priority": "alta",
+        "notes": "Urgente para sucursal DN.",
+        "quoteFileName": "cotizacion-shampoo.pdf",
+        "createdAt": "2026-08-27T13:00:00Z",
+        "reviewerUserSeedKey": "admin",
+        "reviewedAt": "2026-08-28T15:30:00Z"
+      }
+    ],
+    "settings": {
+      "approverUserSeedKey": "admin",
+      "notifyOnRequest": true
+    }
   },
   "customers": {
     "items": [

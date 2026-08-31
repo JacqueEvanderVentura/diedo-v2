@@ -71,6 +71,10 @@ export class DemoRepository {
     }
   }
 
+  purchasing() {
+    return structuredClone(this.snapshot.purchasing)
+  }
+
   hr() {
     return structuredClone(this.snapshot.hr)
   }

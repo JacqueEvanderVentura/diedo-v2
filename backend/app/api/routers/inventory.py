@@ -627,18 +627,22 @@ def create_adjustment_movement(
 )
 def get_inventory_movement(
     movement_id: UUID,
+    response: Response,
     database: DatabaseSession,
     grant: InventoryReadGrant,
 ) -> InventoryMovementResponse:
+    response.headers["Cache-Control"] = "no-store"
     return _movement_response(InventoryService(database).get_movement(grant, movement_id))
 
 
 @router.get("/supply-usage", responses=_SECURITY_RESPONSES)
 def get_supply_usage(
+    response: Response,
     database: DatabaseSession,
     grant: InventoryReadGrant,
     branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
 ) -> list[SupplyUsageResponse]:
+    response.headers["Cache-Control"] = "no-store"
     records = InventoryService(database).supply_usage(grant, branch_id)
     return [
         SupplyUsageResponse(

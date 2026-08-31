@@ -1,4 +1,12 @@
-const API_CONNECTED_MODULE_SET = new Set(['foundation', 'iam', 'catalog', 'crm', 'hr', 'appointments'])
+const API_CONNECTED_MODULE_SET = new Set([
+  'foundation',
+  'iam',
+  'catalog',
+  'crm',
+  'hr',
+  'appointments',
+  'purchasing',
+])
 
 export const API_CONNECTED_MODULES = Object.freeze([...API_CONNECTED_MODULE_SET])
 
@@ -13,6 +21,9 @@ export function isModuleAvailable(moduleCode, enabledModules = []) {
 }
 
 export function routeRequirement(pathname) {
+  if (pathname === '/compras' || pathname.startsWith('/compras/')) {
+    return { module: 'purchasing', permission: 'purchasing.read' }
+  }
   if (pathname === '/agenda' || pathname.startsWith('/agenda/')) {
     return { module: 'appointments', permission: 'appointment.read' }
   }

@@ -17,6 +17,7 @@ from app.db.models import (
     ModuleEntitlement,
     Permission,
     PlatformUser,
+    PurchasingSettings,
     RegionalPack,
     Role,
     RoleAssignment,
@@ -272,6 +273,46 @@ _PERMISSIONS = (
         "Register idempotent stock outputs and adjustments.",
         30,
     ),
+    (
+        "purchasing.read",
+        "purchasing",
+        "read",
+        "Ver compras",
+        "View suppliers, purchase requests, statistics, and settings.",
+        10,
+    ),
+    (
+        "purchasing.suppliers.manage",
+        "purchasing",
+        "suppliers.manage",
+        "Gestionar proveedores",
+        "Create, update, deactivate, and archive suppliers.",
+        20,
+    ),
+    (
+        "purchasing.requests.create",
+        "purchasing",
+        "requests.create",
+        "Crear solicitudes de compra",
+        "Create and edit pending purchase requests.",
+        30,
+    ),
+    (
+        "purchasing.requests.review",
+        "purchasing",
+        "requests.review",
+        "Aprobar solicitudes de compra",
+        "Approve, reject, and mark approved requests as delivered.",
+        40,
+    ),
+    (
+        "purchasing.settings.manage",
+        "purchasing",
+        "settings.manage",
+        "Configurar compras",
+        "Choose the designated approver and notification preference.",
+        50,
+    ),
 )
 
 _ROLE_TEMPLATES = (
@@ -290,7 +331,7 @@ _MODULES: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
     ("crm", "Customer relationship management", "optional", "available", ("foundation",)),
     ("catalog", "Product and service catalog", "optional", "available", ("foundation",)),
     ("sales", "Sales", "optional", "planned", ("crm", "catalog")),
-    ("purchasing", "Purchasing", "optional", "planned", ("catalog",)),
+    ("purchasing", "Purchasing", "optional", "available", ("foundation", "catalog")),
     ("inventory", "Inventory and assets", "optional", "available", ("foundation", "catalog")),
     ("accounting", "Accounting", "optional", "planned", ("sales", "purchasing")),
     ("hr", "Human resources", "optional", "available", ("foundation",)),
@@ -511,6 +552,7 @@ def bootstrap_local_foundation(
         "hr",
         "appointments",
         "inventory",
+        "purchasing",
     )
     for module_code in enabled_modules:
         module_id = session.scalar(
@@ -528,6 +570,17 @@ def bootstrap_local_foundation(
                 "effective_from": now,
             },
         )
+
+    _insert_do_nothing(
+        session,
+        PurchasingSettings,
+        {
+            "workspace_id": workspace.id,
+            "approver_membership_id": membership.id,
+            "notify_on_request": True,
+            "updated_by_platform_user_id": user.id,
+        },
+    )
 
     return BootstrapSummary(
         workspace_id=workspace.id,

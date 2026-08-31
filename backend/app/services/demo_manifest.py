@@ -8,7 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import EmailStr, Field, field_validator
+from pydantic import EmailStr, Field, field_validator, model_validator
 
 from app.schemas.common import ApiModel
 
@@ -179,6 +179,64 @@ class InventoryFixture(ApiModel):
     assets: list[DemoAssetFixture]
 
 
+class DemoSupplierFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    name: str = Field(min_length=2, max_length=200)
+    rnc: str | None = Field(default=None, max_length=80)
+    contact_name: str | None = Field(default=None, max_length=160)
+    phone: str | None = Field(default=None, max_length=40)
+    email: EmailStr | None = None
+    address: str | None = Field(default=None, max_length=500)
+    branch_codes: list[str] = Field(min_length=1, max_length=100)
+    product_count: int = Field(default=0, ge=0)
+    active: bool = True
+
+
+class DemoPurchaseRequestItemFixture(ApiModel):
+    name: str = Field(min_length=1, max_length=240)
+    qty: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
+    unit: str = Field(min_length=1, max_length=40)
+    price: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
+
+
+class DemoPurchaseRequestFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    number: str = Field(min_length=2, max_length=32)
+    supplier_seed_key: str
+    branch_code: str
+    requester_user_seed_key: str
+    requester_name: str = Field(min_length=1, max_length=160)
+    items: list[DemoPurchaseRequestItemFixture] = Field(min_length=1, max_length=100)
+    status: Literal["pendiente", "aprobada", "rechazada", "entregada"]
+    priority: Literal["normal", "alta"] = "normal"
+    notes: str | None = Field(default=None, max_length=2000)
+    quote_file_name: str | None = Field(default=None, max_length=255)
+    created_at: datetime
+    reviewer_user_seed_key: str | None = None
+    reviewed_at: datetime | None = None
+    delivered_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def require_status_timestamps(self) -> DemoPurchaseRequestFixture:
+        reviewed = self.status in {"aprobada", "rechazada", "entregada"}
+        if reviewed != bool(self.reviewer_user_seed_key and self.reviewed_at):
+            raise ValueError("Reviewed demo requests require reviewer and reviewedAt.")
+        if (self.status == "entregada") != (self.delivered_at is not None):
+            raise ValueError("Only delivered demo requests may define deliveredAt.")
+        return self
+
+
+class DemoPurchasingSettingsFixture(ApiModel):
+    approver_user_seed_key: str | None = None
+    notify_on_request: bool = True
+
+
+class PurchasingFixture(ApiModel):
+    suppliers: list[DemoSupplierFixture]
+    requests: list[DemoPurchaseRequestFixture]
+    settings: DemoPurchasingSettingsFixture
+
+
 class DemoLeaveRequestFixture(ApiModel):
     seed_key: str
     employee_seed_key: str
@@ -231,6 +289,7 @@ class DemoBundle:
     configuration: ConfigurationFixture
     catalog: CatalogFixture
     inventory: InventoryFixture
+    purchasing: PurchasingFixture
     customers: CustomersFixture
     employees: EmployeesFixture
     hr: HrFixture
@@ -247,6 +306,7 @@ def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
         "configuration.json",
         "catalog.json",
         "inventory.json",
+        "purchasing.json",
         "customers.json",
         "employees.json",
     }
@@ -276,6 +336,9 @@ def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
         ),
         inventory=InventoryFixture.model_validate_json(
             (root / "inventory.json").read_text(encoding="utf-8")
+        ),
+        purchasing=PurchasingFixture.model_validate_json(
+            (root / "purchasing.json").read_text(encoding="utf-8")
         ),
         customers=CustomersFixture.model_validate_json(
             (root / "customers.json").read_text(encoding="utf-8")

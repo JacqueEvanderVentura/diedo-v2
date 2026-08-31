@@ -1,8 +1,8 @@
 {
   "seedVersion": "v1",
-  "schemaVersion": "20260831_0010",
+  "schemaVersion": "20260831_0011",
   "workspaceSlug": "local-erp",
-  "modules": ["foundation", "iam", "configuration", "crm", "hr", "appointments", "inventory"],
+  "modules": ["foundation", "iam", "configuration", "crm", "hr", "appointments", "inventory", "purchasing"],
   "files": [
     {"name": "agenda.json", "sha256": "bcedc7da27dca581475b9342c5e857428e8fac347fbab59c5a048fdb1b3e8f0d", "count": 0},
     {"name": "catalog.json", "sha256": "50d124558bd1533ef9758e8e0b52fabbe1ed2c263edbe5a4144930e9be521db3", "count": 22},
@@ -13,10 +13,10 @@
     {"name": "finance.json", "sha256": "bcedc7da27dca581475b9342c5e857428e8fac347fbab59c5a048fdb1b3e8f0d", "count": 0},
     {"name": "foundation.json", "sha256": "1812c24d5ebbd611189af4a315b2e4155009c0a001fcd328bb7df1b96b8fe9f3", "count": 3},
     {"name": "hr.json", "sha256": "ff7c7768b9c88aace36dec06152e7e981937abd483ea37d11d742e745f699f17", "count": 4},
-    {"name": "iam.json", "sha256": "4e8949ecc5ef76b83bed4d6c9c31bab4a30d557212e0ed16d2a6891a2454fc92", "count": 8},
+    {"name": "iam.json", "sha256": "4de43f15395ee49488b64d2411fab4c2a6a9017b2fd260633fa8d63bb6799f85", "count": 8},
     {"name": "incidents.json", "sha256": "bcedc7da27dca581475b9342c5e857428e8fac347fbab59c5a048fdb1b3e8f0d", "count": 0},
     {"name": "inventory.json", "sha256": "36a1be6ff50dd0f4482fa4d23713b0ae88324531c9614702f84a931139c8f322", "count": 37},
     {"name": "pos.json", "sha256": "bcedc7da27dca581475b9342c5e857428e8fac347fbab59c5a048fdb1b3e8f0d", "count": 0},
-    {"name": "purchasing.json", "sha256": "bcedc7da27dca581475b9342c5e857428e8fac347fbab59c5a048fdb1b3e8f0d", "count": 0}
+    {"name": "purchasing.json", "sha256": "2bacf45109f4fc5a57729ef5bb6277341c8e9afd44369278a2b96d4a6166c54d", "count": 4}
   ]
 }

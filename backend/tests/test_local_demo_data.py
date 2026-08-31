@@ -43,6 +43,8 @@ def test_demo_seed_flag_false_is_a_no_op() -> None:
     assert summary.inventory_stock_balance_count == 0
     assert summary.inventory_asset_count == 0
     assert summary.inventory_movement_count == 0
+    assert summary.purchasing_supplier_count == 0
+    assert summary.purchase_request_count == 0
 
 
 @pytest.mark.integration
@@ -183,6 +185,20 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
                 DemoSeedRegistry.workspace_id == second.workspace_id,
                 DemoSeedRegistry.seed_version == "v1",
                 DemoSeedRegistry.entity_type == "inventory_opening_movement",
+            )
+        )
+        purchasing_supplier_count = session.scalar(
+            select(func.count(DemoSeedRegistry.id)).where(
+                DemoSeedRegistry.workspace_id == second.workspace_id,
+                DemoSeedRegistry.seed_version == "v1",
+                DemoSeedRegistry.entity_type == "supplier",
+            )
+        )
+        purchase_request_count = session.scalar(
+            select(func.count(DemoSeedRegistry.id)).where(
+                DemoSeedRegistry.workspace_id == second.workspace_id,
+                DemoSeedRegistry.seed_version == "v1",
+                DemoSeedRegistry.entity_type == "purchase_request",
             )
         )
         inventory_warehouse_count = session.scalar(
@@ -328,6 +344,8 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
     assert first.inventory_stock_balance_count == second.inventory_stock_balance_count == 40
     assert first.inventory_asset_count == second.inventory_asset_count == 16
     assert first.inventory_movement_count == second.inventory_movement_count == 35
+    assert first.purchasing_supplier_count == second.purchasing_supplier_count == 2
+    assert first.purchase_request_count == second.purchase_request_count == 2
     assert catalog_category_count == persisted_category_count == 6
     assert catalog_item_count == 22
     assert catalog_assignment_count == 66
@@ -336,6 +354,8 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
     assert inventory_stock_balance_count == 40
     assert inventory_asset_count == 16
     assert inventory_movement_count == 35
+    assert purchasing_supplier_count == 2
+    assert purchase_request_count == 2
     assert seeded_item_types == {"membership": 1, "product": 6, "service": 11, "supply": 4}
     assert products_per_branch == {"DOWNTOWN": 6, "EAST": 6, "HQ": 6, "NORTH": 6}
     assert supplies_per_branch == {"DOWNTOWN": 4, "EAST": 4, "HQ": 4, "NORTH": 4}

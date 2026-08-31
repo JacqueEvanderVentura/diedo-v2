@@ -22,6 +22,7 @@ import { SupplierFormModal } from './SupplierFormModal'
 import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
 import { useSortedRows } from '@/hooks/useTableControls'
 import { cn } from '@/lib/utils'
+import { useSessionStore } from '@/stores/sessionStore'
 
 export function ProveedoresTab() {
   const suppliers = useComprasStore((s) => s.suppliers)
@@ -29,6 +30,7 @@ export function ProveedoresTab() {
   const updateSupplier = useComprasStore((s) => s.updateSupplier)
   const deleteSupplier = useComprasStore((s) => s.deleteSupplier)
   const branches = useConfigStore((s) => s.branches)
+  const isOnline = useSessionStore((s) => s.isOnline())
 
   const [search, setSearch] = useState('')
   const [branchFilter, setBranchFilter] = useState('all')
@@ -77,29 +79,43 @@ export function ProveedoresTab() {
     setModalOpen(true)
   }
 
-  const handleSubmit = (data) => {
-    if (editing) updateSupplier(editing.id, data)
-    else addSupplier(data)
+  const handleSubmit = async (data) => {
+    if (editing) return updateSupplier(editing.id, data, { isOnline })
+    return addSupplier(data, { isOnline })
   }
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (!window.confirm('¿Eliminar este proveedor?')) return
-    deleteSupplier(id)
-    if (selectedId === id) setSelectedId(null)
-    toast.success('Proveedor eliminado')
+    try {
+      await deleteSupplier(id, { isOnline })
+      if (selectedId === id) setSelectedId(null)
+      toast.success('Proveedor eliminado')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo eliminar el proveedor')
+    }
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative max-w-md flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input className="pl-9" placeholder="Buscar proveedor..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-          <Select value={branchFilter} onChange={setBranchFilter} options={buildBranchFilterOptions(branches)} size="sm" className="min-w-[180px]" data-testid="proveedores-branch-filter" />
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-[minmax(280px,1fr)_220px] lg:max-w-3xl">
+          <Input
+            icon={Search}
+            placeholder="Buscar por nombre, RNC o contacto..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <Select
+            value={branchFilter}
+            onChange={setBranchFilter}
+            options={buildBranchFilterOptions(branches)}
+            size="md"
+            data-testid="proveedores-branch-filter"
+          />
         </div>
-        <Button onClick={openCreate}><Plus className="h-4 w-4" /> Registrar Proveedor</Button>
+        <Button className="w-full shrink-0 sm:w-auto" onClick={openCreate}>
+          <Plus className="h-4 w-4" /> Registrar Proveedor
+        </Button>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-5">

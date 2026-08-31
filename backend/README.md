@@ -64,8 +64,9 @@ The eight neutral `demo.*@example.com` identities use the password supplied thro
 environment. The seed is safe to repeat, validates manifest checksums, uses stable IDs, and includes
 workspace-wide and branch-scoped users, five customers, thirteen basic employees, schedules and
 supervisor links. It also installs 21 commercial inventory profiles, 40 branch stock balances,
-16 assets, and 35 opening movements across HQ, NORTH, DOWNTOWN, and EAST. With the flag false it
-does not write fixtures. `seed_local_demo` remains as a compatibility wrapper for local workflows.
+16 assets, and 35 opening movements across HQ, NORTH, DOWNTOWN, and EAST. Purchasing adds two
+suppliers and two requests with approval settings. With the flag false it does not write fixtures.
+`seed_local_demo` remains as a compatibility wrapper for local workflows.
 
 The local database listens on port `5433` to avoid colliding with a PostgreSQL installation on the
 default port.

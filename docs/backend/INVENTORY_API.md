@@ -75,6 +75,9 @@ Local provisioning seeds `mobiliario`, `equipos`, `tecnologia`, `vehiculos`, `he
 `purchaseDate`, and optional `notes`. Codes are uppercase and unique per workspace when present.
 PATCH requires the current `version`.
 
+The UI action “Dar de baja” uses the versioned asset PATCH with `status=baja`; physical assets are
+not hard-deleted so their lifecycle and audit history remain available.
+
 The asset list accepts `branchId`, `search`, `categoryId`, `status`, pagination, and allowlisted
 sorting through `sortBy=name|code|category|status|value|createdAt`.
 

@@ -25,6 +25,8 @@ export function SupplyUsagePanel() {
   const products = useCatalogStore((s) => s.products)
   const supplies = useMemo(() => products.filter((p) => p.type === 'supply'), [products])
   const movements = useInventarioStore((s) => s.movements)
+  const apiUsage = useInventarioStore((s) => s.usage)
+  const movementsHydrated = useInventarioStore((s) => s.apiContext.hydrated)
   const appointments = useAgendaStore((s) => s.appointments)
   const rrhhEmployees = useRrhhStore((s) => s.employees)
   const [search, setSearch] = useState('')
@@ -32,10 +34,11 @@ export function SupplyUsagePanel() {
 
   const employees = useMemo(() => allStaffOptions(rrhhEmployees), [rrhhEmployees])
 
-  const rows = useMemo(
-    () => computeSupplyUsageKpis({ movements, appointments, supplies, employees }),
-    [movements, appointments, supplies, employees]
-  )
+  const rows = useMemo(() => (
+    movementsHydrated
+      ? apiUsage
+      : computeSupplyUsageKpis({ movements, appointments, supplies, employees })
+  ), [movementsHydrated, apiUsage, movements, appointments, supplies, employees])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()

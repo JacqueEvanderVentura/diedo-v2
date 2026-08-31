@@ -110,6 +110,26 @@ InventoryMoveGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("inventory.move")),
 ]
+PurchasingReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("purchasing.read")),
+]
+PurchasingSupplierManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("purchasing.suppliers.manage")),
+]
+PurchasingRequestCreateGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("purchasing.requests.create")),
+]
+PurchasingRequestReviewGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("purchasing.requests.review")),
+]
+PurchasingSettingsManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("purchasing.settings.manage")),
+]
 CustomerReadGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("customer.read")),

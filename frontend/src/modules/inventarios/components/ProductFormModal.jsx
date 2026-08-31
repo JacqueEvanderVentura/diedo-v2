@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
+import { ClipboardCheck } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { useCatalogStore } from '@/stores/catalogStore'
+import { useInventarioStore } from '@/stores/inventarioStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { resolveCategoryId } from '@/lib/catalogSync'
@@ -34,6 +36,7 @@ const EMPTY = {
 
 export function ProductFormModal({ open, onClose, product, defaultType = 'product' }) {
   const saveProduct = useCatalogStore((s) => s.saveProduct)
+  const recordAdjustment = useInventarioStore((s) => s.recordAdjustment)
   const FORM_CATEGORIES = useConfigStore((s) => s.categories)
   const BRANCHES = useConfigStore((s) => s.branches)
   const taxDefault = useConfigStore((s) => s.settings.taxDefault)
@@ -41,11 +44,15 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
   const [form, setForm] = useState(EMPTY)
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
+  const [stockBaseline, setStockBaseline] = useState(null)
+  const [adjustmentReason, setAdjustmentReason] = useState('')
   const editing = !!product
   const isSupply = form.type === 'supply'
   const isService = form.type === 'service'
   const selectedCategoryId = resolveCategoryId(form.category, FORM_CATEGORIES)
   const supplyCategoryId = resolveCategoryId('insumos', FORM_CATEGORIES)
+  const stockChanged = editing && !isService && Number(form.stock) !== Number(stockBaseline)
+  const requiresAdjustment = stockChanged && (!isOnline || product?.apiSynced)
 
   useEffect(() => {
     if (open) {
@@ -54,6 +61,8 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
           ? { ...product, sku: product.sku || '', stock: product.stock ?? '', cost: product.cost ?? '', minStock: product.minStock ?? 0, unit: product.unit || 'ud' }
           : { ...EMPTY, type: defaultType, taxPct: taxDefault ?? 18, category: defaultType === 'supply' ? 'insumos' : 'otros' }
       )
+      setStockBaseline(product?.stock ?? null)
+      setAdjustmentReason('')
       setErr('')
     }
   }, [open, product, defaultType, taxDefault])
@@ -75,8 +84,29 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
     if (!isSupply && (form.price === '' || Number(form.price) < 0)) return setErr('Ingresa un precio válido.')
     if (isSupply && (form.cost === '' || Number(form.cost) < 0)) return setErr('Ingresa el costo de adquisición.')
     if (!isService && (form.stock === '' || Number(form.stock) < 0)) return setErr('Ingresa el stock.')
+    if (requiresAdjustment && adjustmentReason.trim().length < 2) {
+      return setErr('Indica el motivo de la corrección de stock.')
+    }
     setSaving(true)
+    let adjustmentApplied = false
     try {
+      if (requiresAdjustment) {
+        await recordAdjustment({
+          branchId: form.branchId,
+          comment: adjustmentReason.trim(),
+          items: [{
+            id: product.id,
+            name: form.name,
+            sku: form.sku || null,
+            unit: form.unit || 'ud',
+            stock: Number(stockBaseline),
+            quantity: Number(form.stock),
+          }],
+        }, { isOnline })
+        adjustmentApplied = true
+        setStockBaseline(Number(form.stock))
+        setAdjustmentReason('')
+      }
       await saveProduct(form, product, {
         categories: FORM_CATEGORIES,
         configBranches: BRANCHES,
@@ -85,7 +115,11 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
       toast.success(`"${form.name}" ${editing ? 'actualizado' : 'creado'}`)
       onClose()
     } catch (e) {
-      setErr(e.message || 'No se pudo guardar el producto.')
+      setErr(
+        adjustmentApplied
+          ? `El stock sí fue corregido, pero no se guardaron los demás cambios: ${e.message || 'intenta nuevamente.'}`
+          : e.message || 'No se pudo guardar el producto.'
+      )
     } finally {
       setSaving(false)
     }
@@ -160,11 +194,45 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
           )}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">
-              Stock {isService && <span className="text-slate-400">(N/A)</span>}
+              {editing ? 'Existencia física' : 'Stock inicial'} {isService && <span className="text-slate-400">(N/A)</span>}
             </label>
             <Input type="number" value={isService ? '' : form.stock} onChange={(e) => { set('stock', e.target.value); setErr('') }} placeholder={isService ? '—' : '0'} disabled={isService} data-testid="inventory-field-stock" />
           </div>
         </div>
+
+        {editing && !isService && !requiresAdjustment && (
+          <p className="text-xs leading-relaxed text-slate-500">
+            Si corriges esta cantidad, se registrará como un ajuste en el historial de inventario.
+          </p>
+        )}
+
+        {requiresAdjustment && (
+          <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-3" data-testid="inventory-stock-adjustment">
+            <div className="flex items-start gap-2.5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
+                <ClipboardCheck className="h-4 w-4" aria-hidden="true" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-blue-900">Corrección auditada de stock</p>
+                <p className="mt-0.5 text-xs text-blue-700">
+                  Existencia registrada: <strong>{stockBaseline}</strong> → Conteo físico: <strong>{form.stock}</strong>
+                </p>
+              </div>
+            </div>
+            <label className="mb-1.5 mt-3 block text-xs font-semibold text-blue-900">Motivo de la corrección *</label>
+            <textarea
+              value={adjustmentReason}
+              onChange={(e) => {
+                setAdjustmentReason(e.target.value)
+                setErr('')
+              }}
+              rows={2}
+              placeholder="Ej.: error al registrar la cantidad inicial o conteo físico"
+              data-testid="inventory-stock-adjustment-reason"
+              className="w-full resize-none rounded-lg border-0 bg-white p-2.5 text-sm text-slate-800 shadow-sm ring-1 ring-inset ring-blue-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600"
+            />
+          </div>
+        )}
 
         {!isService && (
           <div>

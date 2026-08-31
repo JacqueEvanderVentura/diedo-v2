@@ -29,6 +29,7 @@ import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable
 import { useSortedRows } from '@/hooks/useTableControls'
 import { cn } from '@/lib/utils'
 import { currentSessionActor } from '@/lib/sessionActor'
+import { useSessionStore } from '@/stores/sessionStore'
 
 const toneClass = {
   warning: 'bg-amber-100 text-amber-700',
@@ -59,11 +60,13 @@ export function SolicitudesTab() {
   const markRequestDelivered = useComprasStore((s) => s.markRequestDelivered)
   const getRequestStats = useComprasStore((s) => s.getRequestStats)
   const branches = useConfigStore((s) => s.branches)
+  const isOnline = useSessionStore((s) => s.isOnline())
 
   const [search, setSearch] = useState('')
   const [branchFilter, setBranchFilter] = useState('all')
   const [selectedId, setSelectedId] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
+  const [busyAction, setBusyAction] = useState(null)
 
   const stats = getRequestStats()
 
@@ -76,6 +79,7 @@ export function SolicitudesTab() {
       if (!q) return true
       return (
         r.id.toLowerCase().includes(q) ||
+        r.number?.toLowerCase().includes(q) ||
         r.requesterName?.toLowerCase().includes(q) ||
         supplierName(r.supplierId).toLowerCase().includes(q)
       )
@@ -96,19 +100,40 @@ export function SolicitudesTab() {
 
   const selected = purchaseRequests.find((r) => r.id === selectedId) || filtered[0] || null
 
-  const handleApprove = (id) => {
-    reviewPurchaseRequest(id, 'aprobada', currentSessionActor().id)
-    toast.success('Solicitud aprobada')
+  const handleApprove = async (id) => {
+    setBusyAction(`approve:${id}`)
+    try {
+      await reviewPurchaseRequest(id, 'aprobada', currentSessionActor().id, { isOnline })
+      toast.success('Solicitud aprobada')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo aprobar la solicitud')
+    } finally {
+      setBusyAction(null)
+    }
   }
 
-  const handleReject = (id) => {
-    reviewPurchaseRequest(id, 'rechazada', currentSessionActor().id)
-    toast.success('Solicitud rechazada')
+  const handleReject = async (id) => {
+    setBusyAction(`reject:${id}`)
+    try {
+      await reviewPurchaseRequest(id, 'rechazada', currentSessionActor().id, { isOnline })
+      toast.success('Solicitud rechazada')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo rechazar la solicitud')
+    } finally {
+      setBusyAction(null)
+    }
   }
 
-  const handleDeliver = (id) => {
-    markRequestDelivered(id)
-    toast.success('Marcada como entregada')
+  const handleDeliver = async (id) => {
+    setBusyAction(`deliver:${id}`)
+    try {
+      await markRequestDelivered(id, { isOnline })
+      toast.success('Marcada como entregada')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo marcar la solicitud como entregada')
+    } finally {
+      setBusyAction(null)
+    }
   }
 
   return (
@@ -120,15 +145,25 @@ export function SolicitudesTab() {
         <KpiCard label="Entregadas" value={stats.entregada} icon={Package} tone="bg-emerald-100 text-emerald-600" />
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative max-w-md flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input className="pl-9" placeholder="Buscar solicitud..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-          <Select value={branchFilter} onChange={setBranchFilter} options={buildBranchFilterOptions(branches)} size="sm" className="min-w-[180px]" data-testid="solicitudes-branch-filter" />
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-[minmax(280px,1fr)_220px] lg:max-w-3xl">
+          <Input
+            icon={Search}
+            placeholder="Buscar por número, proveedor o solicitante..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <Select
+            value={branchFilter}
+            onChange={setBranchFilter}
+            options={buildBranchFilterOptions(branches)}
+            size="md"
+            data-testid="solicitudes-branch-filter"
+          />
         </div>
-        <Button onClick={() => setModalOpen(true)}><Plus className="h-4 w-4" /> Nueva Solicitud</Button>
+        <Button className="w-full shrink-0 sm:w-auto" onClick={() => setModalOpen(true)}>
+          <Plus className="h-4 w-4" /> Nueva Solicitud
+        </Button>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-5">
@@ -163,7 +198,7 @@ export function SolicitudesTab() {
                           )}
                         >
                           <td className="px-4 py-3">
-                            <p className="font-medium text-slate-800">{req.id}</p>
+                            <p className="font-medium text-slate-800">{req.number || req.id}</p>
                             <p className="text-xs text-slate-400">{formatDate(req.createdAt)}</p>
                           </td>
                           <td className="px-4 py-3 text-slate-600">{supplierName(req.supplierId)}</td>
@@ -199,7 +234,7 @@ export function SolicitudesTab() {
                       className={selected?.id === req.id ? 'ring-2 ring-blue-200' : undefined}
                     >
                       <MobileCardHeader
-                        title={req.id}
+                        title={req.number || req.id}
                         subtitle={formatDate(req.createdAt)}
                         badge={
                           <span className={cn('inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold', toneClass[meta.tone])}>
@@ -229,7 +264,7 @@ export function SolicitudesTab() {
           {selected ? (
             <div className="space-y-4">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900">{selected.id}</h3>
+                <h3 className="text-lg font-semibold text-slate-900">{selected.number || selected.id}</h3>
                 <p className="text-sm text-slate-500">{supplierName(selected.supplierId)} · {formatDate(selected.createdAt)}</p>
               </div>
               {selected.notes && <p className="text-sm text-slate-600">{selected.notes}</p>}
@@ -250,12 +285,18 @@ export function SolicitudesTab() {
               <div className="flex flex-wrap gap-2">
                 {selected.status === 'pendiente' && (
                   <>
-                    <Button size="sm" onClick={() => handleApprove(selected.id)}>Aprobar</Button>
-                    <Button size="sm" variant="secondary" onClick={() => handleReject(selected.id)}>Rechazar</Button>
+                    <Button size="sm" disabled={Boolean(busyAction)} onClick={() => handleApprove(selected.id)}>
+                      {busyAction === `approve:${selected.id}` ? 'Aprobando…' : 'Aprobar'}
+                    </Button>
+                    <Button size="sm" variant="secondary" disabled={Boolean(busyAction)} onClick={() => handleReject(selected.id)}>
+                      {busyAction === `reject:${selected.id}` ? 'Rechazando…' : 'Rechazar'}
+                    </Button>
                   </>
                 )}
                 {selected.status === 'aprobada' && (
-                  <Button size="sm" onClick={() => handleDeliver(selected.id)}>Marcar entregada</Button>
+                  <Button size="sm" disabled={Boolean(busyAction)} onClick={() => handleDeliver(selected.id)}>
+                    {busyAction === `deliver:${selected.id}` ? 'Guardando…' : 'Marcar entregada'}
+                  </Button>
                 )}
               </div>
             </div>
@@ -265,7 +306,11 @@ export function SolicitudesTab() {
         </div>
       </div>
 
-      <PurchaseRequestModal open={modalOpen} onClose={() => setModalOpen(false)} onSubmit={addPurchaseRequest} />
+      <PurchaseRequestModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSubmit={(data) => addPurchaseRequest(data, { isOnline })}
+      />
     </div>
   )
 }

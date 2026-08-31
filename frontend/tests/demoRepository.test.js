@@ -26,6 +26,8 @@ describe('DemoRepository', () => {
     expect(repository.catalog().items.filter((item) => item.itemType === 'supply')).toHaveLength(4)
     expect(repository.inventory().itemProfiles).toHaveLength(21)
     expect(repository.inventory().assets).toHaveLength(16)
+    expect(repository.purchasing().suppliers).toHaveLength(2)
+    expect(repository.purchasing().requests).toHaveLength(2)
     const stockItemsByBranch = Object.fromEntries(
       ['HQ', 'NORTH', 'DOWNTOWN', 'EAST'].map((branchCode) => [
         branchCode,

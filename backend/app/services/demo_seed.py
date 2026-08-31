@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID, uuid5
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -41,9 +41,14 @@ from app.db.models import (
     PaymentMethod,
     Permission,
     PlatformUser,
+    PurchaseRequest,
+    PurchaseRequestItem,
+    PurchasingSettings,
     Role,
     RoleAssignment,
     RolePermission,
+    Supplier,
+    SupplierBranchAssignment,
     UnitOfMeasure,
     WorkspaceMembership,
 )
@@ -80,6 +85,8 @@ class DemoSeedSummary:
     inventory_stock_balance_count: int = 0
     inventory_asset_count: int = 0
     inventory_movement_count: int = 0
+    purchasing_supplier_count: int = 0
+    purchase_request_count: int = 0
 
 
 def seed_demo_data(
@@ -106,6 +113,7 @@ def seed_demo_data(
         foundation.legal_entity_id,
     )
     _seed_users(session, bundle, foundation.workspace_id, branches, password_hash)
+    _seed_purchasing(session, bundle, foundation.workspace_id, branches)
     _seed_payment_methods(session, bundle, foundation.workspace_id)
     catalog_assignment_count = _seed_catalog(
         session,
@@ -138,7 +146,216 @@ def seed_demo_data(
         len(bundle.catalog.items),
         catalog_assignment_count,
         *inventory_counts,
+        len(bundle.purchasing.suppliers),
+        len(bundle.purchasing.requests),
     )
+
+
+def _seed_purchasing(
+    session: Session,
+    bundle: DemoBundle,
+    workspace_id: UUID,
+    branches: dict[str, Branch],
+) -> None:
+    admin_user_id = _stable_id(bundle.manifest.seed_version, "platform_user", "admin")
+    suppliers: dict[str, Supplier] = {}
+    for supplier_fixture in bundle.purchasing.suppliers:
+        unknown_branches = set(supplier_fixture.branch_codes) - branches.keys()
+        if unknown_branches:
+            unknown = ", ".join(sorted(unknown_branches))
+            raise RuntimeError(f"Demo supplier references unknown branches: {unknown}.")
+        payload = supplier_fixture.model_dump(mode="json")
+        supplier_id = _stable_id(
+            bundle.manifest.seed_version, "supplier", supplier_fixture.seed_key
+        )
+        supplier = _registered_entity(
+            session,
+            workspace_id,
+            "supplier",
+            supplier_fixture.seed_key,
+            supplier_id,
+            payload,
+            Supplier,
+        )
+        values = {
+            "workspace_id": workspace_id,
+            "name": supplier_fixture.name,
+            "normalized_name": " ".join(supplier_fixture.name.casefold().split()),
+            "tax_identifier": supplier_fixture.rnc,
+            "contact_name": supplier_fixture.contact_name,
+            "phone": supplier_fixture.phone,
+            "email": str(supplier_fixture.email) if supplier_fixture.email else None,
+            "address": supplier_fixture.address,
+            "product_count": supplier_fixture.product_count,
+            "status": "active" if supplier_fixture.active else "inactive",
+            "creation_idempotency_key": (
+                f"demo:{bundle.manifest.seed_version}:{supplier_fixture.seed_key}"
+            ),
+            "request_fingerprint": _checksum(payload),
+            "created_by_platform_user_id": admin_user_id,
+            "updated_by_platform_user_id": admin_user_id,
+        }
+        if supplier is None:
+            supplier = Supplier(id=supplier_id, **values)
+            session.add(supplier)
+            session.flush()
+            _register(
+                session,
+                workspace_id,
+                "supplier",
+                supplier_fixture.seed_key,
+                supplier_id,
+                bundle.manifest.seed_version,
+                payload,
+            )
+        else:
+            for field, value in values.items():
+                setattr(supplier, field, value)
+        suppliers[supplier_fixture.seed_key] = supplier
+        session.execute(
+            delete(SupplierBranchAssignment).where(
+                SupplierBranchAssignment.workspace_id == workspace_id,
+                SupplierBranchAssignment.supplier_id == supplier.id,
+            )
+        )
+        session.add_all(
+            SupplierBranchAssignment(
+                id=_stable_id(
+                    bundle.manifest.seed_version,
+                    "supplier_branch_assignment",
+                    f"{supplier_fixture.seed_key}:{code}",
+                ),
+                workspace_id=workspace_id,
+                supplier_id=supplier.id,
+                branch_id=branches[code].id,
+            )
+            for code in supplier_fixture.branch_codes
+        )
+    session.flush()
+
+    for request_fixture in bundle.purchasing.requests:
+        supplier = suppliers.get(request_fixture.supplier_seed_key)
+        branch = branches.get(request_fixture.branch_code)
+        if supplier is None or branch is None:
+            raise RuntimeError("Demo purchase request references an unknown supplier or branch.")
+        requester_user_id = _stable_id(
+            bundle.manifest.seed_version,
+            "platform_user",
+            request_fixture.requester_user_seed_key,
+        )
+        requester_membership_id = _stable_id(
+            bundle.manifest.seed_version,
+            "membership",
+            request_fixture.requester_user_seed_key,
+        )
+        reviewer_membership_id = (
+            _stable_id(
+                bundle.manifest.seed_version,
+                "membership",
+                request_fixture.reviewer_user_seed_key,
+            )
+            if request_fixture.reviewer_user_seed_key
+            else None
+        )
+        reviewer_user_id = (
+            _stable_id(
+                bundle.manifest.seed_version,
+                "platform_user",
+                request_fixture.reviewer_user_seed_key,
+            )
+            if request_fixture.reviewer_user_seed_key
+            else None
+        )
+        payload = request_fixture.model_dump(mode="json")
+        entity_id = _stable_id(
+            bundle.manifest.seed_version, "purchase_request", request_fixture.seed_key
+        )
+        request = _registered_entity(
+            session,
+            workspace_id,
+            "purchase_request",
+            request_fixture.seed_key,
+            entity_id,
+            payload,
+            PurchaseRequest,
+        )
+        values = {
+            "workspace_id": workspace_id,
+            "request_number": request_fixture.number,
+            "supplier_id": supplier.id,
+            "branch_id": branch.id,
+            "requester_membership_id": requester_membership_id,
+            "requester_name": request_fixture.requester_name,
+            "status": request_fixture.status,
+            "priority": request_fixture.priority,
+            "notes": request_fixture.notes,
+            "quote_file_name": request_fixture.quote_file_name,
+            "reviewer_membership_id": reviewer_membership_id,
+            "reviewed_at": request_fixture.reviewed_at,
+            "delivered_at": request_fixture.delivered_at,
+            "creation_idempotency_key": (
+                f"demo:{bundle.manifest.seed_version}:request:{request_fixture.seed_key}"
+            ),
+            "request_fingerprint": _checksum(payload),
+            "created_by_platform_user_id": requester_user_id,
+            "updated_by_platform_user_id": reviewer_user_id or requester_user_id,
+            "created_at": request_fixture.created_at,
+            "updated_at": request_fixture.reviewed_at or request_fixture.created_at,
+        }
+        if request is None:
+            request = PurchaseRequest(id=entity_id, **values)
+            session.add(request)
+            session.flush()
+            _register(
+                session,
+                workspace_id,
+                "purchase_request",
+                request_fixture.seed_key,
+                entity_id,
+                bundle.manifest.seed_version,
+                payload,
+            )
+        else:
+            for field, value in values.items():
+                setattr(request, field, value)
+        session.execute(
+            delete(PurchaseRequestItem).where(
+                PurchaseRequestItem.workspace_id == workspace_id,
+                PurchaseRequestItem.purchase_request_id == request.id,
+            )
+        )
+        session.add_all(
+            PurchaseRequestItem(
+                id=_stable_id(
+                    bundle.manifest.seed_version,
+                    "purchase_request_item",
+                    f"{request_fixture.seed_key}:{position}",
+                ),
+                workspace_id=workspace_id,
+                purchase_request_id=request.id,
+                position=position,
+                name=item.name,
+                quantity=item.qty,
+                unit=item.unit,
+                unit_price=item.price,
+            )
+            for position, item in enumerate(request_fixture.items, start=1)
+        )
+
+    settings = session.scalar(
+        select(PurchasingSettings).where(PurchasingSettings.workspace_id == workspace_id)
+    )
+    if settings is None:
+        raise RuntimeError("Purchasing settings were not installed for the demo workspace.")
+    approver_key = bundle.purchasing.settings.approver_user_seed_key
+    settings.approver_membership_id = (
+        _stable_id(bundle.manifest.seed_version, "membership", approver_key)
+        if approver_key
+        else None
+    )
+    settings.notify_on_request = bundle.purchasing.settings.notify_on_request
+    settings.updated_by_platform_user_id = admin_user_id
+    session.flush()
 
 
 def _seed_catalog(

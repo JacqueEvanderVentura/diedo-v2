@@ -14,6 +14,7 @@ import { useCatalogStore } from '@/stores/catalogStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { useActivosStore } from '@/stores/activosStore'
+import { useInventarioStore } from '@/stores/inventarioStore'
 import { formatDOP } from '@/lib/format'
 import { ProductosTab } from '../components/ProductosTab'
 import { ActivosTab } from '../components/ActivosTab'
@@ -53,13 +54,17 @@ export default function InventariosPage() {
   const isOnline = useSessionStore((s) => s.isOnline())
   const isAuthenticated = useSessionStore((s) => s.isAuthenticated())
   const hydrateFromApi = useCatalogStore((s) => s.hydrateFromApi)
+  const hydrateAssetsFromApi = useActivosStore((s) => s.hydrateFromApi)
+  const hydrateMovementsFromApi = useInventarioStore((s) => s.hydrateFromApi)
   const branches = useConfigStore((s) => s.branches)
 
   useEffect(() => {
     if (isOnline && isAuthenticated) {
       hydrateFromApi(branches).catch(() => {})
+      hydrateAssetsFromApi().catch(() => {})
+      hydrateMovementsFromApi().catch(() => {})
     }
-  }, [isOnline, isAuthenticated, hydrateFromApi, branches])
+  }, [isOnline, isAuthenticated, hydrateFromApi, hydrateAssetsFromApi, hydrateMovementsFromApi, branches])
   const tabParam = params.get('tab') || 'productos'
   const tab = TABS.some((t) => t.id === tabParam) ? tabParam : 'productos'
 

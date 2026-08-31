@@ -50,6 +50,13 @@ from app.db.models.master_data import (
     EmployeeSchedule,
     EmployeeSupervisor,
 )
+from app.db.models.purchasing import (
+    PurchaseRequest,
+    PurchaseRequestItem,
+    PurchasingSettings,
+    Supplier,
+    SupplierBranchAssignment,
+)
 
 __all__ = [
     "AccessScope",
@@ -90,11 +97,16 @@ __all__ = [
     "Permission",
     "PaymentMethod",
     "PlatformUser",
+    "PurchaseRequest",
+    "PurchaseRequestItem",
+    "PurchasingSettings",
     "RegionalPack",
     "RegionalRuleVersion",
     "Role",
     "RoleAssignment",
     "RolePermission",
+    "Supplier",
+    "SupplierBranchAssignment",
     "Workspace",
     "WorkspaceMembership",
     "UnitOfMeasure",

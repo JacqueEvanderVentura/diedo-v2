@@ -69,8 +69,8 @@ The command is limited to development and test environments and is safe to repea
 - one legal entity and main branch;
 - one local external identity and active workspace membership;
 - a system administrator role, workspace scope, and foundation permissions;
-- global module metadata, enabling `foundation`, `iam`, `catalog`, `crm`, `hr`, `agenda`, and
-  `inventory`;
+- global module metadata, enabling `foundation`, `iam`, `catalog`, `crm`, `hr`, `agenda`,
+  `inventory`, and `purchasing`;
 - a Dominican Republic regional pack in `planned` state, with no unverified fiscal rules activated.
 
 By default the bootstrap creates no password. In development or test, setting
@@ -88,7 +88,8 @@ Pydantic contracts and checksums; frontend generation consumes the same files. T
 includes five customers, thirteen basic employees, six catalog categories, and twenty-two catalog
 items with deterministic assignments across HQ, NORTH, DOWNTOWN, and EAST. Inventory adds 21 price
 and cost profiles, 40 stock balances (six products and four supplies per branch), 16 physical
-assets, and 35 opening movements. Future HR-only fields remain isolated in fixture metadata.
+assets, and 35 opening movements. Purchasing adds two suppliers, two requests, their line items,
+and approval settings. Future HR-only fields remain isolated in fixture metadata.
 
 `schemaVersion` records the exact Alembic revision expected by that application build. After a new
 migration is validated with the canonical seed, update the manifest and regenerate the frontend
@@ -111,11 +112,11 @@ installed organization counts and enabled modules. The route is not registered i
 production.
 
 `GET /health/ready` separately validates PostgreSQL connectivity and the expected Alembic revision
-(`20260831_0010`). It returns `503` when the schema is incompatible; authenticated capabilities stay
+(`20260831_0011`). It returns `503` when the schema is incompatible; authenticated capabilities stay
 in `/api/v1/auth/me` rather than readiness.
 
 ## Next design decision
 
-The inventory backend and its canonical demo data are implemented. Frontend API/demo adapters and
-the remaining cross-module sales and purchasing stories are tracked separately in the full-stack
-Plan V2.
+The inventory and purchasing backends plus their canonical demo data are implemented. Frontend API
+adapters and the remaining cross-module sales, ordering, reception, and accounts-payable stories
+are tracked separately in the full-stack Plan V2.

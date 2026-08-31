@@ -8,9 +8,17 @@ import {
 
 describe('moduleAvailability', () => {
   it('limita por entitlement solamente los módulos conectados a la API', () => {
-    const enabled = new Set(['foundation', 'iam', 'catalog', 'crm', 'hr', 'appointments'])
+    const enabled = new Set(['foundation', 'iam', 'catalog', 'crm', 'hr', 'appointments', 'purchasing'])
 
-    expect(API_CONNECTED_MODULES).toEqual(['foundation', 'iam', 'catalog', 'crm', 'hr', 'appointments'])
+    expect(API_CONNECTED_MODULES).toEqual([
+      'foundation',
+      'iam',
+      'catalog',
+      'crm',
+      'hr',
+      'appointments',
+      'purchasing',
+    ])
     expect(isApiConnectedModule('catalog')).toBe(true)
     expect(isModuleAvailable('catalog', enabled)).toBe(true)
     expect(isModuleAvailable('catalog', new Set())).toBe(false)
@@ -21,7 +29,6 @@ describe('moduleAvailability', () => {
 
     for (const moduleCode of [
       'pos',
-      'purchasing',
       'incidents',
       'accounting',
       'reporting',
@@ -62,6 +69,10 @@ describe('moduleAvailability', () => {
     expect(routeRequirement('/rrhh/documentos')).toEqual({
       module: 'hr',
       permission: 'hr.document.read',
+    })
+    expect(routeRequirement('/compras')).toEqual({
+      module: 'purchasing',
+      permission: 'purchasing.read',
     })
     expect(routeRequirement('/agenda/calendario')).toEqual({
       module: 'appointments',

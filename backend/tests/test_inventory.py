@@ -247,6 +247,31 @@ def test_inventory_complete_http_contract_and_idempotent_ledger(client: TestClie
     )
     assert repeated_asset.status_code == 201, repeated_asset.text
     assert repeated_asset.json()["id"] == asset["id"]
+    listed_assets = client.get(
+        "/api/v1/inventory/assets",
+        headers=headers,
+        params={
+            "branchId": branch_id,
+            "search": suffix,
+            "categoryId": asset_category["id"],
+            "status": "reparacion",
+            "page": 1,
+            "pageSize": 10,
+            "sortBy": "value",
+            "sortDirection": "desc",
+        },
+    )
+    assert listed_assets.status_code == 200, listed_assets.text
+    assert listed_assets.headers["cache-control"] == "no-store"
+    assert listed_assets.json()["totalItems"] == 1
+    assert listed_assets.json()["items"][0]["id"] == asset["id"]
+    fetched_asset = client.get(
+        f"/api/v1/inventory/assets/{asset['id']}",
+        headers=headers,
+    )
+    assert fetched_asset.status_code == 200, fetched_asset.text
+    assert fetched_asset.json()["branch"]["id"] == branch_id
+    assert Decimal(fetched_asset.json()["acquisitionValue"]) == Decimal("42000")
     asset_summary = client.get(
         "/api/v1/inventory/assets/summary",
         headers=headers,
@@ -313,7 +338,19 @@ def test_inventory_complete_http_contract_and_idempotent_ledger(client: TestClie
         },
     )
     assert adjustment_response.status_code == 201, adjustment_response.text
-    assert adjustment_response.json()["movementType"] == "adjustment"
+    adjustment = adjustment_response.json()
+    assert adjustment["movementType"] == "adjustment"
+    assert Decimal(adjustment["items"][0]["quantityBefore"]) == Decimal("2")
+    assert Decimal(adjustment["items"][0]["quantityAfter"]) == Decimal("0")
+    assert Decimal(adjustment["items"][0]["quantityDelta"]) == Decimal("-2")
+
+    movement_detail = client.get(
+        f"/api/v1/inventory/movements/{adjustment['id']}",
+        headers=headers,
+    )
+    assert movement_detail.status_code == 200, movement_detail.text
+    assert movement_detail.headers["cache-control"] == "no-store"
+    assert movement_detail.json()["comment"] == "Conteo físico validado"
 
     insufficient = client.post(
         "/api/v1/inventory/movements/outbound",
@@ -334,6 +371,24 @@ def test_inventory_complete_http_contract_and_idempotent_ledger(client: TestClie
     assert movements.status_code == 200, movements.text
     movement_types = {movement["movementType"] for movement in movements.json()["items"]}
     assert {"opening", "outbound", "adjustment"} <= movement_types
+    filtered_movements = client.get(
+        "/api/v1/inventory/movements",
+        headers=headers,
+        params={
+            "branchId": branch_id,
+            "employeeId": employee["id"],
+            "type": "outbound",
+            "search": "Uso",
+            "dateFrom": date.today().isoformat(),
+            "dateTo": date.today().isoformat(),
+            "sortBy": "employee",
+            "sortDirection": "asc",
+        },
+    )
+    assert filtered_movements.status_code == 200, filtered_movements.text
+    assert filtered_movements.headers["cache-control"] == "no-store"
+    assert filtered_movements.json()["totalItems"] == 1
+    assert filtered_movements.json()["items"][0]["id"] == outbound["id"]
 
     usage = client.get(
         "/api/v1/inventory/supply-usage",
@@ -341,6 +396,7 @@ def test_inventory_complete_http_contract_and_idempotent_ledger(client: TestClie
         params={"branchId": branch_id},
     )
     assert usage.status_code == 200, usage.text
+    assert usage.headers["cache-control"] == "no-store"
     usage_row = next(row for row in usage.json() if row["supplyId"] == supply["id"])
     assert Decimal(usage_row["quantity"]) == Decimal("2")
 

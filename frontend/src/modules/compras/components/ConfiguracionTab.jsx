@@ -1,23 +1,43 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Save } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { useComprasStore } from '@/stores/comprasStore'
 import { useConfigStore } from '@/stores/configStore'
+import { useSessionStore } from '@/stores/sessionStore'
 
 export function ConfiguracionTab() {
   const settings = useComprasStore((s) => s.settings)
   const updateSettings = useComprasStore((s) => s.updateSettings)
+  const approvers = useComprasStore((s) => s.approvers)
   const users = useConfigStore((s) => s.users)
+  const isOnline = useSessionStore((s) => s.isOnline())
 
   const [approverUserId, setApproverUserId] = useState(settings.approverUserId || '')
   const [notifyOnRequest, setNotifyOnRequest] = useState(settings.notifyOnRequest ?? true)
+  const [saving, setSaving] = useState(false)
 
-  const save = () => {
-    updateSettings({ approverUserId, notifyOnRequest })
-    toast.success('Configuración guardada')
+  useEffect(() => {
+    setApproverUserId(settings.approverUserId || '')
+    setNotifyOnRequest(settings.notifyOnRequest ?? true)
+  }, [settings.approverUserId, settings.notifyOnRequest])
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await updateSettings({ approverUserId, notifyOnRequest }, { isOnline })
+      toast.success('Configuración guardada')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo guardar la configuración')
+    } finally {
+      setSaving(false)
+    }
   }
+
+  const approverOptions = isOnline
+    ? approvers.map((user) => ({ value: user.id, label: user.name }))
+    : users.map((user) => ({ value: user.id, label: user.name }))
 
   return (
     <div className="max-w-xl space-y-6">
@@ -36,7 +56,7 @@ export function ConfiguracionTab() {
               value={approverUserId}
               onChange={setApproverUserId}
               placeholder="Seleccionar usuario..."
-              options={users.map((u) => ({ value: u.id, label: u.name }))}
+              options={approverOptions}
             />
           </div>
 
@@ -52,7 +72,9 @@ export function ConfiguracionTab() {
         </div>
 
         <div className="mt-6">
-          <Button onClick={save}><Save className="h-4 w-4" /> Guardar Configuración</Button>
+          <Button onClick={save} disabled={saving}>
+            <Save className="h-4 w-4" /> {saving ? 'Guardando…' : 'Guardar Configuración'}
+          </Button>
         </div>
       </div>
     </div>

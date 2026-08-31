@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, Search, Boxes } from 'lucide-react'
-import { useActivosStore, ACTIVO_CATEGORIES, ACTIVO_STATUSES, statusMeta, catName } from '@/stores/activosStore'
+import { Plus, Pencil, ArchiveX, Search, Boxes } from 'lucide-react'
+import { useActivosStore, ACTIVO_STATUSES, statusMeta, catName } from '@/stores/activosStore'
 import { useConfigStore } from '@/stores/configStore'
+import { useSessionStore } from '@/stores/sessionStore'
 import { formatDOP } from '@/lib/format'
 import { buildBranchFilterOptions, branchName } from '@/lib/branches'
 import { Select } from '@/components/ui/Select'
@@ -24,12 +25,13 @@ import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable
 import { useSortedRows } from '@/hooks/useTableControls'
 import { cn } from '@/lib/utils'
 
-const CAT_FILTERS = [{ id: 'all', name: 'Todos' }, ...ACTIVO_CATEGORIES]
-
 export function ActivosTab() {
   const activos = useActivosStore((s) => s.activos)
-  const deleteActivo = useActivosStore((s) => s.deleteActivo)
+  const categories = useActivosStore((s) => s.categories)
+  const retireActivo = useActivosStore((s) => s.retireActivo)
+  const loadError = useActivosStore((s) => s.error)
   const branches = useConfigStore((s) => s.branches)
+  const isOnline = useSessionStore((s) => s.isOnline())
 
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('all')
@@ -37,6 +39,8 @@ export function ActivosTab() {
   const [branchFilter, setBranchFilter] = useState('all')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [retiringId, setRetiringId] = useState(null)
+  const categoryFilters = [{ id: 'all', name: 'Todos' }, ...categories]
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -53,7 +57,7 @@ export function ActivosTab() {
     defaultSort: { key: 'name', dir: 'asc' },
     accessors: {
       name: (a) => a.name,
-      category: (a) => catName(a.category),
+      category: (a) => catName(a.category, categories),
       branch: (a) => branchName(branches, a.branchId),
       location: (a) => a.location || '',
       status: (a) => a.status || '',
@@ -69,9 +73,16 @@ export function ActivosTab() {
     setEditing(a)
     setModalOpen(true)
   }
-  const handleDelete = (a) => {
-    deleteActivo(a.id)
-    toast.success(`"${a.name}" eliminado`)
+  const handleRetire = async (a) => {
+    setRetiringId(a.id)
+    try {
+      await retireActivo(a.id, { isOnline })
+      toast.success(`"${a.name}" dado de baja`)
+    } catch (error) {
+      toast.error(error.message || 'No se pudo dar de baja el activo.')
+    } finally {
+      setRetiringId(null)
+    }
   }
 
   const branchOptions = buildBranchFilterOptions(branches)
@@ -103,7 +114,7 @@ export function ActivosTab() {
             <Select value={branchFilter} onChange={setBranchFilter} options={branchOptions} size="sm" className="min-w-[180px]" data-testid="activos-branch-filter" />
           </div>
           <div className="flex flex-wrap gap-2">
-            {CAT_FILTERS.map((c) => (
+            {categoryFilters.map((c) => (
               <button
                 key={c.id}
                 onClick={() => setCategory(c.id)}
@@ -144,6 +155,12 @@ export function ActivosTab() {
           </div>
         </div>
 
+        {loadError && (
+          <p role="alert" className="border-b border-red-100 bg-red-50 px-5 py-3 text-sm font-medium text-red-600">
+            {loadError}
+          </p>
+        )}
+
         {displayRows.length === 0 ? (
           <EmptyState icon={Boxes} title="Sin activos" description="No hay activos con esos filtros." className="py-14" />
         ) : (
@@ -172,7 +189,7 @@ export function ActivosTab() {
                             <p className="text-xs text-slate-400">Código: {a.code || 'N/A'}</p>
                           </div>
                         </td>
-                        <td className="whitespace-nowrap px-5 py-4 text-slate-500">{catName(a.category)}</td>
+                        <td className="whitespace-nowrap px-5 py-4 text-slate-500">{catName(a.category, categories)}</td>
                         <td className="whitespace-nowrap px-5 py-4 text-slate-500">{a.location || '—'}</td>
                         <td className="px-5 py-4">
                           <Badge tone={st.tone}>{st.name}</Badge>
@@ -180,12 +197,21 @@ export function ActivosTab() {
                         <td className="whitespace-nowrap px-5 py-4 text-right font-heading font-bold text-blue-600">{formatDOP(a.value)}</td>
                         <td className="px-5 py-4">
                           <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => openEdit(a)} data-testid={`activos-edit-${a.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600">
+                            <button aria-label={`Editar ${a.name}`} onClick={() => openEdit(a)} data-testid={`activos-edit-${a.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600">
                               <Pencil className="h-4 w-4" />
                             </button>
-                            <button onClick={() => handleDelete(a)} data-testid={`activos-delete-${a.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500">
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            {a.status !== 'baja' && (
+                              <button
+                                onClick={() => handleRetire(a)}
+                                disabled={retiringId === a.id}
+                                title="Dar de baja"
+                                aria-label={`Dar de baja ${a.name}`}
+                                data-testid={`activos-retire-${a.id}`}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+                              >
+                                <ArchiveX className="h-4 w-4" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -206,17 +232,26 @@ export function ActivosTab() {
                       badge={<Badge tone={st.tone}>{st.name}</Badge>}
                       actions={
                         <div className="flex items-center gap-1">
-                          <button onClick={() => openEdit(a)} data-testid={`activos-edit-${a.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600">
+                          <button aria-label={`Editar ${a.name}`} onClick={() => openEdit(a)} data-testid={`activos-edit-${a.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600">
                             <Pencil className="h-4 w-4" />
                           </button>
-                          <button onClick={() => handleDelete(a)} data-testid={`activos-delete-${a.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          {a.status !== 'baja' && (
+                            <button
+                              onClick={() => handleRetire(a)}
+                              disabled={retiringId === a.id}
+                              title="Dar de baja"
+                              aria-label={`Dar de baja ${a.name}`}
+                              data-testid={`activos-retire-${a.id}`}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+                            >
+                              <ArchiveX className="h-4 w-4" />
+                            </button>
+                          )}
                         </div>
                       }
                     />
                     <MobileCardGrid>
-                      <MobileField label="Categoría">{catName(a.category)}</MobileField>
+                      <MobileField label="Categoría">{catName(a.category, categories)}</MobileField>
                       <MobileField label="Ubicación">{a.location || '—'}</MobileField>
                       <MobileField label="Valor" fullWidth>
                         <span className="font-heading font-bold text-blue-600">{formatDOP(a.value)}</span>
