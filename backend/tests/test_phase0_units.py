@@ -43,6 +43,7 @@ def test_demo_manifest_rejects_checksum_mismatch(tmp_path: Path) -> None:
         "iam.json",
         "configuration.json",
         "catalog.json",
+        "inventory.json",
         "customers.json",
         "employees.json",
     ):

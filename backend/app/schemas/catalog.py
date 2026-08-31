@@ -8,7 +8,8 @@ from app.schemas.common import ApiModel
 
 CatalogStatus = Literal["active", "inactive", "archived"]
 CreateCatalogStatus = Literal["active", "inactive"]
-CatalogItemType = Literal["product", "service", "membership", "other"]
+CatalogItemType = Literal["product", "service", "supply", "membership", "other"]
+CreateCatalogItemType = Literal["product", "service", "membership", "other"]
 SortDirection = Literal["asc", "desc"]
 CategorySortField = Literal["name", "status", "createdAt", "updatedAt"]
 ProductSortField = Literal["name", "sku", "status", "createdAt", "updatedAt"]
@@ -142,7 +143,7 @@ class PaginatedProductsResponse(ApiModel):
 
 
 class CreateProductRequest(ApiModel):
-    item_type: CatalogItemType = "product"
+    item_type: CreateCatalogItemType = "product"
     name: str = Field(min_length=2, max_length=160)
     description: str | None = Field(default=None, max_length=1000)
     sku: str | None = Field(default=None, max_length=64)

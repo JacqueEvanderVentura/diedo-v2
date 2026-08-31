@@ -17,7 +17,7 @@ export function mergeApiProduct(apiProduct, localProduct, categoryIdToLocal) {
     categoryIdToLocal.get(apiProduct.category?.id) || localProduct?.category || 'otros'
   const branchIds = (apiProduct.branches || []).map((b) => b.id)
   const itemType = apiProduct.itemType || localProduct?.type || 'product'
-  const isSupply = itemType === 'other' && localProduct?.type === 'supply'
+  const isSupply = itemType === 'supply' || (itemType === 'other' && localProduct?.type === 'supply')
   const isService = itemType === 'service'
 
   return {
@@ -33,12 +33,12 @@ export function mergeApiProduct(apiProduct, localProduct, categoryIdToLocal) {
     version: apiProduct.version,
     unitOfMeasureId: apiProduct.unitOfMeasure?.id,
     unit: localProduct?.unit || apiProduct.unitOfMeasure?.symbol || 'ud',
-    price: isSupply ? 0 : localProduct?.price ?? 0,
-    cost: localProduct?.cost ?? 0,
-    stock: isService ? null : localProduct?.stock ?? 0,
-    minStock: localProduct?.minStock ?? 0,
+    price: isSupply ? 0 : apiProduct.salePrice != null ? Number(apiProduct.salePrice) : localProduct?.price ?? 0,
+    cost: apiProduct.unitCost != null ? Number(apiProduct.unitCost) : localProduct?.cost ?? 0,
+    stock: isService ? null : apiProduct.stockQuantity != null ? Number(apiProduct.stockQuantity) : localProduct?.stock ?? 0,
+    minStock: apiProduct.minimumStock != null ? Number(apiProduct.minimumStock) : localProduct?.minStock ?? 0,
     type: isSupply ? 'supply' : itemType,
-    taxPct: isSupply ? 0 : localProduct?.taxPct ?? 18,
+    taxPct: isSupply ? 0 : apiProduct.taxRate != null ? Number(apiProduct.taxRate) : localProduct?.taxPct ?? 18,
     allowNegativeStock: localProduct?.allowNegativeStock ?? false,
     apiSynced: true,
   }
@@ -67,13 +67,39 @@ export function resolveApiBranchIds(localBranchId, configBranches, apiBranches) 
 }
 
 export function resolveCategoryId(localCategoryId, categories) {
-  const cat = categories.find((c) => c.id === localCategoryId)
-  return cat?.api ? cat.id : categories.find((c) => c.api)?.id
+  const exact = categories.find((c) => c.id === localCategoryId && c.api)
+  if (exact) return exact.id
+
+  const normalizedId = normalizeReference(localCategoryId)
+  const semantic = categories.find(
+    (c) => c.api && (normalizeReference(c.name) === normalizedId || normalizeReference(c.id) === normalizedId)
+  )
+  return semantic?.id || null
 }
 
 export function defaultUnitId(units, symbol = 'ud') {
-  const match = units.find(
-    (u) => u.symbol?.toLowerCase() === symbol.toLowerCase() || u.code?.toLowerCase() === symbol.toLowerCase()
-  )
+  const normalizedSymbol = normalizeReference(symbol)
+  const aliases = {
+    ud: ['ud', 'unit', 'unidad'],
+    caja: ['caja', 'box', 'unit', 'ud'],
+    paq: ['paq', 'paquete', 'pack', 'unit', 'ud'],
+    lt: ['lt', 'l', 'litro'],
+    kg: ['kg', 'kilogramo'],
+  }
+  const candidates = aliases[normalizedSymbol] || [normalizedSymbol]
+  const match = units.find((u) => {
+    const unitValues = [u.symbol, u.code, u.name].map(normalizeReference)
+    return candidates.some((candidate) => unitValues.includes(candidate))
+  })
   return match?.id || units[0]?.id
+}
+
+function normalizeReference(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
 }

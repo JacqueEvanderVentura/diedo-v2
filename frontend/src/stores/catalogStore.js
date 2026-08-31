@@ -3,7 +3,10 @@ import { persist } from 'zustand/middleware'
 import { ephemeralJsonStorage } from '@/services/storagePolicy'
 import { PRODUCTS, SUPPLIES } from '@/data/products'
 import { catalogApi } from '@/services/catalogApi'
+import { inventoryApi } from '@/services/inventoryApi'
 import { lookupsApi } from '@/services/lookupsApi'
+import { mapCategoryFromApi } from '@/services/adapters/catalog'
+import { useConfigStore } from '@/stores/configStore'
 import {
   defaultUnitId,
   mergeProductLists,
@@ -66,12 +69,18 @@ export const useCatalogStore = create(
       products: SEED,
       apiContext: { units: [], apiBranches: [], hydrated: false },
 
-      hydrateFromApi: async (categories = [], configBranches = []) => {
-        const [productsRes, units, apiBranches] = await Promise.all([
-          catalogApi.listAllProducts(),
+      hydrateFromApi: async (configBranches = []) => {
+        const [categoriesRes, productsRes, units, apiBranches] = await Promise.all([
+          catalogApi.listCategories({ page: 1, pageSize: 100, status: 'active' }),
+          inventoryApi.listAllItems({ status: 'active' }),
           catalogApi.listUnitsOfMeasure(),
           lookupsApi.branches(),
         ])
+
+        const categories = (categoriesRes.items || []).map((category, index) =>
+          mapCategoryFromApi(category, index)
+        )
+        useConfigStore.getState().setCategories(categories)
 
         const categoryIdToLocal = new Map()
         categories.forEach((c) => {
@@ -81,7 +90,7 @@ export const useCatalogStore = create(
         const merged = mergeProductLists(productsRes.items || [], get().products, categoryIdToLocal)
         set({
           products: merged,
-          apiContext: { units, apiBranches, hydrated: true, configBranches },
+          apiContext: { units, apiBranches, categories, hydrated: true, configBranches },
         })
         return merged
       },
@@ -95,40 +104,78 @@ export const useCatalogStore = create(
           return get().addProduct(form).id
         }
 
-        const { units, apiBranches } = get().apiContext
-        const categoryId = resolveCategoryId(form.category, categories)
+        let context = get().apiContext
+        if (!context.hydrated || !context.units?.length || !context.apiBranches?.length || !context.categories?.length) {
+          await get().hydrateFromApi(configBranches)
+          context = get().apiContext
+        }
+
+        const syncedCategories = categories.some((category) => category.api)
+          ? categories
+          : context.categories || []
+        const { units, apiBranches } = context
+        const categoryId = resolveCategoryId(form.category, syncedCategories)
         const unitOfMeasureId = defaultUnitId(units, form.unit || 'ud')
         const branchIds = resolveApiBranchIds(form.branchId, configBranches, apiBranches)
+        const branchId = branchIds[0]
 
         if (!categoryId) throw new Error('Selecciona una categoría sincronizada con la API.')
         if (!unitOfMeasureId) throw new Error('No hay unidades de medida en el catálogo API.')
         if (!branchIds.length) throw new Error('No hay sucursales API asignables.')
 
-        let apiProduct
-        if (existing?.apiSynced && existing.version) {
-          apiProduct = await catalogApi.updateProduct(existing.id, {
-            version: existing.version,
-            itemType: form.type === 'supply' ? 'other' : form.type,
-            name: form.name.trim(),
-            sku: form.sku || null,
-            categoryId,
-            unitOfMeasureId,
-            branchIds,
-            status: 'active',
-          })
-        } else {
-          apiProduct = await catalogApi.createProduct({
-            itemType: form.type === 'supply' ? 'other' : form.type,
-            name: form.name.trim(),
-            sku: form.sku || null,
-            categoryId,
-            unitOfMeasureId,
-            branchIds,
-            status: 'active',
-          })
+        const commonPayload = {
+          name: form.name.trim(),
+          sku: form.sku || null,
+          categoryId,
+          unitOfMeasureId,
+          branchId,
+          status: 'active',
         }
 
-        const categoryIdToLocal = new Map([[categoryId, form.category]])
+        let apiProduct
+        if (existing?.apiSynced && existing.version) {
+          const updatePayload = {
+            version: existing.version,
+            ...commonPayload,
+            minimumStock: form.type === 'service' ? undefined : Number(form.minStock) || 0,
+          }
+          if (form.type === 'supply') {
+            updatePayload.unitCost = Number(form.cost) || 0
+          } else {
+            updatePayload.salePrice = Number(form.price) || 0
+            updatePayload.taxRate = Number(form.taxPct) || 0
+            if (form.type === 'product') updatePayload.unitCost = Number(form.cost) || 0
+          }
+          apiProduct = await inventoryApi.updateItem(existing.id, updatePayload)
+        } else {
+          const stockPayload = {
+            stock: Number(form.stock) || 0,
+            minimumStock: Number(form.minStock) || 0,
+          }
+          if (form.type === 'supply') {
+            apiProduct = await inventoryApi.createSupply({
+              ...commonPayload,
+              unitCost: Number(form.cost) || 0,
+              ...stockPayload,
+            })
+          } else if (form.type === 'service') {
+            apiProduct = await inventoryApi.createService({
+              ...commonPayload,
+              salePrice: Number(form.price) || 0,
+              taxRate: Number(form.taxPct) || 0,
+            })
+          } else {
+            apiProduct = await inventoryApi.createProduct({
+              ...commonPayload,
+              salePrice: Number(form.price) || 0,
+              unitCost: Number(form.cost) || 0,
+              taxRate: Number(form.taxPct) || 0,
+              ...stockPayload,
+            })
+          }
+        }
+
+        const categoryIdToLocal = new Map([[categoryId, categoryId]])
         const merged = mergeProductLists([apiProduct], [{ ...existing, ...form }], categoryIdToLocal)[0]
 
         set((s) => {

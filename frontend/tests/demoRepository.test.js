@@ -22,7 +22,26 @@ describe('DemoRepository', () => {
         ).length,
       ])
     )
-    expect(productsByBranch).toEqual({ HQ: 6, NORTH: 4, DOWNTOWN: 4, EAST: 4 })
+    expect(productsByBranch).toEqual({ HQ: 6, NORTH: 6, DOWNTOWN: 6, EAST: 6 })
+    expect(repository.catalog().items.filter((item) => item.itemType === 'supply')).toHaveLength(4)
+    expect(repository.inventory().itemProfiles).toHaveLength(21)
+    expect(repository.inventory().assets).toHaveLength(16)
+    const stockItemsByBranch = Object.fromEntries(
+      ['HQ', 'NORTH', 'DOWNTOWN', 'EAST'].map((branchCode) => [
+        branchCode,
+        repository.inventory().itemProfiles.filter(
+          (profile) => Object.hasOwn(profile.stockByBranch, branchCode)
+        ).length,
+      ])
+    )
+    expect(stockItemsByBranch).toEqual({ HQ: 10, NORTH: 10, DOWNTOWN: 10, EAST: 10 })
+    const assetsByBranch = Object.fromEntries(
+      ['HQ', 'NORTH', 'DOWNTOWN', 'EAST'].map((branchCode) => [
+        branchCode,
+        repository.inventory().assets.filter((asset) => asset.branchCode === branchCode).length,
+      ])
+    )
+    expect(assetsByBranch).toEqual({ HQ: 4, NORTH: 4, DOWNTOWN: 4, EAST: 4 })
     expect(repository.hr().leaveRequests).toHaveLength(2)
     expect(repository.hr().debts).toHaveLength(2)
     expect(repository.hr().documents).toHaveLength(0)

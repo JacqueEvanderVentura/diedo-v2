@@ -71,7 +71,7 @@
     {
       "seedKey": "milk-cream", "sku": "PRD-01", "name": "Crema de leche",
       "description": "Crema corporal disponible para venta.", "itemType": "product",
-      "categorySeedKey": "productos", "unitCode": "unit", "branchCodes": ["HQ", "DOWNTOWN"], "status": "active"
+      "categorySeedKey": "productos", "unitCode": "unit", "branchCodes": ["HQ", "NORTH", "DOWNTOWN", "EAST"], "status": "active"
     },
     {
       "seedKey": "red-bull", "sku": "PRD-02", "name": "Red Bull",
@@ -86,36 +86,36 @@
     {
       "seedKey": "hamburger", "sku": "PRD-04", "name": "Hamburguesa",
       "description": "Producto de cafetería para venta en sucursal.", "itemType": "product",
-      "categorySeedKey": "productos", "unitCode": "unit", "branchCodes": ["HQ", "NORTH"], "status": "active"
+      "categorySeedKey": "productos", "unitCode": "unit", "branchCodes": ["HQ", "NORTH", "DOWNTOWN", "EAST"], "status": "active"
     },
     {
       "seedKey": "vitamin-c-serum", "sku": "PRD-05", "name": "Serum vitamina C",
       "description": "Serum facial de vitamina C para venta minorista.", "itemType": "product",
-      "categorySeedKey": "productos", "unitCode": "unit", "branchCodes": ["HQ", "DOWNTOWN", "EAST"], "status": "active"
+      "categorySeedKey": "productos", "unitCode": "unit", "branchCodes": ["HQ", "NORTH", "DOWNTOWN", "EAST"], "status": "active"
     },
     {
       "seedKey": "spf50-sunscreen", "sku": "PRD-06", "name": "Bloqueador solar SPF50",
       "description": "Protector solar SPF50 para cuidado posterior al tratamiento.", "itemType": "product",
-      "categorySeedKey": "productos", "unitCode": "unit", "branchCodes": ["HQ", "NORTH", "EAST"], "status": "active"
+      "categorySeedKey": "productos", "unitCode": "unit", "branchCodes": ["HQ", "NORTH", "DOWNTOWN", "EAST"], "status": "active"
     },
     {
       "seedKey": "nitrile-gloves", "sku": "INS-01", "name": "Guantes de nitrilo (caja)",
-      "description": "Caja de guantes de nitrilo para uso clínico.", "itemType": "other",
+      "description": "Caja de guantes de nitrilo para uso clínico.", "itemType": "supply",
       "categorySeedKey": "insumos", "unitCode": "unit", "branchCodes": ["HQ", "NORTH", "DOWNTOWN", "EAST"], "status": "active"
     },
     {
       "seedKey": "laser-conductive-gel", "sku": "INS-02", "name": "Gel conductor láser",
-      "description": "Gel conductor para sesiones de depilación láser.", "itemType": "other",
-      "categorySeedKey": "insumos", "unitCode": "l", "branchCodes": ["HQ", "DOWNTOWN", "EAST"], "status": "active"
+      "description": "Gel conductor para sesiones de depilación láser.", "itemType": "supply",
+      "categorySeedKey": "insumos", "unitCode": "l", "branchCodes": ["HQ", "NORTH", "DOWNTOWN", "EAST"], "status": "active"
     },
     {
       "seedKey": "disposable-towels", "sku": "INS-03", "name": "Toallas desechables (paquete)",
-      "description": "Paquete de toallas desechables para cabina.", "itemType": "other",
+      "description": "Paquete de toallas desechables para cabina.", "itemType": "supply",
       "categorySeedKey": "insumos", "unitCode": "unit", "branchCodes": ["HQ", "NORTH", "DOWNTOWN", "EAST"], "status": "active"
     },
     {
       "seedKey": "isopropyl-alcohol", "sku": "INS-04", "name": "Alcohol isopropílico 70%",
-      "description": "Alcohol isopropílico para limpieza de superficies y equipos.", "itemType": "other",
+      "description": "Alcohol isopropílico para limpieza de superficies y equipos.", "itemType": "supply",
       "categorySeedKey": "insumos", "unitCode": "l", "branchCodes": ["HQ", "NORTH", "DOWNTOWN", "EAST"], "status": "active"
     }
   ]

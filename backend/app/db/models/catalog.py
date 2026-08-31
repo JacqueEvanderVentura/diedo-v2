@@ -76,7 +76,8 @@ class Item(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             name="fk_items_workspace_unit",
         ),
         CheckConstraint(
-            "item_type IN ('product', 'service', 'membership', 'asset_template', 'other')",
+            "item_type IN ('product', 'service', 'supply', 'membership', "
+            "'asset_template', 'other')",
             name="item_type_values",
         ),
         CheckConstraint("status IN ('active', 'inactive', 'archived')", name="status_values"),

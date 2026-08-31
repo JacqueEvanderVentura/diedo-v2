@@ -1,8 +1,9 @@
 # Catalog API contract
 
-This slice implements flat categories and branch-assigned products on top of the shared catalog
-aggregate. Prices, costs, tax configuration, images, variants, stock balances, and movements are
-deliberately deferred.
+This slice implements flat categories and branch-assigned product identity on top of the shared
+catalog aggregate. Commercial pricing, supplies, services, warehouse balances, assets, and stock
+movements are owned by the [Inventory API](./INVENTORY_API.md). Images and variants remain outside
+the current scope.
 
 ## Authentication and authorization
 
@@ -58,6 +59,7 @@ invalid JWT is 401; denied scope is 403; absent or concealed resources are 404; 
 SKUs, stale versions, and category-in-use violations are 409. Successful writes append an audit
 entry carrying the request ID and changed field metadata.
 
-POST is not idempotent and does not accept an idempotency key in this slice. Clients must not retry
+Catalog POST is not idempotent and does not accept an idempotency key. Clients must not retry
 blindly: a repeated category name or non-null SKU is rejected, while two SKU-less product creates
-are distinct operations. PATCH uses optimistic concurrency through the required `version` field.
+are distinct operations. Inventory item creation uses its own retry-safe endpoints. PATCH uses
+optimistic concurrency through the required `version` field.

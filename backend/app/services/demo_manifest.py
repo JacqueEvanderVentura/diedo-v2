@@ -8,7 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import EmailStr, Field
+from pydantic import EmailStr, Field, field_validator
 
 from app.schemas.common import ApiModel
 
@@ -131,7 +131,9 @@ class DemoCatalogItemFixture(ApiModel):
     sku: str | None = Field(default=None, min_length=1, max_length=64)
     name: str = Field(min_length=2, max_length=160)
     description: str | None = Field(default=None, max_length=1000)
-    item_type: Literal["product", "service", "membership", "asset_template", "other"]
+    item_type: Literal[
+        "product", "service", "supply", "membership", "asset_template", "other"
+    ]
     category_seed_key: str
     unit_code: str
     branch_codes: list[str] = Field(min_length=1, max_length=100)
@@ -141,6 +143,40 @@ class DemoCatalogItemFixture(ApiModel):
 class CatalogFixture(ApiModel):
     categories: list[DemoCatalogCategoryFixture]
     items: list[DemoCatalogItemFixture]
+
+
+class DemoInventoryItemProfileFixture(ApiModel):
+    item_seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    sale_price: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
+    unit_cost: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
+    tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100, decimal_places=2)
+    minimum_stock: Decimal = Field(default=Decimal("0"), ge=0, decimal_places=3)
+    stock_by_branch: dict[str, Decimal] = Field(default_factory=dict)
+
+    @field_validator("stock_by_branch")
+    @classmethod
+    def require_non_negative_stock(cls, value: dict[str, Decimal]) -> dict[str, Decimal]:
+        if any(quantity < 0 for quantity in value.values()):
+            raise ValueError("Demo stock quantities cannot be negative.")
+        return value
+
+
+class DemoAssetFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    name: str = Field(min_length=2, max_length=160)
+    code: str = Field(min_length=2, max_length=64)
+    category_code: str
+    branch_code: str
+    acquisition_value: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
+    status: Literal["activo", "reparacion", "baja"] = "activo"
+    location: str | None = Field(default=None, max_length=240)
+    purchase_date: date | None = None
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class InventoryFixture(ApiModel):
+    item_profiles: list[DemoInventoryItemProfileFixture]
+    assets: list[DemoAssetFixture]
 
 
 class DemoLeaveRequestFixture(ApiModel):
@@ -194,6 +230,7 @@ class DemoBundle:
     iam: IamFixture
     configuration: ConfigurationFixture
     catalog: CatalogFixture
+    inventory: InventoryFixture
     customers: CustomersFixture
     employees: EmployeesFixture
     hr: HrFixture
@@ -209,6 +246,7 @@ def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
         "iam.json",
         "configuration.json",
         "catalog.json",
+        "inventory.json",
         "customers.json",
         "employees.json",
     }
@@ -235,6 +273,9 @@ def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
         ),
         catalog=CatalogFixture.model_validate_json(
             (root / "catalog.json").read_text(encoding="utf-8")
+        ),
+        inventory=InventoryFixture.model_validate_json(
+            (root / "inventory.json").read_text(encoding="utf-8")
         ),
         customers=CustomersFixture.model_validate_json(
             (root / "customers.json").read_text(encoding="utf-8")

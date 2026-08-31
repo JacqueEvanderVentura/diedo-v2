@@ -12,6 +12,7 @@ from app.db.models import (
     AccessScope,
     AppointmentResource,
     Branch,
+    InventoryWarehouse,
     LegalEntity,
     LegalEntityIdentity,
     PaymentMethod,
@@ -440,6 +441,16 @@ class AdministrationService:
             else:
                 target_entity.version += 1
             self._repository.add_branch(branch)
+            self._session.add(
+                InventoryWarehouse(
+                    workspace_id=workspace_id,
+                    branch_id=branch.id,
+                    code="main",
+                    name="Almacén principal",
+                    is_default=True,
+                    status="active",
+                )
+            )
             self._session.add_all(
                 [
                     AppointmentResource(

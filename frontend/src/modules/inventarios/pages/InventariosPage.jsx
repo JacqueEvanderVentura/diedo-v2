@@ -53,14 +53,13 @@ export default function InventariosPage() {
   const isOnline = useSessionStore((s) => s.isOnline())
   const isAuthenticated = useSessionStore((s) => s.isAuthenticated())
   const hydrateFromApi = useCatalogStore((s) => s.hydrateFromApi)
-  const categories = useConfigStore((s) => s.categories)
   const branches = useConfigStore((s) => s.branches)
 
   useEffect(() => {
     if (isOnline && isAuthenticated) {
-      hydrateFromApi(categories, branches).catch(() => {})
+      hydrateFromApi(branches).catch(() => {})
     }
-  }, [isOnline, isAuthenticated, hydrateFromApi, categories, branches])
+  }, [isOnline, isAuthenticated, hydrateFromApi, branches])
   const tabParam = params.get('tab') || 'productos'
   const tab = TABS.some((t) => t.id === tabParam) ? tabParam : 'productos'
 

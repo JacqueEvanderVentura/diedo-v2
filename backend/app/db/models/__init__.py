@@ -32,6 +32,15 @@ from app.db.models.identity import (
     RolePermission,
     WorkspaceMembership,
 )
+from app.db.models.inventory import (
+    Asset,
+    AssetCategory,
+    InventoryItemProfile,
+    InventoryMovement,
+    InventoryMovementLine,
+    InventoryStockBalance,
+    InventoryWarehouse,
+)
 from app.db.models.master_data import (
     Attachment,
     Customer,
@@ -50,6 +59,8 @@ __all__ = [
     "AppointmentResource",
     "AuthSession",
     "AuditEntry",
+    "Asset",
+    "AssetCategory",
     "Branch",
     "Customer",
     "CustomerBranchAssignment",
@@ -66,6 +77,11 @@ __all__ = [
     "Item",
     "ItemBranchAssignment",
     "ItemCategory",
+    "InventoryItemProfile",
+    "InventoryMovement",
+    "InventoryMovementLine",
+    "InventoryStockBalance",
+    "InventoryWarehouse",
     "LegalEntity",
     "LegalEntityIdentity",
     "LegalEntityRegionalRule",

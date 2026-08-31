@@ -1,7 +1,7 @@
 // Generated from demo-data/v1; do not edit.
 export const DEMO_SNAPSHOT = Object.freeze({
   "seedVersion": "v1",
-  "schemaVersion": "20260830_0009",
+  "schemaVersion": "20260831_0010",
   "workspaceSlug": "local-erp",
   "foundation": {
     "branches": [
@@ -39,6 +39,9 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "role.read",
         "catalog.read",
         "catalog.manage",
+        "inventory.read",
+        "inventory.manage",
+        "inventory.move",
         "customer.read",
         "customer.manage",
         "employee.read",
@@ -62,6 +65,8 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "branch.read",
         "membership.read",
         "catalog.read",
+        "inventory.read",
+        "inventory.move",
         "customer.read",
         "customer.manage",
         "employee.read",
@@ -76,6 +81,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "workspace.read",
         "branch.read",
         "catalog.read",
+        "inventory.read",
         "customer.read",
         "customer.manage",
         "employee.read",
@@ -87,6 +93,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "workspace.read",
         "branch.read",
         "catalog.read",
+        "inventory.read",
         "customer.read",
         "customer.manage",
         "employee.read",
@@ -440,7 +447,9 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "unitCode": "unit",
         "branchCodes": [
           "HQ",
-          "DOWNTOWN"
+          "NORTH",
+          "DOWNTOWN",
+          "EAST"
         ],
         "status": "active"
       },
@@ -486,7 +495,9 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "unitCode": "unit",
         "branchCodes": [
           "HQ",
-          "NORTH"
+          "NORTH",
+          "DOWNTOWN",
+          "EAST"
         ],
         "status": "active"
       },
@@ -500,6 +511,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "unitCode": "unit",
         "branchCodes": [
           "HQ",
+          "NORTH",
           "DOWNTOWN",
           "EAST"
         ],
@@ -516,6 +528,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "branchCodes": [
           "HQ",
           "NORTH",
+          "DOWNTOWN",
           "EAST"
         ],
         "status": "active"
@@ -525,7 +538,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "sku": "INS-01",
         "name": "Guantes de nitrilo (caja)",
         "description": "Caja de guantes de nitrilo para uso clínico.",
-        "itemType": "other",
+        "itemType": "supply",
         "categorySeedKey": "insumos",
         "unitCode": "unit",
         "branchCodes": [
@@ -541,11 +554,12 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "sku": "INS-02",
         "name": "Gel conductor láser",
         "description": "Gel conductor para sesiones de depilación láser.",
-        "itemType": "other",
+        "itemType": "supply",
         "categorySeedKey": "insumos",
         "unitCode": "l",
         "branchCodes": [
           "HQ",
+          "NORTH",
           "DOWNTOWN",
           "EAST"
         ],
@@ -556,7 +570,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "sku": "INS-03",
         "name": "Toallas desechables (paquete)",
         "description": "Paquete de toallas desechables para cabina.",
-        "itemType": "other",
+        "itemType": "supply",
         "categorySeedKey": "insumos",
         "unitCode": "unit",
         "branchCodes": [
@@ -572,7 +586,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "sku": "INS-04",
         "name": "Alcohol isopropílico 70%",
         "description": "Alcohol isopropílico para limpieza de superficies y equipos.",
-        "itemType": "other",
+        "itemType": "supply",
         "categorySeedKey": "insumos",
         "unitCode": "l",
         "branchCodes": [
@@ -582,6 +596,375 @@ export const DEMO_SNAPSHOT = Object.freeze({
           "EAST"
         ],
         "status": "active"
+      }
+    ]
+  },
+  "inventory": {
+    "itemProfiles": [
+      {
+        "itemSeedKey": "remaining-cycle-half",
+        "salePrice": 8000,
+        "taxRate": 18
+      },
+      {
+        "itemSeedKey": "underarm-session",
+        "salePrice": 900,
+        "taxRate": 18
+      },
+      {
+        "itemSeedKey": "full-legs-session",
+        "salePrice": 1200,
+        "taxRate": 18
+      },
+      {
+        "itemSeedKey": "brazilian-package-12",
+        "salePrice": 5500,
+        "taxRate": 18
+      },
+      {
+        "itemSeedKey": "full-face-package-12",
+        "salePrice": 5000,
+        "taxRate": 18
+      },
+      {
+        "itemSeedKey": "full-body-package-12",
+        "salePrice": 9100,
+        "taxRate": 18
+      },
+      {
+        "itemSeedKey": "face-session",
+        "salePrice": 700,
+        "taxRate": 18
+      },
+      {
+        "itemSeedKey": "full-body-vip-package-12",
+        "salePrice": 23000,
+        "taxRate": 18
+      },
+      {
+        "itemSeedKey": "two-full-body-half-package",
+        "salePrice": 12000,
+        "taxRate": 18
+      },
+      {
+        "itemSeedKey": "hydrating-facial",
+        "salePrice": 2500,
+        "taxRate": 18
+      },
+      {
+        "itemSeedKey": "upper-lip-session",
+        "salePrice": 500,
+        "taxRate": 18
+      },
+      {
+        "itemSeedKey": "milk-cream",
+        "salePrice": 350,
+        "unitCost": 210,
+        "taxRate": 18,
+        "minimumStock": 5,
+        "stockByBranch": {
+          "HQ": 0,
+          "NORTH": 8,
+          "DOWNTOWN": 14,
+          "EAST": 5
+        }
+      },
+      {
+        "itemSeedKey": "red-bull",
+        "salePrice": 180,
+        "unitCost": 125,
+        "taxRate": 18,
+        "minimumStock": 8,
+        "stockByBranch": {
+          "HQ": 24,
+          "NORTH": 18,
+          "DOWNTOWN": 6,
+          "EAST": 0
+        }
+      },
+      {
+        "itemSeedKey": "coca-cola",
+        "salePrice": 90,
+        "unitCost": 55,
+        "taxRate": 18,
+        "minimumStock": 10,
+        "stockByBranch": {
+          "HQ": 48,
+          "NORTH": 30,
+          "DOWNTOWN": 12,
+          "EAST": 20
+        }
+      },
+      {
+        "itemSeedKey": "hamburger",
+        "salePrice": 420,
+        "unitCost": 260,
+        "taxRate": 18,
+        "minimumStock": 5,
+        "stockByBranch": {
+          "HQ": 6,
+          "NORTH": 0,
+          "DOWNTOWN": 4,
+          "EAST": 8
+        }
+      },
+      {
+        "itemSeedKey": "vitamin-c-serum",
+        "salePrice": 1350,
+        "unitCost": 780,
+        "taxRate": 18,
+        "minimumStock": 4,
+        "stockByBranch": {
+          "HQ": 24,
+          "NORTH": 16,
+          "DOWNTOWN": 2,
+          "EAST": 10
+        }
+      },
+      {
+        "itemSeedKey": "spf50-sunscreen",
+        "salePrice": 890,
+        "unitCost": 520,
+        "taxRate": 18,
+        "minimumStock": 4,
+        "stockByBranch": {
+          "HQ": 12,
+          "NORTH": 8,
+          "DOWNTOWN": 0,
+          "EAST": 3
+        }
+      },
+      {
+        "itemSeedKey": "nitrile-gloves",
+        "unitCost": 450,
+        "taxRate": 0,
+        "minimumStock": 20,
+        "stockByBranch": {
+          "HQ": 120,
+          "NORTH": 90,
+          "DOWNTOWN": 75,
+          "EAST": 60
+        }
+      },
+      {
+        "itemSeedKey": "laser-conductive-gel",
+        "unitCost": 850,
+        "taxRate": 0,
+        "minimumStock": 10,
+        "stockByBranch": {
+          "HQ": 45,
+          "NORTH": 30,
+          "DOWNTOWN": 8,
+          "EAST": 20
+        }
+      },
+      {
+        "itemSeedKey": "disposable-towels",
+        "unitCost": 320,
+        "taxRate": 0,
+        "minimumStock": 15,
+        "stockByBranch": {
+          "HQ": 80,
+          "NORTH": 55,
+          "DOWNTOWN": 30,
+          "EAST": 12
+        }
+      },
+      {
+        "itemSeedKey": "isopropyl-alcohol",
+        "unitCost": 280,
+        "taxRate": 0,
+        "minimumStock": 8,
+        "stockByBranch": {
+          "HQ": 36,
+          "NORTH": 25,
+          "DOWNTOWN": 6,
+          "EAST": 0
+        }
+      }
+    ],
+    "assets": [
+      {
+        "seedKey": "hq-reception-chair",
+        "name": "Silla ergonómica de recepción",
+        "code": "MOB-HQ-001",
+        "categoryCode": "mobiliario",
+        "branchCode": "HQ",
+        "acquisitionValue": 8500,
+        "status": "activo",
+        "location": "Recepción",
+        "purchaseDate": "2024-03-12"
+      },
+      {
+        "seedKey": "hq-admin-laptop",
+        "name": "Laptop administración",
+        "code": "TEC-HQ-014",
+        "categoryCode": "tecnologia",
+        "branchCode": "HQ",
+        "acquisitionValue": 42000,
+        "status": "activo",
+        "location": "Oficina",
+        "purchaseDate": "2023-11-05",
+        "notes": "MacBook Air M2"
+      },
+      {
+        "seedKey": "hq-old-printer",
+        "name": "Impresora térmica antigua",
+        "code": "TEC-HQ-002",
+        "categoryCode": "tecnologia",
+        "branchCode": "HQ",
+        "acquisitionValue": 4200,
+        "status": "baja",
+        "location": "Almacén",
+        "purchaseDate": "2020-02-10",
+        "notes": "Reemplazada"
+      },
+      {
+        "seedKey": "hq-air-conditioner",
+        "name": "Aire acondicionado 24k BTU",
+        "code": "EQP-HQ-009",
+        "categoryCode": "equipos",
+        "branchCode": "HQ",
+        "acquisitionValue": 38000,
+        "status": "activo",
+        "location": "Sala principal",
+        "purchaseDate": "2022-06-18"
+      },
+      {
+        "seedKey": "north-reception-desk",
+        "name": "Escritorio de recepción",
+        "code": "MOB-NOR-003",
+        "categoryCode": "mobiliario",
+        "branchCode": "NORTH",
+        "acquisitionValue": 30000,
+        "status": "activo",
+        "location": "Recepción",
+        "purchaseDate": "2023-08-14"
+      },
+      {
+        "seedKey": "north-laser-machine",
+        "name": "Equipo láser diodo",
+        "code": "EQP-NOR-001",
+        "categoryCode": "equipos",
+        "branchCode": "NORTH",
+        "acquisitionValue": 285000,
+        "status": "activo",
+        "location": "Cabina 1",
+        "purchaseDate": "2024-02-05"
+      },
+      {
+        "seedKey": "north-pos-tablet",
+        "name": "Tablet punto de venta",
+        "code": "TEC-NOR-008",
+        "categoryCode": "tecnologia",
+        "branchCode": "NORTH",
+        "acquisitionValue": 28000,
+        "status": "reparacion",
+        "location": "Oficina",
+        "purchaseDate": "2023-05-10",
+        "notes": "Cambio de pantalla"
+      },
+      {
+        "seedKey": "north-tool-kit",
+        "name": "Kit de herramientas técnicas",
+        "code": "HER-NOR-002",
+        "categoryCode": "herramientas",
+        "branchCode": "NORTH",
+        "acquisitionValue": 12500,
+        "status": "activo",
+        "location": "Almacén técnico",
+        "purchaseDate": "2024-04-22"
+      },
+      {
+        "seedKey": "downtown-treatment-bed",
+        "name": "Camilla hidráulica",
+        "code": "MOB-DOW-004",
+        "categoryCode": "mobiliario",
+        "branchCode": "DOWNTOWN",
+        "acquisitionValue": 18500,
+        "status": "activo",
+        "location": "Cabina 2",
+        "purchaseDate": "2023-10-01"
+      },
+      {
+        "seedKey": "downtown-uv-sterilizer",
+        "name": "Esterilizador UV",
+        "code": "EQP-DOW-003",
+        "categoryCode": "equipos",
+        "branchCode": "DOWNTOWN",
+        "acquisitionValue": 15600,
+        "status": "reparacion",
+        "location": "Sala 2",
+        "purchaseDate": "2024-01-20",
+        "notes": "En taller externo"
+      },
+      {
+        "seedKey": "downtown-router",
+        "name": "Router empresarial",
+        "code": "TEC-DOW-011",
+        "categoryCode": "tecnologia",
+        "branchCode": "DOWNTOWN",
+        "acquisitionValue": 6500,
+        "status": "activo",
+        "location": "Cuarto técnico",
+        "purchaseDate": "2024-06-15"
+      },
+      {
+        "seedKey": "downtown-motorcycle",
+        "name": "Motocicleta de mensajería",
+        "code": "VEH-DOW-001",
+        "categoryCode": "vehiculos",
+        "branchCode": "DOWNTOWN",
+        "acquisitionValue": 125000,
+        "status": "activo",
+        "location": "Estacionamiento",
+        "purchaseDate": "2022-09-30"
+      },
+      {
+        "seedKey": "east-reception-chair",
+        "name": "Silla de recepción",
+        "code": "MOB-EAS-006",
+        "categoryCode": "mobiliario",
+        "branchCode": "EAST",
+        "acquisitionValue": 9000,
+        "status": "activo",
+        "location": "Recepción",
+        "purchaseDate": "2024-03-20"
+      },
+      {
+        "seedKey": "east-admin-laptop",
+        "name": "Laptop de sucursal",
+        "code": "TEC-EAS-005",
+        "categoryCode": "tecnologia",
+        "branchCode": "EAST",
+        "acquisitionValue": 39500,
+        "status": "activo",
+        "location": "Administración",
+        "purchaseDate": "2023-12-11"
+      },
+      {
+        "seedKey": "east-cooling-system",
+        "name": "Sistema de enfriamiento láser",
+        "code": "EQP-EAS-007",
+        "categoryCode": "equipos",
+        "branchCode": "EAST",
+        "acquisitionValue": 68000,
+        "status": "reparacion",
+        "location": "Cabina 1",
+        "purchaseDate": "2023-07-19",
+        "notes": "Pendiente de repuesto"
+      },
+      {
+        "seedKey": "east-old-treatment-bed",
+        "name": "Camilla de tratamiento antigua",
+        "code": "MOB-EAS-001",
+        "categoryCode": "mobiliario",
+        "branchCode": "EAST",
+        "acquisitionValue": 12000,
+        "status": "baja",
+        "location": "Almacén",
+        "purchaseDate": "2019-05-08",
+        "notes": "Fuera de servicio"
       }
     ]
   },

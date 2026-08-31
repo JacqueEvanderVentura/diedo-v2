@@ -28,10 +28,9 @@ The first migration installs only stable, cross-cutting concepts:
   `employee_branch_assignments`, `employee_supervisors`, `employee_schedules`, and owner-scoped
   `attachments`.
 
-No sales, purchasing, inventory, accounting, payroll, POS, appointment, or lodging transaction
-tables are included. Catalog is the separately documented pre-existing slice. Customer and employee
-records are deliberately limited to the Phase 2 shared identity boundary; salary, banking, payroll,
-evaluations and the remaining domain state machines stay deferred.
+Commercial modules are documented separately from this foundation contract. Catalog, inventory,
+assets, HR, and appointments now have dedicated tables and API contracts; sales, purchasing,
+accounting, payroll, POS, and lodging remain outside this foundation slice.
 
 ## Physical decisions
 
@@ -70,14 +69,16 @@ The command is limited to development and test environments and is safe to repea
 - one legal entity and main branch;
 - one local external identity and active workspace membership;
 - a system administrator role, workspace scope, and foundation permissions;
-- global module metadata, enabling `foundation`, `iam`, `catalog`, `crm` and `hr`;
+- global module metadata, enabling `foundation`, `iam`, `catalog`, `crm`, `hr`, `agenda`, and
+  `inventory`;
 - a Dominican Republic regional pack in `planned` state, with no unverified fiscal rules activated.
 
 By default the bootstrap creates no password. In development or test, setting
 `LOCAL_BOOTSTRAP_ADMIN_PASSWORD` sets or rotates the local owner's Argon2 password for that explicit
 bootstrap run.
-The bootstrap never creates an API key, customer, employee, invoice, payment, stock, accounting, or
-fiscal record.
+The bootstrap never creates an API key, customer, employee, commercial item, stock balance,
+invoice, payment, accounting, or fiscal record. It only provisions the default warehouse and asset
+category lookups required by inventory.
 
 ## Canonical demo seed
 
@@ -85,8 +86,9 @@ fiscal record.
 contains schema/seed versions, per-file counts and SHA-256 checksums. Backend loading validates
 Pydantic contracts and checksums; frontend generation consumes the same files. The canonical data
 includes five customers, thirteen basic employees, six catalog categories, and twenty-two catalog
-items with deterministic assignments across HQ, NORTH, DOWNTOWN, and EAST. Future HR-only fields
-remain isolated in fixture metadata.
+items with deterministic assignments across HQ, NORTH, DOWNTOWN, and EAST. Inventory adds 21 price
+and cost profiles, 40 stock balances (six products and four supplies per branch), 16 physical
+assets, and 35 opening movements. Future HR-only fields remain isolated in fixture metadata.
 
 `schemaVersion` records the exact Alembic revision expected by that application build. After a new
 migration is validated with the canonical seed, update the manifest and regenerate the frontend
@@ -109,11 +111,11 @@ installed organization counts and enabled modules. The route is not registered i
 production.
 
 `GET /health/ready` separately validates PostgreSQL connectivity and the expected Alembic revision
-(`20260829_0007`). It returns `503` when the schema is incompatible; authenticated capabilities stay
+(`20260831_0010`). It returns `503` when the schema is incompatible; authenticated capabilities stay
 in `/api/v1/auth/me` rather than readiness.
 
 ## Next design decision
 
-The initial shared-master schema is implemented. Before opening the catalog/inventory/asset cut
-described as Fase 3, complete the real cross-module stories, attachment authorization, API/demo
-parity, and the remaining gates in the full-stack Plan V2.
+The inventory backend and its canonical demo data are implemented. Frontend API/demo adapters and
+the remaining cross-module sales and purchasing stories are tracked separately in the full-stack
+Plan V2.

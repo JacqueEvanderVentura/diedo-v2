@@ -1,8 +1,11 @@
 import pytest
 from app.core.security import hash_password, verify_password
 from app.db.models import (
+    Asset,
     Branch,
     DemoSeedRegistry,
+    InventoryStockBalance,
+    InventoryWarehouse,
     Item,
     ItemBranchAssignment,
     ItemCategory,
@@ -35,6 +38,11 @@ def test_demo_seed_flag_false_is_a_no_op() -> None:
     assert summary.catalog_category_count == 0
     assert summary.catalog_item_count == 0
     assert summary.catalog_assignment_count == 0
+    assert summary.inventory_warehouse_count == 0
+    assert summary.inventory_profile_count == 0
+    assert summary.inventory_stock_balance_count == 0
+    assert summary.inventory_asset_count == 0
+    assert summary.inventory_movement_count == 0
 
 
 @pytest.mark.integration
@@ -149,10 +157,57 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
                 DemoSeedRegistry.entity_type == "item_branch_assignment",
             )
         )
+        inventory_profile_count = session.scalar(
+            select(func.count(DemoSeedRegistry.id)).where(
+                DemoSeedRegistry.workspace_id == second.workspace_id,
+                DemoSeedRegistry.seed_version == "v1",
+                DemoSeedRegistry.entity_type == "inventory_item_profile",
+            )
+        )
+        inventory_stock_balance_count = session.scalar(
+            select(func.count(DemoSeedRegistry.id)).where(
+                DemoSeedRegistry.workspace_id == second.workspace_id,
+                DemoSeedRegistry.seed_version == "v1",
+                DemoSeedRegistry.entity_type == "inventory_stock_balance",
+            )
+        )
+        inventory_asset_count = session.scalar(
+            select(func.count(DemoSeedRegistry.id)).where(
+                DemoSeedRegistry.workspace_id == second.workspace_id,
+                DemoSeedRegistry.seed_version == "v1",
+                DemoSeedRegistry.entity_type == "asset",
+            )
+        )
+        inventory_movement_count = session.scalar(
+            select(func.count(DemoSeedRegistry.id)).where(
+                DemoSeedRegistry.workspace_id == second.workspace_id,
+                DemoSeedRegistry.seed_version == "v1",
+                DemoSeedRegistry.entity_type == "inventory_opening_movement",
+            )
+        )
+        inventory_warehouse_count = session.scalar(
+            select(func.count(InventoryWarehouse.id))
+            .join(Branch, Branch.id == InventoryWarehouse.branch_id)
+            .where(
+                InventoryWarehouse.workspace_id == second.workspace_id,
+                InventoryWarehouse.status == "active",
+                Branch.code.in_({"HQ", "NORTH", "DOWNTOWN", "EAST"}),
+            )
+        )
         seeded_item_ids = select(DemoSeedRegistry.entity_id).where(
             DemoSeedRegistry.workspace_id == second.workspace_id,
             DemoSeedRegistry.seed_version == "v1",
             DemoSeedRegistry.entity_type == "item",
+        )
+        seeded_balance_ids = select(DemoSeedRegistry.entity_id).where(
+            DemoSeedRegistry.workspace_id == second.workspace_id,
+            DemoSeedRegistry.seed_version == "v1",
+            DemoSeedRegistry.entity_type == "inventory_stock_balance",
+        )
+        seeded_asset_ids = select(DemoSeedRegistry.entity_id).where(
+            DemoSeedRegistry.workspace_id == second.workspace_id,
+            DemoSeedRegistry.seed_version == "v1",
+            DemoSeedRegistry.entity_type == "asset",
         )
         seeded_item_types = dict(
             session.execute(
@@ -177,6 +232,48 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
                     Item.id.in_(seeded_item_ids),
                     Item.item_type == "product",
                     ItemBranchAssignment.status == "active",
+                )
+                .group_by(Branch.code)
+            ).all()
+        )
+        supplies_per_branch = dict(
+            session.execute(
+                select(Branch.code, func.count(ItemBranchAssignment.id))
+                .join(
+                    ItemBranchAssignment,
+                    ItemBranchAssignment.branch_id == Branch.id,
+                )
+                .join(Item, Item.id == ItemBranchAssignment.item_id)
+                .where(
+                    Branch.workspace_id == second.workspace_id,
+                    Item.id.in_(seeded_item_ids),
+                    Item.item_type == "supply",
+                    ItemBranchAssignment.status == "active",
+                )
+                .group_by(Branch.code)
+            ).all()
+        )
+        stock_items_per_branch = dict(
+            session.execute(
+                select(Branch.code, func.count(InventoryStockBalance.id))
+                .join(
+                    InventoryStockBalance,
+                    InventoryStockBalance.branch_id == Branch.id,
+                )
+                .where(
+                    Branch.workspace_id == second.workspace_id,
+                    InventoryStockBalance.id.in_(seeded_balance_ids),
+                )
+                .group_by(Branch.code)
+            ).all()
+        )
+        assets_per_branch = dict(
+            session.execute(
+                select(Branch.code, func.count(Asset.id))
+                .join(Asset, Asset.branch_id == Branch.id)
+                .where(
+                    Branch.workspace_id == second.workspace_id,
+                    Asset.id.in_(seeded_asset_ids),
                 )
                 .group_by(Branch.code)
             ).all()
@@ -225,12 +322,25 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
     assert first.document_count == second.document_count == 0
     assert first.catalog_category_count == second.catalog_category_count == 6
     assert first.catalog_item_count == second.catalog_item_count == 22
-    assert first.catalog_assignment_count == second.catalog_assignment_count == 59
+    assert first.catalog_assignment_count == second.catalog_assignment_count == 66
+    assert first.inventory_warehouse_count == second.inventory_warehouse_count == 4
+    assert first.inventory_profile_count == second.inventory_profile_count == 21
+    assert first.inventory_stock_balance_count == second.inventory_stock_balance_count == 40
+    assert first.inventory_asset_count == second.inventory_asset_count == 16
+    assert first.inventory_movement_count == second.inventory_movement_count == 35
     assert catalog_category_count == persisted_category_count == 6
     assert catalog_item_count == 22
-    assert catalog_assignment_count == 59
-    assert seeded_item_types == {"membership": 1, "other": 4, "product": 6, "service": 11}
-    assert products_per_branch == {"DOWNTOWN": 4, "EAST": 4, "HQ": 6, "NORTH": 4}
+    assert catalog_assignment_count == 66
+    assert inventory_warehouse_count == 4
+    assert inventory_profile_count == 21
+    assert inventory_stock_balance_count == 40
+    assert inventory_asset_count == 16
+    assert inventory_movement_count == 35
+    assert seeded_item_types == {"membership": 1, "product": 6, "service": 11, "supply": 4}
+    assert products_per_branch == {"DOWNTOWN": 6, "EAST": 6, "HQ": 6, "NORTH": 6}
+    assert supplies_per_branch == {"DOWNTOWN": 4, "EAST": 4, "HQ": 4, "NORTH": 4}
+    assert stock_items_per_branch == {"DOWNTOWN": 10, "EAST": 10, "HQ": 10, "NORTH": 10}
+    assert assets_per_branch == {"DOWNTOWN": 4, "EAST": 4, "HQ": 4, "NORTH": 4}
     assert north_branch is not None and north_branch.id == adopted_branch_id
     assert north_branch.name == "Sucursal Norte"
     assert north_registry is not None and north_registry.entity_id == adopted_branch_id

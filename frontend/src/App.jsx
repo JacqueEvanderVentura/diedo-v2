@@ -7,7 +7,6 @@ import { useCustomersStore } from './stores/customersStore'
 import { useRrhhStore } from './stores/rrhhStore'
 import { useAgendaStore } from './stores/agendaStore'
 import { useCatalogStore } from './stores/catalogStore'
-import { useConfigStore } from './stores/configStore'
 import { configFacade } from './services/configFacade'
 
 export default function App() {
@@ -44,10 +43,7 @@ export default function App() {
       && useSessionStore.getState().hasModule('catalog')
       && useSessionStore.getState().hasPermission('catalog.read')
     ) {
-      requests.push(hydrateCatalog(
-        useConfigStore.getState().categories,
-        configFacade.branches()
-      ))
+      requests.push(hydrateCatalog(configFacade.branches()))
     }
     Promise.allSettled(requests)
   }, [hydrateAppointments, hydrateCatalog, hydrateCustomers, hydrateEmployees, hydrateHrData, initialized, status, visibleBranches, workspaceId])

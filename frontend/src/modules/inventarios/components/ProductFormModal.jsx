@@ -7,6 +7,7 @@ import { Select } from '@/components/ui/Select'
 import { useCatalogStore } from '@/stores/catalogStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
+import { resolveCategoryId } from '@/lib/catalogSync'
 import { cn } from '@/lib/utils'
 
 const UNITS = [
@@ -43,6 +44,8 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
   const editing = !!product
   const isSupply = form.type === 'supply'
   const isService = form.type === 'service'
+  const selectedCategoryId = resolveCategoryId(form.category, FORM_CATEGORIES)
+  const supplyCategoryId = resolveCategoryId('insumos', FORM_CATEGORIES)
 
   useEffect(() => {
     if (open) {
@@ -174,12 +177,12 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Categoría</label>
             <div className="flex flex-wrap gap-2">
-              {FORM_CATEGORIES.filter((c) => c.id !== 'insumos' || isSupply).map((c) => (
+              {FORM_CATEGORIES.filter((c) => c.id !== supplyCategoryId).map((c) => (
                 <button
                   key={c.id}
                   onClick={() => set('category', c.id)}
                   data-testid={`inventory-cat-${c.id}`}
-                  className={cn('rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors', form.category === c.id ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-blue-200')}
+                  className={cn('rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors', selectedCategoryId === c.id ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-blue-200')}
                 >
                   {c.name}
                 </button>

@@ -17,7 +17,7 @@ from app.db.models import (
     UnitOfMeasure,
 )
 
-_COMMERCIAL_ITEM_TYPES = ("product", "service", "membership", "other")
+_COMMERCIAL_ITEM_TYPES = ("product", "service", "supply", "membership", "other")
 
 
 @dataclass(frozen=True)

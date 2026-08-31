@@ -98,6 +98,18 @@ CatalogManageGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("catalog.manage")),
 ]
+InventoryReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("inventory.read")),
+]
+InventoryManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("inventory.manage")),
+]
+InventoryMoveGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("inventory.move")),
+]
 CustomerReadGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("customer.read")),

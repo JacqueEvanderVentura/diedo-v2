@@ -9,7 +9,9 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     AccessScope,
     AppointmentResource,
+    AssetCategory,
     Branch,
+    InventoryWarehouse,
     LegalEntity,
     ModuleDefinition,
     ModuleEntitlement,
@@ -24,6 +26,7 @@ from app.db.models import (
     WorkspaceMembership,
 )
 from app.db.models.agenda import DEFAULT_APPOINTMENT_RESOURCES
+from app.db.models.inventory import DEFAULT_ASSET_CATEGORIES
 
 _PERMISSIONS = (
     (
@@ -245,6 +248,30 @@ _PERMISSIONS = (
         "Create, reschedule, update, and cancel appointments.",
         20,
     ),
+    (
+        "inventory.read",
+        "inventory",
+        "read",
+        "Ver inventario",
+        "View inventory summaries, items, movements, warehouses, and assets.",
+        10,
+    ),
+    (
+        "inventory.manage",
+        "inventory",
+        "manage",
+        "Gestionar inventario y activos",
+        "Create and update inventory items, asset categories, and assets.",
+        20,
+    ),
+    (
+        "inventory.move",
+        "inventory",
+        "move",
+        "Registrar movimientos de inventario",
+        "Register idempotent stock outputs and adjustments.",
+        30,
+    ),
 )
 
 _ROLE_TEMPLATES = (
@@ -264,7 +291,7 @@ _MODULES: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
     ("catalog", "Product and service catalog", "optional", "available", ("foundation",)),
     ("sales", "Sales", "optional", "planned", ("crm", "catalog")),
     ("purchasing", "Purchasing", "optional", "planned", ("catalog",)),
-    ("inventory", "Inventory", "optional", "planned", ("catalog", "purchasing")),
+    ("inventory", "Inventory and assets", "optional", "available", ("foundation", "catalog")),
     ("accounting", "Accounting", "optional", "planned", ("sales", "purchasing")),
     ("hr", "Human resources", "optional", "available", ("foundation",)),
     ("payroll", "Payroll", "optional", "planned", ("hr", "accounting")),
@@ -384,6 +411,14 @@ def bootstrap_local_foundation(
     if branch is None:
         raise RuntimeError("Local branch could not be loaded after bootstrap.")
     _upsert_appointment_resources(session, workspace.id, branch.id)
+    active_branch_ids = session.scalars(
+        select(Branch.id).where(
+            Branch.workspace_id == workspace.id,
+            Branch.status == "active",
+        )
+    ).all()
+    for active_branch_id in active_branch_ids:
+        _upsert_inventory_defaults(session, workspace.id, active_branch_id)
 
     _insert_do_nothing(
         session,
@@ -468,7 +503,15 @@ def bootstrap_local_foundation(
         },
     )
 
-    enabled_modules = ("foundation", "iam", "catalog", "crm", "hr", "appointments")
+    enabled_modules = (
+        "foundation",
+        "iam",
+        "catalog",
+        "crm",
+        "hr",
+        "appointments",
+        "inventory",
+    )
     for module_code in enabled_modules:
         module_id = session.scalar(
             select(ModuleDefinition.id).where(ModuleDefinition.code == module_code)
@@ -614,6 +657,49 @@ def _upsert_appointment_resources(session: Session, workspace_id: UUID, branch_i
             )
         )
         session.execute(statement)
+
+
+def _upsert_inventory_defaults(session: Session, workspace_id: UUID, branch_id: UUID) -> None:
+    session.execute(
+        insert(InventoryWarehouse)
+        .values(
+            workspace_id=workspace_id,
+            branch_id=branch_id,
+            code="main",
+            name="Almacén principal",
+            is_default=True,
+            status="active",
+        )
+        .on_conflict_do_update(
+            constraint="uq_inventory_warehouses_scope_code",
+            set_={
+                "name": "Almacén principal",
+                "is_default": True,
+                "status": "active",
+                "updated_at": func.now(),
+            },
+        )
+    )
+    for code, name in DEFAULT_ASSET_CATEGORIES:
+        session.execute(
+            insert(AssetCategory)
+            .values(
+                workspace_id=workspace_id,
+                code=code,
+                name=name,
+                normalized_name=name.casefold(),
+                status="active",
+            )
+            .on_conflict_do_update(
+                constraint="uq_asset_categories_workspace_code",
+                set_={
+                    "name": name,
+                    "normalized_name": name.casefold(),
+                    "status": "active",
+                    "updated_at": func.now(),
+                },
+            )
+        )
 
 
 def _insert_do_nothing(session: Session, model: type, values: dict[str, object]) -> None:

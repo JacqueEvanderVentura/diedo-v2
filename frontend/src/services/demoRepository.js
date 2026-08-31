@@ -56,6 +56,21 @@ export class DemoRepository {
     return structuredClone(this.snapshot.catalog)
   }
 
+  inventory() {
+    const inventory = structuredClone(this.snapshot.inventory)
+    return {
+      ...inventory,
+      itemProfiles: inventory.itemProfiles.map((profile) => ({
+        salePrice: null,
+        unitCost: null,
+        taxRate: 0,
+        minimumStock: 0,
+        stockByBranch: {},
+        ...profile,
+      })),
+    }
+  }
+
   hr() {
     return structuredClone(this.snapshot.hr)
   }

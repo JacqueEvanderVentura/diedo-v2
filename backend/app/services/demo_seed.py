@@ -15,6 +15,8 @@ from app.config import settings
 from app.db.models import (
     AccessScope,
     AppointmentResource,
+    Asset,
+    AssetCategory,
     Branch,
     Customer,
     CustomerBranchAssignment,
@@ -28,6 +30,11 @@ from app.db.models import (
     EmployeeSupervisor,
     HrDocumentRecord,
     HrLeaveRequest,
+    InventoryItemProfile,
+    InventoryMovement,
+    InventoryMovementLine,
+    InventoryStockBalance,
+    InventoryWarehouse,
     Item,
     ItemBranchAssignment,
     ItemCategory,
@@ -41,7 +48,12 @@ from app.db.models import (
     WorkspaceMembership,
 )
 from app.db.models.agenda import DEFAULT_APPOINTMENT_RESOURCES
-from app.services.demo_manifest import DemoBundle, DemoEmployeeFixture, load_demo_bundle
+from app.services.demo_manifest import (
+    DemoBundle,
+    DemoEmployeeFixture,
+    DemoInventoryItemProfileFixture,
+    load_demo_bundle,
+)
 from app.services.local_bootstrap import bootstrap_local_foundation
 
 _DEMO_NAMESPACE = UUID("0b995e4e-d36a-5a4f-82b7-84a536c9fa59")
@@ -63,6 +75,11 @@ class DemoSeedSummary:
     catalog_category_count: int = 0
     catalog_item_count: int = 0
     catalog_assignment_count: int = 0
+    inventory_warehouse_count: int = 0
+    inventory_profile_count: int = 0
+    inventory_stock_balance_count: int = 0
+    inventory_asset_count: int = 0
+    inventory_movement_count: int = 0
 
 
 def seed_demo_data(
@@ -96,6 +113,12 @@ def seed_demo_data(
         foundation.workspace_id,
         branches,
     )
+    inventory_counts = _seed_inventory(
+        session,
+        bundle,
+        foundation.workspace_id,
+        branches,
+    )
     _seed_customers(session, bundle, foundation.workspace_id, branches)
     _seed_employees(session, bundle, foundation.workspace_id, branches)
     _seed_hr(session, bundle, foundation.workspace_id)
@@ -114,6 +137,7 @@ def seed_demo_data(
         len(bundle.catalog.categories),
         len(bundle.catalog.items),
         catalog_assignment_count,
+        *inventory_counts,
     )
 
 
@@ -299,6 +323,491 @@ def _seed_catalog_categories(
 
 def _normalized_catalog_name(value: str) -> str:
     return " ".join(value.split())
+
+
+def _seed_inventory(
+    session: Session,
+    bundle: DemoBundle,
+    workspace_id: UUID,
+    branches: dict[str, Branch],
+) -> tuple[int, int, int, int, int]:
+    inventory_branch_codes = {
+        branch_code
+        for fixture in bundle.inventory.item_profiles
+        for branch_code in fixture.stock_by_branch
+    } | {fixture.branch_code for fixture in bundle.inventory.assets}
+    unknown_branch_codes = inventory_branch_codes - branches.keys()
+    if unknown_branch_codes:
+        unknown = ", ".join(sorted(unknown_branch_codes))
+        raise RuntimeError(f"Demo inventory references unknown branches: {unknown}.")
+    inventory_branches = {
+        branch_code: branches[branch_code] for branch_code in inventory_branch_codes
+    }
+    warehouses = _ensure_demo_warehouses(
+        session,
+        bundle.manifest.seed_version,
+        workspace_id,
+        inventory_branches,
+    )
+    items = {
+        fixture.seed_key: session.get(
+            Item,
+            _stable_id(bundle.manifest.seed_version, "item", fixture.seed_key),
+        )
+        for fixture in bundle.catalog.items
+    }
+    stock_balance_count = 0
+    movement_count = 0
+    for fixture in bundle.inventory.item_profiles:
+        item = items.get(fixture.item_seed_key)
+        if item is None:
+            raise RuntimeError(
+                f"Demo inventory profile references unknown item {fixture.item_seed_key!r}."
+            )
+        _validate_demo_inventory_profile(fixture, item.item_type, inventory_branches)
+        profile_payload = fixture.model_dump(mode="json")
+        profile_key = fixture.item_seed_key
+        profile = session.scalar(
+            select(InventoryItemProfile).where(
+                InventoryItemProfile.workspace_id == workspace_id,
+                InventoryItemProfile.item_id == item.id,
+            )
+        )
+        profile_registry_id = session.scalar(
+            select(DemoSeedRegistry.entity_id).where(
+                DemoSeedRegistry.workspace_id == workspace_id,
+                DemoSeedRegistry.entity_type == "inventory_item_profile",
+                DemoSeedRegistry.seed_key == profile_key,
+            )
+        )
+        profile_id = (
+            profile_registry_id
+            or (profile.id if profile is not None else None)
+            or _stable_id(bundle.manifest.seed_version, "inventory_item_profile", profile_key)
+        )
+        if profile_registry_id is None and profile is not None:
+            _register(
+                session,
+                workspace_id,
+                "inventory_item_profile",
+                profile_key,
+                profile.id,
+                bundle.manifest.seed_version,
+                profile_payload,
+            )
+        else:
+            profile = _registered_entity(
+                session,
+                workspace_id,
+                "inventory_item_profile",
+                profile_key,
+                profile_id,
+                profile_payload,
+                InventoryItemProfile,
+            )
+        if profile is None:
+            profile = InventoryItemProfile(
+                id=profile_id,
+                workspace_id=workspace_id,
+                item_id=item.id,
+            )
+            session.add(profile)
+            session.flush()
+            _register(
+                session,
+                workspace_id,
+                "inventory_item_profile",
+                profile_key,
+                profile.id,
+                bundle.manifest.seed_version,
+                profile_payload,
+            )
+        profile.sale_price = fixture.sale_price
+        profile.unit_cost = fixture.unit_cost
+        profile.tax_rate = fixture.tax_rate
+        profile.request_fingerprint = _checksum(profile_payload)
+
+        for branch_code, quantity in fixture.stock_by_branch.items():
+            branch = branches[branch_code]
+            assignment = session.scalar(
+                select(ItemBranchAssignment).where(
+                    ItemBranchAssignment.workspace_id == workspace_id,
+                    ItemBranchAssignment.item_id == item.id,
+                    ItemBranchAssignment.branch_id == branch.id,
+                    ItemBranchAssignment.status == "active",
+                )
+            )
+            if assignment is None:
+                raise RuntimeError(
+                    f"Demo stock item {fixture.item_seed_key!r} is not assigned to "
+                    f"branch {branch_code!r}."
+                )
+            warehouse = warehouses[branch_code]
+            balance_key = f"{fixture.item_seed_key}:{branch_code}"
+            balance_payload = {
+                "itemSeedKey": fixture.item_seed_key,
+                "branchCode": branch_code,
+                "quantity": str(quantity),
+                "minimumStock": str(fixture.minimum_stock),
+            }
+            balance = session.scalar(
+                select(InventoryStockBalance).where(
+                    InventoryStockBalance.workspace_id == workspace_id,
+                    InventoryStockBalance.warehouse_id == warehouse.id,
+                    InventoryStockBalance.item_id == item.id,
+                )
+            )
+            balance_registry_id = session.scalar(
+                select(DemoSeedRegistry.entity_id).where(
+                    DemoSeedRegistry.workspace_id == workspace_id,
+                    DemoSeedRegistry.entity_type == "inventory_stock_balance",
+                    DemoSeedRegistry.seed_key == balance_key,
+                )
+            )
+            balance_id = (
+                balance_registry_id
+                or (balance.id if balance is not None else None)
+                or _stable_id(
+                    bundle.manifest.seed_version,
+                    "inventory_stock_balance",
+                    balance_key,
+                )
+            )
+            if balance_registry_id is None and balance is not None:
+                _register(
+                    session,
+                    workspace_id,
+                    "inventory_stock_balance",
+                    balance_key,
+                    balance.id,
+                    bundle.manifest.seed_version,
+                    balance_payload,
+                )
+            else:
+                balance = _registered_entity(
+                    session,
+                    workspace_id,
+                    "inventory_stock_balance",
+                    balance_key,
+                    balance_id,
+                    balance_payload,
+                    InventoryStockBalance,
+                )
+            if balance is None:
+                balance = InventoryStockBalance(
+                    id=balance_id,
+                    workspace_id=workspace_id,
+                    branch_id=branch.id,
+                    warehouse_id=warehouse.id,
+                    item_id=item.id,
+                )
+                session.add(balance)
+                session.flush()
+                _register(
+                    session,
+                    workspace_id,
+                    "inventory_stock_balance",
+                    balance_key,
+                    balance.id,
+                    bundle.manifest.seed_version,
+                    balance_payload,
+                )
+            balance.branch_id = branch.id
+            balance.warehouse_id = warehouse.id
+            balance.item_id = item.id
+            balance.quantity = quantity
+            balance.minimum_quantity = fixture.minimum_stock
+            stock_balance_count += 1
+            if quantity > 0:
+                _seed_opening_movement(
+                    session=session,
+                    bundle=bundle,
+                    workspace_id=workspace_id,
+                    branch=branch,
+                    warehouse=warehouse,
+                    item=item,
+                    profile=profile,
+                    item_seed_key=fixture.item_seed_key,
+                    quantity=quantity,
+                )
+                movement_count += 1
+
+    asset_count = _seed_demo_assets(session, bundle, workspace_id, branches)
+    session.flush()
+    return (
+        len(warehouses),
+        len(bundle.inventory.item_profiles),
+        stock_balance_count,
+        asset_count,
+        movement_count,
+    )
+
+
+def _validate_demo_inventory_profile(
+    fixture: DemoInventoryItemProfileFixture,
+    item_type: str,
+    branches: dict[str, Branch],
+) -> None:
+    unknown_branches = set(fixture.stock_by_branch) - branches.keys()
+    if unknown_branches:
+        unknown = ", ".join(sorted(unknown_branches))
+        raise RuntimeError(f"Demo inventory profile references unknown branches: {unknown}.")
+    if item_type == "service":
+        if fixture.sale_price is None or fixture.unit_cost is not None or fixture.stock_by_branch:
+            raise RuntimeError("Demo services require a sale price and cannot control stock.")
+    elif item_type == "product":
+        if fixture.sale_price is None or fixture.unit_cost is None:
+            raise RuntimeError("Demo products require sale price and unit cost.")
+    elif item_type == "supply":
+        if fixture.sale_price is not None or fixture.unit_cost is None or fixture.tax_rate != 0:
+            raise RuntimeError("Demo supplies require only unit cost and zero tax.")
+    else:
+        raise RuntimeError(f"Item type {item_type!r} cannot have an inventory profile.")
+
+
+def _ensure_demo_warehouses(
+    session: Session,
+    seed_version: str,
+    workspace_id: UUID,
+    branches: dict[str, Branch],
+) -> dict[str, InventoryWarehouse]:
+    warehouses: dict[str, InventoryWarehouse] = {}
+    for branch_code, branch in branches.items():
+        warehouse = session.scalar(
+            select(InventoryWarehouse).where(
+                InventoryWarehouse.workspace_id == workspace_id,
+                InventoryWarehouse.branch_id == branch.id,
+                InventoryWarehouse.code == "main",
+            )
+        )
+        if warehouse is None:
+            warehouse = InventoryWarehouse(
+                id=_stable_id(seed_version, "inventory_warehouse", branch_code),
+                workspace_id=workspace_id,
+                branch_id=branch.id,
+                code="main",
+                name="Almacén principal",
+                is_default=True,
+                status="active",
+            )
+            session.add(warehouse)
+            session.flush()
+        else:
+            warehouse.name = "Almacén principal"
+            warehouse.is_default = True
+            warehouse.status = "active"
+        warehouses[branch_code] = warehouse
+    return warehouses
+
+
+def _seed_opening_movement(
+    *,
+    session: Session,
+    bundle: DemoBundle,
+    workspace_id: UUID,
+    branch: Branch,
+    warehouse: InventoryWarehouse,
+    item: Item,
+    profile: InventoryItemProfile,
+    item_seed_key: str,
+    quantity: Decimal,
+) -> None:
+    movement_key = f"{item_seed_key}:{branch.code}"
+    movement_payload = {
+        "itemSeedKey": item_seed_key,
+        "branchCode": branch.code,
+        "quantity": str(quantity),
+    }
+    movement_id = _stable_id(
+        bundle.manifest.seed_version,
+        "inventory_opening_movement",
+        movement_key,
+    )
+    movement = _registered_entity(
+        session,
+        workspace_id,
+        "inventory_opening_movement",
+        movement_key,
+        movement_id,
+        movement_payload,
+        InventoryMovement,
+    )
+    if movement is None:
+        movement = InventoryMovement(
+            id=movement_id,
+            workspace_id=workspace_id,
+            branch_id=branch.id,
+            warehouse_id=warehouse.id,
+            movement_type="opening",
+            employee_id=None,
+            appointment_id=None,
+            comment="Existencia inicial demo",
+            idempotency_key=(
+                f"demo:{bundle.manifest.seed_version}:opening:{item_seed_key}:{branch.code}"
+            ),
+            request_fingerprint=_checksum(movement_payload),
+            created_by_platform_user_id=_stable_id(
+                bundle.manifest.seed_version, "platform_user", "admin"
+            ),
+            created_at=datetime(2026, 8, 1, 9, tzinfo=UTC),
+        )
+        session.add(movement)
+        session.flush()
+        _register(
+            session,
+            workspace_id,
+            "inventory_opening_movement",
+            movement_key,
+            movement.id,
+            bundle.manifest.seed_version,
+            movement_payload,
+        )
+    else:
+        movement.branch_id = branch.id
+        movement.warehouse_id = warehouse.id
+        movement.movement_type = "opening"
+        movement.comment = "Existencia inicial demo"
+        movement.request_fingerprint = _checksum(movement_payload)
+
+    line_key = movement_key
+    line_payload = {**movement_payload, "unitCost": str(profile.unit_cost or 0)}
+    line_id = _stable_id(
+        bundle.manifest.seed_version,
+        "inventory_opening_line",
+        line_key,
+    )
+    line = _registered_entity(
+        session,
+        workspace_id,
+        "inventory_opening_line",
+        line_key,
+        line_id,
+        line_payload,
+        InventoryMovementLine,
+    )
+    unit = session.get(UnitOfMeasure, item.unit_of_measure_id)
+    if unit is None:
+        raise RuntimeError("Demo inventory item unit of measure is missing.")
+    if line is None:
+        line = InventoryMovementLine(
+            id=line_id,
+            workspace_id=workspace_id,
+            movement_id=movement.id,
+            item_id=item.id,
+            quantity_delta=quantity,
+            quantity_before=Decimal("0"),
+            quantity_after=quantity,
+            unit_cost_snapshot=profile.unit_cost,
+            item_name=item.name,
+            item_sku=item.sku,
+            unit_symbol=unit.symbol,
+        )
+        session.add(line)
+        session.flush()
+        _register(
+            session,
+            workspace_id,
+            "inventory_opening_line",
+            line_key,
+            line.id,
+            bundle.manifest.seed_version,
+            line_payload,
+        )
+    else:
+        line.movement_id = movement.id
+        line.item_id = item.id
+        line.quantity_delta = quantity
+        line.quantity_before = Decimal("0")
+        line.quantity_after = quantity
+        line.unit_cost_snapshot = profile.unit_cost
+        line.item_name = item.name
+        line.item_sku = item.sku
+        line.unit_symbol = unit.symbol
+
+
+def _seed_demo_assets(
+    session: Session,
+    bundle: DemoBundle,
+    workspace_id: UUID,
+    branches: dict[str, Branch],
+) -> int:
+    categories = {
+        category.code: category
+        for category in session.scalars(
+            select(AssetCategory).where(
+                AssetCategory.workspace_id == workspace_id,
+                AssetCategory.status == "active",
+            )
+        )
+    }
+    actor_id = _stable_id(bundle.manifest.seed_version, "platform_user", "admin")
+    for fixture in bundle.inventory.assets:
+        branch = branches.get(fixture.branch_code)
+        if branch is None:
+            raise RuntimeError(
+                f"Demo asset references unknown branch {fixture.branch_code!r}."
+            )
+        category = categories.get(fixture.category_code)
+        if category is None:
+            raise RuntimeError(
+                f"Demo asset references unknown category {fixture.category_code!r}."
+            )
+        payload = fixture.model_dump(mode="json")
+        asset_id = _stable_id(bundle.manifest.seed_version, "asset", fixture.seed_key)
+        asset = _registered_entity(
+            session,
+            workspace_id,
+            "asset",
+            fixture.seed_key,
+            asset_id,
+            payload,
+            Asset,
+        )
+        if asset is None:
+            asset = Asset(
+                id=asset_id,
+                workspace_id=workspace_id,
+                category_id=category.id,
+                branch_id=branch.id,
+                name=fixture.name,
+                code=fixture.code.strip().upper(),
+                acquisition_value=fixture.acquisition_value,
+                status=fixture.status,
+                location=fixture.location,
+                purchase_date=fixture.purchase_date,
+                notes=fixture.notes,
+                creation_idempotency_key=(
+                    f"demo:{bundle.manifest.seed_version}:asset:{fixture.seed_key}"
+                ),
+                request_fingerprint=_checksum(payload),
+                created_by_platform_user_id=actor_id,
+                updated_by_platform_user_id=actor_id,
+            )
+            session.add(asset)
+            session.flush()
+            _register(
+                session,
+                workspace_id,
+                "asset",
+                fixture.seed_key,
+                asset.id,
+                bundle.manifest.seed_version,
+                payload,
+            )
+        else:
+            asset.category_id = category.id
+            asset.branch_id = branch.id
+            asset.name = fixture.name
+            asset.code = fixture.code.strip().upper()
+            asset.acquisition_value = fixture.acquisition_value
+            asset.status = fixture.status
+            asset.location = fixture.location
+            asset.purchase_date = fixture.purchase_date
+            asset.notes = fixture.notes
+            asset.request_fingerprint = _checksum(payload)
+            asset.updated_by_platform_user_id = actor_id
+    session.flush()
+    return len(bundle.inventory.assets)
 
 
 def _seed_customers(
