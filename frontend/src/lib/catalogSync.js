@@ -19,6 +19,16 @@ export function mergeApiProduct(apiProduct, localProduct, categoryIdToLocal) {
   const itemType = apiProduct.itemType || localProduct?.type || 'product'
   const isSupply = itemType === 'supply' || (itemType === 'other' && localProduct?.type === 'supply')
   const isService = itemType === 'service'
+  const stockLocations = (apiProduct.stockLocations || [])
+    .filter((location) => location.branch?.id)
+    .map((location) => ({
+      branchId: location.branch.id,
+      warehouseId: location.warehouseId,
+      warehouseName: location.warehouseName,
+      quantity: Number(location.quantity) || 0,
+      minimumStock: Number(location.minimumStock) || 0,
+      stockStatus: location.stockStatus,
+    }))
 
   return {
     ...(localProduct || {}),
@@ -29,6 +39,7 @@ export function mergeApiProduct(apiProduct, localProduct, categoryIdToLocal) {
     category: categoryLocalId,
     branchIds: branchIds.length ? branchIds : localProduct?.branchIds || [],
     branchId: branchIds[0] || localProduct?.branchId,
+    stockLocations,
     status: apiProduct.status,
     version: apiProduct.version,
     unitOfMeasureId: apiProduct.unitOfMeasure?.id,
@@ -41,6 +52,27 @@ export function mergeApiProduct(apiProduct, localProduct, categoryIdToLocal) {
     taxPct: isSupply ? 0 : apiProduct.taxRate != null ? Number(apiProduct.taxRate) : localProduct?.taxPct ?? 18,
     allowNegativeStock: localProduct?.allowNegativeStock ?? false,
     apiSynced: true,
+  }
+}
+
+export function projectProductToBranch(product, branchId) {
+  if (!branchId || branchId === 'all') return product
+  const branchIds = Array.isArray(product.branchIds)
+    ? product.branchIds
+    : product.branchId
+      ? [product.branchId]
+      : []
+  if (!branchIds.includes(branchId)) return null
+
+  if (product.type === 'service') return { ...product, branchId, stock: null }
+  if (!Array.isArray(product.stockLocations)) return { ...product, branchId }
+
+  const locations = product.stockLocations.filter((location) => location.branchId === branchId)
+  return {
+    ...product,
+    branchId,
+    stock: locations.reduce((total, location) => total + location.quantity, 0),
+    minStock: locations.reduce((total, location) => total + location.minimumStock, 0),
   }
 }
 

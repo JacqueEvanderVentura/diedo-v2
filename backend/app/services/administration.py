@@ -781,13 +781,27 @@ class AdministrationService:
         code: str,
         name: str,
         icon: str,
+        channel: str = "other",
+        settlement_policy: str = "immediate",
+        affects_cash_drawer: bool = False,
+        requires_evidence: bool = False,
     ) -> PaymentMethod:
         self._require_workspace_wide(grant)
+        self._validate_payment_method_semantics(
+            channel,
+            settlement_policy,
+            affects_cash_drawer,
+            requires_evidence,
+        )
         method = PaymentMethod(
             workspace_id=grant.workspace_id,
             code=code,
             name=" ".join(name.split()),
             icon=icon,
+            channel=channel,
+            settlement_policy=settlement_policy,
+            affects_cash_drawer=affects_cash_drawer,
+            requires_evidence=requires_evidence,
             status="active",
             is_system=False,
         )
@@ -816,6 +830,25 @@ class AdministrationService:
         if method is None or method.status == "archived":
             raise ResourceNotFoundError("El método de pago no existe.", "paymentMethodId")
         self._check_version(method.version, version)
+        effective_channel = changes.get("channel", method.channel)
+        effective_affects_cash_drawer = changes.get(
+            "affects_cash_drawer",
+            method.affects_cash_drawer,
+        )
+        effective_settlement_policy = changes.get(
+            "settlement_policy",
+            method.settlement_policy,
+        )
+        effective_requires_evidence = changes.get(
+            "requires_evidence",
+            method.requires_evidence,
+        )
+        self._validate_payment_method_semantics(
+            str(effective_channel),
+            str(effective_settlement_policy),
+            effective_affects_cash_drawer is True,
+            effective_requires_evidence is True,
+        )
         for key, value in changes.items():
             setattr(method, key, value)
         method.version += 1
@@ -854,6 +887,24 @@ class AdministrationService:
     def _check_version(current: int, expected: int) -> None:
         if current != expected:
             raise ConflictError("El registro fue modificado por otra sesión.", "version")
+
+    @staticmethod
+    def _validate_payment_method_semantics(
+        channel: str,
+        settlement_policy: str,
+        affects_cash_drawer: bool,
+        requires_evidence: bool,
+    ) -> None:
+        if affects_cash_drawer and channel != "cash":
+            raise InvalidOperationError(
+                "Solo un método de efectivo puede afectar la caja.",
+                "affectsCashDrawer",
+            )
+        if requires_evidence and settlement_policy == "immediate":
+            raise InvalidOperationError(
+                "Un método que requiere comprobante no puede liquidarse de inmediato.",
+                "requiresEvidence",
+            )
 
     @staticmethod
     def _integrity_constraint(exc: IntegrityError) -> str | None:

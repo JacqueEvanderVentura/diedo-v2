@@ -6,6 +6,22 @@ const SOURCE_ROUTES = {
   CRM: '/crm/ventas',
   POS: '/pos/caja',
   Inventario: '/inventarios',
+  Agenda: '/agenda/calendario',
+  Tareas: '/dashboard',
+}
+
+function activityTime(item) {
+  if (!item.occurredAt) return item.time || ''
+  const occurred = new Date(item.occurredAt)
+  if (Number.isNaN(occurred.getTime())) return ''
+  const now = new Date()
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const startOccurred = new Date(occurred.getFullYear(), occurred.getMonth(), occurred.getDate())
+  const days = Math.round((startToday - startOccurred) / 86400000)
+  const clock = occurred.toLocaleTimeString('es-DO', { hour: 'numeric', minute: '2-digit' })
+  if (days === 0) return clock
+  if (days === 1) return `Ayer · ${clock}`
+  return occurred.toLocaleDateString('es-DO', { day: 'numeric', month: 'short' })
 }
 
 export function RecentActivity({ activity }) {
@@ -46,7 +62,7 @@ export function RecentActivity({ activity }) {
                 <div className="min-w-0 flex-1 py-1 pr-1">
                   <p className="text-sm font-medium text-slate-800">{item.title}</p>
                   <p className="mt-0.5 text-xs text-slate-400">
-                    {item.time} · {item.source}
+                    {activityTime(item)} · {item.source}
                   </p>
                 </div>
               </button>

@@ -37,7 +37,9 @@ export function StockAlerts({ alerts }) {
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-slate-800">{item.name}</p>
-              <p className="text-xs text-slate-400">SKU: {item.sku}</p>
+              <p className="truncate text-xs text-slate-400">
+                SKU: {item.sku}{item.branchName ? ` · ${item.branchName}` : ''}
+              </p>
             </div>
             <div className="text-right">
               <p className="text-sm font-bold text-slate-800">{item.units} unidades</p>

@@ -11,6 +11,7 @@ import { usePosStore, RECEIVABLE_METHODS } from '@/stores/posStore'
 import { useCatalogStore } from '@/stores/catalogStore'
 
 import { useConfigStore } from '@/stores/configStore'
+import { useSessionStore } from '@/stores/sessionStore'
 
 import { formatDOP } from '@/lib/format'
 
@@ -111,16 +112,24 @@ export function CartPanel({ onCheckoutDone }) {
   const addReceivableToCart = usePosStore((s) => s.addReceivableToCart)
 
   const removeOpenQuote = usePosStore((s) => s.removeOpenQuote)
+  const attachReceivableProof = usePosStore((s) => s.attachReceivableProof)
 
   const getCustomerDebtSummary = usePosStore((s) => s.getCustomerDebtSummary)
   const receivables = usePosStore((s) => s.receivables)
   const openQuotes = usePosStore((s) => s.openQuotes)
+  const mutating = usePosStore((s) => s.mutating)
 
   const branches = useConfigStore((s) => s.branches)
 
   const paymentMethods = useConfigStore((s) => s.paymentMethods)
 
   const settings = useConfigStore((s) => s.settings)
+  const isOnline = useSessionStore((s) => s.status === 'online')
+  const canSell = useSessionStore((s) => s.hasPermission('pos.sell'))
+  const canManageQuotes = useSessionStore((s) => s.hasPermission('sales.quote.manage'))
+  const canOverrideDiscount = useSessionStore((s) => s.hasPermission('pos.discount.override'))
+  const canManageCash = useSessionStore((s) => s.hasPermission('pos.cash.manage'))
+  const canCollectReceivables = useSessionStore((s) => s.hasPermission('pos.receivables.collect'))
 
 
 
@@ -136,11 +145,16 @@ export function CartPanel({ onCheckoutDone }) {
 
   const empty = items.length === 0
 
-  const discountAmt = getDiscountAmount()
-
-  const isQuote = documentKind === 'quote' && !isFinalized
-
-  const isInvoice = documentKind === 'invoice' || isFinalized
+  const isQuote = !isExpense && documentKind === 'quote' && !isFinalized
+  const isInvoice = isExpense || documentKind === 'invoice' || isFinalized
+  const subtotal = getSubtotal()
+  const discountAmt = isExpense ? 0 : getDiscountAmount()
+  const discountPct = isExpense ? 0 : getDiscountPct()
+  const taxAmt = isExpense ? 0 : getTaxAmount()
+  const total = isExpense ? subtotal : getTotal()
+  const taxRates = [...new Set(items.map((item) => Number(item.taxPct ?? taxPct) || 0))]
+  const taxLabel = taxRates.length === 1 ? `ITBIS (${taxRates[0]}%)` : 'ITBIS (por artículo)'
+  const canSubmit = isExpense ? canManageCash : isQuote ? canManageQuotes : canSell
 
 
 
@@ -175,21 +189,31 @@ export function CartPanel({ onCheckoutDone }) {
 
 
 
-  const handleRetain = () => {
+  const handleRetain = async () => {
 
     if (empty) return toast.error('El carrito está vacío')
+    if (!canManageQuotes) return toast.error('No tienes permiso para gestionar cotizaciones.')
 
-    if (retainCart()) toast.success('Venta retenida')
+    try {
+      if (await retainCart()) toast.success('Venta retenida')
+    } catch (operationError) {
+      toast.error(operationError.message || 'No se pudo retener la venta.')
+    }
 
   }
 
 
 
-  const handleSaveQuote = () => {
+  const handleSaveQuote = async () => {
 
     if (empty) return toast.error('El carrito está vacío')
+    if (!canManageQuotes) return toast.error('No tienes permiso para gestionar cotizaciones.')
 
-    if (saveOpenQuote()) toast.success('Cotización guardada en ventas retenidas')
+    try {
+      if (await saveOpenQuote()) toast.success('Cotización guardada en ventas retenidas')
+    } catch (operationError) {
+      toast.error(operationError.message || 'No se pudo guardar la cotización.')
+    }
 
   }
 
@@ -199,6 +223,8 @@ export function CartPanel({ onCheckoutDone }) {
 
     if (empty) return toast.error('El carrito está vacío')
 
+    if (!canSell) return toast.error('No tienes permiso para completar ventas POS.')
+
     if (requestBill()) toast.success('Cuenta pedida — lista para facturar')
 
   }
@@ -206,6 +232,8 @@ export function CartPanel({ onCheckoutDone }) {
 
 
   const handleCollectQuote = () => {
+
+    if (!canManageQuotes || !canSell) return toast.error('No tienes permisos para preparar y completar esta venta.')
 
     if (!customerDebt?.openQuote) return
 
@@ -220,6 +248,10 @@ export function CartPanel({ onCheckoutDone }) {
 
 
   const handleCollectReceivable = () => {
+    if (!canCollectReceivables) {
+      toast.error('No tienes permiso para registrar cobros de CxC.')
+      return
+    }
 
     if (!customerDebt?.receivables?.[0]) return
 
@@ -230,6 +262,8 @@ export function CartPanel({ onCheckoutDone }) {
 
 
   const handleAddQuoteToCart = () => {
+
+    if (!canManageQuotes) return toast.error('No tienes permiso para gestionar cotizaciones.')
 
     if (!customerDebt?.openQuote) return
 
@@ -245,7 +279,15 @@ export function CartPanel({ onCheckoutDone }) {
 
   const handleAddReceivableToCart = () => {
 
+    if (!canCollectReceivables) return toast.error('No tienes permiso para registrar cobros de CxC.')
+
     if (!customer?.id) return
+
+    if (isOnline) {
+      const receivable = customerDebt?.receivables?.[0]
+      if (receivable) setPaymentReceivable(receivable)
+      return
+    }
 
     if (addReceivableToCart(customer.id)) {
 
@@ -259,7 +301,18 @@ export function CartPanel({ onCheckoutDone }) {
 
   const handleAddAllToCart = () => {
 
+    if (!canManageQuotes || !canCollectReceivables) return toast.error('No tienes permisos para gestionar todos los pendientes.')
+
     if (!customer?.id) return
+
+    if (isOnline) {
+      if (customerDebt?.openQuote && loadOpenQuoteToCart(customerDebt.openQuote.id)) {
+        toast.success('Cotización agregada al carrito; las CxC se cobran por separado')
+      } else if (customerDebt?.receivables?.[0]) {
+        setPaymentReceivable(customerDebt.receivables[0])
+      }
+      return
+    }
 
     if (addOpenAccountToCart(customer.id)) {
 
@@ -271,11 +324,18 @@ export function CartPanel({ onCheckoutDone }) {
 
 
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
 
     if (empty) return
 
     if (isQuote) return handleSaveQuote()
+
+    if (!canSubmit) {
+      toast.error(isExpense
+        ? 'No tienes permiso para gestionar movimientos de caja.'
+        : 'No tienes permiso para completar ventas POS.')
+      return
+    }
 
     if (!register.open) {
 
@@ -285,7 +345,12 @@ export function CartPanel({ onCheckoutDone }) {
 
     }
 
-    if (paymentMethod === 'transferencia' && !isExpense && !transferProof && !paymentReference.trim()) {
+    if (
+      paymentMethod === 'transferencia'
+      && !isExpense
+      && !transferProof
+      && !paymentReference.trim()
+    ) {
 
       setPayError(true)
 
@@ -295,15 +360,12 @@ export function CartPanel({ onCheckoutDone }) {
 
     setPayError(false)
 
-    const total = getTotal()
-
-
-
     if (isExpense) {
 
       const concept = items.map((i) => `${i.qty}× ${i.name}`).join(', ') || 'Gasto POS'
 
-      addExpense({
+      try {
+        await addExpense({
 
         concept,
 
@@ -315,15 +377,18 @@ export function CartPanel({ onCheckoutDone }) {
 
         reference: paymentReference.trim() || null,
 
-      })
+        })
 
-      decrementForSale(items)
+        if (!isOnline) decrementForSale(items)
 
-      toast.success(`Gasto registrado · ${formatDOP(total)}`)
+        toast.success(`Gasto registrado · ${formatDOP(total)}`)
 
-      clearCart()
+        clearCart()
 
-      onCheckoutDone?.()
+        onCheckoutDone?.()
+      } catch (operationError) {
+        toast.error(operationError.message || 'No se pudo registrar el gasto.')
+      }
 
       return
 
@@ -331,25 +396,36 @@ export function CartPanel({ onCheckoutDone }) {
 
 
 
-    recordSale({ total, method: paymentMethod, customer, reference: paymentReference, items, subtotal: getSubtotal(), discountAmt, discountPct: getDiscountPct(), taxPct, taxAmt: getTaxAmount() })
+    try {
+      const checkoutResponse = await recordSale({ total, method: paymentMethod, customer, reference: paymentReference, items, subtotal, discountAmt, discountPct, taxPct, taxAmt })
 
-    decrementForSale(items)
+      if (isOnline && transferProof && checkoutResponse?.receivableId) {
+        try {
+          await attachReceivableProof(checkoutResponse.receivableId, {
+            proof: transferProof,
+            reference: paymentReference.trim() || null,
+          })
+        } catch (proofError) {
+          toast.warning(`La venta fue registrada, pero el comprobante quedó pendiente: ${proofError.message}`)
+        }
+      }
 
-    removeOpenQuote(customer?.id)
+      if (!isOnline) {
+        decrementForSale(items)
+        removeOpenQuote(customer?.id)
+      }
 
-    if (RECEIVABLE_METHODS.includes(paymentMethod)) {
+      if (RECEIVABLE_METHODS.includes(paymentMethod)) {
+        toast.success(`Cuenta por cobrar generada · ${formatDOP(total)}`)
+      } else {
+        toast.success(`Venta cobrada · ${formatDOP(total)}`)
+      }
 
-      toast.success(`Cuenta por cobrar generada · ${formatDOP(total)}`)
-
-    } else {
-
-      toast.success(`Venta cobrada · ${formatDOP(total)}`)
-
+      clearCart()
+      onCheckoutDone?.()
+    } catch (operationError) {
+      toast.error(operationError.message || 'No se pudo completar el cobro.')
     }
-
-    clearCart()
-
-    onCheckoutDone?.()
 
   }
 
@@ -387,17 +463,19 @@ export function CartPanel({ onCheckoutDone }) {
 
       items,
 
-      subtotal: getSubtotal(),
+      subtotal,
 
       discountAmt,
 
-      discountPct: getDiscountPct(),
+      discountPct,
 
       taxPct,
 
-      taxAmt: getTaxAmount(),
+      taxLabel,
 
-      total: getTotal(),
+      taxAmt,
+
+      total,
 
     }
 
@@ -498,13 +576,17 @@ export function CartPanel({ onCheckoutDone }) {
 
                     onClick={() => setDocumentKind('quote')}
 
+                    disabled={!canManageQuotes}
+
                     data-testid="cart-mode-quote"
 
                     className={cn(
 
                       'rounded px-2 py-0.5 text-[10px] font-bold transition-colors',
 
-                      documentKind === 'quote' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-400'
+                      documentKind === 'quote' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-400',
+
+                      !canManageQuotes && 'cursor-not-allowed opacity-40'
 
                     )}
 
@@ -526,13 +608,17 @@ export function CartPanel({ onCheckoutDone }) {
 
                     onClick={() => setDocumentKind('invoice')}
 
+                    disabled={!canSell}
+
                     data-testid="cart-mode-invoice"
 
                     className={cn(
 
                       'rounded px-2 py-0.5 text-[10px] font-bold transition-colors',
 
-                      documentKind === 'invoice' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400'
+                      documentKind === 'invoice' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400',
+
+                      !canSell && 'cursor-not-allowed opacity-40'
 
                     )}
 
@@ -564,9 +650,11 @@ export function CartPanel({ onCheckoutDone }) {
 
               onClick={() => setHeldOpen(true)}
 
+              disabled={!canManageQuotes}
+
               data-testid="cart-held-toggle"
 
-              className="relative inline-flex items-center justify-center rounded-lg p-2 text-blue-600 transition-colors hover:bg-blue-50"
+              className="relative inline-flex items-center justify-center rounded-lg p-2 text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40"
 
             >
 
@@ -635,6 +723,12 @@ export function CartPanel({ onCheckoutDone }) {
 
           onAddAllToCart={handleAddAllToCart}
 
+          canManageQuote={canManageQuotes}
+
+          canCollectQuote={canManageQuotes && canSell}
+
+          canCollectReceivable={canCollectReceivables}
+
         />
 
 
@@ -685,7 +779,7 @@ export function CartPanel({ onCheckoutDone }) {
 
                 onClick={() => setDiscountOpen((o) => !o)}
 
-                disabled={isFinalized}
+                disabled={isFinalized || !canOverrideDiscount || isExpense}
 
                 data-testid="cart-discount-toggle"
 
@@ -715,7 +809,7 @@ export function CartPanel({ onCheckoutDone }) {
 
               <AnimatePresence initial={false}>
 
-                {discountOpen && !isFinalized && (
+                {discountOpen && !isFinalized && canOverrideDiscount && !isExpense && (
 
                   <motion.div
 
@@ -793,7 +887,7 @@ export function CartPanel({ onCheckoutDone }) {
 
                   onClick={handleRetain}
 
-                  disabled={empty}
+                  disabled={empty || Boolean(mutating) || !canManageQuotes}
 
                   data-testid="pos-retain"
 
@@ -818,7 +912,7 @@ export function CartPanel({ onCheckoutDone }) {
 
                     onClick={handleRequestBill}
 
-                    disabled={empty}
+                    disabled={empty || !canSell}
 
                     data-testid="pos-request-bill"
 
@@ -853,7 +947,7 @@ export function CartPanel({ onCheckoutDone }) {
 
               </button>
 
-              <button type="button" onClick={toggleExpense} data-testid="pos-expense-toggle" className={cn('flex flex-col items-center gap-1 rounded-xl border py-2.5 text-[11px] font-semibold transition-colors', isExpense ? 'border-red-500 bg-red-50 text-red-600' : 'border-slate-200 bg-white text-slate-500 hover:border-red-200 hover:text-red-600')}>
+              <button type="button" onClick={toggleExpense} disabled={!canManageCash} data-testid="pos-expense-toggle" className={cn('flex flex-col items-center gap-1 rounded-xl border py-2.5 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40', isExpense ? 'border-red-500 bg-red-50 text-red-600' : 'border-slate-200 bg-white text-slate-500 hover:border-red-200 hover:text-red-600')}>
 
                 <Wallet className="h-4 w-4" /> Gasto
 
@@ -877,7 +971,7 @@ export function CartPanel({ onCheckoutDone }) {
 
             <span>Subtotal</span>
 
-            <span className="font-medium text-slate-700" data-testid="cart-subtotal">{formatDOP(getSubtotal())}</span>
+            <span className="font-medium text-slate-700" data-testid="cart-subtotal">{formatDOP(subtotal)}</span>
 
           </div>
 
@@ -885,7 +979,7 @@ export function CartPanel({ onCheckoutDone }) {
 
             <div className="flex justify-between text-emerald-600">
 
-              <span>Descuento ({getDiscountPct().toFixed(1)}%)</span>
+              <span>Descuento ({discountPct.toFixed(1)}%)</span>
 
               <span className="font-medium" data-testid="cart-discount-amount">−{formatDOP(discountAmt)}</span>
 
@@ -895,9 +989,9 @@ export function CartPanel({ onCheckoutDone }) {
 
           <div className="flex justify-between text-slate-500">
 
-            <span>ITBIS ({taxPct}%)</span>
+            <span>{taxLabel}</span>
 
-            <span className="font-medium text-slate-700" data-testid="cart-tax">{formatDOP(getTaxAmount())}</span>
+            <span className="font-medium text-slate-700" data-testid="cart-tax">{formatDOP(taxAmt)}</span>
 
           </div>
 
@@ -905,7 +999,7 @@ export function CartPanel({ onCheckoutDone }) {
 
             <span className="font-heading text-base font-bold text-slate-900">Total</span>
 
-            <span className={cn('font-heading text-2xl font-bold tracking-tight', isExpense ? 'text-red-600' : isQuote ? 'text-amber-600' : 'text-blue-600')} data-testid="cart-total">{formatDOP(getTotal())}</span>
+            <span className={cn('font-heading text-2xl font-bold tracking-tight', isExpense ? 'text-red-600' : isQuote ? 'text-amber-600' : 'text-blue-600')} data-testid="cart-total">{formatDOP(total)}</span>
 
           </div>
 
@@ -922,18 +1016,18 @@ export function CartPanel({ onCheckoutDone }) {
             className="block w-full"
             wide
           >
-            <Button size="lg" className="w-full min-w-0 bg-amber-600 hover:bg-amber-700" onClick={handleSaveQuote} disabled={empty} data-testid="pos-save-quote-btn">
+            <Button size="lg" className="w-full min-w-0 bg-amber-600 hover:bg-amber-700" onClick={handleSaveQuote} disabled={empty || Boolean(mutating) || !canManageQuotes} data-testid="pos-save-quote-btn">
 
-              <FileText className="h-4 w-4" /> Guardar cotización {!empty && `· ${formatDOP(getTotal())}`}
+              <FileText className="h-4 w-4" /> Guardar cotización {!empty && `· ${formatDOP(total)}`}
 
             </Button>
           </Tip>
 
         ) : (
 
-          <Button size="lg" className="w-full min-w-0" variant={isExpense ? 'dangerSolid' : 'primary'} onClick={handleCheckout} disabled={empty} data-testid="pos-checkout-btn">
+          <Button size="lg" className="w-full min-w-0" variant={isExpense ? 'dangerSolid' : 'primary'} onClick={handleCheckout} disabled={empty || Boolean(mutating) || !canSubmit} data-testid="pos-checkout-btn">
 
-            <Wallet className="h-4 w-4" /> {isExpense ? 'Registrar gasto' : 'Cobrar'} {!empty && `· ${formatDOP(getTotal())}`}
+            <Wallet className="h-4 w-4" /> {isExpense ? 'Registrar gasto' : 'Cobrar'} {!empty && `· ${formatDOP(total)}`}
 
           </Button>
 
@@ -955,12 +1049,13 @@ export function CartPanel({ onCheckoutDone }) {
 
         onRestore={restoreHeld}
 
-        onRemove={(id) => {
-
-          removeHeldCart(id)
-
-          toast('Venta retenida eliminada')
-
+        onRemove={async (id) => {
+          try {
+            await removeHeldCart(id)
+            toast('Venta retenida eliminada')
+          } catch (operationError) {
+            toast.error(operationError.message || 'No se pudo eliminar la venta retenida.')
+          }
         }}
 
       />

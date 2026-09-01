@@ -17,7 +17,9 @@ export function HeldCartsModal({ open, onClose, heldCarts, taxPct, onRestore, on
       ) : (
         <div className="space-y-2">
           {heldCarts.map((held) => {
-            const total = calcSnapshotTotal({ ...held, taxPct })
+            const total = held.total != null
+              ? Number(held.total) || 0
+              : calcSnapshotTotal({ ...held, taxPct })
             const itemCount = held.items.reduce((n, i) => n + i.qty, 0)
             const isQuote = held.heldKind === 'quote'
             return (

@@ -128,6 +128,10 @@ def _payment_method_response(method: PaymentMethod) -> PaymentMethodResponse:
         icon=method.icon,
         status=method.status,  # type: ignore[arg-type]
         is_system=method.is_system,
+        channel=method.channel,  # type: ignore[arg-type]
+        settlement_policy=method.settlement_policy,  # type: ignore[arg-type]
+        affects_cash_drawer=method.affects_cash_drawer,
+        requires_evidence=method.requires_evidence,
         version=method.version,
     )
 
@@ -383,6 +387,10 @@ def create_payment_method(
         code=payload.code,
         name=payload.name,
         icon=payload.icon,
+        channel=payload.channel,
+        settlement_policy=payload.settlement_policy,
+        affects_cash_drawer=payload.affects_cash_drawer,
+        requires_evidence=payload.requires_evidence,
     )
     return _payment_method_response(method)
 

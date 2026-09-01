@@ -7,16 +7,28 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from app.core.security import hash_password
-from app.db.models import Appointment
+from app.db.models import (
+    AccessScope,
+    Appointment,
+    Branch,
+    Permission,
+    PlatformUser,
+    Role,
+    RoleAssignment,
+    RolePermission,
+    WorkspaceMembership,
+)
 from app.db.session import get_session_factory, session_scope
 from app.schemas.agenda import CreateAppointmentRequest, UpdateAppointmentRequest
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 _OWNER_EMAIL = "owner@erp.dev"
 _OWNER_PASSWORD = "agenda-owner-password-not-a-secret"
+_AGENDA_MANAGER_PASSWORD = "agenda-manager-password-not-a-secret"
 
 
 def _bootstrap_and_login(client: TestClient) -> tuple[dict[str, str], dict[str, object]]:
@@ -31,6 +43,95 @@ def _bootstrap_and_login(client: TestClient) -> tuple[dict[str, str], dict[str, 
     me = client.get("/api/v1/auth/me", headers=headers)
     assert me.status_code == 200, me.text
     return headers, me.json()
+
+
+def _create_branch_agenda_manager(workspace_id: UUID, branch_id: UUID) -> str:
+    with session_scope() as session:
+        now = datetime.now(UTC)
+        suffix = uuid7().hex[-12:]
+        email = f"agenda-manager-{suffix}@example.com"
+        branch = session.scalar(
+            select(Branch).where(
+                Branch.workspace_id == workspace_id,
+                Branch.id == branch_id,
+            )
+        )
+        permission = session.scalar(
+            select(Permission).where(Permission.code == "appointment.manage")
+        )
+        assert branch is not None
+        assert permission is not None
+        scope = session.scalar(
+            select(AccessScope).where(
+                AccessScope.workspace_id == workspace_id,
+                AccessScope.scope_type == "branch",
+                AccessScope.branch_id == branch_id,
+            )
+        )
+        if scope is None:
+            scope = AccessScope(
+                workspace_id=workspace_id,
+                scope_type="branch",
+                legal_entity_id=branch.legal_entity_id,
+                branch_id=branch.id,
+            )
+            session.add(scope)
+            session.flush()
+        user = PlatformUser(
+            external_subject=f"password:agenda-manager-{suffix}",
+            email=email,
+            normalized_email=email,
+            display_name="Agenda Manager",
+            password_hash=hash_password(_AGENDA_MANAGER_PASSWORD),
+            password_changed_at=now,
+            status="active",
+        )
+        role = Role(
+            workspace_id=workspace_id,
+            code=f"agenda_manager_{suffix}",
+            name=f"Agenda Manager {suffix}",
+            status="active",
+            is_system=False,
+        )
+        session.add_all([user, role])
+        session.flush()
+        membership = WorkspaceMembership(
+            workspace_id=workspace_id,
+            platform_user_id=user.id,
+            status="active",
+            invited_at=now,
+            activated_at=now,
+            is_default=True,
+        )
+        session.add(membership)
+        session.flush()
+        session.add_all(
+            [
+                RolePermission(
+                    workspace_id=workspace_id,
+                    role_id=role.id,
+                    permission_id=permission.id,
+                ),
+                RoleAssignment(
+                    workspace_id=workspace_id,
+                    membership_id=membership.id,
+                    role_id=role.id,
+                    access_scope_id=scope.id,
+                    status="active",
+                    valid_from=now,
+                ),
+            ]
+        )
+        return email
+
+
+def _login_as_agenda_manager(client: TestClient, email: str) -> dict[str, str]:
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": _AGENDA_MANAGER_PASSWORD},
+    )
+    assert response.status_code == 200, response.text
+    return {"Authorization": f"Bearer {response.json()['accessToken']}"}
 
 
 def _appointment_payload(
@@ -359,6 +460,160 @@ def test_agenda_calendar_management_conflicts_recurrence_and_fresh_reads(
         "2092-01-31",
         "2092-02-29",
     ]
+
+
+@pytest.mark.integration
+def test_agenda_financial_changes_require_receivables_permission_and_cancel_debt(
+    client: TestClient,
+) -> None:
+    owner_headers, context = _bootstrap_and_login(client)
+    workspace_id = UUID(str(context["workspaceId"]))
+    branch_id = UUID(str(context["visibleBranches"][0]["id"]))
+    resources_response = client.get(
+        "/api/v1/appointment-resources",
+        headers=owner_headers,
+        params={"branchId": str(branch_id)},
+    )
+    assert resources_response.status_code == 200, resources_response.text
+    resource_id = resources_response.json()["items"][0]["id"]
+    suffix = uuid7().hex[-12:]
+    customer_response = client.post(
+        "/api/v1/customers",
+        headers=owner_headers,
+        json={
+            "customerType": "person",
+            "displayName": f"Agenda protegida {suffix}",
+            "firstName": "Agenda",
+            "lastName": suffix,
+            "email": f"agenda.protected.{suffix}@example.com",
+            "branchIds": [str(branch_id)],
+        },
+    )
+    assert customer_response.status_code == 201, customer_response.text
+    customer_id = customer_response.json()["id"]
+    manager_email = _create_branch_agenda_manager(workspace_id, branch_id)
+    manager_headers = _login_as_agenda_manager(client, manager_email)
+    scheduled_date = date.today() + timedelta(days=40_000 + uuid7().int % 10_000)
+
+    basic_payload = _appointment_payload(
+        branch_id=str(branch_id),
+        resource_id=resource_id,
+        scheduled_date=scheduled_date,
+        scheduled_time="10:00",
+        customer_name=f"Agenda operativa {suffix}",
+    )
+    operational_create = client.post(
+        "/api/v1/appointments",
+        headers={
+            **manager_headers,
+            "Idempotency-Key": f"agenda-manager-operational-{suffix}",
+        },
+        json=basic_payload,
+    )
+    assert operational_create.status_code == 201, operational_create.text
+
+    pending_payload = {
+        **basic_payload,
+        "customerId": customer_id,
+        "time": "11:30",
+        "customerName": f"Agenda deuda denegada {suffix}",
+        "price": "120.00",
+        "pendingPayment": True,
+        "pendingAmount": "120.00",
+    }
+    forbidden_create = client.post(
+        "/api/v1/appointments",
+        headers={
+            **manager_headers,
+            "Idempotency-Key": f"agenda-manager-pending-{suffix}",
+        },
+        json=pending_payload,
+    )
+    assert forbidden_create.status_code == 403, forbidden_create.text
+
+    owner_create = client.post(
+        "/api/v1/appointments",
+        headers={
+            **owner_headers,
+            "Idempotency-Key": f"agenda-owner-pending-{suffix}",
+        },
+        json={
+            **pending_payload,
+            "time": "13:00",
+            "customerName": f"Agenda deuda protegida {suffix}",
+        },
+    )
+    assert owner_create.status_code == 201, owner_create.text
+    appointment = owner_create.json()["items"][0]
+
+    full_operational_patch = client.patch(
+        f"/api/v1/appointments/{appointment['id']}",
+        headers=manager_headers,
+        json={
+            "version": appointment["version"],
+            "branchId": str(branch_id),
+            "resourceId": resource_id,
+            "customerId": customer_id,
+            "date": scheduled_date.isoformat(),
+            "time": "13:00",
+            "duration": 60,
+            "customerName": f"Agenda deuda protegida {suffix}",
+            "serviceName": "Sesión de terapia",
+            "price": "120.00",
+            "status": "confirmed",
+            "pendingPayment": True,
+            "pendingAmount": "120.00",
+            "notes": "Cambio operativo con payload completo",
+        },
+    )
+    assert full_operational_patch.status_code == 200, full_operational_patch.text
+    updated = full_operational_patch.json()
+    assert updated["notes"] == "Cambio operativo con payload completo"
+
+    forbidden_amount = client.patch(
+        f"/api/v1/appointments/{appointment['id']}",
+        headers=manager_headers,
+        json={
+            "version": updated["version"],
+            "pendingAmount": "100.00",
+        },
+    )
+    assert forbidden_amount.status_code == 403, forbidden_amount.text
+    forbidden_cancel = client.patch(
+        f"/api/v1/appointments/{appointment['id']}",
+        headers=manager_headers,
+        json={"version": updated["version"], "status": "cancelled"},
+    )
+    assert forbidden_cancel.status_code == 403, forbidden_cancel.text
+
+    receivables_response = client.get(
+        "/api/v1/pos/receivables",
+        headers=owner_headers,
+        params={"branchId": str(branch_id), "customerId": customer_id},
+    )
+    assert receivables_response.status_code == 200, receivables_response.text
+    receivable = next(
+        item
+        for item in receivables_response.json()["items"]
+        if item["appointmentId"] == appointment["id"]
+    )
+
+    owner_cancel = client.patch(
+        f"/api/v1/appointments/{appointment['id']}",
+        headers=owner_headers,
+        json={"version": updated["version"], "status": "cancelled"},
+    )
+    assert owner_cancel.status_code == 200, owner_cancel.text
+    cancelled = owner_cancel.json()
+    assert cancelled["status"] == "cancelled"
+    assert cancelled["pendingPayment"] is False
+    assert Decimal(cancelled["pendingAmount"]) == 0
+    receivable_response = client.get(
+        f"/api/v1/pos/receivables/{receivable['id']}",
+        headers=owner_headers,
+    )
+    assert receivable_response.status_code == 200, receivable_response.text
+    assert receivable_response.json()["status"] == "cancelled"
 
 
 @pytest.mark.integration

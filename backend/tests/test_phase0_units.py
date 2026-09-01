@@ -48,6 +48,10 @@ def test_demo_manifest_rejects_checksum_mismatch(tmp_path: Path) -> None:
         "purchasing.json",
         "customers.json",
         "employees.json",
+        "hr.json",
+        "pos.json",
+        "agenda.json",
+        "dashboard.json",
     ):
         (tmp_path / name).write_text("{}", encoding="utf-8")
         files.append({"name": name, "sha256": "0" * 64, "count": 0})

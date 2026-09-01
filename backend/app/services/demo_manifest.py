@@ -5,7 +5,7 @@ import binascii
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal
@@ -43,6 +43,58 @@ class FoundationFixture(ApiModel):
     branches: list[DemoBranchFixture]
 
 
+class DemoAppointmentFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    branch_code: str
+    resource_code: str
+    customer_seed_key: str | None = None
+    employee_seed_key: str | None = None
+    service_seed_key: str | None = None
+    date: date
+    time: time
+    duration_minutes: int = Field(ge=5, le=480)
+    status: Literal[
+        "pending",
+        "confirmed",
+        "completed",
+        "attended",
+        "no_show",
+        "cancelled",
+        "delayed",
+        "rescheduled",
+    ]
+    created_at: datetime
+
+
+class AgendaFixture(ApiModel):
+    items: list[DemoAppointmentFixture]
+
+
+class DemoDashboardTaskFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    branch_code: str
+    title: str = Field(min_length=2, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+    status: Literal["open", "in_progress", "completed", "cancelled"]
+    priority: Literal["low", "medium", "high", "critical"]
+    due_at: datetime
+    completed_at: datetime | None = None
+    assigned_to_name: str | None = Field(default=None, max_length=160)
+    source: str = Field(min_length=2, max_length=48)
+    source_route: str = Field(min_length=1, max_length=240)
+    created_at: datetime
+
+    @model_validator(mode="after")
+    def validate_completion(self) -> DemoDashboardTaskFixture:
+        if (self.status == "completed") != (self.completed_at is not None):
+            raise ValueError("Completed demo tasks require completedAt exclusively.")
+        return self
+
+
+class DashboardFixture(ApiModel):
+    tasks: list[DemoDashboardTaskFixture]
+
+
 class DemoUserFixture(ApiModel):
     seed_key: str
     display_name: str
@@ -72,6 +124,17 @@ class DemoPaymentMethodFixture(ApiModel):
     icon: str
     enabled: bool
     system: bool
+    channel: Literal[
+        "cash",
+        "card",
+        "bank_transfer",
+        "payment_link",
+        "credit",
+        "other",
+    ] = "other"
+    settlement_policy: Literal["immediate", "pending_confirmation", "receivable"] = "immediate"
+    affects_cash_drawer: bool = False
+    requires_evidence: bool = False
 
 
 class ConfigurationFixture(ApiModel):
@@ -341,10 +404,172 @@ class HrFixture(ApiModel):
     documents: list[DemoHrDocumentFixture] = Field(default_factory=list)
 
 
+class DemoPosLineFixture(ApiModel):
+    item_seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    quantity: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
+    unit_price: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
+
+
+class DemoPosRegisterFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    branch_code: str
+    opened_by_user_seed_key: str
+    opening_cash: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
+    opened_at: datetime
+    status: Literal["open", "closed"]
+    notes: str | None = Field(default=None, max_length=1000)
+    closed_by_user_seed_key: str | None = None
+    closed_at: datetime | None = None
+    closing_difference: Decimal | None = Field(
+        default=None,
+        max_digits=14,
+        decimal_places=2,
+    )
+
+    @model_validator(mode="after")
+    def require_consistent_close(self) -> DemoPosRegisterFixture:
+        closed_values = (
+            self.closed_by_user_seed_key,
+            self.closed_at,
+            self.closing_difference,
+        )
+        if self.status == "closed" and any(value is None for value in closed_values):
+            raise ValueError(
+                "Closed demo registers require close actor, timestamp, and difference."
+            )
+        if self.status == "open" and any(value is not None for value in closed_values):
+            raise ValueError("Open demo registers cannot define close data.")
+        if self.closed_at is not None and self.closed_at <= self.opened_at:
+            raise ValueError("Demo register closedAt must follow openedAt.")
+        return self
+
+
+class DemoPosQuoteFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    document_number: str = Field(pattern=r"^COT-[0-9]{8}$")
+    branch_code: str
+    customer_seed_key: str | None = None
+    created_by_user_seed_key: str
+    kind: Literal["quote", "held"] = "quote"
+    status: Literal["open", "converted", "cancelled", "expired"] = "open"
+    payment_method_seed_key: str | None = None
+    payment_reference: str | None = Field(default=None, max_length=160)
+    lines: list[DemoPosLineFixture] = Field(min_length=1, max_length=100)
+    discount_type: Literal["percent", "fixed"] | None = None
+    discount_value: Decimal = Field(default=Decimal("0"), ge=0, decimal_places=2)
+    notes: str | None = Field(default=None, max_length=1000)
+    expires_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+    closed_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def require_consistent_quote(self) -> DemoPosQuoteFixture:
+        if self.discount_value > 0 and self.discount_type is None:
+            raise ValueError("Discounted demo quotes require discountType.")
+        if self.discount_type == "percent" and self.discount_value > 100:
+            raise ValueError("Demo quote percentage discounts cannot exceed 100.")
+        if (self.status == "open") != (self.closed_at is None):
+            raise ValueError("Only open demo quotes may omit closedAt.")
+        if self.updated_at < self.created_at:
+            raise ValueError("Demo quote updatedAt cannot precede createdAt.")
+        return self
+
+
+class DemoPosReceivablePaymentFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    payment_method_seed_key: str
+    received_by_user_seed_key: str
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    status: Literal["posted", "reversed"] = "posted"
+    reference: str | None = Field(default=None, max_length=160)
+    note: str | None = Field(default=None, max_length=1000)
+    posted_at: datetime
+    reversed_at: datetime | None = None
+    reversed_by_user_seed_key: str | None = None
+    reversal_reason: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def require_consistent_reversal(self) -> DemoPosReceivablePaymentFixture:
+        reversal_values = (
+            self.reversed_at,
+            self.reversed_by_user_seed_key,
+            self.reversal_reason,
+        )
+        if self.status == "reversed" and any(value is None for value in reversal_values):
+            raise ValueError("Reversed demo payments require complete reversal data.")
+        if self.status == "posted" and any(value is not None for value in reversal_values):
+            raise ValueError("Posted demo payments cannot define reversal data.")
+        if self.reversed_at is not None and self.reversed_at <= self.posted_at:
+            raise ValueError("Demo payment reversedAt must follow postedAt.")
+        return self
+
+
+class DemoPosSaleFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    sale_number: str = Field(pattern=r"^VTA-[0-9]{8}$")
+    branch_code: str
+    register_seed_key: str
+    customer_seed_key: str | None = None
+    quote_seed_key: str | None = None
+    payment_method_seed_key: str
+    sold_by_user_seed_key: str
+    lines: list[DemoPosLineFixture] = Field(min_length=1, max_length=100)
+    discount_type: Literal["percent", "fixed"] | None = None
+    discount_value: Decimal = Field(default=Decimal("0"), ge=0, decimal_places=2)
+    payment_reference: str | None = Field(default=None, max_length=160)
+    notes: str | None = Field(default=None, max_length=1000)
+    completed_at: datetime
+    status: Literal["completed", "voided"] = "completed"
+    voided_at: datetime | None = None
+    voided_by_user_seed_key: str | None = None
+    void_reason: str | None = Field(default=None, max_length=1000)
+    receivable_due_date: date | None = None
+    receivable_reference: str | None = Field(default=None, max_length=160)
+    receivable_notes: str | None = Field(default=None, max_length=1000)
+    receivable_payments: list[DemoPosReceivablePaymentFixture] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def require_consistent_sale(self) -> DemoPosSaleFixture:
+        if self.discount_value > 0 and self.discount_type is None:
+            raise ValueError("Discounted demo sales require discountType.")
+        if self.discount_type == "percent" and self.discount_value > 100:
+            raise ValueError("Demo sale percentage discounts cannot exceed 100.")
+        void_values = (self.voided_at, self.voided_by_user_seed_key, self.void_reason)
+        if self.status == "voided" and any(value is None for value in void_values):
+            raise ValueError("Voided demo sales require complete void data.")
+        if self.status == "completed" and any(value is not None for value in void_values):
+            raise ValueError("Completed demo sales cannot define void data.")
+        if self.voided_at is not None and self.voided_at <= self.completed_at:
+            raise ValueError("Demo sale voidedAt must follow completedAt.")
+        return self
+
+
+class DemoPosCashAdjustmentFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    register_seed_key: str
+    created_by_user_seed_key: str
+    movement_type: Literal["income", "expense"]
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    concept: str = Field(min_length=2, max_length=240)
+    reference: str | None = Field(default=None, max_length=160)
+    notes: str | None = Field(default=None, max_length=1000)
+    created_at: datetime
+
+
+class PosFixture(ApiModel):
+    registers: list[DemoPosRegisterFixture]
+    quotes: list[DemoPosQuoteFixture]
+    sales: list[DemoPosSaleFixture]
+    cash_adjustments: list[DemoPosCashAdjustmentFixture] = Field(default_factory=list)
+
+
 @dataclass(frozen=True)
 class DemoBundle:
     manifest: DemoManifest
     foundation: FoundationFixture
+    agenda: AgendaFixture
+    dashboard: DashboardFixture
     iam: IamFixture
     configuration: ConfigurationFixture
     catalog: CatalogFixture
@@ -354,6 +579,7 @@ class DemoBundle:
     customers: CustomersFixture
     employees: EmployeesFixture
     hr: HrFixture
+    pos: PosFixture
 
 
 def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
@@ -363,6 +589,8 @@ def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
     files = {entry.name: entry for entry in manifest.files}
     required = {
         "foundation.json",
+        "agenda.json",
+        "dashboard.json",
         "iam.json",
         "configuration.json",
         "catalog.json",
@@ -371,6 +599,8 @@ def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
         "purchasing.json",
         "customers.json",
         "employees.json",
+        "hr.json",
+        "pos.json",
     }
     if not required <= files.keys():
         raise ValueError("The demo manifest is missing required Phase 0 files.")
@@ -388,6 +618,12 @@ def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
         manifest=manifest,
         foundation=FoundationFixture.model_validate_json(
             (root / "foundation.json").read_text(encoding="utf-8")
+        ),
+        agenda=AgendaFixture.model_validate_json(
+            (root / "agenda.json").read_text(encoding="utf-8")
+        ),
+        dashboard=DashboardFixture.model_validate_json(
+            (root / "dashboard.json").read_text(encoding="utf-8")
         ),
         iam=IamFixture.model_validate_json((root / "iam.json").read_text(encoding="utf-8")),
         configuration=ConfigurationFixture.model_validate_json(
@@ -412,4 +648,5 @@ def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
             (root / "employees.json").read_text(encoding="utf-8")
         ),
         hr=HrFixture.model_validate_json((root / "hr.json").read_text(encoding="utf-8")),
+        pos=PosFixture.model_validate_json((root / "pos.json").read_text(encoding="utf-8")),
     )

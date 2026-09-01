@@ -1,7 +1,7 @@
 // Generated from demo-data/v1; do not edit.
 export const DEMO_SNAPSHOT = Object.freeze({
   "seedVersion": "v1",
-  "schemaVersion": "20260831_0012",
+  "schemaVersion": "20260901_0014",
   "workspaceSlug": "local-erp",
   "foundation": {
     "branches": [
@@ -25,9 +25,353 @@ export const DEMO_SNAPSHOT = Object.freeze({
       }
     ]
   },
+  "agenda": {
+    "items": [
+      {
+        "seedKey": "hq-maria-morning",
+        "branchCode": "HQ",
+        "resourceCode": "cab1",
+        "customerSeedKey": "c1",
+        "serviceSeedKey": "underarm-session",
+        "date": "2026-09-01",
+        "time": "09:30",
+        "durationMinutes": 30,
+        "status": "confirmed",
+        "createdAt": "2026-09-01T11:45:00Z"
+      },
+      {
+        "seedKey": "hq-luis-noon",
+        "branchCode": "HQ",
+        "resourceCode": "cab2",
+        "customerSeedKey": "c4",
+        "serviceSeedKey": "full-body-vip-package-12",
+        "date": "2026-09-01",
+        "time": "12:30",
+        "durationMinutes": 60,
+        "status": "pending",
+        "createdAt": "2026-09-01T11:55:00Z"
+      },
+      {
+        "seedKey": "north-ana-facial",
+        "branchCode": "NORTH",
+        "resourceCode": "cab1",
+        "customerSeedKey": "c3",
+        "employeeSeedKey": "emp-4",
+        "serviceSeedKey": "hydrating-facial",
+        "date": "2026-09-01",
+        "time": "10:00",
+        "durationMinutes": 60,
+        "status": "confirmed",
+        "createdAt": "2026-09-01T12:10:00Z"
+      },
+      {
+        "seedKey": "north-maria-legs",
+        "branchCode": "NORTH",
+        "resourceCode": "cab2",
+        "customerSeedKey": "c1",
+        "serviceSeedKey": "full-legs-session",
+        "date": "2026-09-01",
+        "time": "15:00",
+        "durationMinutes": 45,
+        "status": "delayed",
+        "createdAt": "2026-09-01T12:20:00Z"
+      },
+      {
+        "seedKey": "downtown-jose-followup",
+        "branchCode": "DOWNTOWN",
+        "resourceCode": "cab1",
+        "customerSeedKey": "c2",
+        "employeeSeedKey": "emp-3",
+        "serviceSeedKey": "underarm-session",
+        "date": "2026-09-01",
+        "time": "11:00",
+        "durationMinutes": 30,
+        "status": "confirmed",
+        "createdAt": "2026-09-01T12:30:00Z"
+      },
+      {
+        "seedKey": "downtown-luis-vip",
+        "branchCode": "DOWNTOWN",
+        "resourceCode": "cab2",
+        "customerSeedKey": "c4",
+        "employeeSeedKey": "emp-13",
+        "serviceSeedKey": "full-body-vip-package-12",
+        "date": "2026-09-01",
+        "time": "17:00",
+        "durationMinutes": 60,
+        "status": "pending",
+        "createdAt": "2026-09-01T12:40:00Z"
+      },
+      {
+        "seedKey": "east-carla-face",
+        "branchCode": "EAST",
+        "resourceCode": "cab1",
+        "customerSeedKey": "c5",
+        "employeeSeedKey": "emp-9",
+        "serviceSeedKey": "face-session",
+        "date": "2026-09-01",
+        "time": "13:30",
+        "durationMinutes": 45,
+        "status": "confirmed",
+        "createdAt": "2026-09-01T12:50:00Z"
+      },
+      {
+        "seedKey": "east-luis-lip",
+        "branchCode": "EAST",
+        "resourceCode": "cab2",
+        "customerSeedKey": "c4",
+        "employeeSeedKey": "emp-6",
+        "serviceSeedKey": "upper-lip-session",
+        "date": "2026-09-01",
+        "time": "16:00",
+        "durationMinutes": 30,
+        "status": "rescheduled",
+        "createdAt": "2026-09-01T13:00:00Z"
+      },
+      {
+        "seedKey": "north-ana-tomorrow",
+        "branchCode": "NORTH",
+        "resourceCode": "cab1",
+        "customerSeedKey": "c3",
+        "employeeSeedKey": "emp-4",
+        "serviceSeedKey": "full-legs-session",
+        "date": "2026-09-02",
+        "time": "10:00",
+        "durationMinutes": 60,
+        "status": "confirmed",
+        "createdAt": "2026-09-01T13:10:00Z"
+      }
+    ]
+  },
+  "dashboard": {
+    "tasks": [
+      {
+        "seedKey": "hq-confirm-supplies",
+        "branchCode": "HQ",
+        "title": "Confirmar reposición de insumos",
+        "description": "Validar cantidades recibidas contra la solicitud de compra.",
+        "status": "open",
+        "priority": "high",
+        "dueAt": "2026-09-01T15:00:00Z",
+        "assignedToName": "Paz Demo",
+        "source": "operations",
+        "sourceRoute": "/compras",
+        "createdAt": "2026-09-01T12:05:00Z"
+      },
+      {
+        "seedKey": "north-call-vip",
+        "branchCode": "NORTH",
+        "title": "Confirmar cita de cliente VIP",
+        "description": "Llamar a la cliente antes de su cita de la tarde.",
+        "status": "in_progress",
+        "priority": "medium",
+        "dueAt": "2026-09-01T17:00:00Z",
+        "assignedToName": "Mar Demo",
+        "source": "agenda",
+        "sourceRoute": "/agenda/calendario",
+        "createdAt": "2026-09-01T12:15:00Z"
+      },
+      {
+        "seedKey": "downtown-review-leak",
+        "branchCode": "DOWNTOWN",
+        "title": "Dar seguimiento a fuga de agua",
+        "description": "Confirmar la visita del técnico y documentar el resultado.",
+        "status": "open",
+        "priority": "critical",
+        "dueAt": "2026-09-01T19:00:00Z",
+        "assignedToName": "Sol Demo",
+        "source": "operations",
+        "sourceRoute": "/incidencias",
+        "createdAt": "2026-09-01T12:25:00Z"
+      },
+      {
+        "seedKey": "east-count-serum",
+        "branchCode": "EAST",
+        "title": "Recontar inventario de serum",
+        "description": "Verificar el balance físico antes del cierre.",
+        "status": "open",
+        "priority": "medium",
+        "dueAt": "2026-09-01T21:00:00Z",
+        "assignedToName": "Rio Demo",
+        "source": "inventory",
+        "sourceRoute": "/inventarios",
+        "createdAt": "2026-09-01T12:35:00Z"
+      },
+      {
+        "seedKey": "hq-reconcile-transfer",
+        "branchCode": "HQ",
+        "title": "Conciliar transferencia pendiente",
+        "status": "open",
+        "priority": "high",
+        "dueAt": "2026-09-02T16:00:00Z",
+        "assignedToName": "Paz Demo",
+        "source": "sales",
+        "sourceRoute": "/pos/cuentas-por-cobrar",
+        "createdAt": "2026-08-31T19:00:00Z"
+      },
+      {
+        "seedKey": "north-order-red-bull",
+        "branchCode": "NORTH",
+        "title": "Solicitar reposición de Red Bull",
+        "status": "open",
+        "priority": "medium",
+        "dueAt": "2026-09-03T14:00:00Z",
+        "assignedToName": "Mar Demo",
+        "source": "inventory",
+        "sourceRoute": "/compras",
+        "createdAt": "2026-08-31T16:00:00Z"
+      },
+      {
+        "seedKey": "downtown-close-request",
+        "branchCode": "DOWNTOWN",
+        "title": "Cerrar solicitud de mantenimiento",
+        "status": "in_progress",
+        "priority": "medium",
+        "dueAt": "2026-09-04T18:00:00Z",
+        "assignedToName": "Sol Demo",
+        "source": "operations",
+        "sourceRoute": "/incidencias",
+        "createdAt": "2026-08-30T15:00:00Z"
+      },
+      {
+        "seedKey": "east-review-schedule",
+        "branchCode": "EAST",
+        "title": "Revisar agenda del fin de semana",
+        "status": "open",
+        "priority": "low",
+        "dueAt": "2026-09-05T15:00:00Z",
+        "assignedToName": "Rio Demo",
+        "source": "agenda",
+        "sourceRoute": "/agenda/calendario",
+        "createdAt": "2026-08-29T15:00:00Z"
+      },
+      {
+        "seedKey": "hq-monthly-stock",
+        "branchCode": "HQ",
+        "title": "Preparar conteo mensual de stock",
+        "status": "open",
+        "priority": "medium",
+        "dueAt": "2026-09-12T14:00:00Z",
+        "assignedToName": "Paz Demo",
+        "source": "inventory",
+        "sourceRoute": "/inventarios",
+        "createdAt": "2026-08-28T14:00:00Z"
+      },
+      {
+        "seedKey": "north-review-receivables",
+        "branchCode": "NORTH",
+        "title": "Revisar cuentas por cobrar vencidas",
+        "status": "open",
+        "priority": "high",
+        "dueAt": "2026-09-16T16:00:00Z",
+        "assignedToName": "Mar Demo",
+        "source": "sales",
+        "sourceRoute": "/pos/cuentas-por-cobrar",
+        "createdAt": "2026-08-27T14:00:00Z"
+      },
+      {
+        "seedKey": "downtown-train-reception",
+        "branchCode": "DOWNTOWN",
+        "title": "Capacitar recepción en cierres de caja",
+        "status": "open",
+        "priority": "medium",
+        "dueAt": "2026-09-21T17:00:00Z",
+        "assignedToName": "Sol Demo",
+        "source": "operations",
+        "sourceRoute": "/pos/caja",
+        "createdAt": "2026-08-25T14:00:00Z"
+      },
+      {
+        "seedKey": "east-update-minimums",
+        "branchCode": "EAST",
+        "title": "Actualizar mínimos de inventario",
+        "status": "in_progress",
+        "priority": "medium",
+        "dueAt": "2026-09-28T15:00:00Z",
+        "assignedToName": "Rio Demo",
+        "source": "inventory",
+        "sourceRoute": "/inventarios",
+        "createdAt": "2026-08-24T14:00:00Z"
+      },
+      {
+        "seedKey": "hq-august-kpis",
+        "branchCode": "HQ",
+        "title": "Validar indicadores de agosto",
+        "status": "open",
+        "priority": "low",
+        "dueAt": "2026-08-31T20:00:00Z",
+        "assignedToName": "Alex Demo",
+        "source": "operations",
+        "sourceRoute": "/dashboard",
+        "createdAt": "2026-08-20T14:00:00Z"
+      },
+      {
+        "seedKey": "north-audit-assets",
+        "branchCode": "NORTH",
+        "title": "Auditar activos en reparación",
+        "status": "open",
+        "priority": "high",
+        "dueAt": "2026-08-20T18:00:00Z",
+        "assignedToName": "Mar Demo",
+        "source": "operations",
+        "sourceRoute": "/inventarios/activos",
+        "createdAt": "2026-08-10T14:00:00Z"
+      },
+      {
+        "seedKey": "downtown-july-report",
+        "branchCode": "DOWNTOWN",
+        "title": "Revisar reporte de ventas de julio",
+        "status": "open",
+        "priority": "low",
+        "dueAt": "2026-07-25T16:00:00Z",
+        "assignedToName": "Sol Demo",
+        "source": "sales",
+        "sourceRoute": "/reportes/generales",
+        "createdAt": "2026-07-10T14:00:00Z"
+      },
+      {
+        "seedKey": "east-supplier-review",
+        "branchCode": "EAST",
+        "title": "Evaluar proveedor alterno de insumos",
+        "status": "open",
+        "priority": "medium",
+        "dueAt": "2026-07-15T15:00:00Z",
+        "assignedToName": "Rio Demo",
+        "source": "operations",
+        "sourceRoute": "/compras",
+        "createdAt": "2026-07-01T14:00:00Z"
+      },
+      {
+        "seedKey": "hq-completed-opening",
+        "branchCode": "HQ",
+        "title": "Confirmar apertura de caja",
+        "status": "completed",
+        "priority": "medium",
+        "dueAt": "2026-09-01T12:00:00Z",
+        "completedAt": "2026-09-01T12:02:00Z",
+        "assignedToName": "Paz Demo",
+        "source": "operations",
+        "sourceRoute": "/pos/caja",
+        "createdAt": "2026-09-01T11:55:00Z"
+      },
+      {
+        "seedKey": "north-cancelled-order",
+        "branchCode": "NORTH",
+        "title": "Pedido duplicado de bebidas",
+        "status": "cancelled",
+        "priority": "low",
+        "dueAt": "2026-09-02T12:00:00Z",
+        "assignedToName": "Mar Demo",
+        "source": "inventory",
+        "sourceRoute": "/compras",
+        "createdAt": "2026-08-31T12:00:00Z"
+      }
+    ]
+  },
   "iam": {
     "rolePermissions": {
       "manager": [
+        "dashboard.read",
         "workspace.read",
         "workspace.update",
         "legal_entity.read",
@@ -39,6 +383,18 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "role.read",
         "catalog.read",
         "catalog.manage",
+        "sales.read",
+        "sales.quote.manage",
+        "pos.read",
+        "pos.sell",
+        "pos.discount.override",
+        "pos.register.manage",
+        "pos.cash.read",
+        "pos.cash.manage",
+        "pos.receivables.read",
+        "pos.receivables.collect",
+        "pos.receivables.manage",
+        "pos.void",
         "inventory.read",
         "inventory.manage",
         "inventory.move",
@@ -68,11 +424,18 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "appointment.manage"
       ],
       "supervisor": [
+        "dashboard.read",
         "workspace.read",
         "legal_entity.read",
         "branch.read",
         "membership.read",
         "catalog.read",
+        "sales.read",
+        "pos.read",
+        "pos.cash.read",
+        "pos.receivables.read",
+        "pos.receivables.collect",
+        "pos.void",
         "inventory.read",
         "inventory.move",
         "purchasing.read",
@@ -91,9 +454,18 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "appointment.manage"
       ],
       "cashier": [
+        "dashboard.read",
         "workspace.read",
         "branch.read",
         "catalog.read",
+        "sales.read",
+        "pos.read",
+        "pos.sell",
+        "pos.register.manage",
+        "pos.cash.read",
+        "pos.cash.manage",
+        "pos.receivables.read",
+        "pos.receivables.collect",
         "inventory.read",
         "purchasing.read",
         "purchasing.requests.create",
@@ -107,9 +479,14 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "appointment.manage"
       ],
       "seller": [
+        "dashboard.read",
         "workspace.read",
         "branch.read",
         "catalog.read",
+        "sales.read",
+        "sales.quote.manage",
+        "pos.read",
+        "pos.sell",
         "inventory.read",
         "purchasing.read",
         "purchasing.requests.create",
@@ -228,7 +605,11 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "name": "Efectivo",
         "icon": "Banknote",
         "enabled": true,
-        "system": true
+        "system": true,
+        "channel": "cash",
+        "settlementPolicy": "immediate",
+        "affectsCashDrawer": true,
+        "requiresEvidence": false
       },
       {
         "seedKey": "card",
@@ -236,7 +617,11 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "name": "Tarjeta",
         "icon": "CreditCard",
         "enabled": true,
-        "system": true
+        "system": true,
+        "channel": "card",
+        "settlementPolicy": "immediate",
+        "affectsCashDrawer": false,
+        "requiresEvidence": false
       },
       {
         "seedKey": "transfer",
@@ -244,7 +629,35 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "name": "Transferencia",
         "icon": "Landmark",
         "enabled": true,
-        "system": true
+        "system": true,
+        "channel": "bank_transfer",
+        "settlementPolicy": "pending_confirmation",
+        "affectsCashDrawer": false,
+        "requiresEvidence": true
+      },
+      {
+        "seedKey": "payment-link",
+        "code": "payment_link",
+        "name": "Link de pago",
+        "icon": "Link2",
+        "enabled": true,
+        "system": true,
+        "channel": "payment_link",
+        "settlementPolicy": "pending_confirmation",
+        "affectsCashDrawer": false,
+        "requiresEvidence": true
+      },
+      {
+        "seedKey": "credit",
+        "code": "credit",
+        "name": "Cuenta por cobrar",
+        "icon": "Clock",
+        "enabled": true,
+        "system": true,
+        "channel": "credit",
+        "settlementPolicy": "receivable",
+        "affectsCashDrawer": false,
+        "requiresEvidence": false
       }
     ]
   },
@@ -1811,5 +2224,612 @@ export const DEMO_SNAPSHOT = Object.freeze({
       }
     ],
     "documents": []
+  },
+  "pos": {
+    "registers": [
+      {
+        "seedKey": "hq-current",
+        "branchCode": "HQ",
+        "openedByUserSeedKey": "cashier",
+        "openingCash": 5000,
+        "openedAt": "2026-09-01T12:00:00Z",
+        "status": "open",
+        "notes": "Turno operativo actual para pruebas integrales del POS."
+      },
+      {
+        "seedKey": "north-aug31",
+        "branchCode": "NORTH",
+        "openedByUserSeedKey": "manager-north",
+        "openingCash": 3500,
+        "openedAt": "2026-08-31T12:00:00Z",
+        "status": "closed",
+        "notes": "Turno histórico con diferencia positiva de arqueo.",
+        "closedByUserSeedKey": "manager-north",
+        "closedAt": "2026-08-31T22:00:00Z",
+        "closingDifference": 50
+      },
+      {
+        "seedKey": "downtown-aug30",
+        "branchCode": "DOWNTOWN",
+        "openedByUserSeedKey": "manager-center",
+        "openingCash": 4500,
+        "openedAt": "2026-08-30T13:00:00Z",
+        "status": "closed",
+        "notes": "Turno histórico con faltante documentado.",
+        "closedByUserSeedKey": "manager-center",
+        "closedAt": "2026-08-30T23:00:00Z",
+        "closingDifference": -75
+      },
+      {
+        "seedKey": "east-aug29",
+        "branchCode": "EAST",
+        "openedByUserSeedKey": "admin",
+        "openingCash": 3000,
+        "openedAt": "2026-08-29T14:00:00Z",
+        "status": "closed",
+        "notes": "Turno histórico cuadrado.",
+        "closedByUserSeedKey": "admin",
+        "closedAt": "2026-08-29T22:00:00Z",
+        "closingDifference": 0
+      }
+    ],
+    "quotes": [
+      {
+        "seedKey": "hq-open-vip",
+        "documentNumber": "COT-99000001",
+        "branchCode": "HQ",
+        "customerSeedKey": "c1",
+        "createdByUserSeedKey": "manager-north",
+        "kind": "quote",
+        "status": "open",
+        "paymentMethodSeedKey": "card",
+        "lines": [
+          {
+            "itemSeedKey": "full-body-vip-package-12",
+            "quantity": 1
+          }
+        ],
+        "discountType": "percent",
+        "discountValue": 5,
+        "notes": "Propuesta VIP válida por cinco días.",
+        "expiresAt": "2026-09-06T03:59:59Z",
+        "createdAt": "2026-09-01T12:20:00Z",
+        "updatedAt": "2026-09-01T12:20:00Z"
+      },
+      {
+        "seedKey": "hq-held-counter",
+        "documentNumber": "COT-99000002",
+        "branchCode": "HQ",
+        "createdByUserSeedKey": "cashier",
+        "kind": "held",
+        "status": "open",
+        "lines": [
+          {
+            "itemSeedKey": "face-session",
+            "quantity": 1
+          },
+          {
+            "itemSeedKey": "spf50-sunscreen",
+            "quantity": 1
+          }
+        ],
+        "notes": "Carrito retenido de cliente mostrador.",
+        "expiresAt": "2026-09-02T03:59:59Z",
+        "createdAt": "2026-09-01T13:05:00Z",
+        "updatedAt": "2026-09-01T13:05:00Z"
+      },
+      {
+        "seedKey": "north-open-package",
+        "documentNumber": "COT-99000003",
+        "branchCode": "NORTH",
+        "customerSeedKey": "c3",
+        "createdByUserSeedKey": "manager-north",
+        "kind": "quote",
+        "status": "open",
+        "paymentMethodSeedKey": "credit",
+        "lines": [
+          {
+            "itemSeedKey": "full-body-package-12",
+            "quantity": 1
+          }
+        ],
+        "notes": "Cotización pendiente de aprobación del cliente.",
+        "expiresAt": "2026-09-08T03:59:59Z",
+        "createdAt": "2026-08-31T15:10:00Z",
+        "updatedAt": "2026-08-31T15:10:00Z"
+      },
+      {
+        "seedKey": "east-expired-retail",
+        "documentNumber": "COT-99000004",
+        "branchCode": "EAST",
+        "customerSeedKey": "c5",
+        "createdByUserSeedKey": "seller-east",
+        "kind": "quote",
+        "status": "expired",
+        "paymentMethodSeedKey": "card",
+        "lines": [
+          {
+            "itemSeedKey": "upper-lip-session",
+            "quantity": 1
+          },
+          {
+            "itemSeedKey": "vitamin-c-serum",
+            "quantity": 1
+          }
+        ],
+        "expiresAt": "2026-08-31T03:59:59Z",
+        "createdAt": "2026-08-28T16:30:00Z",
+        "updatedAt": "2026-08-31T04:00:00Z",
+        "closedAt": "2026-08-31T04:00:00Z"
+      },
+      {
+        "seedKey": "downtown-converted-package",
+        "documentNumber": "COT-99000005",
+        "branchCode": "DOWNTOWN",
+        "customerSeedKey": "c2",
+        "createdByUserSeedKey": "seller-center",
+        "kind": "quote",
+        "status": "converted",
+        "paymentMethodSeedKey": "cash",
+        "lines": [
+          {
+            "itemSeedKey": "brazilian-package-12",
+            "quantity": 1
+          }
+        ],
+        "notes": "Cotización convertida en venta durante el turno.",
+        "expiresAt": "2026-09-03T03:59:59Z",
+        "createdAt": "2026-08-29T17:30:00Z",
+        "updatedAt": "2026-08-30T14:00:00Z",
+        "closedAt": "2026-08-30T14:00:00Z"
+      },
+      {
+        "seedKey": "downtown-cancelled-vip",
+        "documentNumber": "COT-99000006",
+        "branchCode": "DOWNTOWN",
+        "customerSeedKey": "c4",
+        "createdByUserSeedKey": "seller-center",
+        "kind": "quote",
+        "status": "cancelled",
+        "paymentMethodSeedKey": "card",
+        "lines": [
+          {
+            "itemSeedKey": "full-body-vip-package-12",
+            "quantity": 1
+          }
+        ],
+        "notes": "Cliente solicitó cancelar la propuesta comercial.",
+        "expiresAt": "2026-09-04T03:59:59Z",
+        "createdAt": "2026-08-29T18:00:00Z",
+        "updatedAt": "2026-08-29T19:15:00Z",
+        "closedAt": "2026-08-29T19:15:00Z"
+      }
+    ],
+    "sales": [
+      {
+        "seedKey": "hq-cash-counter",
+        "saleNumber": "VTA-99000001",
+        "branchCode": "HQ",
+        "registerSeedKey": "hq-current",
+        "paymentMethodSeedKey": "cash",
+        "soldByUserSeedKey": "cashier",
+        "lines": [
+          {
+            "itemSeedKey": "face-session",
+            "quantity": 1
+          },
+          {
+            "itemSeedKey": "coca-cola",
+            "quantity": 2
+          }
+        ],
+        "notes": "Venta combinada de servicio y consumo de recepción.",
+        "completedAt": "2026-09-01T12:30:00Z"
+      },
+      {
+        "seedKey": "hq-card-skin-care",
+        "saleNumber": "VTA-99000002",
+        "branchCode": "HQ",
+        "registerSeedKey": "hq-current",
+        "customerSeedKey": "c1",
+        "paymentMethodSeedKey": "card",
+        "soldByUserSeedKey": "cashier",
+        "lines": [
+          {
+            "itemSeedKey": "spf50-sunscreen",
+            "quantity": 1
+          },
+          {
+            "itemSeedKey": "vitamin-c-serum",
+            "quantity": 1
+          }
+        ],
+        "discountType": "percent",
+        "discountValue": 5,
+        "paymentReference": "CARD-483921",
+        "notes": "Kit de cuidado posterior con descuento de fidelidad.",
+        "completedAt": "2026-09-01T13:15:00Z"
+      },
+      {
+        "seedKey": "hq-credit-cycle",
+        "saleNumber": "VTA-99000003",
+        "branchCode": "HQ",
+        "registerSeedKey": "hq-current",
+        "customerSeedKey": "c1",
+        "paymentMethodSeedKey": "credit",
+        "soldByUserSeedKey": "cashier",
+        "lines": [
+          {
+            "itemSeedKey": "remaining-cycle-half",
+            "quantity": 1
+          }
+        ],
+        "notes": "Saldo de ciclo financiado a siete días.",
+        "completedAt": "2026-09-01T13:40:00Z",
+        "receivableDueDate": "2026-09-08",
+        "receivableReference": "PLAN-CICLO-01",
+        "receivableNotes": "Contactar al cliente dos días antes del vencimiento."
+      },
+      {
+        "seedKey": "hq-transfer-retail",
+        "saleNumber": "VTA-99000004",
+        "branchCode": "HQ",
+        "registerSeedKey": "hq-current",
+        "customerSeedKey": "c1",
+        "paymentMethodSeedKey": "transfer",
+        "soldByUserSeedKey": "cashier",
+        "lines": [
+          {
+            "itemSeedKey": "vitamin-c-serum",
+            "quantity": 1
+          }
+        ],
+        "paymentReference": "TRX-PEND-8821",
+        "notes": "Transferencia pendiente con abono posterior.",
+        "completedAt": "2026-09-01T14:10:00Z",
+        "receivableDueDate": "2026-09-03",
+        "receivableReference": "TRX-PEND-8821",
+        "receivablePayments": [
+          {
+            "seedKey": "card-deposit",
+            "paymentMethodSeedKey": "card",
+            "receivedByUserSeedKey": "cashier",
+            "amount": 500,
+            "reference": "CARD-ABONO-201",
+            "note": "Abono confirmado en recepción.",
+            "postedAt": "2026-09-01T15:00:00Z"
+          }
+        ]
+      },
+      {
+        "seedKey": "hq-voided-cash-product",
+        "saleNumber": "VTA-99000005",
+        "branchCode": "HQ",
+        "registerSeedKey": "hq-current",
+        "paymentMethodSeedKey": "cash",
+        "soldByUserSeedKey": "cashier",
+        "lines": [
+          {
+            "itemSeedKey": "hamburger",
+            "quantity": 1
+          }
+        ],
+        "completedAt": "2026-09-01T14:30:00Z",
+        "status": "voided",
+        "voidedAt": "2026-09-01T14:38:00Z",
+        "voidedByUserSeedKey": "admin",
+        "voidReason": "Artículo cargado por error; efectivo devuelto al cliente."
+      },
+      {
+        "seedKey": "north-cash-treatment",
+        "saleNumber": "VTA-99000006",
+        "branchCode": "NORTH",
+        "registerSeedKey": "north-aug31",
+        "customerSeedKey": "c3",
+        "paymentMethodSeedKey": "cash",
+        "soldByUserSeedKey": "manager-north",
+        "lines": [
+          {
+            "itemSeedKey": "full-legs-session",
+            "quantity": 1
+          },
+          {
+            "itemSeedKey": "red-bull",
+            "quantity": 2
+          }
+        ],
+        "completedAt": "2026-08-31T13:10:00Z"
+      },
+      {
+        "seedKey": "north-card-facial",
+        "saleNumber": "VTA-99000007",
+        "branchCode": "NORTH",
+        "registerSeedKey": "north-aug31",
+        "customerSeedKey": "c3",
+        "paymentMethodSeedKey": "card",
+        "soldByUserSeedKey": "manager-north",
+        "lines": [
+          {
+            "itemSeedKey": "hydrating-facial",
+            "quantity": 1
+          }
+        ],
+        "discountType": "percent",
+        "discountValue": 10,
+        "paymentReference": "CARD-771204",
+        "completedAt": "2026-08-31T14:20:00Z"
+      },
+      {
+        "seedKey": "north-credit-face-package",
+        "saleNumber": "VTA-99000008",
+        "branchCode": "NORTH",
+        "registerSeedKey": "north-aug31",
+        "customerSeedKey": "c3",
+        "paymentMethodSeedKey": "credit",
+        "soldByUserSeedKey": "manager-north",
+        "lines": [
+          {
+            "itemSeedKey": "full-face-package-12",
+            "quantity": 1
+          }
+        ],
+        "completedAt": "2026-08-31T15:00:00Z",
+        "receivableDueDate": "2026-09-10",
+        "receivableNotes": "Plan de pagos acordado con recepción.",
+        "receivablePayments": [
+          {
+            "seedKey": "cash-reversed",
+            "paymentMethodSeedKey": "cash",
+            "receivedByUserSeedKey": "manager-north",
+            "amount": 1000,
+            "reference": "REC-ERR-01",
+            "note": "Pago registrado en cuenta equivocada.",
+            "postedAt": "2026-08-31T16:00:00Z",
+            "status": "reversed",
+            "reversedAt": "2026-08-31T16:08:00Z",
+            "reversedByUserSeedKey": "manager-north",
+            "reversalReason": "Se corrigió la cuenta del cliente."
+          },
+          {
+            "seedKey": "cash-valid",
+            "paymentMethodSeedKey": "cash",
+            "receivedByUserSeedKey": "manager-north",
+            "amount": 1500,
+            "reference": "REC-ABONO-02",
+            "note": "Primer abono válido.",
+            "postedAt": "2026-08-31T16:15:00Z"
+          }
+        ]
+      },
+      {
+        "seedKey": "north-credit-voided",
+        "saleNumber": "VTA-99000009",
+        "branchCode": "NORTH",
+        "registerSeedKey": "north-aug31",
+        "customerSeedKey": "c3",
+        "paymentMethodSeedKey": "credit",
+        "soldByUserSeedKey": "manager-north",
+        "lines": [
+          {
+            "itemSeedKey": "full-legs-session",
+            "quantity": 1
+          }
+        ],
+        "completedAt": "2026-08-31T17:10:00Z",
+        "status": "voided",
+        "voidedAt": "2026-08-31T17:25:00Z",
+        "voidedByUserSeedKey": "manager-north",
+        "voidReason": "Cliente cambió el servicio antes de iniciar.",
+        "receivableDueDate": "2026-09-05"
+      },
+      {
+        "seedKey": "downtown-cash-package",
+        "saleNumber": "VTA-99000010",
+        "branchCode": "DOWNTOWN",
+        "registerSeedKey": "downtown-aug30",
+        "customerSeedKey": "c2",
+        "quoteSeedKey": "downtown-converted-package",
+        "paymentMethodSeedKey": "cash",
+        "soldByUserSeedKey": "seller-center",
+        "lines": [
+          {
+            "itemSeedKey": "brazilian-package-12",
+            "quantity": 1
+          }
+        ],
+        "completedAt": "2026-08-30T14:00:00Z"
+      },
+      {
+        "seedKey": "downtown-transfer-session",
+        "saleNumber": "VTA-99000011",
+        "branchCode": "DOWNTOWN",
+        "registerSeedKey": "downtown-aug30",
+        "customerSeedKey": "c4",
+        "paymentMethodSeedKey": "transfer",
+        "soldByUserSeedKey": "seller-center",
+        "lines": [
+          {
+            "itemSeedKey": "underarm-session",
+            "quantity": 1
+          },
+          {
+            "itemSeedKey": "upper-lip-session",
+            "quantity": 1
+          }
+        ],
+        "paymentReference": "TRX-440192",
+        "completedAt": "2026-08-30T15:20:00Z",
+        "receivableDueDate": "2026-09-02",
+        "receivableReference": "TRX-440192",
+        "receivableNotes": "Validar comprobante bancario antes de confirmar."
+      },
+      {
+        "seedKey": "downtown-card-vip",
+        "saleNumber": "VTA-99000012",
+        "branchCode": "DOWNTOWN",
+        "registerSeedKey": "downtown-aug30",
+        "customerSeedKey": "c4",
+        "paymentMethodSeedKey": "card",
+        "soldByUserSeedKey": "seller-center",
+        "lines": [
+          {
+            "itemSeedKey": "full-body-vip-package-12",
+            "quantity": 1
+          }
+        ],
+        "discountType": "fixed",
+        "discountValue": 1000,
+        "paymentReference": "CARD-994201",
+        "completedAt": "2026-08-30T17:45:00Z"
+      },
+      {
+        "seedKey": "downtown-cash-retail",
+        "saleNumber": "VTA-99000013",
+        "branchCode": "DOWNTOWN",
+        "registerSeedKey": "downtown-aug30",
+        "paymentMethodSeedKey": "cash",
+        "soldByUserSeedKey": "seller-center",
+        "lines": [
+          {
+            "itemSeedKey": "milk-cream",
+            "quantity": 1
+          },
+          {
+            "itemSeedKey": "coca-cola",
+            "quantity": 2
+          }
+        ],
+        "completedAt": "2026-08-30T19:05:00Z"
+      },
+      {
+        "seedKey": "east-cash-face",
+        "saleNumber": "VTA-99000014",
+        "branchCode": "EAST",
+        "registerSeedKey": "east-aug29",
+        "customerSeedKey": "c5",
+        "paymentMethodSeedKey": "cash",
+        "soldByUserSeedKey": "seller-east",
+        "lines": [
+          {
+            "itemSeedKey": "face-session",
+            "quantity": 1
+          },
+          {
+            "itemSeedKey": "spf50-sunscreen",
+            "quantity": 1
+          }
+        ],
+        "completedAt": "2026-08-29T15:10:00Z"
+      },
+      {
+        "seedKey": "east-credit-promo",
+        "saleNumber": "VTA-99000015",
+        "branchCode": "EAST",
+        "registerSeedKey": "east-aug29",
+        "customerSeedKey": "c5",
+        "paymentMethodSeedKey": "credit",
+        "soldByUserSeedKey": "seller-east",
+        "lines": [
+          {
+            "itemSeedKey": "two-full-body-half-package",
+            "quantity": 1
+          }
+        ],
+        "completedAt": "2026-08-29T16:00:00Z",
+        "receivableDueDate": "2026-09-15",
+        "receivableNotes": "Cuenta pagada en dos cargos de tarjeta.",
+        "receivablePayments": [
+          {
+            "seedKey": "card-first",
+            "paymentMethodSeedKey": "card",
+            "receivedByUserSeedKey": "admin",
+            "amount": 6000,
+            "reference": "CARD-EAST-601",
+            "postedAt": "2026-08-29T17:00:00Z"
+          },
+          {
+            "seedKey": "card-final",
+            "paymentMethodSeedKey": "card",
+            "receivedByUserSeedKey": "admin",
+            "amount": 8160,
+            "reference": "CARD-EAST-602",
+            "postedAt": "2026-08-29T17:05:00Z"
+          }
+        ]
+      },
+      {
+        "seedKey": "east-card-lip-retail",
+        "saleNumber": "VTA-99000016",
+        "branchCode": "EAST",
+        "registerSeedKey": "east-aug29",
+        "customerSeedKey": "c4",
+        "paymentMethodSeedKey": "card",
+        "soldByUserSeedKey": "seller-east",
+        "lines": [
+          {
+            "itemSeedKey": "upper-lip-session",
+            "quantity": 1
+          },
+          {
+            "itemSeedKey": "coca-cola",
+            "quantity": 1
+          }
+        ],
+        "paymentReference": "CARD-EAST-774",
+        "completedAt": "2026-08-29T18:30:00Z"
+      }
+    ],
+    "cashAdjustments": [
+      {
+        "seedKey": "hq-extra-change",
+        "registerSeedKey": "hq-current",
+        "createdByUserSeedKey": "cashier",
+        "movementType": "income",
+        "amount": 500,
+        "concept": "Fondo adicional de cambio",
+        "reference": "ADM-HQ-001",
+        "createdAt": "2026-09-01T12:10:00Z"
+      },
+      {
+        "seedKey": "hq-courier",
+        "registerSeedKey": "hq-current",
+        "createdByUserSeedKey": "cashier",
+        "movementType": "expense",
+        "amount": 350,
+        "concept": "Servicio de mensajería",
+        "reference": "CAJA-HQ-002",
+        "createdAt": "2026-09-01T13:45:00Z"
+      },
+      {
+        "seedKey": "north-supplies",
+        "registerSeedKey": "north-aug31",
+        "createdByUserSeedKey": "manager-north",
+        "movementType": "expense",
+        "amount": 600,
+        "concept": "Compra menor de agua e hielo",
+        "reference": "CAJA-NOR-014",
+        "createdAt": "2026-08-31T18:00:00Z"
+      },
+      {
+        "seedKey": "downtown-extra-change",
+        "registerSeedKey": "downtown-aug30",
+        "createdByUserSeedKey": "manager-center",
+        "movementType": "income",
+        "amount": 1000,
+        "concept": "Refuerzo de efectivo para cambio",
+        "reference": "ADM-DOW-007",
+        "createdAt": "2026-08-30T13:30:00Z"
+      },
+      {
+        "seedKey": "east-transport",
+        "registerSeedKey": "east-aug29",
+        "createdByUserSeedKey": "admin",
+        "movementType": "expense",
+        "amount": 275,
+        "concept": "Transporte de paquete a sucursal",
+        "reference": "CAJA-EAS-003",
+        "createdAt": "2026-08-29T20:00:00Z"
+      }
+    ]
   }
 })

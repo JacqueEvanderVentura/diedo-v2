@@ -21,13 +21,14 @@ from app.repositories.agenda import (
     AppointmentRecord,
 )
 from app.services.auth import AuthPrincipal
-from app.services.authorization import PermissionGrant
+from app.services.authorization import AuthorizationService, PermissionGrant
 from app.services.errors import (
     AuthorizationError,
     ConflictError,
     InvalidOperationError,
     ResourceNotFoundError,
 )
+from app.services.pos import PosService
 
 _WEEKDAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 _FIELD_META = {
@@ -120,6 +121,8 @@ class AgendaService:
         branch = self._repository.branch(grant.workspace_id, branch_id)
         if branch is None:
             raise ResourceNotFoundError("La sucursal no existe o no está activa.", "branchId")
+        if cast(bool, values["pending_payment"]) and cast(Decimal, values["pending_amount"]) > 0:
+            self._require_receivables_manage(principal, {branch_id})
 
         fingerprint = self._fingerprint(values)
         existing = self._repository.records_for_idempotency_key(grant.workspace_id, idempotency_key)
@@ -179,6 +182,8 @@ class AgendaService:
                 if conflict is not None:
                     raise self._slot_conflict()
 
+                status = cast(str, values["status"])
+                is_cancelled = status == "cancelled"
                 appointment = Appointment(
                     workspace_id=grant.workspace_id,
                     branch_id=branch_id,
@@ -196,10 +201,14 @@ class AgendaService:
                     customer_phone=cast(str | None, values.get("customer_phone")),
                     service_name=cast(str, values["service_name"]),
                     price=cast(Decimal, values["price"]),
-                    status=cast(str, values["status"]),
+                    status=status,
                     notes=cast(str | None, values.get("notes")),
-                    pending_payment=cast(bool, values["pending_payment"]),
-                    pending_amount=cast(Decimal, values["pending_amount"]),
+                    pending_payment=(
+                        False if is_cancelled else cast(bool, values["pending_payment"])
+                    ),
+                    pending_amount=(
+                        Decimal("0") if is_cancelled else cast(Decimal, values["pending_amount"])
+                    ),
                     first_time=cast(bool, values["first_time"]),
                     free_trial=cast(bool, values["free_trial"]),
                     reminder_sent=cast(bool, values["reminder_sent"]),
@@ -241,6 +250,11 @@ class AgendaService:
                         ),
                     },
                 )
+                if appointment.pending_payment and appointment.pending_amount > 0:
+                    PosService(self._session).sync_appointment_receivable(
+                        principal=principal,
+                        appointment=appointment,
+                    )
                 appointments.append(appointment)
             self._session.commit()
         except ConflictError:
@@ -345,7 +359,31 @@ class AgendaService:
             "pending_payment": changes.get("pending_payment", appointment.pending_payment),
             "pending_amount": changes.get("pending_amount", appointment.pending_amount),
         }
+        if status == "cancelled":
+            final_money["pending_payment"] = False
+            final_money["pending_amount"] = Decimal("0")
         self._validate_money(final_money)
+        had_pending_balance = self._has_pending_balance(
+            status=appointment.status,
+            pending_payment=appointment.pending_payment,
+            pending_amount=appointment.pending_amount,
+        )
+        will_have_pending_balance = self._has_pending_balance(
+            status=status,
+            pending_payment=cast(bool, final_money["pending_payment"]),
+            pending_amount=cast(Decimal, final_money["pending_amount"]),
+        )
+        financial_values_changed = (
+            branch_id != appointment.branch_id
+            or customer_id != appointment.customer_id
+            or final_money["pending_payment"] != appointment.pending_payment
+            or final_money["pending_amount"] != appointment.pending_amount
+        )
+        if (had_pending_balance or will_have_pending_balance) and financial_values_changed:
+            self._require_receivables_manage(
+                principal,
+                {appointment.branch_id, branch_id},
+            )
         before = self._public_values(appointment)
         field_mapping = {
             "branch_id": branch_id,
@@ -398,7 +436,14 @@ class AgendaService:
                 request_id=get_request_id(),
                 details={"changedFields": sorted(changes), "version": appointment.version},
             )
+            PosService(self._session).sync_appointment_receivable(
+                principal=principal,
+                appointment=appointment,
+            )
             self._session.commit()
+        except ConflictError:
+            self._session.rollback()
+            raise
         except IntegrityError as exc:
             self._session.rollback()
             if self._integrity_constraint(exc) in {
@@ -536,6 +581,27 @@ class AgendaService:
             raise InvalidOperationError(
                 "Activa pago pendiente antes de indicar un monto.", "pendingAmount"
             )
+
+    @staticmethod
+    def _has_pending_balance(
+        *,
+        status: str,
+        pending_payment: bool,
+        pending_amount: Decimal,
+    ) -> bool:
+        return status != "cancelled" and pending_payment and pending_amount > 0
+
+    def _require_receivables_manage(
+        self,
+        principal: AuthPrincipal,
+        branch_ids: set[UUID],
+    ) -> None:
+        grant = AuthorizationService(self._session).require_permission(
+            principal,
+            "pos.receivables.manage",
+        )
+        for branch_id in branch_ids:
+            self._require_branch_access(grant, branch_id)
 
     @staticmethod
     def _fingerprint(values: dict[str, Any]) -> str:

@@ -1,22 +1,23 @@
 {
   "seedVersion": "v1",
-  "schemaVersion": "20260831_0012",
+  "schemaVersion": "20260901_0014",
   "workspaceSlug": "local-erp",
-  "modules": ["foundation", "iam", "configuration", "crm", "hr", "appointments", "inventory", "purchasing", "incidents"],
+  "modules": ["foundation", "dashboard", "iam", "configuration", "crm", "sales", "hr", "appointments", "inventory", "pos", "purchasing", "incidents"],
   "files": [
-    {"name": "agenda.json", "sha256": "bcedc7da27dca581475b9342c5e857428e8fac347fbab59c5a048fdb1b3e8f0d", "count": 0},
+    {"name": "agenda.json", "sha256": "76b577e50d460250e65aa7d3b84963682212a21843a6d621aa186bd5cc590945", "count": 9},
     {"name": "catalog.json", "sha256": "50d124558bd1533ef9758e8e0b52fabbe1ed2c263edbe5a4144930e9be521db3", "count": 22},
-    {"name": "configuration.json", "sha256": "9ef51f0f6e553020991a9c23f39192b362ad5fd75d93aac586f653b9e68b1a5b", "count": 3},
+    {"name": "configuration.json", "sha256": "96104119ccfd259ffba9279769915bcaf7d81cc084c3f5b00e7a827d3756fac9", "count": 5},
     {"name": "crm.json", "sha256": "bcedc7da27dca581475b9342c5e857428e8fac347fbab59c5a048fdb1b3e8f0d", "count": 0},
     {"name": "customers.json", "sha256": "a3eb4a3b6c9655ea07f6373b906b7a0895cacfc1463779d9131a64803109d886", "count": 5},
+    {"name": "dashboard.json", "sha256": "b6f697d591e2b1d38c232e7ade52a5f814f2e8099a2066923a4a4266b9aafab9", "count": 18},
     {"name": "employees.json", "sha256": "b001d29acf87bd0722a9e24bea8bc37d5a693ed4785ab2f2c9533eec8a747946", "count": 13},
     {"name": "finance.json", "sha256": "bcedc7da27dca581475b9342c5e857428e8fac347fbab59c5a048fdb1b3e8f0d", "count": 0},
     {"name": "foundation.json", "sha256": "1812c24d5ebbd611189af4a315b2e4155009c0a001fcd328bb7df1b96b8fe9f3", "count": 3},
     {"name": "hr.json", "sha256": "ff7c7768b9c88aace36dec06152e7e981937abd483ea37d11d742e745f699f17", "count": 4},
-    {"name": "iam.json", "sha256": "aecd245ae6b84a039c534c36580c9d988456f52f3f8c5a261dc4abfaefb5a154", "count": 8},
+    {"name": "iam.json", "sha256": "88d8725ae90d7fe8cee230f7168a598614a8585b820688fa2df12582364059ac", "count": 8},
     {"name": "incidents.json", "sha256": "da61f160274a75a1c8a4e22df661094e8fddc8942f1287332012e2196e6eeec1", "count": 6},
     {"name": "inventory.json", "sha256": "36a1be6ff50dd0f4482fa4d23713b0ae88324531c9614702f84a931139c8f322", "count": 37},
-    {"name": "pos.json", "sha256": "bcedc7da27dca581475b9342c5e857428e8fac347fbab59c5a048fdb1b3e8f0d", "count": 0},
+    {"name": "pos.json", "sha256": "c8baf7e943cf2a792a128a146359d1a4876877a542353908bf59c2fa56483419", "count": 31},
     {"name": "purchasing.json", "sha256": "2bacf45109f4fc5a57729ef5bb6277341c8e9afd44369278a2b96d4a6166c54d", "count": 4}
   ]
 }

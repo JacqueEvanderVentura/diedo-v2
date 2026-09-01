@@ -21,8 +21,10 @@ import { useSortedRows } from '@/hooks/useTableControls'
 import { DataSourceNotice } from '@/components/ui/DataSourceNotice'
 import { useAgendaPolling } from '../hooks/useAgendaPolling'
 import { useSessionStore } from '@/stores/sessionStore'
+import { getAppointmentReceivablePolicy } from '../lib/receivablePermissions'
 
-function ActionButtons({ apt, onEdit, onDelete, onShare, canManage }) {
+function ActionButtons({ apt, onEdit, onDelete, onShare, canManage, online, canManageReceivables }) {
+  const cancellation = getAppointmentReceivablePolicy({ appointment: apt, online, canManageReceivables })
   return (
     <div className="flex items-center justify-end gap-1">
       <WhatsAppMenuButton
@@ -57,22 +59,25 @@ function ActionButtons({ apt, onEdit, onDelete, onShare, canManage }) {
           >
             <Pencil className="h-4 w-4" />
           </button>
-          <button
-            type="button"
-            onClick={() => onDelete(apt)}
-            title="Cancelar"
-            data-testid={`gestion-delete-${apt.id}`}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
+          <span title={cancellation.cancelReason || 'Cancelar'}>
+            <button
+              type="button"
+              onClick={() => onDelete(apt)}
+              disabled={!cancellation.canCancel}
+              aria-label={cancellation.cancelReason || 'Cancelar'}
+              data-testid={`gestion-delete-${apt.id}`}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </span>
         </>
       )}
     </div>
   )
 }
 
-function AppointmentMobileCard({ apt, branchName, staffName, onEdit, onDelete, onShare, canManage }) {
+function AppointmentMobileCard({ apt, branchName, staffName, onEdit, onDelete, onShare, canManage, online, canManageReceivables }) {
   const st = statusMeta(apt.status)
   const proximo = isProximoAppointment(apt)
 
@@ -105,7 +110,7 @@ function AppointmentMobileCard({ apt, branchName, staffName, onEdit, onDelete, o
       </div>
       <div className="mt-3 flex items-center justify-between border-t border-slate-50 pt-3">
         <span className="font-heading text-sm font-bold text-blue-600">{formatDOP(apt.price || 0)}</span>
-        <ActionButtons apt={apt} onEdit={onEdit} onDelete={onDelete} onShare={onShare} canManage={canManage} />
+        <ActionButtons apt={apt} onEdit={onEdit} onDelete={onDelete} onShare={onShare} canManage={canManage} online={online} canManageReceivables={canManageReceivables} />
       </div>
     </div>
   )
@@ -119,6 +124,8 @@ export default function GestionCitasPage() {
   const rrhhEmployees = useRrhhStore((s) => s.employees)
   const branches = useConfigStore((s) => s.branches)
   const canManage = useSessionStore((s) => s.hasPermission('appointment.manage'))
+  const canManageReceivables = useSessionStore((s) => s.hasPermission('pos.receivables.manage'))
+  const online = useSessionStore((s) => s.status === 'online')
 
   const [search, setSearch] = useState('')
   const [employeeId, setEmployeeId] = useState('all')
@@ -187,6 +194,11 @@ export default function GestionCitasPage() {
   }
 
   const remove = async (apt) => {
+    const cancellation = getAppointmentReceivablePolicy({ appointment: apt, online, canManageReceivables })
+    if (!cancellation.canCancel) {
+      toast.info(cancellation.cancelReason)
+      return
+    }
     if (!window.confirm(`¿Cancelar la cita de ${apt.customerName}?`)) return
     try {
       await deleteAppointment(apt.id)
@@ -286,7 +298,7 @@ export default function GestionCitasPage() {
                         </td>
                         <td className="whitespace-nowrap px-6 py-4 text-right font-heading font-bold text-blue-600">{formatDOP(apt.price || 0)}</td>
                         <td className="px-6 py-4">
-                          <ActionButtons apt={apt} onEdit={openEdit} onDelete={remove} onShare={setShareTarget} canManage={canManage} />
+                          <ActionButtons apt={apt} onEdit={openEdit} onDelete={remove} onShare={setShareTarget} canManage={canManage} online={online} canManageReceivables={canManageReceivables} />
                         </td>
                       </tr>
                     )
@@ -307,6 +319,8 @@ export default function GestionCitasPage() {
                 onDelete={remove}
                 onShare={setShareTarget}
                 canManage={canManage}
+                online={online}
+                canManageReceivables={canManageReceivables}
               />
             ))}
           </ResponsiveCards>

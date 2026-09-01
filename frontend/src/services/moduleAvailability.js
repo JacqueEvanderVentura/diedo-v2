@@ -1,5 +1,6 @@
 const API_CONNECTED_MODULE_SET = new Set([
   'foundation',
+  'dashboard',
   'iam',
   'catalog',
   'crm',
@@ -7,7 +8,13 @@ const API_CONNECTED_MODULE_SET = new Set([
   'appointments',
   'purchasing',
   'incidents',
+  'sales',
+  'pos',
 ])
+
+const MODULE_DEPENDENCIES = Object.freeze({
+  pos: Object.freeze(['sales', 'inventory']),
+})
 
 export const API_CONNECTED_MODULES = Object.freeze([...API_CONNECTED_MODULE_SET])
 
@@ -19,9 +26,19 @@ export function isModuleAvailable(moduleCode, enabledModules = []) {
   if (!moduleCode || !isApiConnectedModule(moduleCode)) return true
   const enabled = enabledModules instanceof Set ? enabledModules : new Set(enabledModules)
   return enabled.has(moduleCode)
+    && (MODULE_DEPENDENCIES[moduleCode] || []).every((dependency) => enabled.has(dependency))
 }
 
 export function routeRequirement(pathname) {
+  if (pathname === '/pos/caja' || pathname.startsWith('/pos/caja/')) {
+    return { module: 'pos', permission: 'pos.cash.read' }
+  }
+  if (pathname === '/pos/cuentas-por-cobrar' || pathname.startsWith('/pos/cuentas-por-cobrar/')) {
+    return { module: 'pos', permission: 'pos.receivables.read' }
+  }
+  if (pathname === '/pos' || pathname.startsWith('/pos/')) {
+    return { module: 'pos', permission: 'pos.read' }
+  }
   if (pathname === '/incidencias' || pathname.startsWith('/incidencias/')) {
     return { module: 'incidents', permission: 'incidents.read' }
   }
@@ -68,7 +85,7 @@ export function routeRequirement(pathname) {
     return { module: 'catalog', permission: 'catalog.read' }
   }
   if (pathname.startsWith('/dashboard')) {
-    return { module: 'foundation', permission: 'workspace.read' }
+    return { module: 'dashboard', permission: 'dashboard.read' }
   }
   return null
 }

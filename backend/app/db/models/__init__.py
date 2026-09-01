@@ -4,6 +4,7 @@ from app.db.models.administration import DemoSeedRegistry, PaymentMethod, UserIn
 from app.db.models.agenda import Appointment, AppointmentEvent, AppointmentResource
 from app.db.models.audit import AuditEntry
 from app.db.models.catalog import Item, ItemBranchAssignment, ItemCategory, UnitOfMeasure
+from app.db.models.dashboard import Task
 from app.db.models.foundation import (
     Branch,
     LegalEntity,
@@ -57,12 +58,24 @@ from app.db.models.master_data import (
     EmployeeSchedule,
     EmployeeSupervisor,
 )
+from app.db.models.pos import CashMovement, CashMovementLine, CashRegister
 from app.db.models.purchasing import (
     PurchaseRequest,
     PurchaseRequestItem,
     PurchasingSettings,
     Supplier,
     SupplierBranchAssignment,
+)
+from app.db.models.sales import (
+    CustomerPayment,
+    CustomerReceivable,
+    CustomerReceivableLine,
+    PaymentProof,
+    Sale,
+    SaleLine,
+    SalesDocumentCounter,
+    SalesQuote,
+    SalesQuoteLine,
 )
 
 __all__ = [
@@ -76,8 +89,14 @@ __all__ = [
     "Asset",
     "AssetCategory",
     "Branch",
+    "CashMovement",
+    "CashMovementLine",
+    "CashRegister",
     "Customer",
     "CustomerBranchAssignment",
+    "CustomerPayment",
+    "CustomerReceivable",
+    "CustomerReceivableLine",
     "DemoSeedRegistry",
     "Employee",
     "EmployeeBranchAssignment",
@@ -108,6 +127,7 @@ __all__ = [
     "ModuleEntitlement",
     "Permission",
     "PaymentMethod",
+    "PaymentProof",
     "PlatformUser",
     "PurchaseRequest",
     "PurchaseRequestItem",
@@ -117,8 +137,14 @@ __all__ = [
     "Role",
     "RoleAssignment",
     "RolePermission",
+    "Sale",
+    "SaleLine",
+    "SalesDocumentCounter",
+    "SalesQuote",
+    "SalesQuoteLine",
     "Supplier",
     "SupplierBranchAssignment",
+    "Task",
     "Workspace",
     "WorkspaceMembership",
     "UnitOfMeasure",

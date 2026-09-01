@@ -12,7 +12,7 @@ function BannerActions({ primary, secondary }) {
   )
 }
 
-function QuoteSection({ debt, onCollectQuote, onAddQuoteToCart }) {
+function QuoteSection({ debt, onCollectQuote, onAddQuoteToCart, collectDisabled, manageDisabled }) {
   return (
     <div
       className="min-w-0 overflow-hidden rounded-xl border border-sky-200 bg-sky-50 p-3.5"
@@ -42,6 +42,7 @@ function QuoteSection({ debt, onCollectQuote, onAddQuoteToCart }) {
               variant="secondary"
               className="w-full border-sky-300 bg-white text-sky-900 hover:bg-sky-100"
               onClick={onCollectQuote}
+              disabled={collectDisabled}
               data-testid="customer-quote-collect"
             >
               Pedir cuenta
@@ -58,6 +59,7 @@ function QuoteSection({ debt, onCollectQuote, onAddQuoteToCart }) {
               size="sm"
               className="w-full bg-sky-600 hover:bg-sky-700"
               onClick={onAddQuoteToCart}
+              disabled={manageDisabled}
               data-testid="customer-quote-add-cart"
             >
               Al carrito ({debt.quoteItemCount})
@@ -69,7 +71,7 @@ function QuoteSection({ debt, onCollectQuote, onAddQuoteToCart }) {
   )
 }
 
-function ReceivableSection({ debt, onCollectReceivable, onAddReceivableToCart }) {
+function ReceivableSection({ debt, onCollectReceivable, onAddReceivableToCart, disabled }) {
   return (
     <div
       className="min-w-0 overflow-hidden rounded-xl border border-amber-200 bg-amber-50 p-3.5"
@@ -100,6 +102,7 @@ function ReceivableSection({ debt, onCollectReceivable, onAddReceivableToCart })
               variant="secondary"
               className="w-full border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
               onClick={onCollectReceivable}
+              disabled={disabled}
               data-testid="customer-receivable-collect"
             >
               Registrar pago
@@ -116,6 +119,7 @@ function ReceivableSection({ debt, onCollectReceivable, onAddReceivableToCart })
               size="sm"
               className="w-full bg-amber-600 hover:bg-amber-700"
               onClick={onAddReceivableToCart}
+              disabled={disabled}
               data-testid="customer-receivable-add-cart"
             >
               Al carrito ({debt.receivableItemCount})
@@ -134,6 +138,9 @@ export function CustomerDebtBanner({
   onAddQuoteToCart,
   onAddReceivableToCart,
   onAddAllToCart,
+  canManageQuote = true,
+  canCollectQuote = true,
+  canCollectReceivable = true,
 }) {
   if (!debt) return null
 
@@ -147,6 +154,8 @@ export function CustomerDebtBanner({
         debt={debt}
         onCollectQuote={onCollectQuote}
         onAddQuoteToCart={onAddQuoteToCart}
+        collectDisabled={!canCollectQuote}
+        manageDisabled={!canManageQuote}
       />
     )
   }
@@ -157,6 +166,7 @@ export function CustomerDebtBanner({
         debt={debt}
         onCollectReceivable={onCollectReceivable}
         onAddReceivableToCart={onAddReceivableToCart}
+        disabled={!canCollectReceivable}
       />
     )
   }
@@ -171,11 +181,14 @@ export function CustomerDebtBanner({
         debt={debt}
         onCollectQuote={onCollectQuote}
         onAddQuoteToCart={onAddQuoteToCart}
+        collectDisabled={!canCollectQuote}
+        manageDisabled={!canManageQuote}
       />
       <ReceivableSection
         debt={debt}
         onCollectReceivable={onCollectReceivable}
         onAddReceivableToCart={onAddReceivableToCart}
+        disabled={!canCollectReceivable}
       />
       <Tip
         title="Agregar todo"
@@ -188,6 +201,7 @@ export function CustomerDebtBanner({
           variant="secondary"
           className="w-full border-slate-200"
           onClick={onAddAllToCart}
+          disabled={!canManageQuote || !canCollectReceivable}
           data-testid="customer-debt-add-all"
         >
           Agregar todo al carrito ({debt.itemCount})

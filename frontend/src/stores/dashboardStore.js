@@ -1,30 +1,64 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { KPIS, SALES_TREND, STOCK_ALERTS, RECENT_ACTIVITY, APPOINTMENTS_TODAY } from '@/data/dashboard'
+import { dashboardGateway } from '@/services/dashboardApi'
 
-// Dashboard store. Holds the persistent period filter + derived mock data.
+let latestRequest = 0
+
+const EMPTY_SUMMARY = Object.freeze({
+  revenue: 0,
+  appointmentsToday: 0,
+  openTasks: 0,
+  currencyCode: 'DOP',
+})
+const EMPTY_TREND = Object.freeze({ total: 0, points: [] })
+
 export const useDashboardStore = create(
   persist(
     (set, get) => ({
-      period: 'week', // today | week | month | quarter
+      period: 'week',
       branchId: 'all',
+      summary: EMPTY_SUMMARY,
+      trend: EMPTY_TREND,
+      stockAlerts: [],
+      appointments: [],
+      activity: [],
       loading: false,
+      error: null,
+      dataState: dashboardGateway.getState(),
+
       setPeriod: (period) => set({ period }),
       setBranchId: (branchId) => set({ branchId }),
-      getKpis: () => KPIS[get().period] || KPIS.week,
-      getSalesTrend: () => SALES_TREND[get().period] || SALES_TREND.week,
-      stockAlerts: STOCK_ALERTS,
-      activity: RECENT_ACTIVITY,
-      appointments: APPOINTMENTS_TODAY,
+
+      hydrate: async (filters = {}) => {
+        const requestId = ++latestRequest
+        const period = filters.period || get().period
+        const branchId = filters.branchId || get().branchId
+        set({ loading: true, error: null })
+        try {
+          const result = await dashboardGateway.read('dashboard', { period, branchId })
+          if (requestId !== latestRequest) return result.data
+          set({
+            ...result.data,
+            dataState: dashboardGateway.getState(),
+            loading: false,
+          })
+          return result.data
+        } catch (error) {
+          if (requestId === latestRequest) {
+            set({ error, dataState: dashboardGateway.getState(), loading: false })
+          }
+          throw error
+        }
+      },
     }),
     {
       name: 'diedo-dashboard',
-      version: 1,
+      version: 2,
       migrate: (persisted) => ({
         period: persisted?.period ?? 'week',
         branchId: persisted?.branchId ?? 'all',
       }),
-      partialize: (s) => ({ period: s.period, branchId: s.branchId }),
+      partialize: (state) => ({ period: state.period, branchId: state.branchId }),
     }
   )
 )

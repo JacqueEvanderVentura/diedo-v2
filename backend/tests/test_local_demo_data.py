@@ -1,8 +1,14 @@
+from decimal import Decimal
+
 import pytest
 from app.core.security import hash_password, verify_password
 from app.db.models import (
     Asset,
     Branch,
+    CashMovement,
+    CashRegister,
+    CustomerPayment,
+    CustomerReceivable,
     DemoSeedRegistry,
     Incident,
     IncidentAttachment,
@@ -16,6 +22,8 @@ from app.db.models import (
     PlatformUser,
     Role,
     RolePermission,
+    Sale,
+    SalesQuote,
     WorkspaceMembership,
 )
 from app.db.session import session_scope
@@ -51,6 +59,15 @@ def test_demo_seed_flag_false_is_a_no_op() -> None:
     assert summary.purchase_request_count == 0
     assert summary.incident_count == 0
     assert summary.incident_attachment_count == 0
+    assert summary.pos_register_count == 0
+    assert summary.pos_quote_count == 0
+    assert summary.pos_sale_count == 0
+    assert summary.pos_receivable_count == 0
+    assert summary.pos_payment_count == 0
+    assert summary.pos_cash_movement_count == 0
+    assert summary.pos_inventory_movement_count == 0
+    assert summary.appointment_count == 0
+    assert summary.dashboard_task_count == 0
 
 
 @pytest.mark.integration
@@ -122,6 +139,7 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
             select(func.count(PaymentMethod.id)).where(
                 PaymentMethod.workspace_id == second.workspace_id,
                 PaymentMethod.status != "archived",
+                PaymentMethod.is_system.is_(True),
             )
         )
         registry_count = session.scalar(
@@ -355,6 +373,94 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
                 DemoSeedRegistry.seed_key == "north",
             )
         )
+        pos_entity_types = {
+            "cash_register",
+            "sales_quote",
+            "sale",
+            "customer_receivable",
+            "customer_payment",
+            "cash_movement",
+            "pos_inventory_movement",
+        }
+        pos_registry_counts = dict(
+            session.execute(
+                select(DemoSeedRegistry.entity_type, func.count(DemoSeedRegistry.id))
+                .where(
+                    DemoSeedRegistry.workspace_id == second.workspace_id,
+                    DemoSeedRegistry.seed_version == "v1",
+                    DemoSeedRegistry.entity_type.in_(pos_entity_types),
+                )
+                .group_by(DemoSeedRegistry.entity_type)
+            ).all()
+        )
+        seeded_sale_ids = select(DemoSeedRegistry.entity_id).where(
+            DemoSeedRegistry.workspace_id == second.workspace_id,
+            DemoSeedRegistry.seed_version == "v1",
+            DemoSeedRegistry.entity_type == "sale",
+        )
+        seeded_quote_ids = select(DemoSeedRegistry.entity_id).where(
+            DemoSeedRegistry.workspace_id == second.workspace_id,
+            DemoSeedRegistry.seed_version == "v1",
+            DemoSeedRegistry.entity_type == "sales_quote",
+        )
+        seeded_receivable_ids = select(DemoSeedRegistry.entity_id).where(
+            DemoSeedRegistry.workspace_id == second.workspace_id,
+            DemoSeedRegistry.seed_version == "v1",
+            DemoSeedRegistry.entity_type == "customer_receivable",
+        )
+        seeded_payment_ids = select(DemoSeedRegistry.entity_id).where(
+            DemoSeedRegistry.workspace_id == second.workspace_id,
+            DemoSeedRegistry.seed_version == "v1",
+            DemoSeedRegistry.entity_type == "customer_payment",
+        )
+        seeded_cash_movement_ids = select(DemoSeedRegistry.entity_id).where(
+            DemoSeedRegistry.workspace_id == second.workspace_id,
+            DemoSeedRegistry.seed_version == "v1",
+            DemoSeedRegistry.entity_type == "cash_movement",
+        )
+        sale_statuses = dict(
+            session.execute(
+                select(Sale.status, func.count(Sale.id))
+                .where(Sale.id.in_(seeded_sale_ids))
+                .group_by(Sale.status)
+            ).all()
+        )
+        quote_statuses = dict(
+            session.execute(
+                select(SalesQuote.status, func.count(SalesQuote.id))
+                .where(SalesQuote.id.in_(seeded_quote_ids))
+                .group_by(SalesQuote.status)
+            ).all()
+        )
+        receivable_statuses = dict(
+            session.execute(
+                select(CustomerReceivable.status, func.count(CustomerReceivable.id))
+                .where(CustomerReceivable.id.in_(seeded_receivable_ids))
+                .group_by(CustomerReceivable.status)
+            ).all()
+        )
+        payment_statuses = dict(
+            session.execute(
+                select(CustomerPayment.status, func.count(CustomerPayment.id))
+                .where(CustomerPayment.id.in_(seeded_payment_ids))
+                .group_by(CustomerPayment.status)
+            ).all()
+        )
+        cash_movement_types = dict(
+            session.execute(
+                select(CashMovement.movement_type, func.count(CashMovement.id))
+                .where(CashMovement.id.in_(seeded_cash_movement_ids))
+                .group_by(CashMovement.movement_type)
+            ).all()
+        )
+        north_register_id = session.scalar(
+            select(DemoSeedRegistry.entity_id).where(
+                DemoSeedRegistry.workspace_id == second.workspace_id,
+                DemoSeedRegistry.entity_type == "cash_register",
+                DemoSeedRegistry.seed_key == "north-aug31",
+            )
+        )
+        north_register = session.get(CashRegister, north_register_id)
 
     assert second.workspace_id == first.workspace_id
     assert owner is not None
@@ -364,7 +470,7 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
     assert status_counts == {"active": 7, "suspended": 1}
     assert manager_permission_count is not None
     assert manager_permission_count >= 6
-    assert payment_method_count == 3
+    assert payment_method_count == 5
     assert registry_count is not None and registry_count >= 1
     assert first.customer_count == second.customer_count == customer_count == 5
     assert first.employee_count == second.employee_count == employee_count == 13
@@ -408,6 +514,43 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
     assert supplies_per_branch == {"DOWNTOWN": 4, "EAST": 4, "HQ": 4, "NORTH": 4}
     assert stock_items_per_branch == {"DOWNTOWN": 10, "EAST": 10, "HQ": 10, "NORTH": 10}
     assert assets_per_branch == {"DOWNTOWN": 4, "EAST": 4, "HQ": 4, "NORTH": 4}
+    assert first.pos_register_count == second.pos_register_count == 4
+    assert first.pos_quote_count == second.pos_quote_count == 6
+    assert first.pos_sale_count == second.pos_sale_count == 16
+    assert first.pos_receivable_count == second.pos_receivable_count == 6
+    assert first.pos_payment_count == second.pos_payment_count == 5
+    assert first.pos_cash_movement_count == second.pos_cash_movement_count == 15
+    assert first.pos_inventory_movement_count == second.pos_inventory_movement_count == 9
+    assert first.appointment_count == second.appointment_count == 9
+    assert first.dashboard_task_count == second.dashboard_task_count == 18
+    assert pos_registry_counts == {
+        "cash_movement": 15,
+        "cash_register": 4,
+        "customer_payment": 5,
+        "customer_receivable": 6,
+        "pos_inventory_movement": 9,
+        "sale": 16,
+        "sales_quote": 6,
+    }
+    assert sale_statuses == {"completed": 14, "voided": 2}
+    assert quote_statuses == {"cancelled": 1, "converted": 1, "expired": 1, "open": 3}
+    assert receivable_statuses == {"cancelled": 1, "paid": 1, "partial": 2, "pending": 2}
+    assert payment_statuses == {"posted": 4, "reversed": 1}
+    assert cash_movement_types == {
+        "expense": 3,
+        "income": 2,
+        "receivable_payment": 2,
+        "reversal": 2,
+        "sale": 6,
+    }
+    assert north_register is not None
+    assert north_register.status == "closed"
+    assert north_register.cash_sales_amount == Decimal("1840.80")
+    assert north_register.receivable_payments_amount == Decimal("1500.00")
+    assert north_register.cash_expense_amount == Decimal("600.00")
+    assert north_register.expected_cash == Decimal("6240.80")
+    assert north_register.actual_cash == Decimal("6290.80")
+    assert north_register.difference == Decimal("50.00")
     assert north_branch is not None and north_branch.id == adopted_branch_id
     assert north_branch.name == "Sucursal Norte"
     assert north_registry is not None and north_registry.entity_id == adopted_branch_id

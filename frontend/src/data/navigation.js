@@ -1,16 +1,16 @@
 // Navigation registry — grouped. A group with `children` renders as an
 // expandable section; an item with `to` renders as a direct link.
 export const NAV_GROUPS = [
-  { id: 'dashboard', module: 'foundation', label: 'Dashboard', to: '/dashboard', icon: 'LayoutDashboard' },
+  { id: 'dashboard', module: 'dashboard', label: 'Dashboard', to: '/dashboard', icon: 'LayoutDashboard' },
   {
     id: 'pos',
     module: 'pos',
     label: 'Terminal POS',
     icon: 'ShoppingCart',
     children: [
-      { label: 'Punto de Venta', to: '/pos' },
-      { label: 'Caja', to: '/pos/caja' },
-      { label: 'Cuentas por Cobrar', to: '/pos/cuentas-por-cobrar' },
+      { label: 'Punto de Venta', to: '/pos', permission: 'pos.read' },
+      { label: 'Caja', to: '/pos/caja', permission: 'pos.cash.read' },
+      { label: 'Cuentas por Cobrar', to: '/pos/cuentas-por-cobrar', permission: 'pos.receivables.read' },
     ],
   },
   {

@@ -10,17 +10,25 @@ export function ExpenseModal({ open, onClose }) {
   const [concept, setConcept] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const addExpense = usePosStore((s) => s.addExpense)
 
-  const submit = () => {
+  const submit = async () => {
     if (!concept.trim()) return setError('Ingresa un concepto para el gasto.')
     if (!amount || Number(amount) <= 0) return setError('Ingresa un monto válido.')
-    addExpense({ concept: concept.trim(), amount: Number(amount) })
-    toast.success(`Gasto registrado: ${concept} · ${formatDOP(amount)}`)
-    setConcept('')
-    setAmount('')
-    setError('')
-    onClose()
+    setSubmitting(true)
+    try {
+      await addExpense({ concept: concept.trim(), amount: Number(amount) })
+      toast.success(`Gasto registrado: ${concept} · ${formatDOP(amount)}`)
+      setConcept('')
+      setAmount('')
+      setError('')
+      onClose()
+    } catch (operationError) {
+      setError(operationError.message || 'No se pudo registrar el gasto.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -60,7 +68,7 @@ export function ExpenseModal({ open, onClose }) {
           <Button variant="secondary" className="flex-1" onClick={onClose} data-testid="expense-cancel">
             Cancelar
           </Button>
-          <Button className="flex-1" onClick={submit} data-testid="expense-submit">
+          <Button className="flex-1" onClick={submit} disabled={submitting} data-testid="expense-submit">
             Registrar
           </Button>
         </div>

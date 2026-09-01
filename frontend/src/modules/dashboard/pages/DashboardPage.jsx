@@ -1,11 +1,8 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useDashboardStore } from '@/stores/dashboardStore'
-import { useCatalogStore, deriveLowStock } from '@/stores/catalogStore'
-import { useAgendaStore, todayKey } from '@/stores/agendaStore'
-import { usePosStore } from '@/stores/posStore'
 import { useConfigStore } from '@/stores/configStore'
-import { DASHBOARD_FILTERS, KPIS, SALES_TREND } from '@/data/dashboard'
+import { DASHBOARD_FILTERS, LEADS_BY_PERIOD } from '@/data/dashboard'
 import { useSessionStore } from '@/stores/sessionStore'
 import { buildBranchFilterOptions } from '@/lib/branches'
 import { Select } from '@/components/ui/Select'
@@ -17,6 +14,13 @@ import { RecentActivity } from '../components/RecentActivity'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { cn } from '@/lib/utils'
 
+const REVENUE_LABELS = {
+  today: 'Ingresos Hoy',
+  week: 'Ingresos Semana',
+  month: 'Ingresos Mes',
+  quarter: 'Ingresos Trimestre',
+}
+
 function greeting() {
   const h = new Date().getHours()
   if (h < 12) return 'Buenos días'
@@ -25,69 +29,71 @@ function greeting() {
 }
 
 export default function DashboardPage() {
-  const sessionUser = useSessionStore((s) => s.user)
-  const period = useDashboardStore((s) => s.period)
-  const branchId = useDashboardStore((s) => s.branchId)
-  const setPeriod = useDashboardStore((s) => s.setPeriod)
-  const setBranchId = useDashboardStore((s) => s.setBranchId)
-  const activity = useDashboardStore((s) => s.activity)
-  const branches = useConfigStore((s) => s.branches)
-  const sales = usePosStore((s) => s.sales)
-  const catalogProducts = useCatalogStore((s) => s.products)
-  const appointments = useAgendaStore((s) => s.appointments)
-  const todayCount = useMemo(
-    () =>
-      appointments.filter(
-        (a) => a.date === todayKey() && (branchId === 'all' || a.branchId === branchId)
-      ).length,
-    [appointments, branchId]
-  )
-  const stockAlerts = useMemo(() => {
-    const alerts = deriveLowStock(catalogProducts)
-    if (branchId === 'all') return alerts
-    return alerts.filter((a) => {
-      const product = catalogProducts.find((p) => p.id === a.id || p.name === a.name)
-      return product?.branchId === branchId || product?.branchIds?.includes(branchId)
-    })
-  }, [catalogProducts, branchId])
-  const [loading, setLoading] = useState(false)
-  const firstRun = useRef(true)
+  const sessionUser = useSessionStore((state) => state.user)
+  const period = useDashboardStore((state) => state.period)
+  const branchId = useDashboardStore((state) => state.branchId)
+  const setPeriod = useDashboardStore((state) => state.setPeriod)
+  const setBranchId = useDashboardStore((state) => state.setBranchId)
+  const hydrate = useDashboardStore((state) => state.hydrate)
+  const summary = useDashboardStore((state) => state.summary)
+  const trend = useDashboardStore((state) => state.trend)
+  const stockAlerts = useDashboardStore((state) => state.stockAlerts)
+  const appointments = useDashboardStore((state) => state.appointments)
+  const activity = useDashboardStore((state) => state.activity)
+  const loading = useDashboardStore((state) => state.loading)
+  const error = useDashboardStore((state) => state.error)
+  const branches = useConfigStore((state) => state.branches)
 
   useEffect(() => {
-    if (firstRun.current) {
-      firstRun.current = false
-      return
-    }
-    setLoading(true)
-    const t = setTimeout(() => setLoading(false), 400)
-    return () => clearTimeout(t)
-  }, [period, branchId])
+    hydrate({ period, branchId }).catch(() => {})
+  }, [branchId, hydrate, period])
 
-  const kpis = KPIS[period] || KPIS.week
-  const branchSalesTotal = useMemo(() => {
-    if (branchId === 'all') return null
-    const now = Date.now()
-    const days = { today: 1, week: 7, month: 30, quarter: 90 }[period] || 7
-    const start = now - days * 86400000
-    return sales
-      .filter((s) => s.branchId === branchId && new Date(s.createdAt).getTime() >= start)
-      .reduce((sum, s) => sum + (s.total || 0), 0)
-  }, [sales, branchId, period])
+  useEffect(() => {
+    if (branchId === 'all' || branches.some((branch) => branch.id === branchId)) return
+    setBranchId('all')
+  }, [branchId, branches, setBranchId])
 
-  const liveKpis = kpis.map((k) => {
-    if (k.id === 'personal') {
-      return { id: 'citas', label: 'Citas Hoy', value: todayCount, kind: 'number', tag: 'Agenda del día', icon: 'CalendarClock', tone: 'violet' }
-    }
-    if (k.id === 'ingresos' && branchSalesTotal != null) {
-      return { ...k, value: branchSalesTotal, tag: 'Filtrado por sucursal' }
-    }
-    return k
-  })
-  const trend = SALES_TREND[period] || SALES_TREND.week
+  const kpis = [
+    {
+      id: 'ingresos',
+      label: REVENUE_LABELS[period],
+      value: summary.revenue,
+      kind: 'currency',
+      tag: 'Actualización en vivo',
+      icon: 'DollarSign',
+      tone: 'brand',
+    },
+    {
+      id: 'leads',
+      label: 'Leads Activos',
+      value: LEADS_BY_PERIOD[period],
+      kind: 'number',
+      tag: 'Oportunidades en progreso',
+      icon: 'UserPlus',
+      tone: 'sky',
+    },
+    {
+      id: 'citas',
+      label: 'Citas Hoy',
+      value: summary.appointmentsToday,
+      kind: 'number',
+      tag: 'Agenda del día',
+      icon: 'CalendarClock',
+      tone: 'violet',
+    },
+    {
+      id: 'tareas',
+      label: 'Tareas Abiertas',
+      value: summary.openTasks,
+      kind: 'number',
+      tag: 'Pendientes',
+      icon: 'ClipboardList',
+      tone: 'amber',
+    },
+  ]
 
   return (
     <div className="mx-auto w-full max-w-[1600px] p-6 sm:p-8">
-      {/* Header + persistent filter */}
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="font-heading text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
@@ -106,48 +112,62 @@ export default function DashboardPage() {
             data-testid="dashboard-branch-filter"
           />
           <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide rounded-xl border border-slate-100 bg-white p-1 shadow-soft">
-          {DASHBOARD_FILTERS.map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setPeriod(f.id)}
-              data-testid={`dashboard-filter-${f.id}`}
-              className={cn(
-                'whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-semibold transition-[background-color,color] duration-200',
-                period === f.id ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
+            {DASHBOARD_FILTERS.map((filter) => (
+              <button
+                key={filter.id}
+                onClick={() => setPeriod(filter.id)}
+                data-testid={`dashboard-filter-${filter.id}`}
+                className={cn(
+                  'whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-semibold transition-[background-color,color] duration-200',
+                  period === filter.id
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                )}
+              >
+                {filter.label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* KPIs */}
+      {error && (
+        <div
+          className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700"
+          role="status"
+        >
+          No fue posible actualizar el resumen. Verifica la conexión e inténtalo nuevamente.
+        </div>
+      )}
+
       <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {loading
-          ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[168px]" />)
-          : liveKpis.map((kpi, i) => <KpiCard key={kpi.id} kpi={kpi} index={i} />)}
+          ? Array.from({ length: 4 }).map((_, index) => (
+              <Skeleton key={index} className="h-[168px]" />
+            ))
+          : kpis.map((kpi, index) => <KpiCard key={kpi.id} kpi={kpi} index={index} />)}
       </div>
 
-      {/* Chart + stock alerts */}
       <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           {loading ? <Skeleton className="h-[400px]" /> : <SalesChart trend={trend} />}
         </div>
         <div>
-          {loading ? <Skeleton className="h-[400px]" /> : <StockAlerts alerts={stockAlerts} />}
+          {loading ? (
+            <Skeleton className="h-[400px]" />
+          ) : (
+            <StockAlerts alerts={stockAlerts} />
+          )}
         </div>
       </div>
 
-      {/* Appointments + activity */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.1 }}
         className="grid grid-cols-1 gap-6 lg:grid-cols-2"
       >
-        <AppointmentsToday branchId={branchId} />
+        <AppointmentsToday appointments={appointments} />
         <RecentActivity activity={activity} />
       </motion.div>
     </div>

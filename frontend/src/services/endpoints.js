@@ -2,11 +2,11 @@
 // can drop in their own map without touching callers.
 export const ENDPOINTS = {
   dashboard: {
-    summary: '/dashboard/summary',
-    salesTrend: '/dashboard/sales-trend',
-    stockAlerts: '/dashboard/stock-alerts',
-    activity: '/dashboard/activity',
-    appointments: '/dashboard/appointments',
+    summary: '/api/v1/dashboard/summary',
+    salesTrend: '/api/v1/dashboard/sales-trend',
+    stockAlerts: '/api/v1/dashboard/stock-alerts',
+    activity: '/api/v1/dashboard/activity',
+    appointments: '/api/v1/dashboard/appointments',
   },
   pos: {
     products: '/pos/products',

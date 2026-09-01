@@ -8,10 +8,11 @@ import {
 
 describe('moduleAvailability', () => {
   it('limita por entitlement solamente los módulos conectados a la API', () => {
-    const enabled = new Set(['foundation', 'iam', 'catalog', 'crm', 'hr', 'appointments', 'purchasing', 'incidents'])
+    const enabled = new Set(['foundation', 'iam', 'catalog', 'crm', 'hr', 'appointments', 'purchasing', 'incidents', 'sales', 'inventory', 'pos'])
 
     expect(API_CONNECTED_MODULES).toEqual([
       'foundation',
+      'dashboard',
       'iam',
       'catalog',
       'crm',
@@ -19,6 +20,8 @@ describe('moduleAvailability', () => {
       'appointments',
       'purchasing',
       'incidents',
+      'sales',
+      'pos',
     ])
     expect(isApiConnectedModule('catalog')).toBe(true)
     expect(isModuleAvailable('catalog', enabled)).toBe(true)
@@ -29,12 +32,18 @@ describe('moduleAvailability', () => {
     const enabled = new Set(['foundation', 'iam', 'catalog'])
 
     for (const moduleCode of [
-      'pos',
       'accounting',
       'reporting',
     ]) {
       expect(isModuleAvailable(moduleCode, enabled)).toBe(true)
     }
+  })
+
+  it('habilita POS sólo cuando el workspace tiene pos, sales e inventory', () => {
+    expect(isModuleAvailable('pos', new Set(['sales', 'inventory', 'pos']))).toBe(true)
+    expect(isModuleAvailable('pos', new Set(['sales', 'pos']))).toBe(false)
+    expect(isModuleAvailable('pos', new Set(['inventory', 'pos']))).toBe(false)
+    expect(isModuleAvailable('pos', new Set(['sales', 'inventory']))).toBe(false)
   })
 
   it('solo exige contratos backend en las rutas ya conectadas', () => {
@@ -70,6 +79,10 @@ describe('moduleAvailability', () => {
       module: 'hr',
       permission: 'hr.document.read',
     })
+    expect(routeRequirement('/dashboard')).toEqual({
+      module: 'dashboard',
+      permission: 'dashboard.read',
+    })
     expect(routeRequirement('/compras')).toEqual({
       module: 'purchasing',
       permission: 'purchasing.read',
@@ -83,7 +96,18 @@ describe('moduleAvailability', () => {
       permission: 'appointment.read',
     })
     expect(routeRequirement('/agendar')).toBeNull()
-    expect(routeRequirement('/pos')).toBeNull()
+    expect(routeRequirement('/pos')).toEqual({
+      module: 'pos',
+      permission: 'pos.read',
+    })
+    expect(routeRequirement('/pos/caja')).toEqual({
+      module: 'pos',
+      permission: 'pos.cash.read',
+    })
+    expect(routeRequirement('/pos/cuentas-por-cobrar')).toEqual({
+      module: 'pos',
+      permission: 'pos.receivables.read',
+    })
     expect(routeRequirement('/crm/pipeline')).toBeNull()
     expect(routeRequirement('/finanzas')).toBeNull()
   })

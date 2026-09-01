@@ -7,12 +7,17 @@ import { ProductGrid } from '../components/ProductGrid'
 import { CartSidebar } from '../components/CartSidebar'
 import { CartDrawer } from '../components/CartDrawer'
 import { FlashItemModal } from '../components/FlashItemModal'
+import { PosSyncStatus } from '../components/PosSyncStatus'
+import { usePosOnlineState } from '../hooks/usePosOnlineState'
+import { useSessionStore } from '@/stores/sessionStore'
 
 export default function PosPage() {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('all')
   const [flashOpen, setFlashOpen] = useState(false)
-  const loading = false
+  const { isOnline, hydrated, hydrating, error, refresh } = usePosOnlineState()
+  const loading = isOnline && hydrating && !hydrated
+  const canManageCatalog = useSessionStore((s) => s.hasPermission('catalog.manage'))
 
   const itemCount = usePosStore((s) => s.items.reduce((sum, i) => sum + i.qty, 0))
   const openCartDrawer = usePosStore((s) => s.openCartDrawer)
@@ -22,7 +27,18 @@ export default function PosPage() {
       <div className="flex min-w-0 flex-1 flex-col">
         <PosTopBar query={query} onQueryChange={setQuery} />
         <div className="flex-1 overflow-y-auto scrollbar-thin p-4 sm:p-6">
-          <CategoryBubbles active={category} onChange={setCategory} onNewItem={() => setFlashOpen(true)} />
+          <PosSyncStatus
+            isOnline={isOnline}
+            hydrating={hydrating}
+            error={error}
+            onRetry={refresh}
+            className="mb-4"
+          />
+          <CategoryBubbles
+            active={category}
+            onChange={setCategory}
+            onNewItem={canManageCatalog ? () => setFlashOpen(true) : undefined}
+          />
           <ProductGrid query={query} category={category} loading={loading} />
         </div>
       </div>
@@ -30,7 +46,7 @@ export default function PosPage() {
       <CartSidebar />
 
       <CartDrawer />
-      {flashOpen && <FlashItemModal onClose={() => setFlashOpen(false)} />}
+      {flashOpen && canManageCatalog && <FlashItemModal onClose={() => setFlashOpen(false)} />}
       <button
         onClick={openCartDrawer}
         data-testid="pos-cart-fab"

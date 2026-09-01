@@ -17,6 +17,7 @@ export function MovementModal({ open, onClose, defaultType = 'ingreso' }) {
   const [concept, setConcept] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const addIncome = usePosStore((s) => s.addIncome)
   const addExpense = usePosStore((s) => s.addExpense)
 
@@ -27,19 +28,26 @@ export function MovementModal({ open, onClose, defaultType = 'ingreso' }) {
     setType(defaultType)
   }
 
-  const submit = () => {
+  const submit = async () => {
     if (!concept.trim()) return setError('Ingresa un concepto.')
     if (!amount || Number(amount) <= 0) return setError('Ingresa un monto válido.')
     const payload = { concept: concept.trim(), amount: Number(amount) }
-    if (type === 'ingreso') {
-      addIncome(payload)
-      toast.success(`Ingreso registrado: ${formatDOP(amount)}`)
-    } else {
-      addExpense(payload)
-      toast.success(`Egreso registrado: ${formatDOP(amount)}`)
+    setSubmitting(true)
+    try {
+      if (type === 'ingreso') {
+        await addIncome(payload)
+        toast.success(`Ingreso registrado: ${formatDOP(amount)}`)
+      } else {
+        await addExpense(payload)
+        toast.success(`Egreso registrado: ${formatDOP(amount)}`)
+      }
+      reset()
+      onClose()
+    } catch (operationError) {
+      setError(operationError.message || 'No se pudo registrar el movimiento.')
+    } finally {
+      setSubmitting(false)
     }
-    reset()
-    onClose()
   }
 
   return (
@@ -71,7 +79,7 @@ export function MovementModal({ open, onClose, defaultType = 'ingreso' }) {
         {error && <p className="text-sm font-medium text-red-500">{error}</p>}
         <div className="flex gap-3 pt-1">
           <Button variant="secondary" className="flex-1" onClick={() => { reset(); onClose() }}>Cancelar</Button>
-          <Button className="flex-1" onClick={submit}>Registrar</Button>
+          <Button className="flex-1" onClick={submit} disabled={submitting}>Registrar</Button>
         </div>
       </div>
     </Modal>

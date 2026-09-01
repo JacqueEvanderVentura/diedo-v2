@@ -3,8 +3,9 @@ import { Upload, CheckCircle2, Hash, Banknote, Paperclip } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { formatDOP } from '@/lib/format'
-import { getBalance } from '@/modules/pos/lib/receivables'
+import { getBalance, POS_PROOF_ACCEPT } from '@/modules/pos/lib/receivables'
 import { cn } from '@/lib/utils'
+import { useSessionStore } from '@/stores/sessionStore'
 
 export function ReceivableProofModal({
   open,
@@ -17,7 +18,9 @@ export function ReceivableProofModal({
   const [file, setFile] = useState(null)
   const [reference, setReference] = useState('')
   const [err, setErr] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const inputRef = useRef(null)
+  const isOnline = useSessionStore((state) => state.status === 'online')
 
   useEffect(() => {
     if (!open) {
@@ -32,20 +35,29 @@ export function ReceivableProofModal({
   const balance = getBalance(receivable)
   const hasProof = Boolean(file)
   const hasReference = reference.trim().length > 0
-  const canValidate = hasProof || hasReference
+  const canValidate = isOnline ? hasProof : hasProof || hasReference
 
   const buildPayload = () => ({
     proof: file,
     reference: reference.trim() || null,
   })
 
-  const guard = (fn) => {
+  const guard = async (fn) => {
     if (!canValidate) {
-      setErr('Ingresa el N° de referencia o sube el comprobante.')
+      setErr(isOnline
+        ? 'Sube el comprobante para completar esta operación en línea.'
+        : 'Ingresa el N° de referencia o sube el comprobante.')
       return
     }
     setErr('')
-    fn(buildPayload())
+    setSubmitting(true)
+    try {
+      await fn(buildPayload())
+    } catch (operationError) {
+      setErr(operationError.message || 'No se pudo procesar el comprobante.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -84,12 +96,12 @@ export function ReceivableProofModal({
         <input
           ref={inputRef}
           type="file"
-          accept="image/*,.pdf"
+          accept={POS_PROOF_ACCEPT}
           className="hidden"
           data-testid="cxc-proof-file"
           onChange={(e) => {
             const f = e.target.files?.[0]
-            setFile(f ? { name: f.name } : null)
+            setFile(f || null)
             setErr('')
           }}
         />
@@ -127,6 +139,7 @@ export function ReceivableProofModal({
           <Button
             className="w-full"
             onClick={() => guard((payload) => onConfirm(receivable, payload))}
+            disabled={submitting}
             data-testid="cxc-proof-confirm"
           >
             <CheckCircle2 className="h-4 w-4" />
@@ -136,6 +149,7 @@ export function ReceivableProofModal({
             variant="secondary"
             className="w-full"
             onClick={() => guard((payload) => onCash(receivable, payload))}
+            disabled={submitting}
             data-testid="cxc-proof-cash"
           >
             <Banknote className="h-4 w-4" />
@@ -145,6 +159,7 @@ export function ReceivableProofModal({
             variant="ghost"
             className="w-full text-slate-600"
             onClick={() => guard((payload) => onSaveOnly(receivable, payload))}
+            disabled={submitting}
             data-testid="cxc-proof-save-only"
           >
             Solo guardar comprobante

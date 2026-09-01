@@ -15,6 +15,7 @@ from app.db.models import (
     LegalEntity,
     ModuleDefinition,
     ModuleEntitlement,
+    PaymentMethod,
     Permission,
     PlatformUser,
     PurchasingSettings,
@@ -30,6 +31,14 @@ from app.db.models.agenda import DEFAULT_APPOINTMENT_RESOURCES
 from app.db.models.inventory import DEFAULT_ASSET_CATEGORIES
 
 _PERMISSIONS = (
+    (
+        "dashboard.read",
+        "dashboard",
+        "read",
+        "Ver dashboard",
+        "View branch-scoped business summaries and recent operational activity.",
+        10,
+    ),
     (
         "workspace.read",
         "foundation",
@@ -337,6 +346,162 @@ _PERMISSIONS = (
         "Change status, comment, and attach image evidence.",
         30,
     ),
+    (
+        "sales.read",
+        "sales",
+        "read",
+        "Ver ventas",
+        "View posted sales and their immutable commercial snapshots.",
+        10,
+    ),
+    (
+        "sales.quote.manage",
+        "sales",
+        "quote.manage",
+        "Gestionar cotizaciones",
+        "Create, update, cancel, expire, and convert quotes or held carts.",
+        20,
+    ),
+    (
+        "pos.read",
+        "pos",
+        "read",
+        "Ver Terminal POS",
+        "View the POS catalog, register state, and recent operations.",
+        10,
+    ),
+    (
+        "pos.sell",
+        "pos",
+        "sell",
+        "Registrar ventas",
+        "Post idempotent sales in an authorized branch.",
+        20,
+    ),
+    (
+        "pos.discount.override",
+        "pos",
+        "discount.override",
+        "Autorizar descuentos",
+        "Override standard discounts while posting a sale.",
+        30,
+    ),
+    (
+        "pos.register.manage",
+        "pos",
+        "register.manage",
+        "Gestionar turnos de caja",
+        "Open and close branch cash-register sessions.",
+        40,
+    ),
+    (
+        "pos.cash.read",
+        "pos",
+        "cash.read",
+        "Ver movimientos de caja",
+        "View branch cash-register sessions and drawer movements.",
+        50,
+    ),
+    (
+        "pos.cash.manage",
+        "pos",
+        "cash.manage",
+        "Gestionar movimientos de caja",
+        "Register idempotent cash income, expenses, and reversals.",
+        60,
+    ),
+    (
+        "pos.receivables.read",
+        "pos",
+        "receivables.read",
+        "Ver cuentas por cobrar",
+        "View customer balances, payment history, and evidence.",
+        70,
+    ),
+    (
+        "pos.receivables.collect",
+        "pos",
+        "receivables.collect",
+        "Cobrar cuentas",
+        "Post and reverse customer receivable payments.",
+        80,
+    ),
+    (
+        "pos.receivables.manage",
+        "pos",
+        "receivables.manage",
+        "Gestionar cuentas por cobrar",
+        "Create, cancel, and administer customer receivables.",
+        90,
+    ),
+    (
+        "pos.void",
+        "pos",
+        "void",
+        "Anular ventas",
+        "Void posted sales and record their compensating movements.",
+        100,
+    ),
+)
+
+_TERMINAL_POS_PERMISSION_CODES = tuple(
+    permission[0] for permission in _PERMISSIONS if permission[1] in {"sales", "pos"}
+)
+
+_ROLE_PERMISSION_TEMPLATES = {
+    "workspace_admin": _TERMINAL_POS_PERMISSION_CODES + ("dashboard.read",),
+    "manager": _TERMINAL_POS_PERMISSION_CODES + ("dashboard.read",),
+    "cashier": (
+        "dashboard.read",
+        "sales.read",
+        "pos.read",
+        "pos.sell",
+        "pos.register.manage",
+        "pos.cash.read",
+        "pos.cash.manage",
+        "pos.receivables.read",
+        "pos.receivables.collect",
+    ),
+    "supervisor": (
+        "dashboard.read",
+        "sales.read",
+        "pos.read",
+        "pos.cash.read",
+        "pos.receivables.read",
+        "pos.receivables.collect",
+        "pos.void",
+    ),
+    "seller": (
+        "dashboard.read",
+        "sales.read",
+        "sales.quote.manage",
+        "pos.read",
+        "pos.sell",
+    ),
+}
+
+_PAYMENT_METHODS = (
+    ("cash", "Efectivo", "Banknote", "cash", "immediate", True, False),
+    ("card", "Tarjeta", "CreditCard", "card", "immediate", False, False),
+    (
+        "transfer",
+        "Transferencia",
+        "Landmark",
+        "bank_transfer",
+        "pending_confirmation",
+        False,
+        True,
+    ),
+    (
+        "payment_link",
+        "Link de pago",
+        "Link2",
+        "payment_link",
+        "pending_confirmation",
+        False,
+        True,
+    ),
+    ("credit", "Cuenta por cobrar", "Clock", "credit", "receivable", False, False),
 )
 
 _ROLE_TEMPLATES = (
@@ -351,17 +516,18 @@ _LOCAL_OWNER_EMAIL = "owner@erp.dev"
 
 _MODULES: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
     ("foundation", "Foundation", "core", "available", ()),
+    ("dashboard", "Dashboard", "optional", "available", ("foundation",)),
     ("iam", "Identity and access", "core", "available", ("foundation",)),
     ("crm", "Customer relationship management", "optional", "available", ("foundation",)),
     ("catalog", "Product and service catalog", "optional", "available", ("foundation",)),
-    ("sales", "Sales", "optional", "planned", ("crm", "catalog")),
+    ("sales", "Sales", "optional", "available", ("crm", "catalog")),
     ("purchasing", "Purchasing", "optional", "available", ("foundation", "catalog")),
     ("inventory", "Inventory and assets", "optional", "available", ("foundation", "catalog")),
     ("incidents", "Incidents", "optional", "available", ("foundation",)),
     ("accounting", "Accounting", "optional", "planned", ("sales", "purchasing")),
     ("hr", "Human resources", "optional", "available", ("foundation",)),
     ("payroll", "Payroll", "optional", "planned", ("hr", "accounting")),
-    ("pos", "Point of sale", "optional", "planned", ("sales", "inventory")),
+    ("pos", "Point of sale", "optional", "available", ("sales", "inventory")),
     ("appointments", "Appointments", "optional", "available", ("crm", "catalog", "hr")),
     ("lodging", "Lodging", "optional", "planned", ("crm", "catalog", "sales")),
 )
@@ -413,6 +579,7 @@ def bootstrap_local_foundation(
     if workspace is None:
         raise RuntimeError("Local workspace could not be loaded after bootstrap.")
     _upsert_units_of_measure(session, workspace.id)
+    _upsert_payment_methods(session, workspace.id)
 
     _insert_do_nothing(
         session,
@@ -522,6 +689,7 @@ def bootstrap_local_foundation(
                 "is_system": is_system,
             },
         )
+    _grant_role_template_permissions(session, workspace.id)
     role = session.scalar(
         select(Role).where(Role.workspace_id == workspace.id, Role.code == "workspace_admin")
     )
@@ -571,12 +739,15 @@ def bootstrap_local_foundation(
 
     enabled_modules = (
         "foundation",
+        "dashboard",
         "iam",
         "catalog",
         "crm",
+        "sales",
         "hr",
         "appointments",
         "inventory",
+        "pos",
         "purchasing",
         "incidents",
     )
@@ -687,6 +858,73 @@ def _upsert_catalogs(session: Session) -> None:
             },
         )
     )
+
+
+def _grant_role_template_permissions(session: Session, workspace_id: UUID) -> None:
+    for role_code, permission_codes in _ROLE_PERMISSION_TEMPLATES.items():
+        role_id = session.scalar(
+            select(Role.id).where(
+                Role.workspace_id == workspace_id,
+                Role.code == role_code,
+                Role.status == "active",
+            )
+        )
+        if role_id is None:
+            continue
+        permission_ids = session.scalars(
+            select(Permission.id).where(Permission.code.in_(permission_codes))
+        ).all()
+        for permission_id in permission_ids:
+            _insert_do_nothing(
+                session,
+                RolePermission,
+                {
+                    "workspace_id": workspace_id,
+                    "role_id": role_id,
+                    "permission_id": permission_id,
+                },
+            )
+
+
+def _upsert_payment_methods(session: Session, workspace_id: UUID) -> None:
+    for (
+        code,
+        name,
+        icon,
+        channel,
+        settlement_policy,
+        affects_cash_drawer,
+        requires_evidence,
+    ) in _PAYMENT_METHODS:
+        session.execute(
+            insert(PaymentMethod)
+            .values(
+                workspace_id=workspace_id,
+                code=code,
+                name=name,
+                icon=icon,
+                status="active",
+                is_system=True,
+                channel=channel,
+                settlement_policy=settlement_policy,
+                affects_cash_drawer=affects_cash_drawer,
+                requires_evidence=requires_evidence,
+            )
+            .on_conflict_do_update(
+                constraint="uq_payment_methods_workspace_code",
+                set_={
+                    "name": name,
+                    "icon": icon,
+                    "status": "active",
+                    "is_system": True,
+                    "channel": channel,
+                    "settlement_policy": settlement_policy,
+                    "affects_cash_drawer": affects_cash_drawer,
+                    "requires_evidence": requires_evidence,
+                    "updated_at": func.now(),
+                },
+            )
+        )
 
 
 def _upsert_units_of_measure(session: Session, workspace_id: UUID) -> None:

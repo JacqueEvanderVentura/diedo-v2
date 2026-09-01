@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { defaultUnitId, mergeApiProduct, resolveCategoryId } from '@/lib/catalogSync'
+import {
+  defaultUnitId,
+  mergeApiProduct,
+  projectProductToBranch,
+  resolveCategoryId,
+} from '@/lib/catalogSync'
 
 const apiCategories = [
   { id: '77f9c771-9b2a-40af-ae14-311bc4c703ea', name: 'Otros', api: true },
@@ -72,5 +77,47 @@ describe('sincronización del catálogo de inventario', () => {
       new Map([[apiCategories[1].id, apiCategories[1].id]])
     )
     expect(supply).toMatchObject({ type: 'supply', price: 0, cost: 280, stock: 36, minStock: 8 })
+  })
+
+  it('proyecta el stock real de la sucursal aunque no sea la primera asignada', () => {
+    const product = mergeApiProduct(
+      {
+        id: 'alcohol-id',
+        itemType: 'supply',
+        name: 'Alcohol isopropílico 70%',
+        sku: 'ALC-ISO-70',
+        category: { id: apiCategories[1].id },
+        unitOfMeasure: { id: 'liter', symbol: 'l' },
+        branches: [{ id: 'downtown' }, { id: 'east' }],
+        stockLocations: [
+          {
+            branch: { id: 'downtown' },
+            warehouseId: 'warehouse-downtown',
+            quantity: '6.000',
+            minimumStock: '8.000',
+            stockStatus: 'low',
+          },
+          {
+            branch: { id: 'east' },
+            warehouseId: 'warehouse-east',
+            quantity: '0.000',
+            minimumStock: '8.000',
+            stockStatus: 'out',
+          },
+        ],
+        unitCost: '280.00',
+        stockQuantity: '6.000',
+        minimumStock: '16.000',
+      },
+      null,
+      new Map([[apiCategories[1].id, apiCategories[1].id]])
+    )
+
+    expect(projectProductToBranch(product, 'east')).toMatchObject({
+      branchId: 'east',
+      stock: 0,
+      minStock: 8,
+    })
+    expect(projectProductToBranch(product, 'north')).toBeNull()
   })
 })

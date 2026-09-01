@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 import { Upload, CheckCircle2, Hash } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { formatDOP } from '@/lib/format'
 import { usePosStore } from '@/stores/posStore'
-import { getBalance, PAYMENT_METHODS } from '@/modules/pos/lib/receivables'
+import { useConfigStore } from '@/stores/configStore'
+import { getBalance, POS_PROOF_ACCEPT } from '@/modules/pos/lib/receivables'
 import { cn } from '@/lib/utils'
 
 const NEEDS_PROOF = ['transferencia', 'link']
@@ -20,38 +21,60 @@ export function ReceivablePaymentModal({ open, onClose, receivable }) {
   const [note, setNote] = useState('')
   const [proof, setProof] = useState(null)
   const [err, setErr] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const fileRef = useRef(null)
+  const configuredMethods = useConfigStore((state) => state.paymentMethods)
+  const paymentMethods = useMemo(
+    () => configuredMethods.filter(
+      (item) => item.enabled && item.settlementMode !== 'credit' && item.id !== 'cxc'
+    ),
+    [configuredMethods]
+  )
 
   const balance = receivable ? getBalance(receivable) : 0
-  const needsProof = NEEDS_PROOF.includes(method)
+  const selectedMethod = paymentMethods.find((item) => item.id === method)
+  const needsProof = selectedMethod
+    ? Boolean(selectedMethod.requiresProof || selectedMethod.requiresReference)
+    : NEEDS_PROOF.includes(method)
+  const requiresFile = Boolean(selectedMethod?.requiresProof)
 
   useEffect(() => {
     if (!open || !receivable) return
     setAmount(String(balance))
-    setMethod('efectivo')
+    setMethod(paymentMethods.find((item) => item.id === 'efectivo')?.id || paymentMethods[0]?.id || 'efectivo')
     setReference('')
     setNote('')
     setProof(null)
     setErr('')
-  }, [open, receivable, balance])
+  }, [open, receivable, balance, paymentMethods])
 
-  const submit = () => {
+  const submit = async () => {
     if (!receivable) return
     const val = Number(amount)
     if (!val || val <= 0) return setErr('Ingresa un monto válido.')
     if (val > balance) return setErr(`El monto no puede superar el saldo (${formatDOP(balance)}).`)
+    if (requiresFile && !proof) {
+      return setErr('Este método exige subir un comprobante.')
+    }
     if (needsProof && !proof && !reference.trim()) {
       return setErr('Ingresa el N° de referencia o sube el comprobante.')
     }
-    addReceivablePayment(receivable.id, {
-      amount: val,
-      method,
-      reference: reference.trim() || null,
-      note: note.trim() || null,
-      proof,
-    })
-    toast.success(val >= balance ? 'Cuenta saldada' : `Abono registrado · ${formatDOP(val)}`)
-    onClose()
+    setSubmitting(true)
+    try {
+      await addReceivablePayment(receivable.id, {
+        amount: val,
+        method,
+        reference: reference.trim() || null,
+        note: note.trim() || null,
+        proof,
+      })
+      toast.success(val >= balance ? 'Cuenta saldada' : `Abono registrado · ${formatDOP(val)}`)
+      onClose()
+    } catch (operationError) {
+      setErr(operationError.message || 'No se pudo registrar el pago.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const payFull = () => setAmount(String(balance))
@@ -74,7 +97,7 @@ export function ReceivablePaymentModal({ open, onClose, receivable }) {
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Método</label>
-            <Select value={method} onChange={(v) => { setMethod(v); setErr('') }} options={PAYMENT_METHODS.map((m) => ({ value: m.id, label: m.label }))} />
+            <Select value={method} onChange={(v) => { setMethod(v); setErr('') }} options={paymentMethods.map((m) => ({ value: m.id, label: m.name }))} />
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">
@@ -95,11 +118,11 @@ export function ReceivablePaymentModal({ open, onClose, receivable }) {
               <input
                 ref={fileRef}
                 type="file"
-                accept="image/*,.pdf"
+                accept={POS_PROOF_ACCEPT}
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0]
-                  setProof(f ? { name: f.name } : null)
+                  setProof(f || null)
                   setErr('')
                 }}
               />
@@ -116,7 +139,9 @@ export function ReceivablePaymentModal({ open, onClose, receivable }) {
                 {proof ? <CheckCircle2 className="h-5 w-5 shrink-0" /> : <Upload className="h-5 w-5 shrink-0" />}
                 <span className="truncate font-medium">{proof ? proof.name : 'Subir comprobante'}</span>
               </button>
-              <p className="mt-1.5 text-[11px] text-slate-400">Referencia o comprobante — una de las dos.</p>
+              <p className="mt-1.5 text-[11px] text-slate-400">
+                {requiresFile ? 'Este método exige comprobante.' : 'Referencia o comprobante — una de las dos.'}
+              </p>
             </div>
           )}
           <div>
@@ -126,7 +151,7 @@ export function ReceivablePaymentModal({ open, onClose, receivable }) {
           {err && <p className="text-sm text-red-500">{err}</p>}
           <div className="flex gap-3 pt-1">
             <Button variant="secondary" className="flex-1" onClick={onClose}>Cancelar</Button>
-            <Button className="flex-1" onClick={submit}>Registrar pago</Button>
+            <Button className="flex-1" onClick={submit} disabled={submitting}>Registrar pago</Button>
           </div>
         </div>
       )}

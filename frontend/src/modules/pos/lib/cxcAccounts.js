@@ -9,13 +9,17 @@ export const ACCOUNT_KIND_META = {
 }
 
 export function getAccountRowMeta(row) {
-  if (row.kind === 'receivable' && row.source === 'agenda') return ACCOUNT_KIND_META.agenda
+  if (row.kind === 'receivable' && ['agenda', 'appointment'].includes(row.source)) {
+    return ACCOUNT_KIND_META.agenda
+  }
   if (row.kind === 'receivable') return ACCOUNT_KIND_META.receivable
   return ACCOUNT_KIND_META[row.kind] || { label: row.kind, tone: 'neutral' }
 }
 
 function cartSnapshotToRow(snapshot, { kind, taxPct }) {
-  const amount = calcSnapshotTotal({ ...snapshot, taxPct })
+  const amount = snapshot.total != null
+    ? Number(snapshot.total) || 0
+    : calcSnapshotTotal({ ...snapshot, taxPct })
   const createdAt = snapshot.createdAt || new Date().toISOString()
   return {
     id: snapshot.id,
@@ -81,7 +85,7 @@ export function filterCxcAccounts(rows, { filter, query, branchFilter }) {
     if (filter === 'partial' && (row.kind !== 'receivable' || row.status !== 'partial')) return false
     if (filter === 'paid' && (row.kind !== 'receivable' || row.status !== 'paid')) return false
     if (filter === 'open') {
-      if (row.kind === 'receivable' && row.status === 'paid') return false
+      if (row.kind === 'receivable' && ['paid', 'voided', 'written_off'].includes(row.status)) return false
     }
 
     if (branchFilter !== 'all' && row.branchId !== branchFilter) return false
@@ -97,14 +101,13 @@ export function filterCxcAccounts(rows, { filter, query, branchFilter }) {
 }
 
 export function summarizeCxcAccounts(rows) {
-  const pendingReceivables = rows.filter((r) => r.kind === 'receivable' && r.status !== 'paid')
+  const pendingReceivables = rows.filter(
+    (r) => r.kind === 'receivable' && !['paid', 'voided', 'written_off'].includes(r.status)
+  )
   const openQuotes = rows.filter((r) => r.kind === 'open-quote')
   const held = rows.filter((r) => r.kind === 'held-park')
 
-  const pendingTotal =
-    pendingReceivables.reduce((sum, r) => sum + r.balance, 0) +
-    openQuotes.reduce((sum, r) => sum + r.balance, 0) +
-    held.reduce((sum, r) => sum + r.balance, 0)
+  const pendingTotal = pendingReceivables.reduce((sum, r) => sum + r.balance, 0)
 
   return {
     pendingTotal,
@@ -113,5 +116,38 @@ export function summarizeCxcAccounts(rows) {
     openQuoteCount: openQuotes.length,
     heldCount: held.length,
     cxcCount: pendingReceivables.length,
+  }
+}
+
+export function reconcileCxcSummary(
+  localSummary,
+  authoritativeReceivables,
+  authoritativeQuotes
+) {
+  const hasReceivables = authoritativeReceivables?.pendingTotal != null
+  const hasQuotes = authoritativeQuotes?.openCount != null
+  if (!hasReceivables && !hasQuotes) return localSummary
+
+  const cxcCount = hasReceivables
+    ? Number(authoritativeReceivables.pendingCount) || 0
+    : localSummary.cxcCount
+  const openQuoteCount = hasQuotes
+    ? Number(authoritativeQuotes.openCount) || 0
+    : localSummary.openQuoteCount
+  const heldCount = hasQuotes
+    ? Number(authoritativeQuotes.heldCount) || 0
+    : localSummary.heldCount
+  return {
+    ...localSummary,
+    pendingTotal: hasReceivables
+      ? Number(authoritativeReceivables.pendingTotal) || 0
+      : localSummary.pendingTotal,
+    partialCount: hasReceivables
+      ? Number(authoritativeReceivables.partialCount) || 0
+      : localSummary.partialCount,
+    cxcCount,
+    openQuoteCount,
+    heldCount,
+    openCount: cxcCount + openQuoteCount + heldCount,
   }
 }

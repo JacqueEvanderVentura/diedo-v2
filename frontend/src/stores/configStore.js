@@ -152,6 +152,8 @@ export const useConfigStore = create(
         set((s) => ({
           paymentMethods: [...s.paymentMethods, { id: genId('pm'), name, icon: 'Wallet', enabled: true, core: false }],
         })),
+      setPaymentMethods: (paymentMethods) => set({ paymentMethods }),
+      resetPaymentMethods: () => set({ paymentMethods: structuredClone(SEED_METHODS) }),
       togglePaymentMethod: (id) =>
         set((s) => ({
           paymentMethods: s.paymentMethods.map((m) => (m.id === id ? { ...m, enabled: !m.enabled } : m)),

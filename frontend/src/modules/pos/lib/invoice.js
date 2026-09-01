@@ -79,6 +79,7 @@ export function buildInvoiceHtml(data) {
     discountAmt,
     discountPct,
     taxPct,
+    taxLabel,
     taxAmt,
     total,
     kind = 'sale',
@@ -217,7 +218,7 @@ export function buildInvoiceHtml(data) {
           ? `<div class="discount"><span>Descuento (${escapeHtml(discountPct.toFixed(1))}%)</span><span>−${escapeHtml(formatDOP(discountAmt))}</span></div>`
           : ''
       }
-      <div><span>ITBIS (${escapeHtml(taxPct)}%)</span><span>${escapeHtml(formatDOP(taxAmt))}</span></div>
+      <div><span>${escapeHtml(taxLabel || `ITBIS (${taxPct}%)`)}</span><span>${escapeHtml(formatDOP(taxAmt))}</span></div>
       <div class="grand"><span>Total</span><span>${escapeHtml(formatDOP(total))}</span></div>
     </div>
 
@@ -247,6 +248,7 @@ export function downloadInvoicePdf(data, filename) {
     discountAmt,
     discountPct,
     taxPct,
+    taxLabel,
     taxAmt,
     total,
     kind = 'sale',
@@ -325,7 +327,7 @@ export function downloadInvoicePdf(data, filename) {
     ty += 6
   }
 
-  pdf.text(`ITBIS (${taxPct}%):`, totalsX, ty)
+  pdf.text(`${taxLabel || `ITBIS (${taxPct}%)`}:`, totalsX, ty)
   pdf.text(formatDOP(taxAmt), 196, ty, { align: 'right' })
   ty += 8
 

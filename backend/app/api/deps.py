@@ -74,6 +74,10 @@ WorkspaceUpdateGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("workspace.update")),
 ]
+DashboardReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("dashboard.read")),
+]
 LegalEntityReadGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("legal_entity.read")),
@@ -109,6 +113,54 @@ InventoryManageGrant = Annotated[
 InventoryMoveGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("inventory.move")),
+]
+SalesReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("sales.read")),
+]
+SalesQuoteManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("sales.quote.manage")),
+]
+PosReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("pos.read")),
+]
+PosSellGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("pos.sell")),
+]
+PosDiscountOverrideGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("pos.discount.override")),
+]
+PosRegisterManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("pos.register.manage")),
+]
+PosCashReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("pos.cash.read")),
+]
+PosCashManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("pos.cash.manage")),
+]
+PosReceivablesReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("pos.receivables.read")),
+]
+PosReceivablesCollectGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("pos.receivables.collect")),
+]
+PosReceivablesManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("pos.receivables.manage")),
+]
+PosVoidGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("pos.void")),
 ]
 PurchasingReadGrant = Annotated[
     PermissionGrant,

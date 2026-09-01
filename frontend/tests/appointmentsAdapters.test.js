@@ -8,6 +8,7 @@ import {
   mapAppointmentFromApi,
   mapAppointmentResourceFromApi,
 } from '@/services/adapters/appointments'
+import { getAppointmentReceivablePolicy } from '@/modules/agenda/lib/receivablePermissions'
 
 describe('adaptadores de Agenda', () => {
   it('traduce todos los estados entre el contrato y la UI existente', () => {
@@ -116,5 +117,33 @@ describe('adaptadores de Agenda', () => {
       serviceName: '1 sesión axilas',
       price: 900,
     })
+  })
+
+  it('protege saldo y cancelación de citas con CxC según sesión y permiso', () => {
+    const appointment = { pendingPayment: true, pendingAmount: 500 }
+
+    expect(getAppointmentReceivablePolicy({
+      appointment,
+      online: true,
+      canManageReceivables: false,
+    })).toMatchObject({ canManagePending: false, canCancel: false })
+
+    expect(getAppointmentReceivablePolicy({
+      appointment,
+      online: true,
+      canManageReceivables: true,
+    })).toMatchObject({ canManagePending: true, canCancel: true })
+
+    expect(getAppointmentReceivablePolicy({
+      appointment,
+      online: false,
+      canManageReceivables: false,
+    })).toMatchObject({ canManagePending: true, canCancel: true })
+
+    expect(getAppointmentReceivablePolicy({
+      appointment: { pendingPayment: true, pendingAmount: 0 },
+      online: true,
+      canManageReceivables: false,
+    }).canCancel).toBe(true)
   })
 })

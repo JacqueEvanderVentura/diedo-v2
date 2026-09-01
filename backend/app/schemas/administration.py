@@ -8,6 +8,16 @@ from pydantic import EmailStr, Field, field_validator, model_validator
 
 from app.schemas.common import ApiModel
 
+PaymentChannel = Literal[
+    "cash",
+    "card",
+    "bank_transfer",
+    "payment_link",
+    "credit",
+    "other",
+]
+PaymentSettlementPolicy = Literal["immediate", "pending_confirmation", "receivable"]
+
 
 class WorkspaceSettingsResponse(ApiModel):
     id: UUID
@@ -257,6 +267,10 @@ class PaymentMethodResponse(ApiModel):
     icon: str
     status: Literal["active", "inactive", "archived"]
     is_system: bool
+    channel: PaymentChannel
+    settlement_policy: PaymentSettlementPolicy
+    affects_cash_drawer: bool
+    requires_evidence: bool
     version: int
 
 
@@ -264,15 +278,39 @@ class CreatePaymentMethodRequest(ApiModel):
     code: str = Field(min_length=2, max_length=48, pattern=r"^[A-Za-z0-9_-]+$")
     name: str = Field(min_length=2, max_length=120)
     icon: str = Field(default="Wallet", min_length=2, max_length=48)
+    channel: PaymentChannel = "other"
+    settlement_policy: PaymentSettlementPolicy = "immediate"
+    affects_cash_drawer: bool = False
+    requires_evidence: bool = False
 
-    @field_validator("code")
+    @field_validator("code", mode="before")
     @classmethod
     def normalize_code(cls, value: str) -> str:
         return value.strip().lower()
+
+    @model_validator(mode="after")
+    def validate_cash_drawer_channel(self) -> CreatePaymentMethodRequest:
+        if self.affects_cash_drawer and self.channel != "cash":
+            raise ValueError("Solo un método con channel cash puede afectar la caja.")
+        if self.requires_evidence and self.settlement_policy == "immediate":
+            raise ValueError("Un método que requiere comprobante no puede liquidarse de inmediato.")
+        return self
 
 
 class UpdatePaymentMethodRequest(ApiModel):
     name: str | None = Field(default=None, min_length=2, max_length=120)
     icon: str | None = Field(default=None, min_length=2, max_length=48)
     status: Literal["active", "inactive"] | None = None
+    channel: PaymentChannel | None = None
+    settlement_policy: PaymentSettlementPolicy | None = None
+    affects_cash_drawer: bool | None = None
+    requires_evidence: bool | None = None
     version: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def validate_cash_drawer_channel(self) -> UpdatePaymentMethodRequest:
+        if self.affects_cash_drawer is True and self.channel not in {None, "cash"}:
+            raise ValueError("Solo un método con channel cash puede afectar la caja.")
+        if self.requires_evidence is True and self.settlement_policy == "immediate":
+            raise ValueError("Un método que requiere comprobante no puede liquidarse de inmediato.")
+        return self

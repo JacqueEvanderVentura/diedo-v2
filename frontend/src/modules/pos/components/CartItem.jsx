@@ -4,6 +4,7 @@ import { Minus, Plus, Trash2, Tag } from 'lucide-react'
 import { formatDOP } from '@/lib/format'
 import { usePosStore } from '@/stores/posStore'
 import { useCatalogStore } from '@/stores/catalogStore'
+import { useSessionStore } from '@/stores/sessionStore'
 import { cn } from '@/lib/utils'
 
 export function CartItem({ item }) {
@@ -13,6 +14,7 @@ export function CartItem({ item }) {
   const setItemPrice = usePosStore((s) => s.setItemPrice)
   const isFinalized = usePosStore((s) => s.isFinalized)
   const products = useCatalogStore((s) => s.products)
+  const canOverrideDiscount = useSessionStore((s) => s.hasPermission('pos.discount.override'))
 
   const listPrice = Number(item.listPrice ?? item.price) || 0
   const unitPrice = Number(item.price) || 0
@@ -66,12 +68,12 @@ export function CartItem({ item }) {
               step="0.01"
               value={unitPrice || ''}
               onChange={(e) => setItemPrice(item.id, e.target.value)}
-              disabled={isFinalized}
+              disabled={isFinalized || !canOverrideDiscount}
               data-testid={`cart-item-price-${item.id}`}
               className={cn(
                 'w-[5.5rem] rounded-md border border-slate-200 bg-white py-1 pl-5 pr-1.5 text-right text-xs font-semibold text-slate-700',
                 'focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400',
-                isFinalized && 'cursor-not-allowed bg-slate-50 text-slate-500'
+                (isFinalized || !canOverrideDiscount) && 'cursor-not-allowed bg-slate-50 text-slate-500'
               )}
             />
           </div>

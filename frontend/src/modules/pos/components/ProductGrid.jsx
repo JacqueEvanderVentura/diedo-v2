@@ -3,13 +3,17 @@ import { toast } from 'sonner'
 import { SearchX } from 'lucide-react'
 import { useCatalogStore, isPosSellable } from '@/stores/catalogStore'
 import { usePosStore } from '@/stores/posStore'
+import { useSessionStore } from '@/stores/sessionStore'
 import { ProductCard } from './ProductCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Skeleton } from '@/components/ui/Skeleton'
 
 export function ProductGrid({ query, category, loading }) {
   const addItem = usePosStore((s) => s.addItem)
-  const products = useCatalogStore((s) => s.products)
+  const catalogProducts = useCatalogStore((s) => s.products)
+  const posCatalog = usePosStore((s) => s.posCatalog)
+  const isOnline = useSessionStore((s) => s.status === 'online')
+  const products = isOnline ? posCatalog : catalogProducts
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()

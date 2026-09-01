@@ -35,6 +35,7 @@ import { SupplyUsagePanel } from './SupplyUsagePanel'
 import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
 import { useSortedRows } from '@/hooks/useTableControls'
 import { cn } from '@/lib/utils'
+import { projectProductToBranch } from '@/lib/catalogSync'
 
 const catName = (categories, id) => categories.find((c) => c.id === id)?.name || id
 
@@ -70,13 +71,14 @@ export function ProductosTab() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return products.filter((p) => {
-      const matchBranch = branchId === 'all' || p.branchId === branchId
+    return products.flatMap((product) => {
+      const p = projectProductToBranch(product, branchId)
+      if (!p) return []
       const matchQ = !q || p.name.toLowerCase().includes(q) || (p.sku && String(p.sku).toLowerCase().includes(q))
       const min = p.minStock ?? LOW_STOCK_THRESHOLD
       const matchLow = !lowOnly || ((p.type === 'product' || p.type === 'supply') && p.stock !== null && p.stock <= min)
       const matchType = typeFilter === 'all' || p.type === typeFilter || (typeFilter === 'product' && p.type === 'product')
-      return matchBranch && matchQ && matchLow && matchType
+      return matchQ && matchLow && matchType ? [p] : []
     })
   }, [products, query, branchId, lowOnly, typeFilter])
 

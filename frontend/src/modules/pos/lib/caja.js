@@ -11,7 +11,7 @@ export function methodLabel(id) {
 }
 
 export function buildShiftMovements({ shiftSales = [], shiftIncomes = [], expenses = [] }) {
-  const sales = shiftSales.map((s) => ({
+  const sales = shiftSales.filter((sale) => sale.status !== 'voided').map((s) => ({
     id: s.id,
     type: 'venta',
     label: s.customer?.name || s.items?.[0]?.name || 'Venta',
@@ -53,7 +53,7 @@ export function filterMovements(movements, tab) {
 
 export function sumByMethod(shiftSales, methodId) {
   return shiftSales
-    .filter((s) => s.method === methodId)
+    .filter((s) => s.status !== 'voided' && s.method === methodId)
     .reduce((sum, s) => sum + (s.total || 0), 0)
 }
 

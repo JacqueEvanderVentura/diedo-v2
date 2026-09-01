@@ -25,6 +25,10 @@ import { cn } from '@/lib/utils'
 import { isAppointmentConflict } from '@/services/adapters/appointments'
 import { useSessionStore } from '@/stores/sessionStore'
 import { servicesForBranch } from '../lib/serviceAvailability'
+import {
+  APPOINTMENT_RECEIVABLE_PERMISSION_NOTE,
+  getAppointmentReceivablePolicy,
+} from '../lib/receivablePermissions'
 
 const EMPTY_SLOT = Object.freeze({})
 
@@ -64,6 +68,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
   const vacationRequests = useRrhhStore((s) => s.vacationRequests)
   const appointments = useAgendaStore((s) => s.appointments)
   const canManage = useSessionStore((s) => s.hasPermission('appointment.manage'))
+  const canManageReceivables = useSessionStore((s) => s.hasPermission('pos.receivables.manage'))
   const sessionStatus = useSessionStore((s) => s.status)
   const catalogHydrated = useCatalogStore((s) => s.apiContext.hydrated)
 
@@ -94,6 +99,11 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
   }
 
   const selectedService = useMemo(() => services.find((s) => s.id === form.serviceId), [services, form.serviceId])
+  const receivablePolicy = getAppointmentReceivablePolicy({
+    appointment: form,
+    online: sessionStatus === 'online',
+    canManageReceivables,
+  })
   const statusOptions = editing
     ? APPOINTMENT_STATUSES
     : APPOINTMENT_STATUSES.filter((status) => ['pendiente', 'confirmada'].includes(status.id))
@@ -414,7 +424,11 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
                 setForm((current) => ({ ...current, status: value, completed: value === 'completada' }))
                 setErr('')
               }}
-              options={statusOptions.map((s) => ({ value: s.id, label: s.name }))}
+              options={statusOptions.map((s) => ({
+                value: s.id,
+                label: s.name,
+                disabled: s.id === 'cancelada' && !receivablePolicy.canCancel,
+              }))}
               data-testid="appointment-field-status"
             />
           </div>
@@ -441,13 +455,18 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input type="checkbox" checked={form.pendingPayment} onChange={(e) => set('pendingPayment', e.target.checked)} data-testid="appointment-field-pending" />
+            <input type="checkbox" checked={form.pendingPayment} disabled={!receivablePolicy.canManagePending} onChange={(e) => set('pendingPayment', e.target.checked)} data-testid="appointment-field-pending" />
             Pendiente de pago
           </label>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Monto pendiente</label>
-            <Input type="number" min="0" disabled={!form.pendingPayment} value={form.pendingAmount || ''} onChange={(e) => set('pendingAmount', e.target.value)} data-testid="appointment-field-pending-amount" />
+            <Input type="number" min="0" disabled={!form.pendingPayment || !receivablePolicy.canManagePending} value={form.pendingAmount || ''} onChange={(e) => set('pendingAmount', e.target.value)} data-testid="appointment-field-pending-amount" />
           </div>
+          {!receivablePolicy.canManagePending && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 sm:col-span-2" data-testid="appointment-pending-permission-note">
+              {APPOINTMENT_RECEIVABLE_PERMISSION_NOTE}
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

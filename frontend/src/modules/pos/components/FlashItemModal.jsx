@@ -15,7 +15,9 @@ import { Select } from '@/components/ui/Select'
 import { useCatalogStore } from '@/stores/catalogStore'
 import { useConfigStore } from '@/stores/configStore'
 import { usePosStore } from '@/stores/posStore'
+import { useSessionStore } from '@/stores/sessionStore'
 import { cn } from '@/lib/utils'
+import { createFlashItemForPos } from '../lib/flashItem'
 
 const ITEM_TYPES = [
   { id: 'product', label: 'Producto' },
@@ -127,26 +129,32 @@ function resolveCategoryId(label, categories) {
 
 export function FlashItemModal({ onClose }) {
   const addProduct = useCatalogStore((s) => s.addProduct)
+  const saveProduct = useCatalogStore((s) => s.saveProduct)
   const addItem = usePosStore((s) => s.addItem)
+  const isOnline = useSessionStore((s) => s.status === 'online')
+  const canManageCatalog = useSessionStore((s) => s.hasPermission('catalog.manage'))
 
   const fileRef = useRef(null)
   const [branches, setBranches] = useState([])
   const [taxDefault, setTaxDefault] = useState(18)
   const [form, setForm] = useState(() => makeEmpty([], 18))
   const [err, setErr] = useState('')
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     const { branchId } = usePosStore.getState()
     const { branches: allBranches, settings } = useConfigStore.getState()
     const nextTaxDefault = settings?.taxDefault ?? 18
-    const activeBranches = allBranches.filter((b) => b.active !== false)
+    const activeBranches = allBranches.filter((b) => (
+      b.active !== false && (!isOnline || b.id === branchId)
+    ))
     const ids = activeBranches.map((b) => b.id)
 
     setBranches(activeBranches)
     setTaxDefault(nextTaxDefault)
-    setForm(makeEmpty(ids.includes(branchId) ? ids : [branchId, ...ids], nextTaxDefault))
+    setForm(makeEmpty(ids.includes(branchId) ? ids : [branchId], nextTaxDefault))
     setErr('')
-  }, [])
+  }, [isOnline])
 
   const set = (key, value) => setForm((f) => ({ ...f, [key]: value }))
 
@@ -169,7 +177,7 @@ export function FlashItemModal({ onClose }) {
     reader.readAsDataURL(file)
   }
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.name.trim()) return setErr('Ingresa el nombre del ítem.')
     if (form.price === '' || Number(form.price) < 0) return setErr('Ingresa un precio de venta válido.')
     if (form.type === 'product' && form.stock === '') return setErr('Ingresa el stock actual.')
@@ -179,7 +187,7 @@ export function FlashItemModal({ onClose }) {
     const { categories, settings } = useConfigStore.getState()
     const taxDefault = settings?.taxDefault ?? 18
 
-    const product = addProduct({
+    const data = {
       name: form.name.trim(),
       type: form.type,
       subtype: form.subtype,
@@ -198,11 +206,30 @@ export function FlashItemModal({ onClose }) {
       unit: form.unit,
       allowNegativeStock: form.allowNegativeStock,
       image: form.image,
-    })
+    }
 
-    addItem(product)
-    toast.success(`"${product.name}" creado y agregado al carrito`)
-    onClose()
+    setSaving(true)
+    setErr('')
+    try {
+      const product = await createFlashItemForPos({
+        data,
+        isOnline,
+        canManageCatalog,
+        categories,
+        configBranches: useConfigStore.getState().branches,
+        addProduct,
+        saveProduct,
+        addItem,
+        hydratePos: usePosStore.getState().hydrateFromApi,
+        getPosCatalog: () => usePosStore.getState().posCatalog,
+      })
+      toast.success(`"${product.name}" creado y agregado al carrito`)
+      onClose()
+    } catch (operationError) {
+      setErr(operationError.message || 'No se pudo crear el ítem.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -390,8 +417,8 @@ export function FlashItemModal({ onClose }) {
         <Button variant="secondary" onClick={onClose} data-testid="flash-item-cancel">
           Cancelar
         </Button>
-        <Button onClick={submit} className="min-w-[120px]" data-testid="flash-item-save">
-          Crear Ítem
+        <Button onClick={submit} disabled={saving || (isOnline && !canManageCatalog)} className="min-w-[120px]" data-testid="flash-item-save">
+          {saving ? 'Creando…' : 'Crear Ítem'}
         </Button>
       </div>
     </Modal>

@@ -1093,8 +1093,9 @@ class InventoryRepository:
         branch_id: UUID,
         warehouse_id: UUID,
         item_ids: set[UUID],
+        require_active_items: bool = True,
     ) -> tuple[LockedStockRecord, ...]:
-        rows = self._session.execute(
+        statement = (
             select(
                 InventoryStockBalance,
                 Item,
@@ -1122,11 +1123,13 @@ class InventoryRepository:
                 InventoryStockBalance.warehouse_id == warehouse_id,
                 InventoryStockBalance.item_id.in_(item_ids),
                 Item.item_type.in_(_TRACKED_TYPES),
-                Item.status == "active",
             )
             .order_by(InventoryStockBalance.item_id)
             .with_for_update(of=InventoryStockBalance)
         )
+        if require_active_items:
+            statement = statement.where(Item.status == "active")
+        rows = self._session.execute(statement)
         return tuple(
             LockedStockRecord(balance=row[0], item=row[1], unit=row[2], profile=row[3])
             for row in rows

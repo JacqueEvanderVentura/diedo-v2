@@ -4,13 +4,16 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { usePosStore } from '@/stores/posStore'
+import { useSessionStore } from '@/stores/sessionStore'
 
 export function ReceivableEditModal({ open, onClose, receivable }) {
   const updateReceivable = usePosStore((s) => s.updateReceivable)
+  const isOnline = useSessionStore((s) => s.status === 'online')
   const [reference, setReference] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [notes, setNotes] = useState('')
   const [err, setErr] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     if (!open || !receivable) return
@@ -20,11 +23,18 @@ export function ReceivableEditModal({ open, onClose, receivable }) {
     setErr('')
   }, [open, receivable])
 
-  const submit = () => {
+  const submit = async () => {
     if (!receivable) return
-    updateReceivable(receivable.id, { reference: reference.trim() || null, dueDate: dueDate || null, notes: notes.trim() })
-    toast.success('Cuenta actualizada')
-    onClose()
+    setSubmitting(true)
+    try {
+      await updateReceivable(receivable.id, { reference: reference.trim() || null, dueDate: dueDate || null, notes: notes.trim() })
+      toast.success('Cuenta actualizada')
+      onClose()
+    } catch (operationError) {
+      setErr(operationError.message || 'No se pudo actualizar la cuenta.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -37,7 +47,8 @@ export function ReceivableEditModal({ open, onClose, receivable }) {
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Referencia</label>
-            <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="TRF-8842" />
+            <Input value={reference} disabled={isOnline} onChange={(e) => setReference(e.target.value)} placeholder="TRF-8842" />
+            {isOnline && <p className="mt-1 text-xs text-slate-400">La referencia de origen es inmutable en línea.</p>}
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Vencimiento</label>
@@ -56,7 +67,7 @@ export function ReceivableEditModal({ open, onClose, receivable }) {
           {err && <p className="text-sm text-red-500">{err}</p>}
           <div className="flex gap-3 pt-1">
             <Button variant="secondary" className="flex-1" onClick={onClose}>Cancelar</Button>
-            <Button className="flex-1" onClick={submit}>Guardar cambios</Button>
+            <Button className="flex-1" onClick={submit} disabled={submitting}>Guardar cambios</Button>
           </div>
         </div>
       )}

@@ -1,8 +1,10 @@
 {
   "workspace": {"businessName": "Diedo Demo", "taxDefaultRate": 18, "locale": "es-DO", "currency": "DOP"},
   "paymentMethods": [
-    {"seedKey": "cash", "code": "cash", "name": "Efectivo", "icon": "Banknote", "enabled": true, "system": true},
-    {"seedKey": "card", "code": "card", "name": "Tarjeta", "icon": "CreditCard", "enabled": true, "system": true},
-    {"seedKey": "transfer", "code": "transfer", "name": "Transferencia", "icon": "Landmark", "enabled": true, "system": true}
+    {"seedKey": "cash", "code": "cash", "name": "Efectivo", "icon": "Banknote", "enabled": true, "system": true, "channel": "cash", "settlementPolicy": "immediate", "affectsCashDrawer": true, "requiresEvidence": false},
+    {"seedKey": "card", "code": "card", "name": "Tarjeta", "icon": "CreditCard", "enabled": true, "system": true, "channel": "card", "settlementPolicy": "immediate", "affectsCashDrawer": false, "requiresEvidence": false},
+    {"seedKey": "transfer", "code": "transfer", "name": "Transferencia", "icon": "Landmark", "enabled": true, "system": true, "channel": "bank_transfer", "settlementPolicy": "pending_confirmation", "affectsCashDrawer": false, "requiresEvidence": true},
+    {"seedKey": "payment-link", "code": "payment_link", "name": "Link de pago", "icon": "Link2", "enabled": true, "system": true, "channel": "payment_link", "settlementPolicy": "pending_confirmation", "affectsCashDrawer": false, "requiresEvidence": true},
+    {"seedKey": "credit", "code": "credit", "name": "Cuenta por cobrar", "icon": "Clock", "enabled": true, "system": true, "channel": "credit", "settlementPolicy": "receivable", "affectsCashDrawer": false, "requiresEvidence": false}
   ]
 }

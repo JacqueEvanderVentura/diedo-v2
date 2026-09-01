@@ -1,22 +1,12 @@
 import { useNavigate } from 'react-router-dom'
-import { useMemo } from 'react'
 import { CalendarClock, Clock, ArrowRight } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { useAgendaStore, statusMeta, todayKey } from '@/stores/agendaStore'
+import { statusMeta } from '@/stores/agendaStore'
 
-export function AppointmentsToday({ branchId = 'all' }) {
+export function AppointmentsToday({ appointments = [] }) {
   const navigate = useNavigate()
-  const appointments = useAgendaStore((s) => s.appointments)
-  const today = useMemo(
-    () =>
-      appointments
-        .filter((a) => a.date === todayKey())
-        .filter((a) => branchId === 'all' || a.branchId === branchId)
-        .sort((a, b) => a.time.localeCompare(b.time)),
-    [appointments, branchId]
-  )
 
   return (
     <Card className="p-6" data-testid="dashboard-appointments">
@@ -34,7 +24,7 @@ export function AppointmentsToday({ branchId = 'all' }) {
         </button>
       </div>
 
-      {today.length === 0 ? (
+      {appointments.length === 0 ? (
         <EmptyState
           icon={CalendarClock}
           title="No hay citas para hoy"
@@ -42,7 +32,7 @@ export function AppointmentsToday({ branchId = 'all' }) {
         />
       ) : (
         <div className="space-y-3" data-testid="dashboard-appointments-list">
-          {today.map((a) => {
+          {appointments.map((a) => {
             const st = statusMeta(a.status)
             return (
               <div key={a.id} className="flex items-center gap-4 rounded-xl border border-slate-100 p-4" data-testid={`dashboard-appointment-${a.id}`}>

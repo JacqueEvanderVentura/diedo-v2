@@ -116,7 +116,7 @@ installed organization counts and enabled modules. The route is not registered i
 production.
 
 `GET /health/ready` separately validates PostgreSQL connectivity and the expected Alembic revision
-(`20260831_0012`). It returns `503` when the schema is incompatible; authenticated capabilities stay
+(`20260831_0013`). It returns `503` when the schema is incompatible; authenticated capabilities stay
 in `/api/v1/auth/me` rather than readiness.
 
 ## Next design decision

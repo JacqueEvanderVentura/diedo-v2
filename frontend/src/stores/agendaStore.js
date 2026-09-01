@@ -9,6 +9,7 @@ import {
   syncAllAgendaReceivables,
   syncAppointmentReceivable,
 } from '@/modules/agenda/lib/receivableSync'
+import { getAppointmentReceivablePolicy } from '@/modules/agenda/lib/receivablePermissions'
 
 const genId = () => `apt-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const genLogId = () => `log-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
@@ -295,7 +296,16 @@ export const useAgendaStore = create((set, get) => ({
   deleteAppointment: async (id) => {
     const current = get().appointments.find((appointment) => appointment.id === id)
     if (!current) return null
-    if (useSessionStore.getState().status === 'demo') {
+    const session = useSessionStore.getState()
+    if (session.status === 'online') {
+      const cancellation = getAppointmentReceivablePolicy({
+        appointment: current,
+        online: true,
+        canManageReceivables: session.hasPermission('pos.receivables.manage'),
+      })
+      if (!cancellation.canCancel) throw new Error(cancellation.cancelReason)
+    }
+    if (session.status === 'demo') {
       const cancelled = updateDemoAppointment(current, { status: 'cancelada' })
       set((state) => ({ appointments: replaceAppointment(state.appointments, cancelled) }))
       removeAppointmentReceivable(id)

@@ -65,8 +65,15 @@ environment. The seed is safe to repeat, validates manifest checksums, uses stab
 workspace-wide and branch-scoped users, five customers, thirteen basic employees, schedules and
 supervisor links. It also installs 21 commercial inventory profiles, 40 branch stock balances,
 16 assets, and 35 opening movements across HQ, NORTH, DOWNTOWN, and EAST. Purchasing adds two
-suppliers and two requests with approval settings. With the flag false it does not write fixtures.
-`seed_local_demo` remains as a compatibility wrapper for local workflows.
+suppliers and two requests with approval settings. Terminal POS adds four cash registers, six
+quotes, sixteen sales, six receivables, five receivable payments, fifteen cash movements, and nine
+inventory movements. The scenario includes open and reconciled shifts, discounts, voids, partial
+collections, a reversed collection, and immediate and deferred payment methods. With the flag false
+it does not write fixtures. `seed_local_demo` remains as a compatibility wrapper for local workflows.
+
+Dashboard demo coverage adds nine appointments and eighteen branch-scoped tasks. Together with the
+POS and inventory fixtures, these populate every dashboard period, stock alerts, today's agenda,
+and recent activity.
 
 The local database listens on port `5433` to avoid colliding with a PostgreSQL installation on the
 default port.
@@ -88,6 +95,7 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - Users: `GET/POST http://localhost:8000/api/v1/users`
 - User metrics: `GET http://localhost:8000/api/v1/users/summary`
 - Permission matrix: `GET http://localhost:8000/api/v1/permissions/matrix`
+- Dashboard summaries, trend, stock, agenda, and activity: `http://localhost:8000/api/v1/dashboard`
 - Catalog categories: `GET/POST http://localhost:8000/api/v1/catalog/categories`
 - Catalog products: `GET/POST http://localhost:8000/api/v1/catalog/products`
 - Units of measure: `GET http://localhost:8000/api/v1/catalog/units-of-measure`
@@ -98,6 +106,7 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - HR overview, profiles, leave, debts, and documents: `http://localhost:8000/api/v1/hr`
 - Appointment resources: `GET http://localhost:8000/api/v1/appointment-resources`
 - Calendar and appointment management: `GET/POST/PATCH http://localhost:8000/api/v1/appointments`
+- Terminal POS, cash registers, sales, and receivables: `http://localhost:8000/api/v1/pos`
 - Incidents, comments, status and image evidence: `http://localhost:8000/api/v1/incidents`
 - Swagger UI: `http://localhost:8000/swagger/index.html`
 - OpenAPI JSON: `http://localhost:8000/swagger.json`
@@ -106,6 +115,8 @@ Swagger and ReDoc are disabled when `APP_ENV=production`.
 
 The IAM contract and security decisions are documented in
 [`../docs/backend/IAM_API.md`](../docs/backend/IAM_API.md).
+The read-only dashboard contract and period/branch semantics are documented in
+[`../docs/backend/DASHBOARD_API.md`](../docs/backend/DASHBOARD_API.md).
 The workspace, legal entity, branch, and payment-method contracts are documented in
 [`../docs/backend/ADMINISTRATION_API.md`](../docs/backend/ADMINISTRATION_API.md).
 The catalog contract, filters, scope rules, and concurrency behavior are documented in
@@ -116,6 +127,8 @@ The HR profile, leave, employee receivables, and document contracts are document
 [`../docs/backend/HR_API.md`](../docs/backend/HR_API.md).
 The branch-scoped calendar, appointment management, recurrence, and concurrency contracts are
 documented in [`../docs/backend/AGENDA_API.md`](../docs/backend/AGENDA_API.md).
+The Terminal POS, cash-register, sales, inventory, and receivables contracts are documented in
+[`../docs/backend/POS_API.md`](../docs/backend/POS_API.md).
 The incident workflow and temporary PostgreSQL image-storage contract are documented in
 [`../docs/backend/INCIDENTS_API.md`](../docs/backend/INCIDENTS_API.md).
 

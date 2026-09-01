@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
-from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from uuid import UUID, uuid5
+from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -15,6 +14,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.models import (
     AccessScope,
+    Appointment,
+    AppointmentEvent,
     AppointmentResource,
     Asset,
     AssetCategory,
@@ -55,6 +56,7 @@ from app.db.models import (
     RolePermission,
     Supplier,
     SupplierBranchAssignment,
+    Task,
     UnitOfMeasure,
     WorkspaceMembership,
 )
@@ -65,9 +67,20 @@ from app.services.demo_manifest import (
     DemoInventoryItemProfileFixture,
     load_demo_bundle,
 )
+from app.services.demo_pos_seed import seed_pos_demo_data
+from app.services.demo_seed_registry import (
+    checksum_payload as _checksum,
+)
+from app.services.demo_seed_registry import (
+    register_entity as _register,
+)
+from app.services.demo_seed_registry import (
+    registered_entity as _registered_entity,
+)
+from app.services.demo_seed_registry import (
+    stable_demo_id as _stable_id,
+)
 from app.services.local_bootstrap import bootstrap_local_foundation
-
-_DEMO_NAMESPACE = UUID("0b995e4e-d36a-5a4f-82b7-84a536c9fa59")
 
 
 @dataclass(frozen=True)
@@ -95,6 +108,15 @@ class DemoSeedSummary:
     purchase_request_count: int = 0
     incident_count: int = 0
     incident_attachment_count: int = 0
+    pos_register_count: int = 0
+    pos_quote_count: int = 0
+    pos_sale_count: int = 0
+    pos_receivable_count: int = 0
+    pos_payment_count: int = 0
+    pos_cash_movement_count: int = 0
+    pos_inventory_movement_count: int = 0
+    appointment_count: int = 0
+    dashboard_task_count: int = 0
 
 
 def seed_demo_data(
@@ -150,7 +172,25 @@ def seed_demo_data(
     )
     _seed_customers(session, bundle, foundation.workspace_id, branches)
     _seed_employees(session, bundle, foundation.workspace_id, branches)
+    appointment_count = _seed_agenda(
+        session,
+        bundle,
+        foundation.workspace_id,
+        branches,
+    )
+    dashboard_task_count = _seed_dashboard_tasks(
+        session,
+        bundle,
+        foundation.workspace_id,
+        branches,
+    )
     _seed_hr(session, bundle, foundation.workspace_id)
+    pos_counts = seed_pos_demo_data(
+        session,
+        bundle,
+        foundation.workspace_id,
+        branches,
+    )
     return DemoSeedSummary(
         enabled=True,
         seed_version=bundle.manifest.seed_version,
@@ -175,7 +215,231 @@ def seed_demo_data(
         purchase_request_count=len(bundle.purchasing.requests),
         incident_count=incident_counts[0],
         incident_attachment_count=incident_counts[1],
+        pos_register_count=pos_counts.registers,
+        pos_quote_count=pos_counts.quotes,
+        pos_sale_count=pos_counts.sales,
+        pos_receivable_count=pos_counts.receivables,
+        pos_payment_count=pos_counts.payments,
+        pos_cash_movement_count=pos_counts.cash_movements,
+        pos_inventory_movement_count=pos_counts.inventory_movements,
+        appointment_count=appointment_count,
+        dashboard_task_count=dashboard_task_count,
     )
+
+
+def _seed_agenda(
+    session: Session,
+    bundle: DemoBundle,
+    workspace_id: UUID,
+    branches: dict[str, Branch],
+) -> int:
+    actor_id = _stable_id(bundle.manifest.seed_version, "platform_user", "admin")
+    for fixture in bundle.agenda.items:
+        branch = branches.get(fixture.branch_code)
+        if branch is None:
+            raise RuntimeError("Demo appointment references an unknown branch.")
+        resource = session.scalar(
+            select(AppointmentResource).where(
+                AppointmentResource.workspace_id == workspace_id,
+                AppointmentResource.branch_id == branch.id,
+                AppointmentResource.code == fixture.resource_code,
+            )
+        )
+        if resource is None:
+            raise RuntimeError("Demo appointment references an unknown resource.")
+        customer = (
+            session.get(
+                Customer,
+                _stable_id(
+                    bundle.manifest.seed_version,
+                    "customer",
+                    fixture.customer_seed_key,
+                ),
+            )
+            if fixture.customer_seed_key
+            else None
+        )
+        employee = (
+            session.get(
+                Employee,
+                _stable_id(
+                    bundle.manifest.seed_version,
+                    "employee",
+                    fixture.employee_seed_key,
+                ),
+            )
+            if fixture.employee_seed_key
+            else None
+        )
+        service = (
+            session.get(
+                Item,
+                _stable_id(
+                    bundle.manifest.seed_version,
+                    "item",
+                    fixture.service_seed_key,
+                ),
+            )
+            if fixture.service_seed_key
+            else None
+        )
+        if fixture.customer_seed_key and customer is None:
+            raise RuntimeError("Demo appointment references an unknown customer.")
+        if fixture.employee_seed_key and employee is None:
+            raise RuntimeError("Demo appointment references an unknown employee.")
+        if fixture.service_seed_key and service is None:
+            raise RuntimeError("Demo appointment references an unknown service.")
+
+        payload = fixture.model_dump(mode="json")
+        entity_id = _stable_id(bundle.manifest.seed_version, "appointment", fixture.seed_key)
+        appointment = _registered_entity(
+            session,
+            workspace_id,
+            "appointment",
+            fixture.seed_key,
+            entity_id,
+            payload,
+            Appointment,
+        )
+        starts_at = datetime.combine(
+            fixture.date,
+            fixture.time,
+            tzinfo=ZoneInfo(branch.timezone),
+        ).astimezone(UTC)
+        values = {
+            "workspace_id": workspace_id,
+            "branch_id": branch.id,
+            "resource_id": resource.id,
+            "customer_id": customer.id if customer else None,
+            "employee_id": employee.id if employee else None,
+            "service_id": service.id if service else None,
+            "scheduled_date": fixture.date,
+            "scheduled_time": fixture.time,
+            "timezone": branch.timezone,
+            "starts_at": starts_at,
+            "ends_at": starts_at + timedelta(minutes=fixture.duration_minutes),
+            "duration_minutes": fixture.duration_minutes,
+            "customer_name": customer.display_name if customer else "Cliente Mostrador",
+            "customer_phone": customer.phone if customer else None,
+            "service_name": service.name if service else "Sin servicio",
+            "price": Decimal("0"),
+            "status": fixture.status,
+            "notes": "Cita de demostración para el dashboard.",
+            "pending_payment": False,
+            "pending_amount": Decimal("0"),
+            "first_time": False,
+            "free_trial": False,
+            "reminder_sent": False,
+            "source": "staff",
+            "recurrence": "none",
+            "recurrence_group_id": None,
+            "occurrence_index": 0,
+            "repeat_count": 1,
+            "idempotency_key": (
+                f"demo:{bundle.manifest.seed_version}:appointment:{fixture.seed_key}"
+            ),
+            "request_fingerprint": _checksum(payload),
+            "created_by_platform_user_id": actor_id,
+            "updated_by_platform_user_id": actor_id,
+            "created_at": fixture.created_at,
+            "updated_at": fixture.created_at,
+        }
+        if appointment is None:
+            appointment = Appointment(id=entity_id, **values)
+            session.add(appointment)
+            session.flush()
+            _register(
+                session,
+                workspace_id,
+                "appointment",
+                fixture.seed_key,
+                entity_id,
+                bundle.manifest.seed_version,
+                payload,
+            )
+        else:
+            for field, value in values.items():
+                setattr(appointment, field, value)
+
+        event_id = _stable_id(
+            bundle.manifest.seed_version,
+            "appointment_event",
+            fixture.seed_key,
+        )
+        event = session.get(AppointmentEvent, event_id)
+        event_values: dict[str, object] = {
+            "workspace_id": workspace_id,
+            "appointment_id": appointment.id,
+            "actor_platform_user_id": actor_id,
+            "actor_name": "Alex Demo",
+            "action": "create",
+            "changes": {"seeded": True},
+            "request_id": None,
+            "occurred_at": fixture.created_at,
+        }
+        if event is None:
+            session.add(AppointmentEvent(id=event_id, **event_values))
+        else:
+            for event_field, event_value in event_values.items():
+                setattr(event, event_field, event_value)
+    session.flush()
+    return len(bundle.agenda.items)
+
+
+def _seed_dashboard_tasks(
+    session: Session,
+    bundle: DemoBundle,
+    workspace_id: UUID,
+    branches: dict[str, Branch],
+) -> int:
+    for fixture in bundle.dashboard.tasks:
+        branch = branches.get(fixture.branch_code)
+        if branch is None:
+            raise RuntimeError("Demo dashboard task references an unknown branch.")
+        payload = fixture.model_dump(mode="json")
+        entity_id = _stable_id(bundle.manifest.seed_version, "task", fixture.seed_key)
+        task = _registered_entity(
+            session,
+            workspace_id,
+            "task",
+            fixture.seed_key,
+            entity_id,
+            payload,
+            Task,
+        )
+        values = {
+            "workspace_id": workspace_id,
+            "branch_id": branch.id,
+            "title": fixture.title,
+            "description": fixture.description,
+            "status": fixture.status,
+            "priority": fixture.priority,
+            "due_at": fixture.due_at,
+            "completed_at": fixture.completed_at,
+            "assigned_to_name": fixture.assigned_to_name,
+            "source": fixture.source,
+            "source_route": fixture.source_route,
+            "created_at": fixture.created_at,
+            "updated_at": fixture.completed_at or fixture.created_at,
+        }
+        if task is None:
+            task = Task(id=entity_id, **values)
+            session.add(task)
+            session.flush()
+            _register(
+                session,
+                workspace_id,
+                "task",
+                fixture.seed_key,
+                entity_id,
+                bundle.manifest.seed_version,
+                payload,
+            )
+        else:
+            for field, value in values.items():
+                setattr(task, field, value)
+    session.flush()
+    return len(bundle.dashboard.tasks)
 
 
 def _seed_purchasing(
@@ -2361,16 +2625,40 @@ def _seed_users(
 def _seed_payment_methods(session: Session, bundle: DemoBundle, workspace_id: UUID) -> None:
     for fixture in bundle.configuration.payment_methods:
         payload = fixture.model_dump(mode="json")
-        entity_id = _stable_id(bundle.manifest.seed_version, "payment_method", fixture.seed_key)
-        method = _registered_entity(
-            session,
-            workspace_id,
-            "payment_method",
-            fixture.seed_key,
-            entity_id,
-            payload,
-            PaymentMethod,
+        registry = session.scalar(
+            select(DemoSeedRegistry).where(
+                DemoSeedRegistry.workspace_id == workspace_id,
+                DemoSeedRegistry.entity_type == "payment_method",
+                DemoSeedRegistry.seed_key == fixture.seed_key,
+            )
         )
+        if registry is not None:
+            entity_id = registry.entity_id
+            method = _registered_entity(
+                session,
+                workspace_id,
+                "payment_method",
+                fixture.seed_key,
+                entity_id,
+                payload,
+                PaymentMethod,
+            )
+        else:
+            method = session.scalar(
+                select(PaymentMethod).where(
+                    PaymentMethod.workspace_id == workspace_id,
+                    PaymentMethod.code == fixture.code,
+                )
+            )
+            entity_id = (
+                method.id
+                if method is not None
+                else _stable_id(
+                    bundle.manifest.seed_version,
+                    "payment_method",
+                    fixture.seed_key,
+                )
+            )
         if method is None:
             method = PaymentMethod(
                 id=entity_id,
@@ -2380,9 +2668,14 @@ def _seed_payment_methods(session: Session, bundle: DemoBundle, workspace_id: UU
                 icon=fixture.icon,
                 status="active" if fixture.enabled else "inactive",
                 is_system=fixture.system,
+                channel=fixture.channel,
+                settlement_policy=fixture.settlement_policy,
+                affects_cash_drawer=fixture.affects_cash_drawer,
+                requires_evidence=fixture.requires_evidence,
             )
             session.add(method)
             session.flush()
+        if registry is None:
             _register(
                 session,
                 workspace_id,
@@ -2392,12 +2685,15 @@ def _seed_payment_methods(session: Session, bundle: DemoBundle, workspace_id: UU
                 bundle.manifest.seed_version,
                 payload,
             )
-        else:
-            method.code = fixture.code
-            method.name = fixture.name
-            method.icon = fixture.icon
-            method.status = "active" if fixture.enabled else "inactive"
-            method.is_system = fixture.system
+        method.code = fixture.code
+        method.name = fixture.name
+        method.icon = fixture.icon
+        method.status = "active" if fixture.enabled else "inactive"
+        method.is_system = fixture.system
+        method.channel = fixture.channel
+        method.settlement_policy = fixture.settlement_policy
+        method.affects_cash_drawer = fixture.affects_cash_drawer
+        method.requires_evidence = fixture.requires_evidence
     session.flush()
 
 
@@ -2412,66 +2708,3 @@ def _branch_scope(session: Session, workspace_id: UUID, branch_id: UUID) -> Acce
     if scope is None:
         raise RuntimeError("The demo branch scope is missing.")
     return scope
-
-
-def _registered_entity[ModelT](
-    session: Session,
-    workspace_id: UUID,
-    entity_type: str,
-    seed_key: str,
-    entity_id: UUID,
-    payload: Mapping[str, object],
-    model: type[ModelT],
-) -> ModelT | None:
-    registry = session.scalar(
-        select(DemoSeedRegistry).where(
-            DemoSeedRegistry.workspace_id == workspace_id,
-            DemoSeedRegistry.entity_type == entity_type,
-            DemoSeedRegistry.seed_key == seed_key,
-        )
-    )
-    if registry is None:
-        if session.get(model, entity_id) is not None:
-            raise RuntimeError("A demo UUID exists without a seed registry claim.")
-        return None
-    if registry.entity_id != entity_id:
-        raise RuntimeError("The registered demo UUID does not match the manifest identity.")
-    checksum = _checksum(payload)
-    if registry.checksum != checksum:
-        registry.checksum = checksum
-        registry.version += 1
-    entity = session.get(model, entity_id)
-    if entity is None:
-        raise RuntimeError("A registered demo entity is missing.")
-    return entity
-
-
-def _register(
-    session: Session,
-    workspace_id: UUID,
-    entity_type: str,
-    seed_key: str,
-    entity_id: UUID,
-    seed_version: str,
-    payload: Mapping[str, object],
-) -> None:
-    session.add(
-        DemoSeedRegistry(
-            workspace_id=workspace_id,
-            entity_type=entity_type,
-            seed_key=seed_key,
-            entity_id=entity_id,
-            seed_version=seed_version,
-            checksum=_checksum(payload),
-        )
-    )
-    session.flush()
-
-
-def _stable_id(seed_version: str, entity_type: str, seed_key: str) -> UUID:
-    return uuid5(_DEMO_NAMESPACE, f"{seed_version}:{entity_type}:{seed_key}")
-
-
-def _checksum(payload: Mapping[str, object]) -> str:
-    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

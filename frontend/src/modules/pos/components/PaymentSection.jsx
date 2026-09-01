@@ -3,6 +3,7 @@ import { Banknote, CreditCard, ArrowLeftRight, Link2, Clock, Wallet, Upload, Che
 import { useConfigStore } from '@/stores/configStore'
 import { usePosStore } from '@/stores/posStore'
 import { cn } from '@/lib/utils'
+import { POS_PROOF_ACCEPT } from '../lib/receivables'
 
 const ICONS = { Banknote, CreditCard, ArrowLeftRight, Link2, Clock, Wallet }
 
@@ -32,9 +33,13 @@ export function PaymentSection({ error }) {
     }
   }, [paymentMethods, paymentMethod, setPaymentMethod])
 
-  const isReceivable = ['transferencia', 'link', 'cxc'].includes(paymentMethod)
+  const selectedMethod = paymentMethods.find((method) => method.id === paymentMethod)
+  const isReceivable = selectedMethod
+    ? ['pending_confirmation', 'credit'].includes(selectedMethod.settlementMode)
+    : ['transferencia', 'link', 'cxc'].includes(paymentMethod)
   const isTransfer = paymentMethod === 'transferencia'
-  // Transfer validity: proof OR reference (one of two).
+  // The checkout remains JSON. In online mode, a selected File is uploaded to
+  // the generated receivable immediately after checkout and is never persisted.
   const transferMissing = isTransfer && !transferProof && !paymentReference.trim()
   const showRefError = isTransfer && error && transferMissing
 
@@ -94,12 +99,12 @@ export function PaymentSection({ error }) {
           <input
             ref={fileRef}
             type="file"
-            accept="image/*,.pdf"
+            accept={POS_PROOF_ACCEPT}
             className="hidden"
             data-testid="pos-transfer-file"
-            onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (f) setTransferProof({ name: f.name })
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+              if (f) setTransferProof(f)
             }}
           />
           <div className="flex items-center gap-2">

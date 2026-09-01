@@ -48,16 +48,19 @@ def test_local_bootstrap_is_idempotent_and_installs_minimum_access_model() -> No
     assert second == first
     assert second.enabled_modules == (
         "foundation",
+        "dashboard",
         "iam",
         "catalog",
         "crm",
+        "sales",
         "hr",
         "appointments",
         "inventory",
+        "pos",
         "purchasing",
         "incidents",
     )
-    assert permission_count == 41
+    assert permission_count == 54
     assert assigned_permission_count == permission_count
     assert second.workspace_id.version == 7
 
@@ -158,12 +161,15 @@ def test_development_foundation_endpoint_reports_seeded_database(client: TestCli
         "appointments",
         "catalog",
         "crm",
+        "dashboard",
         "foundation",
         "hr",
         "iam",
         "incidents",
         "inventory",
+        "pos",
         "purchasing",
+        "sales",
     ]
 
 

@@ -24,6 +24,18 @@ class PaymentMethod(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
         UniqueConstraint("workspace_id", "id", name="uq_payment_methods_workspace_id"),
         UniqueConstraint("workspace_id", "code", name="uq_payment_methods_workspace_code"),
         CheckConstraint("status IN ('active', 'inactive', 'archived')", name="status_values"),
+        CheckConstraint(
+            "channel IN ('cash', 'card', 'bank_transfer', 'payment_link', 'credit', 'other')",
+            name="channel_values",
+        ),
+        CheckConstraint(
+            "settlement_policy IN ('immediate', 'pending_confirmation', 'receivable')",
+            name="settlement_policy_values",
+        ),
+        CheckConstraint(
+            "NOT affects_cash_drawer OR channel = 'cash'",
+            name="cash_drawer_requires_cash_channel",
+        ),
         Index("ix_payment_methods_workspace_status", "workspace_id", "status"),
     )
 
@@ -35,6 +47,18 @@ class PaymentMethod(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     icon: Mapped[str] = mapped_column(String(48), nullable=False, server_default=text("'Wallet'"))
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'active'"))
     is_system: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    channel: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="other", server_default=text("'other'")
+    )
+    settlement_policy: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="immediate", server_default=text("'immediate'")
+    )
+    affects_cash_drawer: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    requires_evidence: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
 

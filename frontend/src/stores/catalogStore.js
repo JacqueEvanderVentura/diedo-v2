@@ -18,7 +18,7 @@ export const LOW_STOCK_THRESHOLD = 5
 const genId = () => `prod-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 
 export function isPosSellable(product) {
-  return product?.type === 'product' || product?.type === 'service'
+  return ['product', 'service', 'membership'].includes(product?.type)
 }
 
 export function isStockTracked(product) {

@@ -10,15 +10,18 @@ import {
   ArrowDownRight,
   ShoppingBag,
   ChevronRight,
+  Ban,
 } from 'lucide-react'
 import { usePosStore } from '@/stores/posStore'
 import { useConfigStore } from '@/stores/configStore'
+import { useSessionStore } from '@/stores/sessionStore'
 import { formatDOP } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Modal } from '@/components/ui/Modal'
 import {
   ResponsiveList,
   ResponsiveTable,
@@ -35,6 +38,8 @@ import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable
 import { useSortedRows } from '@/hooks/useTableControls'
 import { filterMovements, methodLabel, PAYMENT_BREAKDOWN, sumByMethod } from '../lib/caja'
 import { cn } from '@/lib/utils'
+import { PosSyncStatus } from '../components/PosSyncStatus'
+import { usePosOnlineState } from '../hooks/usePosOnlineState'
 
 const fmtTime = (iso) =>
   new Date(iso).toLocaleString('es-DO', { hour: '2-digit', minute: '2-digit' })
@@ -172,11 +177,15 @@ function RegisterHistoryPanel({ history }) {
 }
 
 export default function CajaPage() {
+  const { isOnline, hydrating, mutating, error, refresh } = usePosOnlineState()
   const register = usePosStore((s) => s.register)
   const shiftSales = usePosStore((s) => s.shiftSales)
   const shiftIncomes = usePosStore((s) => s.shiftIncomes)
   const expenses = usePosStore((s) => s.expenses)
   const registerHistory = usePosStore((s) => s.registerHistory)
+  const registerSummary = usePosStore((s) => s.registerSummary)
+  const quoteSummary = usePosStore((s) => s.quoteSummary)
+  const pagination = usePosStore((s) => s.pagination)
   const branchId = usePosStore((s) => s.branchId)
   const setBranch = usePosStore((s) => s.setBranch)
   const getCashInDrawer = usePosStore((s) => s.getCashInDrawer)
@@ -189,10 +198,22 @@ export default function CajaPage() {
   const openQuotes = usePosStore((s) => s.openQuotes)
   const openRegister = usePosStore((s) => s.openRegister)
   const closeRegister = usePosStore((s) => s.closeRegister)
+  const voidSale = usePosStore((s) => s.voidSale)
+  const loadMoreShiftSales = usePosStore((s) => s.loadMoreShiftSales)
+  const loadMoreCashMovements = usePosStore((s) => s.loadMoreCashMovements)
   const lastCloseSummary = usePosStore((s) => s.lastCloseSummary)
   const branches = useConfigStore((s) => s.branches)
+  const canManageRegister = useSessionStore((s) => s.hasPermission('pos.register.manage'))
+  const canManageCash = useSessionStore((s) => s.hasPermission('pos.cash.manage'))
+  const canVoidSales = useSessionStore((s) => s.hasPermission('pos.void'))
 
   const [openInput, setOpenInput] = useState('')
+  const [closeOpen, setCloseOpen] = useState(false)
+  const [closeInput, setCloseInput] = useState('')
+  const [closeError, setCloseError] = useState('')
+  const [saleToVoid, setSaleToVoid] = useState(null)
+  const [voidReason, setVoidReason] = useState('')
+  const [voidError, setVoidError] = useState('')
   const [movementOpen, setMovementOpen] = useState(false)
   const [tab, setTab] = useState('todos')
 
@@ -204,24 +225,94 @@ export default function CajaPage() {
   const totalExpenses = useMemo(() => getCashExpenses(), [expenses, getCashExpenses])
   const expectedCash = getCashInDrawer()
 
-  const salesCount = shiftSales.length
+  const salesCount = isOnline && registerSummary
+    ? registerSummary.salesCount
+    : shiftSales.filter((sale) => sale.status !== 'voided').length
   const pendingCxc = getPendingTotal()
   const openQuotesTotal = getOpenQuotesTotal()
+  const openQuotesCount = isOnline && quoteSummary
+    ? quoteSummary.openCount
+    : openQuotes.length
+  const salesPage = pagination?.sales || {}
+  const movementsPage = pagination?.movements || {}
+  const hasMoreSales = isOnline && salesPage.page < salesPage.totalPages
+  const hasMoreCashMovements = isOnline && movementsPage.page < movementsPage.totalPages
+  const loadingMore = Boolean(salesPage.loading || movementsPage.loading)
 
-  const handleOpen = () => {
-    openRegister(openInput || 0)
-    toast.success(`Caja abierta con ${formatDOP(openInput || 0)}`)
-    setOpenInput('')
+  const handleLoadMore = async () => {
+    try {
+      await Promise.all([
+        hasMoreSales ? loadMoreShiftSales() : Promise.resolve(false),
+        hasMoreCashMovements ? loadMoreCashMovements() : Promise.resolve(false),
+      ])
+    } catch (operationError) {
+      toast.error(operationError.message || 'No se pudieron cargar movimientos anteriores.')
+    }
   }
 
-  const handleClose = () => {
-    closeRegister()
-    toast.success('Caja cerrada. Revisa el resumen del turno.')
+  const handleOpen = async () => {
+    if (!canManageRegister) {
+      toast.error('No tienes permiso para gestionar la apertura de caja.')
+      return
+    }
+    try {
+      await openRegister(openInput || 0)
+      toast.success(`Caja abierta con ${formatDOP(openInput || 0)}`)
+      setOpenInput('')
+    } catch (operationError) {
+      toast.error(operationError.message || 'No se pudo abrir la caja.')
+    }
+  }
+
+  const handleClose = async () => {
+    if (!canManageRegister) {
+      toast.error('No tienes permiso para cerrar la caja.')
+      return
+    }
+    const countedCash = Number(closeInput)
+    if (!closeInput.trim() || !Number.isFinite(countedCash) || countedCash < 0) {
+      setCloseError('Ingresa el efectivo real contado (un monto mayor o igual a cero).')
+      return
+    }
+    try {
+      await closeRegister(countedCash)
+      toast.success('Caja cerrada. Revisa el resumen del turno.')
+      setCloseOpen(false)
+      setCloseInput('')
+      setCloseError('')
+    } catch (operationError) {
+      toast.error(operationError.message || 'No se pudo cerrar la caja.')
+    }
+  }
+
+  const handleVoidSale = async () => {
+    if (!canVoidSales) {
+      toast.error('No tienes permiso para anular ventas.')
+      return
+    }
+    if (!saleToVoid) return
+    if (voidReason.trim().length < 2) {
+      setVoidError('Indica un motivo de al menos 2 caracteres.')
+      return
+    }
+    try {
+      const result = await voidSale(saleToVoid.id, voidReason.trim())
+      if (!result) throw new Error('La venta ya no está disponible para anular.')
+      toast.success('Venta anulada; los totales de caja fueron actualizados.')
+      setSaleToVoid(null)
+      setVoidReason('')
+      setVoidError('')
+    } catch (operationError) {
+      const message = operationError.message || 'No se pudo anular la venta.'
+      setVoidError(message)
+      toast.error(message)
+    }
   }
 
   if (!register.open) {
     return (
       <div className="mx-auto w-full max-w-3xl space-y-6 p-6 sm:p-8">
+        <PosSyncStatus isOnline={isOnline} hydrating={hydrating} error={error} onRetry={refresh} />
         <Card className="p-8" data-testid="caja-open-card">
           <div className="mb-6 flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
@@ -241,7 +332,7 @@ export default function CajaPage() {
             data-testid="caja-opening-input"
             className="mb-4 w-full rounded-xl border-0 bg-white py-3 px-4 text-sm text-slate-900 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-inset focus:ring-blue-600"
           />
-          <Button className="w-full" size="lg" onClick={handleOpen} data-testid="caja-open-btn">
+          <Button className="w-full" size="lg" onClick={handleOpen} disabled={Boolean(mutating) || !canManageRegister} data-testid="caja-open-btn">
             <Unlock className="h-4 w-4" /> Abrir caja
           </Button>
         </Card>
@@ -253,6 +344,7 @@ export default function CajaPage() {
               <div className="flex justify-between text-slate-500"><dt>Efectivo inicial</dt><dd className="font-medium text-slate-700">{formatDOP(lastCloseSummary.openingCash)}</dd></div>
               <div className="flex justify-between text-slate-500"><dt>Total ventas</dt><dd className="font-medium text-slate-700">{formatDOP(lastCloseSummary.totalSales)}</dd></div>
               <div className="flex justify-between text-slate-500"><dt>Ventas en efectivo</dt><dd className="font-medium text-slate-700">{formatDOP(lastCloseSummary.cashSales)}</dd></div>
+              <div className="flex justify-between text-slate-500"><dt>Cobros CxC en efectivo</dt><dd className="font-medium text-slate-700">{formatDOP(lastCloseSummary.cashReceivablePayments)}</dd></div>
               <div className="flex justify-between text-slate-500"><dt>Ingresos</dt><dd className="font-medium text-emerald-600">+{formatDOP(lastCloseSummary.cashIncomes || 0)}</dd></div>
               <div className="flex justify-between text-slate-500"><dt>Egresos</dt><dd className="font-medium text-red-600">−{formatDOP(lastCloseSummary.expenses)}</dd></div>
               <div className="flex justify-between border-t border-slate-100 pt-2"><dt className="font-heading font-bold text-slate-900">Efectivo esperado</dt><dd className="font-heading text-lg font-bold text-blue-600">{formatDOP(lastCloseSummary.expected)}</dd></div>
@@ -268,6 +360,7 @@ export default function CajaPage() {
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="caja-page">
+      <PosSyncStatus isOnline={isOnline} hydrating={hydrating} error={error} onRetry={refresh} />
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-4">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
@@ -279,15 +372,25 @@ export default function CajaPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" onClick={() => setMovementOpen(true)} data-testid="caja-add-movement">
+          <Button variant="secondary" onClick={() => setMovementOpen(true)} disabled={Boolean(mutating) || !canManageCash} data-testid="caja-add-movement">
             <DollarSign className="h-4 w-4" /> Movimiento
           </Button>
-          <Button variant="dangerSolid" onClick={handleClose} data-testid="caja-close-btn">
+          <Button
+            variant="dangerSolid"
+            onClick={() => {
+              setCloseInput('')
+              setCloseError('')
+              setCloseOpen(true)
+            }}
+            disabled={Boolean(mutating) || !canManageRegister}
+            data-testid="caja-close-btn"
+          >
             <Lock className="h-4 w-4" /> Cerrar Caja
           </Button>
           <Select
             value={branchId}
             onChange={setBranch}
+            disabled={Boolean(mutating)}
             className="w-[180px]"
             options={branches.map((b) => ({ value: b.id, label: b.name }))}
           />
@@ -323,7 +426,7 @@ export default function CajaPage() {
             <KpiCard
               label="Cotizaciones abiertas"
               value={formatDOP(openQuotesTotal)}
-              sub={`${openQuotes.length} cuenta${openQuotes.length !== 1 ? 's' : ''} abierta${openQuotes.length !== 1 ? 's' : ''}`}
+              sub={`${openQuotesCount} cuenta${openQuotesCount !== 1 ? 's' : ''} abierta${openQuotesCount !== 1 ? 's' : ''}`}
             />
           </div>
 
@@ -396,6 +499,22 @@ export default function CajaPage() {
                           <span className={cn('text-sm font-bold', isOut ? 'text-red-600' : 'text-slate-900')}>
                             {isOut ? '−' : '+'}{formatDOP(m.amount)}
                           </span>
+                          {m.type === 'venta' && canVoidSales && (
+                            <button
+                              type="button"
+                              title="Anular venta"
+                              disabled={Boolean(mutating)}
+                              onClick={() => {
+                                setSaleToVoid(m.meta)
+                                setVoidReason('')
+                                setVoidError('')
+                              }}
+                              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                              data-testid={`caja-void-sale-${m.id}`}
+                            >
+                              <Ban className="h-4 w-4" />
+                            </button>
+                          )}
                           <ChevronRight className="h-4 w-4 text-slate-300 transition-colors group-hover:text-slate-500" />
                         </div>
                       </div>
@@ -404,6 +523,18 @@ export default function CajaPage() {
                 </div>
               )}
             </AnimatedTabPanel>
+            {(hasMoreSales || hasMoreCashMovements) && (
+              <div className="mt-4 flex justify-center border-t border-slate-100 pt-4">
+                <Button
+                  variant="secondary"
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  data-testid="caja-load-more"
+                >
+                  {loadingMore ? 'Cargando…' : 'Cargar movimientos anteriores'}
+                </Button>
+              </div>
+            )}
           </Card>
         </div>
 
@@ -412,7 +543,12 @@ export default function CajaPage() {
           <div className="space-y-3">
             {PAYMENT_BREAKDOWN.map((pm) => {
               const Icon = Icons[pm.icon] || Icons.Wallet
-              const total = sumByMethod(shiftSales, pm.id)
+              const authoritativeMethod = registerSummary?.salesByPaymentMethod?.find(
+                (row) => row.paymentMethod?.id === pm.id || row.paymentMethod?.semanticCode === pm.id
+              )
+              const total = isOnline && registerSummary
+                ? authoritativeMethod?.salesTotal || 0
+                : sumByMethod(shiftSales, pm.id)
               return (
                 <div key={pm.id} className="flex items-center justify-between rounded-lg bg-slate-50 p-3">
                   <div className="flex items-center gap-3">
@@ -442,6 +578,112 @@ export default function CajaPage() {
       <RegisterHistoryPanel history={registerHistory} />
 
       <MovementModal open={movementOpen} onClose={() => setMovementOpen(false)} />
+
+      <Modal
+        open={closeOpen}
+        onClose={() => {
+          if (mutating) return
+          setCloseOpen(false)
+          setCloseError('')
+        }}
+        title="Arqueo y cierre de caja"
+        testId="caja-close-modal"
+      >
+        <div className="space-y-4">
+          <div className="rounded-xl bg-slate-50 p-4 text-sm">
+            <div className="flex justify-between text-slate-500">
+              <span>Efectivo esperado</span>
+              <span className="font-semibold text-slate-800">{formatDOP(expectedCash)}</span>
+            </div>
+            {closeInput.trim() && Number.isFinite(Number(closeInput)) && Number(closeInput) >= 0 && (
+              <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 text-slate-500">
+                <span>Diferencia estimada</span>
+                <span className={cn('font-semibold', Math.abs(Number(closeInput) - expectedCash) > 0.009 ? 'text-amber-700' : 'text-emerald-700')}>
+                  {formatDOP(Number(closeInput) - expectedCash)}
+                </span>
+              </div>
+            )}
+          </div>
+          <div>
+            <label htmlFor="caja-counted-cash" className="mb-1.5 block text-sm font-medium text-slate-700">
+              Efectivo real contado (RD$)
+            </label>
+            <input
+              id="caja-counted-cash"
+              type="number"
+              min="0"
+              step="0.01"
+              value={closeInput}
+              onChange={(event) => {
+                setCloseInput(event.target.value)
+                setCloseError('')
+              }}
+              placeholder="0.00"
+              autoFocus
+              data-testid="caja-counted-input"
+              className="w-full rounded-xl border-0 bg-white px-4 py-3 text-sm text-slate-900 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-inset focus:ring-blue-600"
+            />
+            {closeError && <p className="mt-1.5 text-sm font-medium text-red-600">{closeError}</p>}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setCloseOpen(false)} disabled={Boolean(mutating)}>
+              Cancelar
+            </Button>
+            <Button variant="dangerSolid" onClick={handleClose} disabled={Boolean(mutating)} data-testid="caja-confirm-close-btn">
+              <Lock className="h-4 w-4" /> Confirmar cierre
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!saleToVoid}
+        onClose={() => {
+          if (mutating) return
+          setSaleToVoid(null)
+          setVoidReason('')
+          setVoidError('')
+        }}
+        title="Anular venta"
+        testId="caja-void-sale-modal"
+      >
+        {saleToVoid && (
+          <div className="space-y-4">
+            <div className="rounded-xl bg-red-50 p-4 text-sm text-red-900">
+              <p className="font-semibold">{saleToVoid.customer?.name || saleToVoid.items?.[0]?.name || 'Venta POS'}</p>
+              <p className="mt-1">Monto a anular: {formatDOP(saleToVoid.total)}</p>
+            </div>
+            <div>
+              <label htmlFor="caja-void-reason" className="mb-1.5 block text-sm font-medium text-slate-700">
+                Motivo de anulación
+              </label>
+              <textarea
+                id="caja-void-reason"
+                value={voidReason}
+                onChange={(event) => {
+                  setVoidReason(event.target.value)
+                  setVoidError('')
+                }}
+                rows={3}
+                maxLength={1000}
+                autoFocus
+                placeholder="Ej. Cobro duplicado o producto incorrecto"
+                data-testid="caja-void-reason"
+                className="w-full resize-none rounded-xl border-0 bg-white px-4 py-3 text-sm text-slate-900 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-inset focus:ring-red-500"
+              />
+              {voidError && <p className="mt-1.5 text-sm font-medium text-red-600">{voidError}</p>}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setSaleToVoid(null)} disabled={Boolean(mutating)}>
+                Cancelar
+              </Button>
+              <Button variant="dangerSolid" onClick={handleVoidSale} disabled={Boolean(mutating)} data-testid="caja-confirm-void-sale">
+                <Ban className="h-4 w-4" /> Anular venta
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }
