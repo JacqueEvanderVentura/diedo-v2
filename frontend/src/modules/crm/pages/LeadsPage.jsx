@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { List, Search, Sparkles, SlidersHorizontal, MapPin, Phone, Globe, Import, UserCheck, Briefcase } from 'lucide-react'
+import { List, Search, Sparkles, SlidersHorizontal, MapPin, Phone, Globe, Import, UserCheck, Briefcase, Plus } from 'lucide-react'
 import { useCrmStore } from '@/stores/crmStore'
 import { searchBusinesses } from '@/services/leadSearch'
 import {
@@ -21,6 +21,7 @@ import { ModuleFitBars, ScoreBadge } from '../components/ModuleFitBars'
 import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
 import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
 import { cn } from '@/lib/utils'
+import { LeadFormModal } from '../components/LeadFormModal'
 
 const TABS = [
   { id: 'lista', label: 'Lista', icon: List },
@@ -174,12 +175,19 @@ function LeadsListaTab() {
 
 function LeadsDescubrirTab() {
   const addLeadsBatch = useCrmStore((s) => s.addLeadsBatch)
+  const branches = useConfigStore((state) => state.branches)
 
   const [q, setQ] = useState('')
   const [location, setLocation] = useState('Santo Domingo, República Dominicana')
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState([])
   const [selected, setSelected] = useState(new Set())
+  const [branchId, setBranchId] = useState('')
+
+  useEffect(() => {
+    if (branches.some((branch) => branch.id === branchId && branch.active)) return
+    setBranchId(branches.find((branch) => branch.active)?.id || '')
+  }, [branchId, branches])
 
   const runSearch = async () => {
     if (!q.trim()) return toast.error('Ingresa un término de búsqueda')
@@ -207,20 +215,31 @@ function LeadsDescubrirTab() {
     })
   }
 
-  const importSelected = () => {
-    const items = [...selected].map((i) => results[i])
+  const importSelected = async () => {
+    if (!branchId) return toast.error('Selecciona una sucursal')
+    const items = [...selected].map((i) => ({ ...results[i], branchId }))
     if (!items.length) return toast.error('Selecciona al menos un resultado')
-    addLeadsBatch(items, 'serp')
-    toast.success(`${items.length} lead(s) importados y puntuados`)
-    setResults([])
-    setSelected(new Set())
+    try {
+      await addLeadsBatch(items, 'serp')
+      toast.success(`${items.length} lead(s) importados y puntuados`)
+      setResults([])
+      setSelected(new Set())
+    } catch (error) {
+      toast.error(error.message || 'No se pudieron importar los leads')
+    }
   }
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-3">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ej: salón de belleza, restaurante..." className="rounded-xl border-0 bg-white px-4 py-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-600" />
         <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Ubicación" className="rounded-xl border-0 bg-white px-4 py-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-600" />
+        <Select
+          value={branchId}
+          onChange={setBranchId}
+          options={branches.filter((branch) => branch.active).map((branch) => ({ value: branch.id, label: branch.name }))}
+          placeholder="Sucursal destino"
+        />
       </div>
       <Button onClick={runSearch} disabled={loading}>
         <Search className="h-4 w-4" /> {loading ? 'Buscando...' : 'Buscar negocios'}
@@ -294,14 +313,20 @@ function LeadsCriteriosTab() {
 
 export default function LeadsPage() {
   const [params, setParams] = useSearchParams()
+  const [formOpen, setFormOpen] = useState(false)
   const tabParam = params.get('tab') || 'lista'
   const tab = TABS.some((t) => t.id === tabParam) ? tabParam : 'lista'
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="crm-leads">
-      <div>
-        <h2 className="font-heading text-2xl font-bold text-slate-900">Leads</h2>
-        <p className="text-sm text-slate-500">Encuentra, puntúa y convierte leads potenciales.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-heading text-2xl font-bold text-slate-900">Leads</h2>
+          <p className="text-sm text-slate-500">Encuentra, puntúa y convierte leads potenciales.</p>
+        </div>
+        <Button onClick={() => setFormOpen(true)} data-testid="lead-new">
+          <Plus className="h-4 w-4" /> Nuevo lead
+        </Button>
       </div>
 
       <div className="grid w-full max-w-lg grid-cols-3 rounded-xl bg-slate-100 p-1">
@@ -330,6 +355,7 @@ export default function LeadsPage() {
         {tab === 'criterios' && <LeadsCriteriosTab />}
         {tab === 'lista' && <LeadsListaTab />}
       </AnimatedTabPanel>
+      <LeadFormModal open={formOpen} onClose={() => setFormOpen(false)} />
     </div>
   )
 }

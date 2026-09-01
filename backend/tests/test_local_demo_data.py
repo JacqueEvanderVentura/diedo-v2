@@ -43,6 +43,10 @@ def test_demo_seed_flag_false_is_a_no_op() -> None:
     assert summary.demo_user_count == 0
     assert summary.payment_method_count == 0
     assert summary.customer_count == 0
+    assert summary.crm_profile_count == 0
+    assert summary.crm_lead_count == 0
+    assert summary.crm_opportunity_count == 0
+    assert summary.crm_activity_count == 0
     assert summary.employee_count == 0
     assert summary.leave_request_count == 0
     assert summary.debt_count == 0

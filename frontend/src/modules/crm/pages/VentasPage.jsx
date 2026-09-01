@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import * as Icons from 'lucide-react'
 import { Search, ShoppingBag } from 'lucide-react'
-import { usePosStore } from '@/stores/posStore'
+import { useCrmStore } from '@/stores/crmStore'
 import { useConfigStore } from '@/stores/configStore'
 import { formatDOP } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
@@ -43,7 +43,7 @@ function Chip({ label, value, tone }) {
 }
 
 export default function VentasPage() {
-  const sales = usePosStore((s) => s.sales)
+  const sales = useCrmStore((s) => s.sales)
   const branches = useConfigStore((s) => s.branches)
   const [query, setQuery] = useState('')
   const [method, setMethod] = useState('all')

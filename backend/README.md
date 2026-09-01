@@ -75,6 +75,10 @@ Dashboard demo coverage adds nine appointments and eighteen branch-scoped tasks.
 POS and inventory fixtures, these populate every dashboard period, stock alerts, today's agenda,
 and recent activity.
 
+CRM demo coverage adds five customer profiles, eight leads, six pipeline opportunities, eight
+follow-up activities, and two CRM-origin quotes. The fixtures include a traceable
+lead-to-customer-to-opportunity-to-quote-to-sale journey and a second journey with an expired quote.
+
 The local database listens on port `5433` to avoid colliding with a PostgreSQL installation on the
 default port.
 
@@ -108,6 +112,7 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - Calendar and appointment management: `GET/POST/PATCH http://localhost:8000/api/v1/appointments`
 - Terminal POS, cash registers, sales, and receivables: `http://localhost:8000/api/v1/pos`
 - Incidents, comments, status and image evidence: `http://localhost:8000/api/v1/incidents`
+- CRM leads, pipeline, activities, customers, quotes, sales, and overview: `http://localhost:8000/api/v1/crm`
 - Swagger UI: `http://localhost:8000/swagger/index.html`
 - OpenAPI JSON: `http://localhost:8000/swagger.json`
 
@@ -131,6 +136,8 @@ The Terminal POS, cash-register, sales, inventory, and receivables contracts are
 [`../docs/backend/POS_API.md`](../docs/backend/POS_API.md).
 The incident workflow and temporary PostgreSQL image-storage contract are documented in
 [`../docs/backend/INCIDENTS_API.md`](../docs/backend/INCIDENTS_API.md).
+The CRM model, complete commercial flow, endpoint contract, and demo journey are documented in
+[`../docs/backend/CRM_API.md`](../docs/backend/CRM_API.md).
 
 ## Quality checks
 

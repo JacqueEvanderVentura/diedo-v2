@@ -19,11 +19,11 @@
       "lines": [{"itemSeedKey": "full-body-package-12", "quantity": 1}], "notes": "Cotización pendiente de aprobación del cliente.", "expiresAt": "2026-09-08T03:59:59Z", "createdAt": "2026-08-31T15:10:00Z", "updatedAt": "2026-08-31T15:10:00Z"
     },
     {
-      "seedKey": "east-expired-retail", "documentNumber": "COT-99000004", "branchCode": "EAST", "customerSeedKey": "c5", "createdByUserSeedKey": "seller-east", "kind": "quote", "status": "expired", "paymentMethodSeedKey": "card",
+      "seedKey": "east-expired-retail", "documentNumber": "COT-99000004", "branchCode": "EAST", "customerSeedKey": "c5", "createdByUserSeedKey": "seller-east", "kind": "quote", "origin": "crm", "opportunitySeedKey": "carla-retail", "crmStatus": "vencida", "status": "expired", "paymentMethodSeedKey": "card",
       "lines": [{"itemSeedKey": "upper-lip-session", "quantity": 1}, {"itemSeedKey": "vitamin-c-serum", "quantity": 1}], "expiresAt": "2026-08-31T03:59:59Z", "createdAt": "2026-08-28T16:30:00Z", "updatedAt": "2026-08-31T04:00:00Z", "closedAt": "2026-08-31T04:00:00Z"
     },
     {
-      "seedKey": "downtown-converted-package", "documentNumber": "COT-99000005", "branchCode": "DOWNTOWN", "customerSeedKey": "c2", "createdByUserSeedKey": "seller-center", "kind": "quote", "status": "converted", "paymentMethodSeedKey": "cash",
+      "seedKey": "downtown-converted-package", "documentNumber": "COT-99000005", "branchCode": "DOWNTOWN", "customerSeedKey": "c2", "createdByUserSeedKey": "seller-center", "kind": "quote", "origin": "crm", "opportunitySeedKey": "jose-package", "crmStatus": "aceptada", "status": "converted", "paymentMethodSeedKey": "cash",
       "lines": [{"itemSeedKey": "brazilian-package-12", "quantity": 1}], "notes": "Cotización convertida en venta durante el turno.", "expiresAt": "2026-09-03T03:59:59Z", "createdAt": "2026-08-29T17:30:00Z", "updatedAt": "2026-08-30T14:00:00Z", "closedAt": "2026-08-30T14:00:00Z"
     },
     {

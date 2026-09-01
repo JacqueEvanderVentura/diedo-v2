@@ -87,6 +87,12 @@ class SalesQuote(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             ondelete="RESTRICT",
             name="fk_sales_quotes_workspace_payment_method",
         ),
+        ForeignKeyConstraint(
+            ["workspace_id", "opportunity_id"],
+            ["crm_opportunities.workspace_id", "crm_opportunities.id"],
+            ondelete="RESTRICT",
+            name="fk_sales_quotes_workspace_opportunity",
+        ),
         CheckConstraint("kind IN ('quote', 'held')", name="kind_values"),
         CheckConstraint("origin IN ('pos', 'crm')", name="origin_values"),
         CheckConstraint(
@@ -124,6 +130,12 @@ class SalesQuote(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             name="status_closed_at_consistent",
         ),
         CheckConstraint(
+            "(origin = 'pos' AND opportunity_id IS NULL AND crm_status IS NULL) OR "
+            "(origin = 'crm' AND crm_status IN "
+            "('borrador', 'enviada', 'aceptada', 'rechazada', 'vencida'))",
+            name="crm_origin_consistent",
+        ),
+        CheckConstraint(
             "char_length(creation_idempotency_key) >= 8", name="idempotency_key_length"
         ),
         CheckConstraint("char_length(request_fingerprint) = 64", name="fingerprint_length"),
@@ -140,6 +152,12 @@ class SalesQuote(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             "customer_id",
             "status",
         ),
+        Index(
+            "ix_sales_quotes_workspace_opportunity",
+            "workspace_id",
+            "opportunity_id",
+            "updated_at",
+        ),
     )
 
     workspace_id: Mapped[UUID] = mapped_column(
@@ -147,6 +165,7 @@ class SalesQuote(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     )
     branch_id: Mapped[UUID] = mapped_column(nullable=False)
     customer_id: Mapped[UUID | None] = mapped_column(nullable=True)
+    opportunity_id: Mapped[UUID | None] = mapped_column(nullable=True)
     document_number: Mapped[str] = mapped_column(String(32), nullable=False)
     kind: Mapped[str] = mapped_column(
         String(16), nullable=False, default="quote", server_default=text("'quote'")
@@ -157,6 +176,7 @@ class SalesQuote(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="open", server_default=text("'open'")
     )
+    crm_status: Mapped[str | None] = mapped_column(String(16))
     currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
     customer_name: Mapped[str | None] = mapped_column(String(200))
     customer_phone: Mapped[str | None] = mapped_column(String(40))

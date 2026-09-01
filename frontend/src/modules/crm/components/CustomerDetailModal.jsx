@@ -1,11 +1,12 @@
 import { useMemo } from 'react'
-import { Phone, Mail, Star, ShoppingBag, CalendarClock, CalendarDays, Pencil, CalendarPlus } from 'lucide-react'
+import { Phone, Mail, Star, ShoppingBag, CalendarClock, CalendarDays, Pencil, CalendarPlus, Building2 } from 'lucide-react'
 import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { usePosStore } from '@/stores/posStore'
 import { useAgendaStore, statusMeta, todayKey } from '@/stores/agendaStore'
+import { useConfigStore } from '@/stores/configStore'
 import { formatDOP } from '@/lib/format'
 import { fmtDate, fmtDateTime, METHOD_LABELS } from '../lib/crm'
 
@@ -21,6 +22,15 @@ function Section({ title, children }) {
 export function CustomerDetailModal({ open, onClose, customer, onEdit, onSchedule }) {
   const sales = usePosStore((s) => s.sales)
   const appointments = useAgendaStore((s) => s.appointments)
+  const branches = useConfigStore((s) => s.branches)
+  const assignedBranchIds = customer?.branchIds?.length
+    ? customer.branchIds
+    : customer?.branchId
+      ? [customer.branchId]
+      : []
+  const assignedBranches = assignedBranchIds
+    .map((branchId) => branches.find((branch) => branch.id === branchId))
+    .filter(Boolean)
 
   const purchases = useMemo(
     () => (customer ? sales.filter((s) => s.customer?.id === customer.id).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) : []),
@@ -86,6 +96,27 @@ export function CustomerDetailModal({ open, onClose, customer, onEdit, onSchedul
               <p className="font-heading text-xl font-bold text-slate-800">{purchases.length}</p>
             </div>
           </div>
+
+          <Section title="Clasificación y sucursales">
+            <div className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-3">
+              <Badge tone="neutral">
+                {customer.customerType === 'b2b' ? 'Empresa (B2B)' : 'Consumidor (B2C)'}
+              </Badge>
+              {assignedBranches.map((branch) => (
+                <Badge key={branch.id} tone="brand">
+                  <Building2 className="mr-1 h-3 w-3" /> {branch.name}
+                </Badge>
+              ))}
+              {assignedBranches.length === 0 && (
+                <span className="text-sm text-slate-400">Sin sucursales asignadas</span>
+              )}
+              {customer.customerType === 'b2b' && customer.company && (
+                <p className="w-full pt-1 text-sm text-slate-600">
+                  Razón social: <span className="font-semibold text-slate-700">{customer.company}</span>
+                </p>
+              )}
+            </div>
+          </Section>
 
           {customer.notes && (
             <Section title="Notas">

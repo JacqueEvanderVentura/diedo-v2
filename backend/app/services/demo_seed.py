@@ -20,8 +20,13 @@ from app.db.models import (
     Asset,
     AssetCategory,
     Branch,
+    CrmActivity,
+    CrmLead,
+    CrmOpportunity,
+    CrmSettings,
     Customer,
     CustomerBranchAssignment,
+    CustomerCrmProfile,
     DemoSeedRegistry,
     Employee,
     EmployeeBranchAssignment,
@@ -61,6 +66,7 @@ from app.db.models import (
     WorkspaceMembership,
 )
 from app.db.models.agenda import DEFAULT_APPOINTMENT_RESOURCES
+from app.services.crm_scoring import DEFAULT_SCORING_WEIGHTS, compute_auto_score
 from app.services.demo_manifest import (
     DemoBundle,
     DemoEmployeeFixture,
@@ -92,6 +98,10 @@ class DemoSeedSummary:
     demo_user_count: int
     payment_method_count: int
     customer_count: int = 0
+    crm_profile_count: int = 0
+    crm_lead_count: int = 0
+    crm_opportunity_count: int = 0
+    crm_activity_count: int = 0
     employee_count: int = 0
     leave_request_count: int = 0
     debt_count: int = 0
@@ -171,6 +181,7 @@ def seed_demo_data(
         branches,
     )
     _seed_customers(session, bundle, foundation.workspace_id, branches)
+    crm_counts = _seed_crm(session, bundle, foundation.workspace_id, branches)
     _seed_employees(session, bundle, foundation.workspace_id, branches)
     appointment_count = _seed_agenda(
         session,
@@ -199,6 +210,10 @@ def seed_demo_data(
         demo_user_count=len(bundle.iam.users),
         payment_method_count=len(bundle.configuration.payment_methods),
         customer_count=len(bundle.customers.items),
+        crm_profile_count=crm_counts[0],
+        crm_lead_count=crm_counts[1],
+        crm_opportunity_count=crm_counts[2],
+        crm_activity_count=crm_counts[3],
         employee_count=len(bundle.employees.items),
         leave_request_count=len(bundle.hr.leave_requests),
         debt_count=len(bundle.hr.debts),
@@ -306,7 +321,7 @@ def _seed_agenda(
             fixture.time,
             tzinfo=ZoneInfo(branch.timezone),
         ).astimezone(UTC)
-        values = {
+        values: dict[str, object] = {
             "workspace_id": workspace_id,
             "branch_id": branch.id,
             "resource_id": resource.id,
@@ -407,7 +422,7 @@ def _seed_dashboard_tasks(
             payload,
             Task,
         )
-        values = {
+        values: dict[str, object] = {
             "workspace_id": workspace_id,
             "branch_id": branch.id,
             "title": fixture.title,
@@ -1737,6 +1752,371 @@ def _sync_customer_branches(
                 bundle.manifest.seed_version,
                 payload,
             )
+
+
+def _seed_crm(
+    session: Session,
+    bundle: DemoBundle,
+    workspace_id: UUID,
+    branches: dict[str, Branch],
+) -> tuple[int, int, int, int]:
+    """Seed an understandable CRM journey before quotes and sales are installed."""
+
+    weights = {**DEFAULT_SCORING_WEIGHTS, **bundle.crm.scoring_weights}
+    admin_id = _stable_id(bundle.manifest.seed_version, "platform_user", "admin")
+    settings_row = session.scalar(
+        select(CrmSettings).where(CrmSettings.workspace_id == workspace_id)
+    )
+    if settings_row is None:
+        settings_row = CrmSettings(
+            id=_stable_id(bundle.manifest.seed_version, "crm_settings", "default"),
+            workspace_id=workspace_id,
+            scoring_weights=weights,
+            updated_by_platform_user_id=admin_id,
+        )
+        session.add(settings_row)
+    else:
+        settings_row.scoring_weights = weights
+        settings_row.updated_by_platform_user_id = admin_id
+
+    customer_fixtures = {item.seed_key: item for item in bundle.customers.items}
+    for profile_fixture in bundle.crm.customer_profiles:
+        customer = _required_demo_customer(
+            session, bundle.manifest.seed_version, profile_fixture.customer_seed_key
+        )
+        payload = profile_fixture.model_dump(mode="json")
+        profile_registry = session.scalar(
+            select(DemoSeedRegistry).where(
+                DemoSeedRegistry.workspace_id == workspace_id,
+                DemoSeedRegistry.entity_type == "customer_crm_profile",
+                DemoSeedRegistry.seed_key == profile_fixture.customer_seed_key,
+            )
+        )
+        existing_profile = session.scalar(
+            select(CustomerCrmProfile).where(
+                CustomerCrmProfile.workspace_id == workspace_id,
+                CustomerCrmProfile.customer_id == customer.id,
+            )
+        )
+        entity_id = (
+            profile_registry.entity_id
+            if profile_registry is not None
+            else (
+                existing_profile.id
+                if existing_profile is not None
+                else _stable_id(
+                    bundle.manifest.seed_version,
+                    "customer_crm_profile",
+                    profile_fixture.customer_seed_key,
+                )
+            )
+        )
+        profile = (
+            _registered_entity(
+                session,
+                workspace_id,
+                "customer_crm_profile",
+                profile_fixture.customer_seed_key,
+                entity_id,
+                payload,
+                CustomerCrmProfile,
+            )
+            if profile_registry is not None
+            else existing_profile
+        )
+        profile_values: dict[str, object] = {
+            "workspace_id": workspace_id,
+            "customer_id": customer.id,
+            "lifecycle_status": profile_fixture.lifecycle_status,
+            "loyalty_points": customer_fixtures[profile_fixture.customer_seed_key].points,
+            "notes": profile_fixture.notes,
+            "created_by_platform_user_id": admin_id,
+            "updated_by_platform_user_id": admin_id,
+        }
+        if profile is None:
+            profile = CustomerCrmProfile(id=entity_id, **profile_values)
+            session.add(profile)
+            session.flush()
+        else:
+            _assign_demo_values(profile, profile_values)
+        if profile_registry is None:
+            _register(
+                session,
+                workspace_id,
+                "customer_crm_profile",
+                profile_fixture.customer_seed_key,
+                entity_id,
+                bundle.manifest.seed_version,
+                payload,
+            )
+
+    leads: dict[str, CrmLead] = {}
+    for lead_fixture in bundle.crm.leads:
+        payload = lead_fixture.model_dump(mode="json")
+        scoring = compute_auto_score(payload, weights)
+        converted_customer = (
+            _required_demo_customer(
+                session,
+                bundle.manifest.seed_version,
+                lead_fixture.converted_customer_seed_key,
+            )
+            if lead_fixture.converted_customer_seed_key
+            else None
+        )
+        actor_id = _stable_id(
+            bundle.manifest.seed_version,
+            "platform_user",
+            lead_fixture.assigned_user_seed_key,
+        )
+        conversion_payload = {
+            "leadSeedKey": lead_fixture.seed_key,
+            "customerSeedKey": lead_fixture.converted_customer_seed_key,
+        }
+        score = (
+            lead_fixture.score_manual if lead_fixture.score_manual is not None else scoring.score
+        )
+        lead_values: dict[str, object] = {
+            "workspace_id": workspace_id,
+            "branch_id": branches[lead_fixture.branch_code].id,
+            "assigned_membership_id": _stable_id(
+                bundle.manifest.seed_version,
+                "membership",
+                lead_fixture.assigned_user_seed_key,
+            ),
+            "name": lead_fixture.name,
+            "company": lead_fixture.company,
+            "email": str(lead_fixture.email) if lead_fixture.email else None,
+            "phone": lead_fixture.phone,
+            "website": lead_fixture.website,
+            "location": lead_fixture.location,
+            "source": lead_fixture.source,
+            "source_url": lead_fixture.source_url,
+            "scraped_at": lead_fixture.scraped_at,
+            "raw_snippet": lead_fixture.raw_snippet,
+            "status": lead_fixture.status,
+            "score_auto": scoring.score,
+            "score_manual": lead_fixture.score_manual,
+            "score": score,
+            "module_fits": scoring.module_fits,
+            "score_reasons": scoring.reasons,
+            "score_notes": lead_fixture.score_notes,
+            "converted_customer_id": converted_customer.id if converted_customer else None,
+            "converted_at": lead_fixture.updated_at if converted_customer else None,
+            "creation_idempotency_key": (
+                f"demo:{bundle.manifest.seed_version}:lead:{lead_fixture.seed_key}"
+            ),
+            "request_fingerprint": _checksum(payload),
+            "conversion_idempotency_key": (
+                f"demo:{bundle.manifest.seed_version}:convert:{lead_fixture.seed_key}"
+                if converted_customer
+                else None
+            ),
+            "conversion_request_fingerprint": (
+                _checksum(conversion_payload) if converted_customer else None
+            ),
+            "created_by_platform_user_id": actor_id,
+            "updated_by_platform_user_id": actor_id,
+            "created_at": lead_fixture.created_at,
+            "updated_at": lead_fixture.updated_at,
+        }
+        entity_id = _stable_id(bundle.manifest.seed_version, "crm_lead", lead_fixture.seed_key)
+        lead = _registered_entity(
+            session,
+            workspace_id,
+            "crm_lead",
+            lead_fixture.seed_key,
+            entity_id,
+            payload,
+            CrmLead,
+        )
+        if lead is None:
+            lead = CrmLead(id=entity_id, **lead_values)
+            session.add(lead)
+            session.flush()
+            _register(
+                session,
+                workspace_id,
+                "crm_lead",
+                lead_fixture.seed_key,
+                entity_id,
+                bundle.manifest.seed_version,
+                payload,
+            )
+        else:
+            _assign_demo_values(lead, lead_values)
+        leads[lead_fixture.seed_key] = lead
+
+    opportunities: dict[str, CrmOpportunity] = {}
+    for opportunity_fixture in bundle.crm.opportunities:
+        payload = opportunity_fixture.model_dump(mode="json")
+        actor_id = _stable_id(
+            bundle.manifest.seed_version,
+            "platform_user",
+            opportunity_fixture.assigned_user_seed_key,
+        )
+        opportunity_customer = (
+            _required_demo_customer(
+                session,
+                bundle.manifest.seed_version,
+                opportunity_fixture.customer_seed_key,
+            )
+            if opportunity_fixture.customer_seed_key
+            else None
+        )
+        opportunity_values: dict[str, object] = {
+            "workspace_id": workspace_id,
+            "branch_id": branches[opportunity_fixture.branch_code].id,
+            "lead_id": (
+                leads[opportunity_fixture.lead_seed_key].id
+                if opportunity_fixture.lead_seed_key
+                else None
+            ),
+            "customer_id": opportunity_customer.id if opportunity_customer else None,
+            "assigned_membership_id": _stable_id(
+                bundle.manifest.seed_version,
+                "membership",
+                opportunity_fixture.assigned_user_seed_key,
+            ),
+            "title": opportunity_fixture.title,
+            "customer_name": opportunity_fixture.customer_name,
+            "stage": opportunity_fixture.stage,
+            "value": opportunity_fixture.value,
+            "currency_code": opportunity_fixture.currency_code.upper(),
+            "notes": opportunity_fixture.notes,
+            "lost_reason": opportunity_fixture.lost_reason,
+            "closed_at": opportunity_fixture.closed_at,
+            "creation_idempotency_key": (
+                f"demo:{bundle.manifest.seed_version}:opportunity:{opportunity_fixture.seed_key}"
+            ),
+            "request_fingerprint": _checksum(payload),
+            "created_by_platform_user_id": actor_id,
+            "updated_by_platform_user_id": actor_id,
+            "created_at": opportunity_fixture.created_at,
+            "updated_at": opportunity_fixture.updated_at,
+        }
+        entity_id = _stable_id(
+            bundle.manifest.seed_version,
+            "crm_opportunity",
+            opportunity_fixture.seed_key,
+        )
+        opportunity = _registered_entity(
+            session,
+            workspace_id,
+            "crm_opportunity",
+            opportunity_fixture.seed_key,
+            entity_id,
+            payload,
+            CrmOpportunity,
+        )
+        if opportunity is None:
+            opportunity = CrmOpportunity(id=entity_id, **opportunity_values)
+            session.add(opportunity)
+            session.flush()
+            _register(
+                session,
+                workspace_id,
+                "crm_opportunity",
+                opportunity_fixture.seed_key,
+                entity_id,
+                bundle.manifest.seed_version,
+                payload,
+            )
+        else:
+            _assign_demo_values(opportunity, opportunity_values)
+        opportunities[opportunity_fixture.seed_key] = opportunity
+
+    for activity_fixture in bundle.crm.activities:
+        payload = activity_fixture.model_dump(mode="json")
+        actor_id = _stable_id(
+            bundle.manifest.seed_version,
+            "platform_user",
+            activity_fixture.assigned_user_seed_key,
+        )
+        activity_customer = (
+            _required_demo_customer(
+                session, bundle.manifest.seed_version, activity_fixture.customer_seed_key
+            )
+            if activity_fixture.customer_seed_key
+            else None
+        )
+        activity_values: dict[str, object] = {
+            "workspace_id": workspace_id,
+            "branch_id": branches[activity_fixture.branch_code].id,
+            "lead_id": (
+                leads[activity_fixture.lead_seed_key].id if activity_fixture.lead_seed_key else None
+            ),
+            "opportunity_id": (
+                opportunities[activity_fixture.opportunity_seed_key].id
+                if activity_fixture.opportunity_seed_key
+                else None
+            ),
+            "customer_id": activity_customer.id if activity_customer else None,
+            "assigned_membership_id": _stable_id(
+                bundle.manifest.seed_version,
+                "membership",
+                activity_fixture.assigned_user_seed_key,
+            ),
+            "activity_type": activity_fixture.activity_type,
+            "title": activity_fixture.title,
+            "description": activity_fixture.description,
+            "customer_name": activity_fixture.customer_name,
+            "due_at": activity_fixture.due_at,
+            "completed_at": activity_fixture.completed_at,
+            "creation_idempotency_key": (
+                f"demo:{bundle.manifest.seed_version}:activity:{activity_fixture.seed_key}"
+            ),
+            "request_fingerprint": _checksum(payload),
+            "created_by_platform_user_id": actor_id,
+            "updated_by_platform_user_id": actor_id,
+            "created_at": activity_fixture.created_at,
+            "updated_at": activity_fixture.updated_at,
+        }
+        entity_id = _stable_id(
+            bundle.manifest.seed_version, "crm_activity", activity_fixture.seed_key
+        )
+        activity = _registered_entity(
+            session,
+            workspace_id,
+            "crm_activity",
+            activity_fixture.seed_key,
+            entity_id,
+            payload,
+            CrmActivity,
+        )
+        if activity is None:
+            activity = CrmActivity(id=entity_id, **activity_values)
+            session.add(activity)
+            session.flush()
+            _register(
+                session,
+                workspace_id,
+                "crm_activity",
+                activity_fixture.seed_key,
+                entity_id,
+                bundle.manifest.seed_version,
+                payload,
+            )
+        else:
+            _assign_demo_values(activity, activity_values)
+    session.flush()
+    return (
+        len(bundle.crm.customer_profiles),
+        len(bundle.crm.leads),
+        len(bundle.crm.opportunities),
+        len(bundle.crm.activities),
+    )
+
+
+def _required_demo_customer(session: Session, seed_version: str, seed_key: str) -> Customer:
+    customer = session.get(Customer, _stable_id(seed_version, "customer", seed_key))
+    if customer is None:
+        raise RuntimeError(f"Demo customer {seed_key!r} is missing.")
+    return customer
+
+
+def _assign_demo_values(entity: object, values: dict[str, object]) -> None:
+    for field_name, value in values.items():
+        setattr(entity, field_name, value)
 
 
 def _seed_employees(

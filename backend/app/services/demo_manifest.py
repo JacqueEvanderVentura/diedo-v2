@@ -160,6 +160,106 @@ class CustomersFixture(ApiModel):
     items: list[DemoCustomerFixture]
 
 
+class DemoCustomerCrmProfileFixture(ApiModel):
+    customer_seed_key: str
+    lifecycle_status: Literal["activo", "prospecto", "inactivo"] = "activo"
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class DemoCrmLeadFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    branch_code: str
+    assigned_user_seed_key: str
+    name: str = Field(default="", max_length=200)
+    company: str = Field(default="", max_length=200)
+    email: EmailStr | None = None
+    phone: str | None = Field(default=None, max_length=40)
+    website: str | None = Field(default=None, max_length=500)
+    location: str | None = Field(default=None, max_length=240)
+    source: Literal["manual", "serp", "serper", "referral", "import"] = "manual"
+    source_url: str | None = Field(default=None, max_length=1000)
+    scraped_at: datetime | None = None
+    raw_snippet: str | None = Field(default=None, max_length=4000)
+    status: Literal["nuevo", "contactado", "calificado", "descartado", "convertido"]
+    score_manual: int | None = Field(default=None, ge=0, le=100)
+    score_notes: str | None = Field(default=None, max_length=2000)
+    converted_customer_seed_key: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    @model_validator(mode="after")
+    def require_consistent_conversion(self) -> DemoCrmLeadFixture:
+        if (self.status == "convertido") != (self.converted_customer_seed_key is not None):
+            raise ValueError("Converted demo leads require convertedCustomerSeedKey exclusively.")
+        if not self.name.strip() and not self.company.strip():
+            raise ValueError("Demo leads require a name or company.")
+        if self.updated_at < self.created_at:
+            raise ValueError("Demo lead updatedAt cannot precede createdAt.")
+        return self
+
+
+class DemoCrmOpportunityFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    branch_code: str
+    assigned_user_seed_key: str
+    lead_seed_key: str | None = None
+    customer_seed_key: str | None = None
+    title: str = Field(min_length=2, max_length=240)
+    customer_name: str = Field(min_length=1, max_length=200)
+    stage: Literal["nuevo", "contactado", "propuesta", "negociacion", "cerrado", "perdido"]
+    value: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
+    currency_code: str = Field(default="DOP", min_length=3, max_length=3)
+    notes: str | None = Field(default=None, max_length=2000)
+    lost_reason: str | None = Field(default=None, max_length=1000)
+    created_at: datetime
+    updated_at: datetime
+    closed_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def require_consistent_stage(self) -> DemoCrmOpportunityFixture:
+        is_closed = self.stage in {"cerrado", "perdido"}
+        if is_closed != (self.closed_at is not None):
+            raise ValueError("Closed demo opportunities require closedAt exclusively.")
+        if self.stage == "perdido" and not self.lost_reason:
+            raise ValueError("Lost demo opportunities require lostReason.")
+        if self.updated_at < self.created_at:
+            raise ValueError("Demo opportunity updatedAt cannot precede createdAt.")
+        return self
+
+
+class DemoCrmActivityFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    branch_code: str
+    assigned_user_seed_key: str
+    lead_seed_key: str | None = None
+    opportunity_seed_key: str | None = None
+    customer_seed_key: str | None = None
+    activity_type: Literal["llamada", "email", "reunion", "nota", "tarea"]
+    title: str = Field(min_length=2, max_length=240)
+    description: str | None = Field(default=None, max_length=2000)
+    customer_name: str | None = Field(default=None, max_length=200)
+    due_at: datetime | None = None
+    completed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    @model_validator(mode="after")
+    def require_relationship(self) -> DemoCrmActivityFixture:
+        if not any((self.lead_seed_key, self.opportunity_seed_key, self.customer_seed_key)):
+            raise ValueError("Demo CRM activities require a lead, opportunity, or customer.")
+        if self.updated_at < self.created_at:
+            raise ValueError("Demo activity updatedAt cannot precede createdAt.")
+        return self
+
+
+class CrmFixture(ApiModel):
+    scoring_weights: dict[str, float] = Field(default_factory=dict)
+    customer_profiles: list[DemoCustomerCrmProfileFixture] = Field(default_factory=list)
+    leads: list[DemoCrmLeadFixture] = Field(default_factory=list)
+    opportunities: list[DemoCrmOpportunityFixture] = Field(default_factory=list)
+    activities: list[DemoCrmActivityFixture] = Field(default_factory=list)
+
+
 class DemoEmployeeFixture(ApiModel):
     seed_key: str
     employee_number: str
@@ -451,6 +551,9 @@ class DemoPosQuoteFixture(ApiModel):
     customer_seed_key: str | None = None
     created_by_user_seed_key: str
     kind: Literal["quote", "held"] = "quote"
+    origin: Literal["pos", "crm"] = "pos"
+    opportunity_seed_key: str | None = None
+    crm_status: Literal["borrador", "enviada", "aceptada", "rechazada", "vencida"] | None = None
     status: Literal["open", "converted", "cancelled", "expired"] = "open"
     payment_method_seed_key: str | None = None
     payment_reference: str | None = Field(default=None, max_length=160)
@@ -473,6 +576,12 @@ class DemoPosQuoteFixture(ApiModel):
             raise ValueError("Only open demo quotes may omit closedAt.")
         if self.updated_at < self.created_at:
             raise ValueError("Demo quote updatedAt cannot precede createdAt.")
+        if self.origin == "crm" and (self.crm_status is None or self.opportunity_seed_key is None):
+            raise ValueError("CRM demo quotes require crmStatus and opportunitySeedKey.")
+        if self.origin == "pos" and (
+            self.crm_status is not None or self.opportunity_seed_key is not None
+        ):
+            raise ValueError("POS demo quotes cannot define CRM fields.")
         return self
 
 
@@ -577,6 +686,7 @@ class DemoBundle:
     incidents: IncidentsFixture
     purchasing: PurchasingFixture
     customers: CustomersFixture
+    crm: CrmFixture
     employees: EmployeesFixture
     hr: HrFixture
     pos: PosFixture
@@ -598,6 +708,7 @@ def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
         "incidents.json",
         "purchasing.json",
         "customers.json",
+        "crm.json",
         "employees.json",
         "hr.json",
         "pos.json",
@@ -612,7 +723,9 @@ def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
         canonical_bytes = path.read_bytes().replace(b"\r\n", b"\n")
         digest = hashlib.sha256(canonical_bytes).hexdigest()
         if digest != entry.sha256:
-            raise ValueError(f"Checksum mismatch for {entry.name}.")
+            raise ValueError(
+                f"Checksum mismatch for {entry.name}: expected {entry.sha256}, got {digest}."
+            )
         json.loads(path.read_text(encoding="utf-8"))
     return DemoBundle(
         manifest=manifest,
@@ -644,6 +757,7 @@ def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
         customers=CustomersFixture.model_validate_json(
             (root / "customers.json").read_text(encoding="utf-8")
         ),
+        crm=CrmFixture.model_validate_json((root / "crm.json").read_text(encoding="utf-8")),
         employees=EmployeesFixture.model_validate_json(
             (root / "employees.json").read_text(encoding="utf-8")
         ),

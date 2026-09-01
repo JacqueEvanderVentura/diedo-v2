@@ -25,3 +25,7 @@ class ConflictError(ApplicationError):
 
 class InvalidOperationError(ApplicationError):
     pass
+
+
+class ServiceUnavailableError(ApplicationError):
+    pass

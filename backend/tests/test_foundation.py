@@ -60,7 +60,7 @@ def test_local_bootstrap_is_idempotent_and_installs_minimum_access_model() -> No
         "purchasing",
         "incidents",
     )
-    assert permission_count == 54
+    assert permission_count == 56
     assert assigned_permission_count == permission_count
     assert second.workspace_id.version == 7
 

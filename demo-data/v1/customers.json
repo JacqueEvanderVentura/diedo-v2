@@ -3,7 +3,7 @@
     {"seedKey": "c1", "customerType": "person", "displayName": "María Fernández", "firstName": "María", "lastName": "Fernández", "phone": "809-555-0142", "branchCodes": ["DOWNTOWN", "NORTH", "EAST"], "status": "active", "points": 340},
     {"seedKey": "c2", "customerType": "person", "displayName": "José Ramírez", "firstName": "José", "lastName": "Ramírez", "phone": "809-555-0198", "branchCodes": ["DOWNTOWN"], "status": "active", "points": 120},
     {"seedKey": "c3", "customerType": "person", "displayName": "Ana Cristina Vargas", "firstName": "Ana Cristina", "lastName": "Vargas", "phone": "829-555-0110", "branchCodes": ["NORTH"], "status": "active", "points": 890},
-    {"seedKey": "c4", "customerType": "person", "displayName": "Luis Alberto Peña", "firstName": "Luis Alberto", "lastName": "Peña", "phone": "849-555-0177", "branchCodes": ["DOWNTOWN", "EAST"], "status": "active", "points": 55},
+    {"seedKey": "c4", "customerType": "business", "displayName": "Luis Alberto Peña", "firstName": "Luis Alberto", "lastName": "Peña", "businessName": "Distribuidora Peña, S.R.L.", "phone": "849-555-0177", "branchCodes": ["DOWNTOWN", "EAST"], "status": "active", "points": 55},
     {"seedKey": "c5", "customerType": "person", "displayName": "Carla Jiménez", "firstName": "Carla", "lastName": "Jiménez", "phone": "809-555-0210", "branchCodes": ["EAST"], "status": "active", "points": 410}
   ]
 }

@@ -1,8 +1,27 @@
+import { useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Navbar } from './Navbar'
 import { AnimatedOutlet } from './AnimatedOutlet'
 import { getPageMeta } from '@/data/navigation'
+import { useCrmStore } from '@/stores/crmStore'
+import { useCustomersStore } from '@/stores/customersStore'
+import { useCatalogStore } from '@/stores/catalogStore'
+import { useConfigStore } from '@/stores/configStore'
+import { useSessionStore } from '@/stores/sessionStore'
+
+const CRM_SECTION_BY_PATH = Object.freeze({
+  '/crm': 'overview',
+  '/crm/clientes': 'customers',
+  '/crm/leads': 'leads',
+  '/crm/pipeline': 'pipeline',
+  '/crm/seguimiento': 'activities',
+  '/crm/cotizaciones': 'quotes',
+  '/crm/compras': 'purchases',
+  '/crm/ventas': 'sales',
+})
+
+const CRM_SECTIONS_REQUIRING_CUSTOMERS = new Set(['customers', 'quotes', 'purchases'])
 
 // Persistent chrome: sidebar stays mounted across module/submodule changes.
 export function AppFrame() {
@@ -21,6 +40,26 @@ export function AppFrame() {
 export function PageShell() {
   const { pathname } = useLocation()
   const { title, subtitle } = getPageMeta(pathname)
+  const sessionStatus = useSessionStore((state) => state.status)
+  const hydrateCrmSection = useCrmStore((state) => state.hydrateSection)
+  const hydrateCustomers = useCustomersStore((state) => state.hydrate)
+  const hydrateCatalog = useCatalogStore((state) => state.hydrateFromApi)
+  const crmSection = CRM_SECTION_BY_PATH[pathname] || null
+
+  useEffect(() => {
+    if (!crmSection || !['online', 'demo'].includes(sessionStatus)) return
+    const requests = [hydrateCrmSection(crmSection)]
+    if (CRM_SECTIONS_REQUIRING_CUSTOMERS.has(crmSection)) {
+      requests.push(hydrateCustomers({ force: true }))
+    }
+    if (crmSection === 'quotes' && sessionStatus === 'online') {
+      requests.push(hydrateCatalog(useConfigStore.getState().branches))
+    }
+    Promise.allSettled(requests)
+      .then(() => {
+        useCustomersStore.getState().mergeCrmProfiles(useCrmStore.getState().customers)
+      })
+  }, [crmSection, hydrateCatalog, hydrateCrmSection, hydrateCustomers, sessionStatus])
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">

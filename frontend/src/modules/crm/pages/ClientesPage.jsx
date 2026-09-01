@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Plus, Search, Users, Star, Phone, Mail, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Search, Users, Star, Phone, Mail, ChevronLeft, ChevronRight, Building2 } from 'lucide-react'
 import { usePosStore } from '@/stores/posStore'
 import { useCustomersStore } from '@/stores/customersStore'
 import { useConfigStore } from '@/stores/configStore'
@@ -47,6 +47,10 @@ export default function ClientesPage() {
   const hydrateCustomers = useCustomersStore((s) => s.hydrate)
   const sales = usePosStore((s) => s.sales)
   const branches = useConfigStore((s) => s.branches)
+  const branchNameById = useMemo(
+    () => Object.fromEntries(branches.map((branch) => [branch.id, branch.name])),
+    [branches]
+  )
 
   const [query, setQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
@@ -76,7 +80,11 @@ export default function ClientesPage() {
       .filter((c) => !q || c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)) || (c.email && c.email.toLowerCase().includes(q)))
       .filter((c) => typeFilter === 'all' || (c.customerType || 'b2c') === typeFilter)
       .filter((c) => statusFilter === 'all' || (c.customerStatus || 'activo') === statusFilter)
-      .filter((c) => branchFilter === 'all' || c.branchId === branchFilter)
+      .filter((c) => (
+        branchFilter === 'all'
+        || c.branchIds?.includes(branchFilter)
+        || c.branchId === branchFilter
+      ))
   }, [customers, query, typeFilter, statusFilter, branchFilter])
 
   const { rows: sortedFiltered, sortKey, sortDir, toggleSort } = useSortedRows(filtered, {
@@ -153,7 +161,7 @@ export default function ClientesPage() {
           <EmptyState icon={Users} title="Sin clientes" description="No hay clientes con esos filtros." className="py-14" />
         </Card>
       ) : (
-        <ResponsiveList minTableWidth={760} columnCount={5}>
+          <ResponsiveList minTableWidth={820} columnCount={5}>
           <ResponsiveTable testId="clientes-table">
             <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
             <table className="w-full min-w-[760px] text-sm">
@@ -179,7 +187,18 @@ export default function ClientesPage() {
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
                           {c.name.slice(0, 1).toUpperCase()}
                         </div>
-                        <span className="font-semibold text-slate-800">{c.name}</span>
+                        <div className="min-w-0">
+                          <span className="block font-semibold text-slate-800">{c.name}</span>
+                          <span className="mt-0.5 flex items-center gap-1 text-xs text-slate-400">
+                            <Building2 className="h-3 w-3 shrink-0" />
+                            <span className="truncate">
+                              {(c.branchIds?.length ? c.branchIds : c.branchId ? [c.branchId] : [])
+                                .map((id) => branchNameById[id])
+                                .filter(Boolean)
+                                .join(', ') || 'Sin sucursal'}
+                            </span>
+                          </span>
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -253,6 +272,12 @@ export default function ClientesPage() {
                     {c.email ? (
                       <span className="inline-flex items-center gap-1 truncate"><Mail className="h-3 w-3 shrink-0" /> {c.email}</span>
                     ) : '—'}
+                  </MobileField>
+                  <MobileField label="Sucursales">
+                    {(c.branchIds?.length ? c.branchIds : c.branchId ? [c.branchId] : [])
+                      .map((id) => branchNameById[id])
+                      .filter(Boolean)
+                      .join(', ') || '—'}
                   </MobileField>
                   <MobileField label="Puntos">
                     <span className="inline-flex items-center gap-1 font-semibold text-amber-600"><Star className="h-3.5 w-3.5" /> {c.points || 0}</span>

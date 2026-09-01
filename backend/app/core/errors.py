@@ -17,6 +17,7 @@ from app.services.errors import (
     ConflictError,
     InvalidOperationError,
     ResourceNotFoundError,
+    ServiceUnavailableError,
 )
 
 logger = logging.getLogger(__name__)
@@ -122,6 +123,8 @@ async def application_exception_handler(
         status_code = 409
     elif isinstance(exc, InvalidOperationError):
         status_code = 400
+    elif isinstance(exc, ServiceUnavailableError):
+        status_code = 503
     return JSONResponse(
         status_code=status_code,
         content={"message": exc.message, "parameter": exc.parameter},

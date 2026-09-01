@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -523,6 +523,10 @@ class PosRepository:
                 .where(*predicates)
                 .values(
                     status="expired",
+                    crm_status=case(
+                        (SalesQuote.origin == "crm", "vencida"),
+                        else_=SalesQuote.crm_status,
+                    ),
                     closed_at=func.clock_timestamp(),
                     updated_at=func.clock_timestamp(),
                     version=SalesQuote.version + 1,
@@ -576,6 +580,8 @@ class PosRepository:
         customer_id: UUID | None,
         status: str | None,
         kind: str | None,
+        origin: str | None = None,
+        crm_status: str | None = None,
         page: int,
         page_size: int,
         include_details: bool = False,
@@ -591,6 +597,10 @@ class PosRepository:
             predicates.append(SalesQuote.status == status)
         if kind is not None:
             predicates.append(SalesQuote.kind == kind)
+        if origin is not None:
+            predicates.append(SalesQuote.origin == origin)
+        if crm_status is not None:
+            predicates.append(SalesQuote.crm_status == crm_status)
         total = int(self._session.scalar(select(func.count()).where(*predicates)) or 0)
         quotes = self._session.scalars(
             select(SalesQuote)

@@ -1,15 +1,135 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { ephemeralJsonStorage } from '@/services/storagePolicy'
+import { registerSensitiveStateCleaner } from '@/services/storagePolicy'
 import { currentSessionActor } from '@/lib/sessionActor'
 import { computeAutoScore, effectiveScore } from '@/modules/crm/lib/scoring'
 import { recordSerpUsage } from '@/modules/crm/lib/serpQuota'
 import { DEFAULT_SCORING_WEIGHTS } from '@/data/crm'
 import { useCustomersStore } from '@/stores/customersStore'
+import { useSessionStore } from '@/stores/sessionStore'
+import { crmApi } from '@/services/crmApi'
+import {
+  mapActivityFromApi,
+  mapActivitiesPageFromApi,
+  mapCrmCustomersPageFromApi,
+  mapCrmOverviewFromApi,
+  mapCrmQuoteFromApi,
+  mapCrmQuotesPageFromApi,
+  mapCrmSalesPageFromApi,
+  mapCrmStateFromApi,
+  mapLeadFromApi,
+  mapLeadsPageFromApi,
+  mapOpportunityFromApi,
+  mapOpportunitiesPageFromApi,
+} from '@/services/adapters/crm'
 
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const now = () => new Date().toISOString()
 const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString()
+const isOnline = () => useSessionStore.getState().status === 'online'
+
+function replaceById(items, entity) {
+  return items.map((item) => (item.id === entity.id ? entity : item))
+}
+
+function leadPayload(data) {
+  return {
+    branchId: data.branchId,
+    name: data.name || '',
+    company: data.company || '',
+    email: data.email || null,
+    phone: data.phone || null,
+    website: data.website || null,
+    location: data.location || null,
+    source: data.source || 'manual',
+    sourceUrl: data.sourceUrl || null,
+    scrapedAt: data.scrapedAt || null,
+    rawSnippet: data.rawSnippet || null,
+    status: data.status || 'nuevo',
+    scoreManual: data.scoreManual ?? null,
+    scoreNotes: data.scoreNotes || null,
+  }
+}
+
+function reportMutationError(set, error) {
+  set({ error })
+  return null
+}
+
+async function loadOnlineSection(section) {
+  switch (section) {
+    case 'overview': {
+      const response = await crmApi.overview()
+      return { overview: mapCrmOverviewFromApi(response) }
+    }
+    case 'leads': {
+      const [page, settings, discoveryCapabilities] = await Promise.all([
+        crmApi.leads({ page: 1, pageSize: 200 }),
+        crmApi.scoring(),
+        crmApi.discoveryCapabilities(),
+      ])
+      return {
+        leads: mapLeadsPageFromApi(page),
+        scoringWeights: settings.weights,
+        scoringVersion: settings.version,
+        discoveryCapabilities,
+      }
+    }
+    case 'pipeline': {
+      const [opportunities, leads] = await Promise.all([
+        crmApi.opportunities({ page: 1, pageSize: 200 }),
+        crmApi.leads({ page: 1, pageSize: 200 }),
+      ])
+      return {
+        opportunities: mapOpportunitiesPageFromApi(opportunities),
+        leads: mapLeadsPageFromApi(leads),
+      }
+    }
+    case 'activities': {
+      const [activities, opportunities] = await Promise.all([
+        crmApi.activities({ page: 1, pageSize: 200 }),
+        crmApi.opportunities({ page: 1, pageSize: 200 }),
+      ])
+      return {
+        activities: mapActivitiesPageFromApi(activities),
+        opportunities: mapOpportunitiesPageFromApi(opportunities),
+      }
+    }
+    case 'customers': {
+      const customers = await crmApi.customers({ page: 1, pageSize: 200 })
+      return { customers: mapCrmCustomersPageFromApi(customers) }
+    }
+    case 'quotes': {
+      const [quotes, opportunities, customers] = await Promise.all([
+        crmApi.quotes({ page: 1, pageSize: 200 }),
+        crmApi.opportunities({ page: 1, pageSize: 200 }),
+        crmApi.customers({ page: 1, pageSize: 200 }),
+      ])
+      return {
+        quotes: mapCrmQuotesPageFromApi(quotes),
+        opportunities: mapOpportunitiesPageFromApi(opportunities),
+        customers: mapCrmCustomersPageFromApi(customers),
+      }
+    }
+    case 'purchases': {
+      const [sales, customers] = await Promise.all([
+        crmApi.sales({ page: 1, pageSize: 200 }),
+        crmApi.customers({ page: 1, pageSize: 200 }),
+      ])
+      return {
+        sales: mapCrmSalesPageFromApi(sales),
+        customers: mapCrmCustomersPageFromApi(customers),
+      }
+    }
+    case 'sales': {
+      const sales = await crmApi.sales({ page: 1, pageSize: 200 })
+      return { sales: mapCrmSalesPageFromApi(sales) }
+    }
+    default:
+      throw new Error(`Sección CRM desconocida: ${section}`)
+  }
+}
 
 function normalizeLead(raw, weights) {
   const { score, moduleFits, reasons } = computeAutoScore(raw, weights)
@@ -95,45 +215,157 @@ function buildSeedLeads() {
 export const useCrmStore = create(
   persist(
     (set, get) => ({
-      leads: buildSeedLeads(),
-      opportunities: SEED_OPPORTUNITIES,
-      activities: SEED_ACTIVITIES,
-      quotes: SEED_QUOTES,
+      leads: [],
+      opportunities: [],
+      activities: [],
+      quotes: [],
+      customers: [],
+      sales: [],
+      overview: null,
+      discoveryCapabilities: null,
       scoringWeights: { ...DEFAULT_SCORING_WEIGHTS },
+      scoringVersion: 1,
       serpHourCount: 0,
       serpHourWindowStart: Date.now(),
       serpMonthCount: 0,
       serpMonthKey: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`,
+      dataState: { status: 'loading', source: null, error: null },
+      hydrating: false,
+      error: null,
+      hydrate: async ({ force = false } = {}) => {
+        const online = isOnline()
+        const alreadyHydratedForSession = online
+          ? get().dataState.status === 'ready' && get().dataState.source === 'api'
+          : get().dataState.status === 'demo'
+        if (get().hydrating || (!force && alreadyHydratedForSession)) {
+          return get()
+        }
+        if (!online) {
+          set({
+            leads: buildSeedLeads(),
+            opportunities: SEED_OPPORTUNITIES,
+            activities: SEED_ACTIVITIES,
+            quotes: SEED_QUOTES,
+            sales: [],
+            customers: [],
+            dataState: { status: 'demo', source: 'demo', error: null },
+            hydrating: false,
+          })
+          return get()
+        }
+        set({ hydrating: true, error: null, dataState: { status: 'loading', source: 'api', error: null } })
+        try {
+          const [stateResponse, customerResponse, salesResponse, overview] = await Promise.all([
+            crmApi.state(),
+            crmApi.customers({ page: 1, pageSize: 200 }),
+            crmApi.sales({ page: 1, pageSize: 200 }),
+            crmApi.overview(),
+          ])
+          const mapped = mapCrmStateFromApi(stateResponse)
+          const customers = mapCrmCustomersPageFromApi(customerResponse)
+          const sales = mapCrmSalesPageFromApi(salesResponse)
+          set({
+            ...mapped,
+            customers,
+            sales,
+            overview: mapCrmOverviewFromApi(overview),
+            hydrating: false,
+            dataState: { status: 'ready', source: 'api', error: null },
+          })
+          useCustomersStore.getState().mergeCrmProfiles?.(customers)
+          return get()
+        } catch (error) {
+          set({ hydrating: false, error, dataState: { status: 'error', source: null, error } })
+          throw error
+        }
+      },
+
+      hydrateSection: async (section) => {
+        if (!isOnline()) return get().hydrate({ force: true })
+        set({
+          hydrating: true,
+          error: null,
+          dataState: { status: 'loading', source: 'api', error: null },
+        })
+        try {
+          const updates = await loadOnlineSection(section)
+          set({
+            ...updates,
+            hydrating: false,
+            dataState: { status: 'ready', source: 'api', error: null },
+          })
+          if (updates.customers) {
+            useCustomersStore.getState().mergeCrmProfiles?.(updates.customers)
+          }
+          return updates
+        } catch (error) {
+          set({ hydrating: false, error, dataState: { status: 'error', source: null, error } })
+          throw error
+        }
+      },
 
       recordSerpSearch: () =>
-        set((s) => {
-          const next = recordSerpUsage(s)
-          return { ...next }
-        }),
+        set((state) => recordSerpUsage(state)),
 
-      updateScoringWeights: (weights) =>
+      updateScoringWeights: (weights) => {
         set((s) => {
           const merged = { ...s.scoringWeights, ...weights }
           return { scoringWeights: merged, leads: recomputeLeads(s.leads, merged) }
-        }),
+        })
+        if (isOnline()) {
+          crmApi.updateScoring({ version: get().scoringVersion, weights })
+            .then((result) => {
+              set({ scoringWeights: result.weights, scoringVersion: result.version })
+              return get().hydrateSection('leads')
+            })
+            .catch((error) => reportMutationError(set, error))
+        }
+      },
 
-      addLead: (data) => {
+      addLead: async (data) => {
         const lead = normalizeLead(data, get().scoringWeights)
+        if (isOnline()) {
+          try {
+            const response = await crmApi.createLead(leadPayload(lead))
+            const saved = mapLeadFromApi(response)
+            set((s) => ({ leads: [saved, ...s.leads] }))
+            return saved
+          } catch (error) {
+            reportMutationError(set, error)
+            throw error
+          }
+        }
         set((s) => ({ leads: [lead, ...s.leads] }))
         return lead
       },
 
-      addLeadsBatch: (items, source = 'serp') => {
+      addLeadsBatch: async (items, source = 'serp') => {
         const weights = get().scoringWeights
         const ts = now()
         const newLeads = items.map((item) =>
           normalizeLead({ ...item, source, scrapedAt: ts, status: 'nuevo' }, weights)
         )
+        if (isOnline() && newLeads.length > 0) {
+          try {
+            const response = await crmApi.importLeads({
+              branchId: newLeads[0].branchId,
+              source,
+              items: newLeads.map(leadPayload),
+            })
+            const saved = (response.items || []).map(mapLeadFromApi)
+            set((s) => ({ leads: [...saved, ...s.leads] }))
+            return saved
+          } catch (error) {
+            reportMutationError(set, error)
+            throw error
+          }
+        }
         set((s) => ({ leads: [...newLeads, ...s.leads] }))
         return newLeads
       },
 
-      updateLead: (id, data) =>
+      updateLead: (id, data) => {
+        const current = get().leads.find((lead) => lead.id === id)
         set((s) => ({
           leads: s.leads.map((l) => {
             if (l.id !== id) return l
@@ -143,26 +375,52 @@ export const useCrmStore = create(
             }
             return merged
           }),
-        })),
+        }))
+        if (isOnline() && current) {
+          const payload = { version: current.version }
+          const fields = [
+            'name', 'company', 'email', 'phone', 'website', 'location', 'status',
+            'scoreManual', 'scoreNotes', 'rawSnippet',
+          ]
+          fields.forEach((field) => {
+            if (data[field] !== undefined) payload[field] = data[field]
+          })
+          crmApi.updateLead(id, payload)
+            .then((response) => {
+              const saved = mapLeadFromApi(response)
+              set((s) => ({ leads: replaceById(s.leads, saved) }))
+            })
+            .catch((error) => reportMutationError(set, error))
+        }
+      },
 
-      setManualScore: (id, scoreManual, scoreNotes = '') =>
-        set((s) => ({
-          leads: s.leads.map((l) => {
-            if (l.id !== id) return l
-            const score = scoreManual != null && scoreManual !== '' ? Number(scoreManual) : l.scoreAuto
-            return {
-              ...l,
-              scoreManual: scoreManual != null && scoreManual !== '' ? Number(scoreManual) : null,
-              scoreNotes,
-              score,
-              updatedAt: now(),
-            }
-          }),
-        })),
+      setManualScore: (id, scoreManual, scoreNotes = '') => get().updateLead(id, {
+        scoreManual: scoreManual != null && scoreManual !== '' ? Number(scoreManual) : null,
+        scoreNotes,
+      }),
 
       convertToCustomer: async (leadId) => {
         const lead = get().leads.find((l) => l.id === leadId)
         if (!lead) return null
+        if (isOnline()) {
+          const response = await crmApi.convertLead(leadId, {
+            version: lead.version,
+            customerType: lead.company ? 'business' : 'person',
+            displayName: lead.company || lead.name,
+            businessName: lead.company || null,
+            email: lead.email,
+            phone: lead.phone,
+            branchIds: lead.branchId ? [lead.branchId] : undefined,
+            lifecycleStatus: 'prospecto',
+            notes: lead.scoreNotes || null,
+          })
+          await Promise.all([
+            get().hydrateSection('leads'),
+            get().hydrateSection('customers'),
+            useCustomersStore.getState().hydrate({ force: true }),
+          ])
+          return mapCrmCustomersPageFromApi({ items: [response] })[0]
+        }
         const customer = await useCustomersStore.getState().addCustomer({
           name: lead.company || lead.name,
           phone: lead.phone,
@@ -207,48 +465,161 @@ export const useCrmStore = create(
               : l
           ),
         }))
+        if (isOnline()) {
+          crmApi.createLeadOpportunity(leadId, {
+            title: opp.title,
+            stage: opp.stage,
+            value: opp.value,
+            notes: opp.notes || null,
+          })
+            .then((response) => {
+              const saved = mapOpportunityFromApi(response)
+              set((s) => ({
+                opportunities: [
+                  saved,
+                  ...s.opportunities.filter((item) => item.id !== opp.id),
+                ],
+                leads: s.leads.map((item) => (
+                  item.id === leadId
+                    ? { ...item, opportunityId: saved.id, status: item.status === 'nuevo' ? 'contactado' : item.status }
+                    : item
+                )),
+              }))
+            })
+            .catch((error) => reportMutationError(set, error))
+        }
         return opp
       },
 
       addOpportunity: (data) => {
         const opp = { id: genId('opp'), createdAt: now(), updatedAt: now(), stage: 'nuevo', value: 0, ...data }
         set((s) => ({ opportunities: [opp, ...s.opportunities] }))
+        if (isOnline()) {
+          crmApi.createOpportunity({
+            branchId: opp.branchId,
+            leadId: opp.leadId || null,
+            customerId: opp.customerId || null,
+            title: opp.title,
+            customerName: opp.customerName,
+            stage: opp.stage,
+            value: opp.value,
+            notes: opp.notes || null,
+          })
+            .then((response) => {
+              const saved = mapOpportunityFromApi(response)
+              set((s) => ({
+                opportunities: [
+                  saved,
+                  ...s.opportunities.filter((item) => item.id !== opp.id),
+                ],
+              }))
+            })
+            .catch((error) => reportMutationError(set, error))
+        }
         return opp
       },
 
-      updateOpportunityStage: (id, stage) =>
-        set((s) => ({
-          opportunities: s.opportunities.map((o) => (o.id === id ? { ...o, stage, updatedAt: now() } : o)),
-        })),
+      updateOpportunityStage: (id, stage) => get().updateOpportunity(id, { stage }),
 
-      updateOpportunity: (id, data) =>
+      updateOpportunity: (id, data) => {
+        const current = get().opportunities.find((opportunity) => opportunity.id === id)
         set((s) => ({
           opportunities: s.opportunities.map((o) => (o.id === id ? { ...o, ...data, updatedAt: now() } : o)),
-        })),
+        }))
+        if (isOnline() && current) {
+          const payload = { version: current.version }
+          const fields = ['customerId', 'title', 'customerName', 'stage', 'value', 'notes', 'lostReason']
+          fields.forEach((field) => {
+            if (data[field] !== undefined) payload[field] = data[field]
+          })
+          if (payload.stage === 'perdido' && !payload.lostReason) {
+            payload.lostReason = 'Marcada como perdida desde el pipeline.'
+          }
+          crmApi.updateOpportunity(id, payload)
+            .then((response) => {
+              const saved = mapOpportunityFromApi(response)
+              set((s) => ({ opportunities: replaceById(s.opportunities, saved) }))
+            })
+            .catch((error) => reportMutationError(set, error))
+        }
+      },
 
       addActivity: (data) => {
+        const relatedOpportunity = get().opportunities.find(
+          (opportunity) => opportunity.id === data.opportunityId
+        )
+        const branchId = data.branchId
+          || relatedOpportunity?.branchId
+          || useSessionStore.getState().user?.branchIds?.[0]
         const act = {
           id: genId('act'),
           createdAt: now(),
           completedAt: null,
           assignedUserId: currentSessionActor().id,
+          branchId,
           ...data,
         }
         set((s) => ({ activities: [act, ...s.activities] }))
+        if (isOnline()) {
+          crmApi.createActivity({
+            branchId,
+            leadId: act.leadId || null,
+            opportunityId: act.opportunityId || null,
+            customerId: act.customerId || null,
+            type: act.type,
+            title: act.title,
+            description: act.description || null,
+            customerName: act.customerName || null,
+            dueAt: act.dueAt || null,
+          })
+            .then((response) => {
+              const saved = mapActivityFromApi(response)
+              set((s) => ({
+                activities: [saved, ...s.activities.filter((item) => item.id !== act.id)],
+              }))
+            })
+            .catch((error) => reportMutationError(set, error))
+        }
         return act
       },
 
-      updateActivity: (id, data) =>
+      updateActivity: (id, data) => {
+        const current = get().activities.find((activity) => activity.id === id)
         set((s) => ({
           activities: s.activities.map((a) => (a.id === id ? { ...a, ...data } : a)),
-        })),
+        }))
+        if (isOnline() && current) {
+          const payload = { version: current.version }
+          const fields = ['type', 'title', 'description', 'customerName', 'dueAt']
+          fields.forEach((field) => {
+            if (data[field] !== undefined) payload[field] = data[field]
+          })
+          crmApi.updateActivity(id, payload)
+            .then((response) => {
+              const saved = mapActivityFromApi(response)
+              set((s) => ({ activities: replaceById(s.activities, saved) }))
+            })
+            .catch((error) => reportMutationError(set, error))
+        }
+      },
 
-      toggleActivityComplete: (id) =>
+      toggleActivityComplete: (id) => {
+        const current = get().activities.find((activity) => activity.id === id)
         set((s) => ({
           activities: s.activities.map((a) =>
             a.id === id ? { ...a, completedAt: a.completedAt ? null : now() } : a
           ),
-        })),
+        }))
+        if (isOnline() && current) {
+          const request = current.completedAt ? crmApi.reopenActivity : crmApi.completeActivity
+          request(id, current.version)
+            .then((response) => {
+              const saved = mapActivityFromApi(response)
+              set((s) => ({ activities: replaceById(s.activities, saved) }))
+            })
+            .catch((error) => reportMutationError(set, error))
+        }
+      },
 
       addQuote: (data) => {
         const count = get().quotes.length + 1
@@ -263,15 +634,82 @@ export const useCrmStore = create(
           ...data,
         }
         set((s) => ({ quotes: [quote, ...s.quotes] }))
+        if (isOnline()) {
+          crmApi.createQuote({
+            opportunityId: quote.opportunityId || null,
+            customerId: quote.customerId,
+            branchId: quote.branchId,
+            lines: quote.items.map((item) => ({
+              itemId: item.itemId || item.id,
+              quantity: item.qty || 1,
+              unitPrice: item.price,
+            })),
+            notes: quote.notes || null,
+            validUntil: quote.validUntil || null,
+            status: quote.status,
+          })
+            .then((response) => {
+              const saved = mapCrmQuoteFromApi(response)
+              set((s) => ({
+                quotes: [saved, ...s.quotes.filter((item) => item.id !== quote.id)],
+              }))
+            })
+            .catch((error) => reportMutationError(set, error))
+        }
         return quote
       },
 
-      updateQuote: (id, data) =>
+      updateQuote: (id, data) => {
+        const current = get().quotes.find((quote) => quote.id === id)
         set((s) => ({
           quotes: s.quotes.map((q) => (q.id === id ? { ...q, ...data, updatedAt: now() } : q)),
-        })),
+        }))
+        if (isOnline() && current) {
+          const payload = { version: current.version }
+          if (data.status !== undefined) payload.status = data.status
+          if (data.validUntil !== undefined) payload.validUntil = data.validUntil
+          if (data.notes !== undefined) payload.notes = data.notes
+          crmApi.updateQuote(id, payload)
+            .then((response) => {
+              const saved = mapCrmQuoteFromApi(response)
+              set((s) => ({ quotes: replaceById(s.quotes, saved) }))
+            })
+            .catch((error) => reportMutationError(set, error))
+        }
+      },
 
-      deleteQuote: (id) => set((s) => ({ quotes: s.quotes.filter((q) => q.id !== id) })),
+      deleteQuote: (id) => {
+        const current = get().quotes.find((quote) => quote.id === id)
+        if (isOnline() && current) {
+          set((s) => ({
+            quotes: s.quotes.map((quote) => (
+              quote.id === id ? { ...quote, status: 'cancelada', updatedAt: now() } : quote
+            )),
+          }))
+          crmApi.cancelQuote(id, current.version)
+            .then((response) => {
+              const saved = mapCrmQuoteFromApi(response)
+              set((s) => ({ quotes: replaceById(s.quotes, saved) }))
+            })
+            .catch((error) => reportMutationError(set, error))
+          return
+        }
+        set((s) => ({ quotes: s.quotes.filter((q) => q.id !== id) }))
+      },
+
+      clearSensitive: () => set({
+        leads: [],
+        opportunities: [],
+        activities: [],
+        quotes: [],
+        customers: [],
+        sales: [],
+        overview: null,
+        discoveryCapabilities: null,
+        hydrating: false,
+        error: null,
+        dataState: { status: 'loading', source: null, error: null },
+      }),
 
       getOverviewStats: () => {
         const { leads, opportunities } = get()
@@ -297,12 +735,16 @@ export const useCrmStore = create(
     {
       name: 'diedo-crm',
       storage: ephemeralJsonStorage,
-      version: 1,
-      migrate: (persisted) => {
-        if (!persisted?.leads) return persisted
-        const weights = persisted.scoringWeights || DEFAULT_SCORING_WEIGHTS
-        return { ...persisted, leads: recomputeLeads(persisted.leads, weights) }
-      },
+      version: 2,
+      partialize: (state) => ({
+        scoringWeights: state.scoringWeights,
+        serpHourCount: state.serpHourCount,
+        serpHourWindowStart: state.serpHourWindowStart,
+        serpMonthCount: state.serpMonthCount,
+        serpMonthKey: state.serpMonthKey,
+      }),
     }
   )
 )
+
+registerSensitiveStateCleaner(() => useCrmStore.getState().clearSensitive())

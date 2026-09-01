@@ -74,10 +74,19 @@ const iconBg = {
 }
 
 export default function CrmOverviewPage() {
+  const overview = useCrmStore((s) => s.overview)
   const leads = useCrmStore((s) => s.leads)
   const opportunities = useCrmStore((s) => s.opportunities)
 
   const stats = useMemo(() => {
+    if (overview) {
+      return {
+        totalLeads: overview.totalLeads,
+        qualifiedLeads: overview.qualifiedLeads,
+        convertedMonth: overview.convertedThisMonth,
+        pipelineValue: overview.pipelineValue,
+      }
+    }
     const qualified = leads.filter((l) => l.status === 'calificado').length
     const convertedMonth = leads.filter((l) => {
       if (l.status !== 'convertido') return false
@@ -94,7 +103,7 @@ export default function CrmOverviewPage() {
       convertedMonth,
       pipelineValue,
     }
-  }, [leads, opportunities])
+  }, [leads, opportunities, overview])
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="crm-overview">

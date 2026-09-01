@@ -16,6 +16,7 @@ from app.db.models import (
     Branch,
     Customer,
     CustomerBranchAssignment,
+    CustomerCrmProfile,
     Employee,
     EmployeeBranchAssignment,
     EmployeeHrProfile,
@@ -222,6 +223,7 @@ class MasterDataRepository:
         values: dict[str, object],
         branch_ids: set[UUID],
         request_id: str,
+        create_crm_profile: bool = True,
     ) -> CustomerRecord:
         customer = Customer(
             workspace_id=workspace_id,
@@ -240,6 +242,18 @@ class MasterDataRepository:
             )
             for branch_id in sorted(branch_ids)
         )
+        if create_crm_profile:
+            self._session.add(
+                CustomerCrmProfile(
+                    workspace_id=workspace_id,
+                    customer_id=customer.id,
+                    lifecycle_status="activo",
+                    loyalty_points=0,
+                    notes=None,
+                    created_by_platform_user_id=actor_platform_user_id,
+                    updated_by_platform_user_id=actor_platform_user_id,
+                )
+            )
         self._add_audit(
             workspace_id=workspace_id,
             actor_platform_user_id=actor_platform_user_id,
@@ -734,6 +748,11 @@ class MasterDataRepository:
             )
             for customer in customers
         )
+
+    def customer_records(self, customers: Sequence[Customer]) -> tuple[CustomerRecord, ...]:
+        """Build API-ready records for customers selected by another bounded repository query."""
+
+        return self._customer_records(customers)
 
     def _employee_records(self, employees: Sequence[Employee]) -> tuple[EmployeeRecord, ...]:
         ids = {employee.id for employee in employees}

@@ -220,8 +220,9 @@ def test_0013_backfills_only_attributable_appointment_receivables() -> None:
     try:
         command.downgrade(migration_config, "20260831_0012")
         command.upgrade(migration_config, "20260831_0013")
+        command.upgrade(migration_config, "head")
     except BaseException:
-        command.upgrade(migration_config, "20260831_0013")
+        command.upgrade(migration_config, "head")
         raise
     finally:
         dispose_engine()

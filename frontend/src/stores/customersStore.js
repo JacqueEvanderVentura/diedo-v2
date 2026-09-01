@@ -76,6 +76,19 @@ export const useCustomersStore = create((set, get) => ({
     return customer
   },
 
+  mergeCrmProfiles: (crmCustomers) => set((state) => {
+    const crmById = new Map(crmCustomers.map((customer) => [customer.id, customer]))
+    const existingIds = new Set(state.customers.map((customer) => customer.id))
+    const merged = state.customers.map((customer) => {
+      const crmCustomer = crmById.get(customer.id)
+      return crmCustomer ? { ...customer, ...crmCustomer } : customer
+    })
+    crmCustomers.forEach((customer) => {
+      if (!existingIds.has(customer.id)) merged.push(customer)
+    })
+    return { customers: merged }
+  }),
+
   clearSensitive: () => set({
     customers: [WALK_IN_CUSTOMER],
     dataState: customersGateway.getState(),

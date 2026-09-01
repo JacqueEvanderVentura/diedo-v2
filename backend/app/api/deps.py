@@ -202,6 +202,14 @@ CustomerManageGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("customer.manage")),
 ]
+CrmReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("crm.read")),
+]
+CrmManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("crm.manage")),
+]
 EmployeeReadGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("employee.read")),

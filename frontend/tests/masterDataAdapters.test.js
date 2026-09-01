@@ -74,4 +74,20 @@ describe('master data adapters', () => {
     expect(employeePayload).not.toHaveProperty('salary')
     expect(employeePayload).not.toHaveProperty('bankAccountNumber')
   })
+
+  it('envía clientes B2B con todas sus sucursales asignadas', () => {
+    const payload = customerToApiPayload({
+      name: 'Grupo Acme',
+      company: 'Grupo Acme, S.R.L.',
+      customerType: 'b2b',
+      branchIds: ['branch-main', 'branch-north'],
+    })
+
+    expect(payload).toMatchObject({
+      customerType: 'business',
+      displayName: 'Grupo Acme',
+      businessName: 'Grupo Acme, S.R.L.',
+      branchIds: ['branch-main', 'branch-north'],
+    })
+  })
 })

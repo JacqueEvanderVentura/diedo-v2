@@ -11,6 +11,7 @@ from app.db.models import (
     AppointmentResource,
     AssetCategory,
     Branch,
+    CrmSettings,
     InventoryWarehouse,
     LegalEntity,
     ModuleDefinition,
@@ -145,6 +146,22 @@ _PERMISSIONS = (
         "Gestionar clientes",
         "Create, change, and archive customers in the authorized scope.",
         20,
+    ),
+    (
+        "crm.read",
+        "crm",
+        "read",
+        "Ver CRM",
+        "View leads, pipeline, activities, customer commerce, and CRM summaries.",
+        30,
+    ),
+    (
+        "crm.manage",
+        "crm",
+        "manage",
+        "Gestionar CRM",
+        "Create and update leads, opportunities, activities, scoring, and conversions.",
+        40,
     ),
     (
         "employee.read",
@@ -449,8 +466,9 @@ _TERMINAL_POS_PERMISSION_CODES = tuple(
 )
 
 _ROLE_PERMISSION_TEMPLATES = {
-    "workspace_admin": _TERMINAL_POS_PERMISSION_CODES + ("dashboard.read",),
-    "manager": _TERMINAL_POS_PERMISSION_CODES + ("dashboard.read",),
+    "workspace_admin": _TERMINAL_POS_PERMISSION_CODES
+    + ("dashboard.read", "crm.read", "crm.manage"),
+    "manager": _TERMINAL_POS_PERMISSION_CODES + ("dashboard.read", "crm.read", "crm.manage"),
     "cashier": (
         "dashboard.read",
         "sales.read",
@@ -464,6 +482,8 @@ _ROLE_PERMISSION_TEMPLATES = {
     ),
     "supervisor": (
         "dashboard.read",
+        "crm.read",
+        "crm.manage",
         "sales.read",
         "pos.read",
         "pos.cash.read",
@@ -473,6 +493,8 @@ _ROLE_PERMISSION_TEMPLATES = {
     ),
     "seller": (
         "dashboard.read",
+        "crm.read",
+        "crm.manage",
         "sales.read",
         "sales.quote.manage",
         "pos.read",
@@ -775,6 +797,23 @@ def bootstrap_local_foundation(
             "workspace_id": workspace.id,
             "approver_membership_id": membership.id,
             "notify_on_request": True,
+            "updated_by_platform_user_id": user.id,
+        },
+    )
+    _insert_do_nothing(
+        session,
+        CrmSettings,
+        {
+            "workspace_id": workspace.id,
+            "scoring_weights": {
+                "pos": 1,
+                "agenda": 1,
+                "inventarios": 1,
+                "finanzas": 1,
+                "crm": 1,
+                "incidencias": 0.8,
+                "config": 0.6,
+            },
             "updated_by_platform_user_id": user.id,
         },
     )

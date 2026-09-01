@@ -31,7 +31,7 @@ endpoints requieren Bearer token, el permiso `dashboard.read` y el entitlement `
 - Tareas abiertas son registros `open` o `in_progress` cuya fecha límite cae dentro del período.
 - Las alertas de stock se calculan sobre `inventory_stock_balances`, sin snapshots duplicados.
 - La actividad reciente combina registros existentes y se ordena de forma descendente por fecha.
-- Leads no forma parte del contrato. El frontend conserva ese único KPI temporal hasta implementar
-  el módulo CRM Leads.
+- Los indicadores CRM no se duplican en este contrato; su resumen consolidado vive en
+  `GET /api/v1/crm/overview`.
 
 La migración `20260901_0014` instala el módulo, el permiso y la tabla branch-scoped `tasks`.

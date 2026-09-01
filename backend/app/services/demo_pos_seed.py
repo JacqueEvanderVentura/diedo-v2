@@ -13,6 +13,7 @@ from app.db.models import (
     Branch,
     CashMovement,
     CashRegister,
+    CrmOpportunity,
     Customer,
     CustomerPayment,
     CustomerReceivable,
@@ -312,6 +313,18 @@ def _seed_quotes(context: _SeedContext) -> None:
         branch = _branch(context, fixture.branch_code)
         actor = _actor(context, fixture.created_by_user_seed_key)
         customer = _customer(context, fixture.customer_seed_key)
+        opportunity = (
+            context.session.get(
+                CrmOpportunity,
+                stable_demo_id(
+                    context.seed_version, "crm_opportunity", fixture.opportunity_seed_key
+                ),
+            )
+            if fixture.opportunity_seed_key
+            else None
+        )
+        if fixture.opportunity_seed_key and opportunity is None:
+            raise RuntimeError(f"Demo CRM opportunity {fixture.opportunity_seed_key!r} is missing.")
         method = _method(context, fixture.payment_method_seed_key)
         priced, lines = _price_lines(
             context, branch, fixture.lines, fixture.discount_type, fixture.discount_value
@@ -333,7 +346,9 @@ def _seed_quotes(context: _SeedContext) -> None:
             "customer_id": customer.id if customer else None,
             "document_number": fixture.document_number,
             "kind": fixture.kind,
-            "origin": "pos",
+            "origin": fixture.origin,
+            "opportunity_id": opportunity.id if opportunity else None,
+            "crm_status": fixture.crm_status,
             "status": fixture.status,
             "currency_code": "DOP",
             "customer_name": customer.display_name if customer else None,

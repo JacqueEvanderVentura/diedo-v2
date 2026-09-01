@@ -264,6 +264,10 @@ export class DemoRepository {
     return structuredClone(this.snapshot.customers.items)
   }
 
+  crm() {
+    return structuredClone(this.snapshot.crm)
+  }
+
   employees() {
     return structuredClone(this.snapshot.employees.items)
   }

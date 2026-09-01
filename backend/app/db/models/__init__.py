@@ -4,6 +4,13 @@ from app.db.models.administration import DemoSeedRegistry, PaymentMethod, UserIn
 from app.db.models.agenda import Appointment, AppointmentEvent, AppointmentResource
 from app.db.models.audit import AuditEntry
 from app.db.models.catalog import Item, ItemBranchAssignment, ItemCategory, UnitOfMeasure
+from app.db.models.crm import (
+    CrmActivity,
+    CrmLead,
+    CrmOpportunity,
+    CrmSettings,
+    CustomerCrmProfile,
+)
 from app.db.models.dashboard import Task
 from app.db.models.foundation import (
     Branch,
@@ -92,7 +99,12 @@ __all__ = [
     "CashMovement",
     "CashMovementLine",
     "CashRegister",
+    "CrmActivity",
+    "CrmLead",
+    "CrmOpportunity",
+    "CrmSettings",
     "Customer",
+    "CustomerCrmProfile",
     "CustomerBranchAssignment",
     "CustomerPayment",
     "CustomerReceivable",

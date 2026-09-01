@@ -3,6 +3,9 @@ import { toast } from 'sonner'
 import { Plus, Trash2 } from 'lucide-react'
 import { useCrmStore } from '@/stores/crmStore'
 import { useConfigStore } from '@/stores/configStore'
+import { useCustomersStore } from '@/stores/customersStore'
+import { useCatalogStore, isPosSellable } from '@/stores/catalogStore'
+import { useSessionStore } from '@/stores/sessionStore'
 import { buildBranchFilterOptions } from '@/lib/branches'
 import { QUOTE_STATUSES, QUOTE_STATUS_META } from '@/data/crm'
 import { fmtDate } from '../lib/crm'
@@ -18,6 +21,9 @@ import { ExportMenu } from '@/modules/finanzas/components/ExportMenu'
 export default function CotizacionesPage() {
   const quotes = useCrmStore((s) => s.quotes)
   const branches = useConfigStore((s) => s.branches)
+  const customers = useCustomersStore((s) => s.customers)
+  const products = useCatalogStore((s) => s.products)
+  const isOnline = useSessionStore((s) => s.status === 'online')
   const opportunities = useCrmStore((s) => s.opportunities)
   const addQuote = useCrmStore((s) => s.addQuote)
   const updateQuote = useCrmStore((s) => s.updateQuote)
@@ -25,7 +31,7 @@ export default function CotizacionesPage() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [branchFilter, setBranchFilter] = useState('all')
-  const [form, setForm] = useState({ customerName: '', opportunityId: '', itemName: '', itemPrice: '', branchId: 'charm-dn' })
+  const [form, setForm] = useState({ customerId: '', opportunityId: '', itemId: '', itemPrice: '', branchId: '' })
 
   const visibleQuotes = useMemo(() => {
     if (branchFilter === 'all') return quotes
@@ -51,21 +57,40 @@ export default function CotizacionesPage() {
   )
 
   const oppOptions = [{ value: '', label: 'Sin oportunidad' }, ...opportunities.map((o) => ({ value: o.id, label: o.title }))]
+  const customerOptions = [
+    { value: '', label: 'Seleccionar cliente' },
+    ...customers.filter((customer) => !customer.isDefault).map((customer) => ({
+      value: customer.id,
+      label: customer.name,
+    })),
+  ]
+  const sellableProducts = products.filter((product) => (
+    isPosSellable(product) && (!isOnline || product.apiSynced)
+  ))
+  const productOptions = [
+    { value: '', label: 'Seleccionar producto o servicio' },
+    ...sellableProducts.map((product) => ({ value: product.id, label: product.name })),
+  ]
 
   const submit = () => {
-    if (!form.customerName.trim()) return toast.error('Cliente requerido')
-    const price = Number(form.itemPrice) || 0
-    const items = form.itemName.trim() ? [{ name: form.itemName.trim(), qty: 1, price }] : []
+    const customer = customers.find((item) => item.id === form.customerId)
+    const product = sellableProducts.find((item) => item.id === form.itemId)
+    if (!customer) return toast.error('Selecciona un cliente')
+    if (!product) return toast.error('Selecciona un producto o servicio')
+    const branchId = form.branchId || customer.branchId || branches.find((branch) => branch.active)?.id
+    if (!branchId) return toast.error('Selecciona una sucursal')
+    const price = Number(form.itemPrice) || Number(product.price) || 0
     addQuote({
-      customerName: form.customerName.trim(),
+      customerId: customer.id,
+      customerName: customer.name,
       opportunityId: form.opportunityId || null,
-      items,
+      items: [{ id: product.id, itemId: product.id, name: product.name, qty: 1, price }],
       total: price,
-      branchId: form.branchId,
+      branchId,
       validUntil: new Date(Date.now() + 15 * 86400000).toISOString(),
     })
     setModalOpen(false)
-    setForm({ customerName: '', opportunityId: '', itemName: '', itemPrice: '', branchId: 'charm-dn' })
+    setForm({ customerId: '', opportunityId: '', itemId: '', itemPrice: '', branchId: '' })
     toast.success('Cotización creada')
   }
 
@@ -150,15 +175,49 @@ export default function CotizacionesPage() {
         <div className="space-y-4">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500">Cliente</label>
-            <Input value={form.customerName} onChange={(e) => setForm((f) => ({ ...f, customerName: e.target.value }))} />
+            <Select
+              value={form.customerId}
+              onChange={(value) => {
+                const customer = customers.find((item) => item.id === value)
+                setForm((current) => ({
+                  ...current,
+                  customerId: value,
+                  branchId: customer?.branchId || current.branchId,
+                }))
+              }}
+              options={customerOptions}
+            />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500">Oportunidad</label>
-            <Select value={form.opportunityId} onChange={(v) => setForm((f) => ({ ...f, opportunityId: v }))} options={oppOptions} />
+            <Select
+              value={form.opportunityId}
+              onChange={(value) => {
+                const opportunity = opportunities.find((item) => item.id === value)
+                setForm((current) => ({
+                  ...current,
+                  opportunityId: value,
+                  customerId: opportunity?.customerId || current.customerId,
+                  branchId: opportunity?.branchId || current.branchId,
+                }))
+              }}
+              options={oppOptions}
+            />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Concepto principal</label>
-            <Input value={form.itemName} onChange={(e) => setForm((f) => ({ ...f, itemName: e.target.value }))} />
+            <label className="mb-1 block text-xs font-medium text-slate-500">Producto o servicio</label>
+            <Select
+              value={form.itemId}
+              onChange={(value) => {
+                const product = sellableProducts.find((item) => item.id === value)
+                setForm((current) => ({
+                  ...current,
+                  itemId: value,
+                  itemPrice: product?.price ?? '',
+                }))
+              }}
+              options={productOptions}
+            />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500">Precio (DOP)</label>

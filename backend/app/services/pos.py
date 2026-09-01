@@ -598,6 +598,8 @@ class PosService:
         customer_id: UUID | None,
         status: str | None,
         kind: str | None,
+        origin: str | None = None,
+        crm_status: str | None = None,
         page: int,
         page_size: int,
     ) -> Page:
@@ -614,6 +616,8 @@ class PosService:
             customer_id=customer_id,
             status=status,
             kind=kind,
+            origin=origin,
+            crm_status=crm_status,
             page=page,
             page_size=page_size,
         )
@@ -709,10 +713,12 @@ class PosService:
             workspace_id=grant.workspace_id,
             branch_id=branch_id,
             customer_id=customer.id if customer else None,
+            opportunity_id=cast(UUID | None, values.get("opportunity_id")),
             document_number=self._repository.next_document_number(grant.workspace_id, "quote"),
             kind=cast(str, values["kind"]),
-            origin="pos",
+            origin=cast(str, values.get("origin", "pos")),
             status="open",
+            crm_status=cast(str | None, values.get("crm_status")),
             currency_code=workspace.default_currency,
             customer_name=customer.display_name if customer else None,
             customer_phone=customer.phone if customer else None,
@@ -857,6 +863,10 @@ class PosService:
             quote.customer_phone = customer.phone if customer else None
         if "kind" in changes:
             quote.kind = cast(str, changes["kind"])
+        if "opportunity_id" in changes:
+            quote.opportunity_id = cast(UUID | None, changes["opportunity_id"])
+        if "crm_status" in changes:
+            quote.crm_status = cast(str | None, changes["crm_status"])
         if reprice:
             for key, value in self._document_values(
                 priced,
