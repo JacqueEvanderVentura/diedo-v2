@@ -1,1 +1,132 @@
-{"items": []}
+{
+  "items": [
+    {
+      "seedKey": "laser-equipment-repair",
+      "code": "INC-1193",
+      "title": "Solicitud de reparación del equipo láser",
+      "description": "El equipo presenta pérdida de potencia durante sesiones prolongadas.",
+      "type": "activo",
+      "priority": "alta",
+      "status": "en_proceso",
+      "branchCode": "NORTH",
+      "assetSeedKey": "north-laser-machine",
+      "reporterUserSeedKey": "supervisor",
+      "participantUserSeedKeys": ["supervisor", "manager-north"],
+      "activities": [
+        {"seedKey": "reported", "type": "created", "authorUserSeedKey": "supervisor", "message": "Incidencia reportada y abierta.", "createdAt": "2026-08-29T10:20:00Z"},
+        {"seedKey": "started", "type": "status_changed", "authorUserSeedKey": "manager-north", "message": "Estado cambiado a en proceso.", "createdAt": "2026-08-30T09:05:00Z"}
+      ],
+      "attachments": [],
+      "createdAt": "2026-08-29T10:20:00Z",
+      "updatedAt": "2026-08-30T09:05:00Z"
+    },
+    {
+      "seedKey": "customer-bathroom-leak",
+      "code": "INC-1188",
+      "title": "Fuga de agua en baño de clientes",
+      "description": "Se detectó humedad en el techo del baño principal.",
+      "type": "infraestructura",
+      "priority": "alta",
+      "status": "abierta",
+      "branchCode": "DOWNTOWN",
+      "assetSeedKey": null,
+      "reporterUserSeedKey": "manager-center",
+      "participantUserSeedKeys": ["manager-center", "seller-center"],
+      "activities": [
+        {"seedKey": "reported", "type": "created", "authorUserSeedKey": "manager-center", "message": "Incidencia reportada y abierta.", "createdAt": "2026-08-31T14:10:00Z"},
+        {"seedKey": "evidence-added", "type": "comment", "authorUserSeedKey": "seller-center", "message": "Se adjuntó evidencia visual de la fuga detectada.", "createdAt": "2026-08-31T14:15:00Z"}
+      ],
+      "attachments": [
+        {
+          "seedKey": "leak-evidence",
+          "originalFilename": "evidencia-fuga-demo.png",
+          "contentType": "image/png",
+          "contentBase64": "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",
+          "uploadedByUserSeedKey": "seller-center",
+          "createdAt": "2026-08-31T14:15:00Z"
+        }
+      ],
+      "createdAt": "2026-08-31T14:10:00Z",
+      "updatedAt": "2026-08-31T14:15:00Z"
+    },
+    {
+      "seedKey": "unreported-absence",
+      "code": "INC-1175",
+      "title": "Ausencia no reportada en turno de mañana",
+      "description": "La persona asignada no se presentó y no notificó al supervisor.",
+      "type": "personal",
+      "priority": "baja",
+      "status": "cerrada",
+      "branchCode": "HQ",
+      "assetSeedKey": null,
+      "reporterUserSeedKey": "cashier",
+      "participantUserSeedKeys": ["cashier", "admin"],
+      "activities": [
+        {"seedKey": "reported", "type": "created", "authorUserSeedKey": "cashier", "message": "Incidencia reportada y abierta.", "createdAt": "2026-08-26T08:35:00Z"},
+        {"seedKey": "closed", "type": "status_changed", "authorUserSeedKey": "admin", "message": "Estado cambiado a cerrada después de validar la novedad.", "createdAt": "2026-08-27T11:40:00Z"}
+      ],
+      "attachments": [],
+      "createdAt": "2026-08-26T08:35:00Z",
+      "updatedAt": "2026-08-27T11:40:00Z"
+    },
+    {
+      "seedKey": "east-cooling-system",
+      "code": "INC-1162",
+      "title": "Sistema de enfriamiento sin alcanzar temperatura",
+      "description": "La cabina registra temperatura elevada desde el turno anterior.",
+      "type": "activo",
+      "priority": "media",
+      "status": "en_proceso",
+      "branchCode": "EAST",
+      "assetSeedKey": "east-cooling-system",
+      "reporterUserSeedKey": "seller-east",
+      "participantUserSeedKeys": ["seller-east", "seller-center"],
+      "activities": [
+        {"seedKey": "reported", "type": "created", "authorUserSeedKey": "seller-east", "message": "Incidencia reportada y abierta.", "createdAt": "2026-08-28T16:25:00Z"},
+        {"seedKey": "technician-scheduled", "type": "comment", "authorUserSeedKey": "seller-center", "message": "Técnico programado para revisión y cambio de repuesto.", "createdAt": "2026-08-28T17:10:00Z"}
+      ],
+      "attachments": [],
+      "createdAt": "2026-08-28T16:25:00Z",
+      "updatedAt": "2026-08-28T17:10:00Z"
+    },
+    {
+      "seedKey": "main-hall-light",
+      "code": "INC-1150",
+      "title": "Luz intermitente en pasillo principal",
+      "description": "La luminaria central presenta parpadeo constante.",
+      "type": "infraestructura",
+      "priority": "media",
+      "status": "resuelta",
+      "branchCode": "HQ",
+      "assetSeedKey": null,
+      "reporterUserSeedKey": "cashier",
+      "participantUserSeedKeys": ["cashier", "admin"],
+      "activities": [
+        {"seedKey": "reported", "type": "created", "authorUserSeedKey": "cashier", "message": "Incidencia reportada y abierta.", "createdAt": "2026-08-23T12:00:00Z"},
+        {"seedKey": "resolved", "type": "status_changed", "authorUserSeedKey": "admin", "message": "Luminaria reemplazada; estado cambiado a resuelta.", "createdAt": "2026-08-24T09:30:00Z"}
+      ],
+      "attachments": [],
+      "createdAt": "2026-08-23T12:00:00Z",
+      "updatedAt": "2026-08-24T09:30:00Z"
+    },
+    {
+      "seedKey": "north-pos-tablet",
+      "code": "INC-1144",
+      "title": "Tablet del punto de venta fuera de servicio",
+      "description": "La pantalla no responde y no permite completar cobros.",
+      "type": "activo",
+      "priority": "critica",
+      "status": "abierta",
+      "branchCode": "NORTH",
+      "assetSeedKey": "north-pos-tablet",
+      "reporterUserSeedKey": "manager-north",
+      "participantUserSeedKeys": ["manager-north", "supervisor"],
+      "activities": [
+        {"seedKey": "reported", "type": "created", "authorUserSeedKey": "manager-north", "message": "Incidencia reportada y abierta; equipo enviado a diagnóstico.", "createdAt": "2026-08-30T18:45:00Z"}
+      ],
+      "attachments": [],
+      "createdAt": "2026-08-30T18:45:00Z",
+      "updatedAt": "2026-08-30T18:45:00Z"
+    }
+  ]
+}

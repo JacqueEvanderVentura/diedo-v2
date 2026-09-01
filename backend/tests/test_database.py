@@ -25,7 +25,7 @@ def test_readiness_checks_postgres(client: TestClient) -> None:
         "status": "ready",
         "database": "ok",
         "schemaStatus": "compatible",
-        "schemaRevision": "20260831_0011",
+        "schemaRevision": "20260831_0012",
     }
 
 

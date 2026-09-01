@@ -79,7 +79,15 @@ async function refreshAccessToken() {
   return requestRefreshedAccessToken({ retryConflict: true })
 }
 
-async function request(path, { method = 'GET', params, body, headers: extraHeaders = {}, auth = true, retry = true } = {}) {
+async function request(path, {
+  method = 'GET',
+  params,
+  body,
+  headers: extraHeaders = {},
+  auth = true,
+  retry = true,
+  responseType = 'json',
+} = {}) {
   const headers = { Accept: 'application/json', ...extraHeaders }
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
   if (body !== undefined && !isFormData) headers['Content-Type'] = 'application/json'
@@ -101,9 +109,20 @@ async function request(path, { method = 'GET', params, body, headers: extraHeade
       })
     }
     const refreshed = await refreshPromise
-    if (refreshed) return request(path, { method, params, body, headers: extraHeaders, auth, retry: false })
+    if (refreshed) {
+      return request(path, {
+        method,
+        params,
+        body,
+        headers: extraHeaders,
+        auth,
+        retry: false,
+        responseType,
+      })
+    }
   }
 
+  if (response.ok && responseType === 'blob') return response.blob()
   const data = await parseBody(response)
 
   if (!response.ok) {
@@ -125,6 +144,7 @@ export const apiClient = {
   patch: (path, body, options) => request(path, { method: 'PATCH', body, ...options }),
   delete: (path, params, options) => request(path, { method: 'DELETE', params, ...options }),
   upload: (path, formData, options) => request(path, { method: 'POST', body: formData, ...options }),
+  blob: (path, options) => request(path, { method: 'GET', responseType: 'blob', ...options }),
   refreshSession: refreshAccessToken,
 }
 

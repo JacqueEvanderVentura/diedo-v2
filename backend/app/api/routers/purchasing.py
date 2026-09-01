@@ -171,9 +171,7 @@ def create_supplier(
     database: DatabaseSession,
     principal: CurrentPrincipal,
     grant: PurchasingSupplierManageGrant,
-    idempotency_key: Annotated[
-        str, Header(alias="Idempotency-Key", min_length=8, max_length=128)
-    ],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=128)],
 ) -> SupplierResponse:
     return _supplier_response(
         PurchasingService(database).create_supplier(
@@ -214,9 +212,7 @@ def update_supplier(
             grant=grant,
             supplier_id=supplier_id,
             expected_version=payload.version,
-            changes=payload.model_dump(
-                exclude_unset=True, exclude={"version"}, by_alias=False
-            ),
+            changes=payload.model_dump(exclude_unset=True, exclude={"version"}, by_alias=False),
         )
     )
 
@@ -303,9 +299,7 @@ def create_purchase_request(
     database: DatabaseSession,
     principal: CurrentPrincipal,
     grant: PurchasingRequestCreateGrant,
-    idempotency_key: Annotated[
-        str, Header(alias="Idempotency-Key", min_length=8, max_length=128)
-    ],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=128)],
 ) -> PurchaseRequestResponse:
     return _purchase_request_response(
         PurchasingService(database).create_purchase_request(
@@ -353,9 +347,7 @@ def update_purchase_request(
             grant=grant,
             request_id=request_id,
             expected_version=payload.version,
-            changes=payload.model_dump(
-                exclude_unset=True, exclude={"version"}, by_alias=False
-            ),
+            changes=payload.model_dump(exclude_unset=True, exclude={"version"}, by_alias=False),
         )
     )
 

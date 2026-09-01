@@ -187,9 +187,7 @@ class InventoryService:
             return self.get_item(grant, item_id)
         except IntegrityError as exc:
             self._session.rollback()
-            existing = self._repository.item_by_creation_key(
-                grant.workspace_id, idempotency_key
-            )
+            existing = self._repository.item_by_creation_key(grant.workspace_id, idempotency_key)
             if existing is not None:
                 if existing[1] != fingerprint:
                     raise ConflictError(
@@ -406,9 +404,7 @@ class InventoryService:
             return self.get_asset(grant, asset_id)
         except IntegrityError as exc:
             self._session.rollback()
-            existing = self._repository.asset_by_creation_key(
-                grant.workspace_id, idempotency_key
-            )
+            existing = self._repository.asset_by_creation_key(grant.workspace_id, idempotency_key)
             if existing is not None:
                 if existing[1] != fingerprint:
                     raise ConflictError(
@@ -574,9 +570,7 @@ class InventoryService:
         # A concurrent request with the same key may have committed while this
         # transaction waited for the stock locks. Re-check before applying a
         # second mutation, then release the locks before loading the replay.
-        existing = self._repository.movement_by_idempotency_key(
-            grant.workspace_id, idempotency_key
-        )
+        existing = self._repository.movement_by_idempotency_key(grant.workspace_id, idempotency_key)
         if existing is not None:
             self._session.rollback()
             if existing.request_fingerprint != fingerprint:

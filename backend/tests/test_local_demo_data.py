@@ -4,6 +4,9 @@ from app.db.models import (
     Asset,
     Branch,
     DemoSeedRegistry,
+    Incident,
+    IncidentAttachment,
+    IncidentCounter,
     InventoryStockBalance,
     InventoryWarehouse,
     Item,
@@ -20,6 +23,7 @@ from app.services.demo_seed import seed_demo_data
 from app.services.local_bootstrap import bootstrap_local_foundation
 from app.services.local_demo_data import seed_local_demo_data
 from sqlalchemy import func, select
+from sqlalchemy.orm import undefer
 
 
 def test_demo_seed_flag_false_is_a_no_op() -> None:
@@ -45,6 +49,8 @@ def test_demo_seed_flag_false_is_a_no_op() -> None:
     assert summary.inventory_movement_count == 0
     assert summary.purchasing_supplier_count == 0
     assert summary.purchase_request_count == 0
+    assert summary.incident_count == 0
+    assert summary.incident_attachment_count == 0
 
 
 @pytest.mark.integration
@@ -201,6 +207,35 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
                 DemoSeedRegistry.entity_type == "purchase_request",
             )
         )
+        incident_count = session.scalar(
+            select(func.count(DemoSeedRegistry.id)).where(
+                DemoSeedRegistry.workspace_id == second.workspace_id,
+                DemoSeedRegistry.seed_version == "v1",
+                DemoSeedRegistry.entity_type == "incident",
+            )
+        )
+        incident_attachment_count = session.scalar(
+            select(func.count(DemoSeedRegistry.id)).where(
+                DemoSeedRegistry.workspace_id == second.workspace_id,
+                DemoSeedRegistry.seed_version == "v1",
+                DemoSeedRegistry.entity_type == "incident_attachment",
+            )
+        )
+        seeded_incident = session.scalar(
+            select(Incident).where(
+                Incident.workspace_id == second.workspace_id,
+                Incident.code == "INC-1188",
+            )
+        )
+        seeded_attachment = session.scalar(
+            select(IncidentAttachment)
+            .options(undefer(IncidentAttachment.content))
+            .where(
+                IncidentAttachment.workspace_id == second.workspace_id,
+                IncidentAttachment.incident_id == seeded_incident.id,
+            )
+        )
+        incident_counter = session.get(IncidentCounter, second.workspace_id)
         inventory_warehouse_count = session.scalar(
             select(func.count(InventoryWarehouse.id))
             .join(Branch, Branch.id == InventoryWarehouse.branch_id)
@@ -346,6 +381,13 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
     assert first.inventory_movement_count == second.inventory_movement_count == 35
     assert first.purchasing_supplier_count == second.purchasing_supplier_count == 2
     assert first.purchase_request_count == second.purchase_request_count == 2
+    assert first.incident_count == second.incident_count == incident_count == 6
+    assert (
+        first.incident_attachment_count
+        == second.incident_attachment_count
+        == incident_attachment_count
+        == 1
+    )
     assert catalog_category_count == persisted_category_count == 6
     assert catalog_item_count == 22
     assert catalog_assignment_count == 66
@@ -356,6 +398,11 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
     assert inventory_movement_count == 35
     assert purchasing_supplier_count == 2
     assert purchase_request_count == 2
+    assert seeded_incident is not None
+    assert seeded_attachment is not None
+    assert seeded_attachment.content.startswith(b"\x89PNG\r\n\x1a\n")
+    assert seeded_attachment.size_bytes == len(seeded_attachment.content)
+    assert incident_counter is not None and incident_counter.last_value >= 1193
     assert seeded_item_types == {"membership": 1, "product": 6, "service": 11, "supply": 4}
     assert products_per_branch == {"DOWNTOWN": 6, "EAST": 6, "HQ": 6, "NORTH": 6}
     assert supplies_per_branch == {"DOWNTOWN": 4, "EAST": 4, "HQ": 4, "NORTH": 4}

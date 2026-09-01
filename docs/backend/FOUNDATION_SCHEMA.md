@@ -26,11 +26,13 @@ The first migration installs only stable, cross-cutting concepts:
   `payment_methods` and `user_invitations`;
 - Phase 2 master data: `customers`, `customer_branch_assignments`, `employees`,
   `employee_branch_assignments`, `employee_supervisors`, `employee_schedules`, and owner-scoped
-  `attachments`.
+  `attachments`;
+- incident management: `incidents`, participants, append-only activity, and database-backed image
+  evidence.
 
 Commercial modules are documented separately from this foundation contract. Catalog, inventory,
-assets, HR, and appointments now have dedicated tables and API contracts; sales, purchasing,
-accounting, payroll, POS, and lodging remain outside this foundation slice.
+assets, HR, appointments, purchasing, and incidents now have dedicated tables and API contracts;
+sales, accounting, payroll, POS, and lodging remain outside this foundation slice.
 
 ## Physical decisions
 
@@ -77,8 +79,8 @@ By default the bootstrap creates no password. In development or test, setting
 `LOCAL_BOOTSTRAP_ADMIN_PASSWORD` sets or rotates the local owner's Argon2 password for that explicit
 bootstrap run.
 The bootstrap never creates an API key, customer, employee, commercial item, stock balance,
-invoice, payment, accounting, or fiscal record. It only provisions the default warehouse and asset
-category lookups required by inventory.
+  invoice, payment, accounting, or fiscal record. It only provisions the default warehouse and asset
+  category lookups required by inventory.
 
 ## Canonical demo seed
 
@@ -89,7 +91,9 @@ includes five customers, thirteen basic employees, six catalog categories, and t
 items with deterministic assignments across HQ, NORTH, DOWNTOWN, and EAST. Inventory adds 21 price
 and cost profiles, 40 stock balances (six products and four supplies per branch), 16 physical
 assets, and 35 opening movements. Purchasing adds two suppliers, two requests, their line items,
-and approval settings. Future HR-only fields remain isolated in fixture metadata.
+and approval settings. Incidents adds six reports across all statuses and types, their participants
+and activity, plus one synthetic PNG stored in PostgreSQL to exercise authenticated previews.
+Future HR-only fields remain isolated in fixture metadata.
 
 `schemaVersion` records the exact Alembic revision expected by that application build. After a new
 migration is validated with the canonical seed, update the manifest and regenerate the frontend
@@ -112,7 +116,7 @@ installed organization counts and enabled modules. The route is not registered i
 production.
 
 `GET /health/ready` separately validates PostgreSQL connectivity and the expected Alembic revision
-(`20260831_0011`). It returns `503` when the schema is incompatible; authenticated capabilities stay
+(`20260831_0012`). It returns `503` when the schema is incompatible; authenticated capabilities stay
 in `/api/v1/auth/me` rather than readiness.
 
 ## Next design decision

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { ImagePlus, Paperclip, Send } from 'lucide-react'
+import { toast } from 'sonner'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
@@ -20,8 +21,17 @@ function formatDate(iso) {
 
 const STATUS_OPTIONS = INCIDENCIA_STATUSES.map((s) => ({ value: s.id, label: s.name }))
 
-export function IncidenciaDetail({ item, branchName, activoName, onStatusChange, onComment, onAddImages }) {
+export function IncidenciaDetail({
+  item,
+  branchName,
+  activoName,
+  onStatusChange,
+  onComment,
+  onAddImages,
+  canManage = true,
+}) {
   const [comment, setComment] = useState('')
+  const [pendingAction, setPendingAction] = useState(null)
   const fileRef = useRef(null)
 
   if (!item) {
@@ -35,26 +45,55 @@ export function IncidenciaDetail({ item, branchName, activoName, onStatusChange,
   const pr = priorityMeta(item.priority)
   const st = statusMeta(item.status)
   const tp = typeMeta(item.type)
+  const previewItems = item.attachments?.length
+    ? item.attachments
+        .filter((attachment) => attachment.previewObjectUrl)
+        .map((attachment) => ({
+          id: attachment.id,
+          src: attachment.previewObjectUrl,
+          name: attachment.name,
+        }))
+    : (item.images || []).map((src, index) => ({ id: `local-${index}`, src, name: `Evidencia ${index + 1}` }))
 
-  const sendComment = () => {
-    if (!comment.trim()) return
-    onComment(item.id, currentSessionActor().name, comment)
-    setComment('')
+  const sendComment = async () => {
+    if (!comment.trim() || pendingAction) return
+    setPendingAction('comment')
+    try {
+      await onComment(item.id, currentSessionActor().name, comment)
+      setComment('')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo agregar el comentario.')
+    } finally {
+      setPendingAction(null)
+    }
   }
 
-  const handleFiles = (e) => {
+  const handleFiles = async (e) => {
     const files = Array.from(e.target.files || [])
     if (!files.length) return
-    const readers = files.map(
-      (file) =>
-        new Promise((resolve) => {
-          const reader = new FileReader()
-          reader.onload = () => resolve(reader.result)
-          reader.readAsDataURL(file)
-        })
-    )
-    Promise.all(readers).then((urls) => onAddImages(item.id, urls))
     e.target.value = ''
+    setPendingAction('images')
+    try {
+      await onAddImages(item.id, files)
+      toast.success('Evidencia adjuntada correctamente')
+    } catch (error) {
+      toast.error(error.message || 'No se pudieron adjuntar las imágenes.')
+    } finally {
+      setPendingAction(null)
+    }
+  }
+
+  const changeStatus = async (status) => {
+    if (status === item.status || pendingAction) return
+    setPendingAction('status')
+    try {
+      await onStatusChange(item.id, status, currentSessionActor().name)
+      toast.success('Estado actualizado')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo actualizar el estado.')
+    } finally {
+      setPendingAction(null)
+    }
   }
 
   return (
@@ -96,17 +135,23 @@ export function IncidenciaDetail({ item, branchName, activoName, onStatusChange,
         <section>
           <div className="mb-3 flex items-center justify-between gap-2">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Archivos adjuntos</h3>
-            <Button variant="ghost" size="sm" onClick={() => fileRef.current?.click()} data-testid="incidencia-add-images">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => fileRef.current?.click()}
+              disabled={!canManage || Boolean(pendingAction)}
+              data-testid="incidencia-add-images"
+            >
               <ImagePlus className="h-4 w-4" />
-              Agregar
+              {pendingAction === 'images' ? 'Subiendo…' : 'Agregar'}
             </Button>
-            <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFiles} />
+            <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple className="hidden" onChange={handleFiles} />
           </div>
-          {item.images?.length > 0 ? (
+          {previewItems.length > 0 ? (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {item.images.map((src, i) => (
-                <div key={i} className="aspect-square overflow-hidden rounded-lg border border-slate-100 bg-slate-50">
-                  <img src={src} alt={`Evidencia ${i + 1}`} className="h-full w-full object-cover" />
+              {previewItems.map((preview) => (
+                <div key={preview.id} className="aspect-square overflow-hidden rounded-lg border border-slate-100 bg-slate-50">
+                  <img src={preview.src} alt={`Evidencia: ${preview.name}`} className="h-full w-full object-cover" />
                 </div>
               ))}
             </div>
@@ -146,8 +191,9 @@ export function IncidenciaDetail({ item, branchName, activoName, onStatusChange,
           <span className="text-xs font-medium text-slate-500">Cambiar estado:</span>
           <Select
             value={item.status}
-            onChange={(status) => onStatusChange(item.id, status, currentSessionActor().name)}
+            onChange={changeStatus}
             options={STATUS_OPTIONS}
+            disabled={!canManage || Boolean(pendingAction)}
             size="sm"
             menuMinWidth={180}
             placement="top"
@@ -160,6 +206,7 @@ export function IncidenciaDetail({ item, branchName, activoName, onStatusChange,
             value={comment}
             onChange={setComment}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendComment())}
+            disabled={!canManage || Boolean(pendingAction)}
             placeholder="Escribe un comentario… usa @ para mencionar"
             testId="incidencia-comment-input"
             className="min-h-[88px] rounded-xl border-0 bg-slate-50 px-4 py-3 text-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-600"
@@ -167,7 +214,7 @@ export function IncidenciaDetail({ item, branchName, activoName, onStatusChange,
           <Button
             onClick={sendComment}
             data-testid="incidencia-comment-send"
-            disabled={!comment.trim()}
+            disabled={!canManage || !comment.trim() || Boolean(pendingAction)}
             className="shrink-0 self-end"
           >
             <Send className="h-4 w-4" />

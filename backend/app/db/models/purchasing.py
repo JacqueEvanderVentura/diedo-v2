@@ -25,9 +25,7 @@ class Supplier(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     __tablename__ = "suppliers"
     __table_args__ = (
         UniqueConstraint("workspace_id", "id", name="uq_suppliers_workspace_id"),
-        UniqueConstraint(
-            "workspace_id", "normalized_name", name="uq_suppliers_workspace_name"
-        ),
+        UniqueConstraint("workspace_id", "normalized_name", name="uq_suppliers_workspace_name"),
         CheckConstraint("status IN ('active', 'inactive', 'archived')", name="status_values"),
         CheckConstraint("product_count >= 0", name="product_count_non_negative"),
         Index("ix_suppliers_workspace_status_name", "workspace_id", "status", "normalized_name"),

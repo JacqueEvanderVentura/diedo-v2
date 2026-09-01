@@ -70,6 +70,17 @@ def test_purchasing_complete_http_contract(client: TestClient) -> None:
     assert settings_update.status_code == 200, settings_update.text
     assert settings_update.json()["approverUserId"] == membership_id
     assert settings_update.json()["notifyOnRequest"] is False
+    invalid_approver = client.put(
+        "/api/v1/purchasing/settings",
+        headers=headers,
+        json={
+            "version": settings_update.json()["version"],
+            "approverUserId": str(uuid7()),
+            "notifyOnRequest": True,
+        },
+    )
+    assert invalid_approver.status_code == 404
+    assert invalid_approver.json()["parameter"] == "approverUserId"
 
     supplier_payload = {
         "name": f"Proveedor Compras {suffix}",
@@ -107,6 +118,14 @@ def test_purchasing_complete_http_contract(client: TestClient) -> None:
     assert conflict.status_code == 409
     assert conflict.json()["parameter"] == "Idempotency-Key"
 
+    duplicate_supplier = client.post(
+        "/api/v1/purchasing/suppliers",
+        headers={**headers, "Idempotency-Key": f"supplier-duplicate-{suffix}"},
+        json={**supplier_payload, "rnc": f"OTHER-{suffix}"},
+    )
+    assert duplicate_supplier.status_code == 409
+    assert duplicate_supplier.json()["parameter"] == "name"
+
     supplier_list = client.get(
         "/api/v1/purchasing/suppliers",
         headers=headers,
@@ -119,11 +138,39 @@ def test_purchasing_complete_http_contract(client: TestClient) -> None:
     update_supplier = client.patch(
         f"/api/v1/purchasing/suppliers/{supplier['id']}",
         headers=headers,
-        json={"version": supplier["version"], "contactName": "Contacto actualizado"},
+        json={
+            "version": supplier["version"],
+            "name": f"Proveedor Actualizado {suffix}",
+            "rnc": f"ACT-{suffix}",
+            "contactName": "Contacto actualizado",
+            "phone": "809-555-0202",
+            "email": f"actualizado-{suffix}@example.com",
+            "address": "Santiago",
+            "branchIds": [branch_id],
+            "active": False,
+        },
     )
     assert update_supplier.status_code == 200, update_supplier.text
     supplier = update_supplier.json()
     assert supplier["contactName"] == "Contacto actualizado"
+    assert supplier["active"] is False
+
+    inactive_suppliers = client.get(
+        "/api/v1/purchasing/suppliers",
+        headers=headers,
+        params={"branchId": branch_id, "search": suffix, "active": False},
+    )
+    assert inactive_suppliers.status_code == 200, inactive_suppliers.text
+    assert {item["id"] for item in inactive_suppliers.json()["items"]} == {supplier["id"]}
+
+    reactivate_supplier = client.patch(
+        f"/api/v1/purchasing/suppliers/{supplier['id']}",
+        headers=headers,
+        json={"version": supplier["version"], "active": True},
+    )
+    assert reactivate_supplier.status_code == 200, reactivate_supplier.text
+    supplier = reactivate_supplier.json()
+    assert supplier["active"] is True
 
     stale_supplier = client.patch(
         f"/api/v1/purchasing/suppliers/{supplier['id']}",
@@ -165,19 +212,61 @@ def test_purchasing_complete_http_contract(client: TestClient) -> None:
     assert request_replay.status_code == 201, request_replay.text
     assert request_replay.json()["id"] == purchase_request["id"]
 
+    request_list = client.get(
+        "/api/v1/purchasing/requests",
+        headers=headers,
+        params={
+            "branchId": branch_id,
+            "supplierId": supplier["id"],
+            "search": suffix,
+            "status": "pendiente",
+            "priority": "alta",
+            "sortBy": "total",
+            "sortDirection": "asc",
+        },
+    )
+    assert request_list.status_code == 200, request_list.text
+    assert request_list.headers["cache-control"] == "no-store"
+    assert request_list.json()["totalItems"] == 1
+    assert request_list.json()["items"][0]["id"] == purchase_request["id"]
+
+    invalid_supplier_request = client.post(
+        "/api/v1/purchasing/requests",
+        headers={**headers, "Idempotency-Key": f"request-invalid-{suffix}"},
+        json={**request_payload, "supplierId": str(uuid7())},
+    )
+    assert invalid_supplier_request.status_code == 404
+    assert invalid_supplier_request.json()["parameter"] == "supplierId"
+
+    pending_delivery = client.post(
+        f"/api/v1/purchasing/requests/{purchase_request['id']}/deliver",
+        headers=headers,
+        json={"version": purchase_request["version"]},
+    )
+    assert pending_delivery.status_code == 400
+    assert pending_delivery.json()["parameter"] == "status"
+
     update_request = client.patch(
         f"/api/v1/purchasing/requests/{purchase_request['id']}",
         headers=headers,
         json={
             "version": purchase_request["version"],
+            "supplierId": supplier["id"],
+            "branchId": branch_id,
+            "items": [
+                {"name": "Guantes reforzados", "qty": "6", "unit": "caja", "price": "325.00"}
+            ],
             "notes": "Reposición actualizada",
             "priority": "normal",
+            "quoteFile": None,
         },
     )
     assert update_request.status_code == 200, update_request.text
     purchase_request = update_request.json()
     assert purchase_request["version"] == 2
     assert purchase_request["notes"] == "Reposición actualizada"
+    assert purchase_request["quoteFile"] is None
+    assert len(purchase_request["items"]) == 1
 
     stats = client.get(
         "/api/v1/purchasing/requests/stats",
@@ -199,6 +288,14 @@ def test_purchasing_complete_http_contract(client: TestClient) -> None:
     assert purchase_request["reviewedBy"] == membership_id
     assert purchase_request["reviewedAt"] is not None
 
+    repeated_review = client.post(
+        f"/api/v1/purchasing/requests/{purchase_request['id']}/review",
+        headers=headers,
+        json={"version": purchase_request["version"], "status": "aprobada"},
+    )
+    assert repeated_review.status_code == 400
+    assert repeated_review.json()["parameter"] == "status"
+
     edit_reviewed = client.patch(
         f"/api/v1/purchasing/requests/{purchase_request['id']}",
         headers=headers,
@@ -215,14 +312,14 @@ def test_purchasing_complete_http_contract(client: TestClient) -> None:
     assert delivered.json()["status"] == "entregada"
     assert delivered.json()["deliveredAt"] is not None
 
-    archive = client.delete(
-        f"/api/v1/purchasing/suppliers/{supplier['id']}", headers=headers
-    )
+    archive = client.delete(f"/api/v1/purchasing/suppliers/{supplier['id']}", headers=headers)
     assert archive.status_code == 204, archive.text
-    missing_supplier = client.get(
-        f"/api/v1/purchasing/suppliers/{supplier['id']}", headers=headers
-    )
+    missing_supplier = client.get(f"/api/v1/purchasing/suppliers/{supplier['id']}", headers=headers)
     assert missing_supplier.status_code == 404
+    unknown_supplier = client.get(f"/api/v1/purchasing/suppliers/{uuid7()}", headers=headers)
+    assert unknown_supplier.status_code == 404
+    unknown_request = client.get(f"/api/v1/purchasing/requests/{uuid7()}", headers=headers)
+    assert unknown_request.status_code == 404
     historical_request = client.get(
         f"/api/v1/purchasing/requests/{purchase_request['id']}", headers=headers
     )

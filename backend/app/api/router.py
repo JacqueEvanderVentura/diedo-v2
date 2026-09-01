@@ -7,6 +7,7 @@ from app.api.routers import (
     catalog,
     health,
     hr,
+    incidents,
     inventory,
     lookups,
     master_data,
@@ -24,6 +25,7 @@ api_router.include_router(catalog.router)
 api_router.include_router(master_data.customers_router)
 api_router.include_router(master_data.employees_router)
 api_router.include_router(hr.router)
+api_router.include_router(incidents.router)
 api_router.include_router(inventory.router)
 api_router.include_router(purchasing.router)
 api_router.include_router(users.router)

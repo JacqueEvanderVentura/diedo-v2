@@ -99,9 +99,7 @@ class PurchasingService:
         fingerprint = self._fingerprint(
             {**persistent_values, "branch_ids": sorted(str(item) for item in branch_ids)}
         )
-        existing = self._repository.supplier_by_creation_key(
-            grant.workspace_id, idempotency_key
-        )
+        existing = self._repository.supplier_by_creation_key(grant.workspace_id, idempotency_key)
         if existing is not None:
             if existing[1] != fingerprint:
                 raise ConflictError(
@@ -139,9 +137,7 @@ class PurchasingService:
                         "Idempotency-Key",
                     ) from exc
                 return self.get_supplier(grant, existing[0])
-            raise ConflictError(
-                "No se pudo crear el proveedor por un conflicto de datos."
-            ) from exc
+            raise ConflictError("No se pudo crear el proveedor por un conflicto de datos.") from exc
 
     def update_supplier(
         self,
@@ -327,7 +323,7 @@ class PurchasingService:
 
         purchase_request_id = uuid7()
         persistent_values["request_number"] = (
-            f"SC-{datetime.now(UTC):%Y%m%d}-{str(purchase_request_id).split('-')[0].upper()}"
+            f"SC-{datetime.now(UTC):%Y%m%d}-{purchase_request_id.hex[:16].upper()}"
         )
         try:
             self._repository.create_purchase_request(
@@ -355,9 +351,7 @@ class PurchasingService:
                         "Idempotency-Key",
                     ) from exc
                 return self.get_purchase_request(grant, existing[0])
-            raise ConflictError(
-                "No se pudo crear la solicitud por un conflicto de datos."
-            ) from exc
+            raise ConflictError("No se pudo crear la solicitud por un conflicto de datos.") from exc
 
     def update_purchase_request(
         self,
@@ -371,9 +365,7 @@ class PurchasingService:
         record = self._locked_request(grant, request_id)
         request = record.request
         if request.status != "pendiente":
-            raise InvalidOperationError(
-                "Solo se puede editar una solicitud pendiente.", "status"
-            )
+            raise InvalidOperationError("Solo se puede editar una solicitud pendiente.", "status")
         if not grant.workspace_wide and request.requester_membership_id != principal.membership_id:
             raise AuthorizationError("Solo quien creó la solicitud puede editarla.")
         self._require_version(request.version, expected_version)
@@ -426,9 +418,7 @@ class PurchasingService:
         record = self._locked_request(grant, request_id)
         request = record.request
         if request.status != "pendiente":
-            raise InvalidOperationError(
-                "Solo se puede revisar una solicitud pendiente.", "status"
-            )
+            raise InvalidOperationError("Solo se puede revisar una solicitud pendiente.", "status")
         self._require_version(request.version, expected_version)
         self._require_designated_approver(grant.workspace_id, principal.membership_id)
         try:
@@ -502,16 +492,16 @@ class PurchasingService:
         notify_on_request: bool,
     ) -> PurchasingSettingsRecord:
         if not grant.workspace_wide:
-            raise AuthorizationError(
-                "Configurar compras requiere alcance sobre todo el workspace."
-            )
+            raise AuthorizationError("Configurar compras requiere alcance sobre todo el workspace.")
         record = self._repository.get_settings(grant.workspace_id, for_update=True)
         if record is None:
             raise ResourceNotFoundError("La configuración de compras no está inicializada.")
         self._require_version(record.settings.version, expected_version)
-        if approver_membership_id is not None and self._repository.active_membership_name(
-            grant.workspace_id, approver_membership_id
-        ) is None:
+        if (
+            approver_membership_id is not None
+            and self._repository.active_membership_name(grant.workspace_id, approver_membership_id)
+            is None
+        ):
             raise ResourceNotFoundError(
                 "El aprobador no existe o no está activo en este workspace.",
                 "approverUserId",
@@ -539,9 +529,7 @@ class PurchasingService:
             self._session.rollback()
             raise ConflictError("No se pudo actualizar la configuración de compras.") from exc
 
-    def _locked_request(
-        self, grant: PermissionGrant, request_id: UUID
-    ) -> PurchaseRequestRecord:
+    def _locked_request(self, grant: PermissionGrant, request_id: UUID) -> PurchaseRequestRecord:
         record = self._repository.get_purchase_request(
             workspace_id=grant.workspace_id,
             request_id=request_id,
@@ -552,9 +540,7 @@ class PurchasingService:
             raise ResourceNotFoundError("La solicitud de compra no existe.", "requestId")
         return record
 
-    def _require_designated_approver(
-        self, workspace_id: UUID, membership_id: UUID
-    ) -> None:
+    def _require_designated_approver(self, workspace_id: UUID, membership_id: UUID) -> None:
         settings = self._repository.get_settings(workspace_id)
         if settings is None:
             raise ResourceNotFoundError("La configuración de compras no está inicializada.")

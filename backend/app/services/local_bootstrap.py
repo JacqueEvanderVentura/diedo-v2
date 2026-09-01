@@ -313,6 +313,30 @@ _PERMISSIONS = (
         "Choose the designated approver and notification preference.",
         50,
     ),
+    (
+        "incidents.read",
+        "incidents",
+        "read",
+        "Ver incidencias",
+        "View branch-scoped incidents, activity, participants, and evidence.",
+        10,
+    ),
+    (
+        "incidents.create",
+        "incidents",
+        "create",
+        "Reportar incidencias",
+        "Create incidents in authorized branches.",
+        20,
+    ),
+    (
+        "incidents.manage",
+        "incidents",
+        "manage",
+        "Gestionar incidencias",
+        "Change status, comment, and attach image evidence.",
+        30,
+    ),
 )
 
 _ROLE_TEMPLATES = (
@@ -333,6 +357,7 @@ _MODULES: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
     ("sales", "Sales", "optional", "planned", ("crm", "catalog")),
     ("purchasing", "Purchasing", "optional", "available", ("foundation", "catalog")),
     ("inventory", "Inventory and assets", "optional", "available", ("foundation", "catalog")),
+    ("incidents", "Incidents", "optional", "available", ("foundation",)),
     ("accounting", "Accounting", "optional", "planned", ("sales", "purchasing")),
     ("hr", "Human resources", "optional", "available", ("foundation",)),
     ("payroll", "Payroll", "optional", "planned", ("hr", "accounting")),
@@ -553,6 +578,7 @@ def bootstrap_local_foundation(
         "appointments",
         "inventory",
         "purchasing",
+        "incidents",
     )
     for module_code in enabled_modules:
         module_id = session.scalar(

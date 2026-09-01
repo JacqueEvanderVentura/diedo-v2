@@ -130,6 +130,18 @@ PurchasingSettingsManageGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("purchasing.settings.manage")),
 ]
+IncidentReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("incidents.read")),
+]
+IncidentCreateGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("incidents.create")),
+]
+IncidentManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("incidents.manage")),
+]
 CustomerReadGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("customer.read")),

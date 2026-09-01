@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 from collections.abc import Mapping
@@ -30,6 +31,11 @@ from app.db.models import (
     EmployeeSupervisor,
     HrDocumentRecord,
     HrLeaveRequest,
+    Incident,
+    IncidentActivity,
+    IncidentAttachment,
+    IncidentCounter,
+    IncidentParticipant,
     InventoryItemProfile,
     InventoryMovement,
     InventoryMovementLine,
@@ -87,6 +93,8 @@ class DemoSeedSummary:
     inventory_movement_count: int = 0
     purchasing_supplier_count: int = 0
     purchase_request_count: int = 0
+    incident_count: int = 0
+    incident_attachment_count: int = 0
 
 
 def seed_demo_data(
@@ -98,7 +106,14 @@ def seed_demo_data(
     should_seed = settings.demo_seed_enabled if enabled is None else enabled
     bundle = load_demo_bundle()
     if not should_seed:
-        return DemoSeedSummary(False, bundle.manifest.seed_version, None, 0, 0, 0, 0, 0, 0, 0, 0)
+        return DemoSeedSummary(
+            enabled=False,
+            seed_version=bundle.manifest.seed_version,
+            workspace_id=None,
+            branch_count=0,
+            demo_user_count=0,
+            payment_method_count=0,
+        )
     if settings.app_env not in {"development", "test"}:
         raise RuntimeError("Demo seeding is disabled outside development and test.")
     if password_hash is None:
@@ -127,27 +142,39 @@ def seed_demo_data(
         foundation.workspace_id,
         branches,
     )
+    incident_counts = _seed_incidents(
+        session,
+        bundle,
+        foundation.workspace_id,
+        branches,
+    )
     _seed_customers(session, bundle, foundation.workspace_id, branches)
     _seed_employees(session, bundle, foundation.workspace_id, branches)
     _seed_hr(session, bundle, foundation.workspace_id)
     return DemoSeedSummary(
-        True,
-        bundle.manifest.seed_version,
-        foundation.workspace_id,
-        len(branches),
-        len(bundle.iam.users),
-        len(bundle.configuration.payment_methods),
-        len(bundle.customers.items),
-        len(bundle.employees.items),
-        len(bundle.hr.leave_requests),
-        len(bundle.hr.debts),
-        len(bundle.hr.documents),
-        len(bundle.catalog.categories),
-        len(bundle.catalog.items),
-        catalog_assignment_count,
-        *inventory_counts,
-        len(bundle.purchasing.suppliers),
-        len(bundle.purchasing.requests),
+        enabled=True,
+        seed_version=bundle.manifest.seed_version,
+        workspace_id=foundation.workspace_id,
+        branch_count=len(branches),
+        demo_user_count=len(bundle.iam.users),
+        payment_method_count=len(bundle.configuration.payment_methods),
+        customer_count=len(bundle.customers.items),
+        employee_count=len(bundle.employees.items),
+        leave_request_count=len(bundle.hr.leave_requests),
+        debt_count=len(bundle.hr.debts),
+        document_count=len(bundle.hr.documents),
+        catalog_category_count=len(bundle.catalog.categories),
+        catalog_item_count=len(bundle.catalog.items),
+        catalog_assignment_count=catalog_assignment_count,
+        inventory_warehouse_count=inventory_counts[0],
+        inventory_profile_count=inventory_counts[1],
+        inventory_stock_balance_count=inventory_counts[2],
+        inventory_asset_count=inventory_counts[3],
+        inventory_movement_count=inventory_counts[4],
+        purchasing_supplier_count=len(bundle.purchasing.suppliers),
+        purchase_request_count=len(bundle.purchasing.requests),
+        incident_count=incident_counts[0],
+        incident_attachment_count=incident_counts[1],
     )
 
 
@@ -760,6 +787,293 @@ def _seed_inventory(
     )
 
 
+def _seed_incidents(
+    session: Session,
+    bundle: DemoBundle,
+    workspace_id: UUID,
+    branches: dict[str, Branch],
+) -> tuple[int, int]:
+    users: dict[str, tuple[PlatformUser, WorkspaceMembership]] = {}
+    for user_fixture in bundle.iam.users:
+        platform_user = session.get(
+            PlatformUser,
+            _stable_id(
+                bundle.manifest.seed_version,
+                "platform_user",
+                user_fixture.seed_key,
+            ),
+        )
+        membership = session.get(
+            WorkspaceMembership,
+            _stable_id(
+                bundle.manifest.seed_version,
+                "membership",
+                user_fixture.seed_key,
+            ),
+        )
+        if platform_user is None or membership is None:
+            raise RuntimeError(f"Demo incident user {user_fixture.seed_key!r} is missing.")
+        users[user_fixture.seed_key] = (platform_user, membership)
+
+    assets = {
+        fixture.seed_key: session.get(
+            Asset,
+            _stable_id(bundle.manifest.seed_version, "asset", fixture.seed_key),
+        )
+        for fixture in bundle.inventory.assets
+    }
+    attachment_count = 0
+    maximum_code = 0
+    for fixture in bundle.incidents.items:
+        branch = branches.get(fixture.branch_code)
+        if branch is None:
+            raise RuntimeError(f"Demo incident references unknown branch {fixture.branch_code!r}.")
+        reporter = users.get(fixture.reporter_user_seed_key)
+        if reporter is None or reporter[1].status != "active":
+            raise RuntimeError("Demo incidents require an active reporter.")
+        referenced_user_keys = set(fixture.participant_user_seed_keys)
+        referenced_user_keys.update(
+            activity.author_user_seed_key for activity in fixture.activities
+        )
+        referenced_user_keys.update(
+            attachment.uploaded_by_user_seed_key for attachment in fixture.attachments
+        )
+        missing_user_keys = referenced_user_keys - users.keys()
+        if missing_user_keys:
+            missing = ", ".join(sorted(missing_user_keys))
+            raise RuntimeError(f"Demo incident references unknown users: {missing}.")
+        if any(users[key][1].status != "active" for key in referenced_user_keys):
+            raise RuntimeError("Demo incident participants and authors must be active.")
+
+        asset = assets.get(fixture.asset_seed_key) if fixture.asset_seed_key else None
+        if fixture.asset_seed_key and asset is None:
+            raise RuntimeError(
+                f"Demo incident references unknown asset {fixture.asset_seed_key!r}."
+            )
+        if asset is not None and asset.branch_id != branch.id:
+            raise RuntimeError("Demo incident asset must belong to its branch.")
+
+        payload = fixture.model_dump(mode="json")
+        incident_id = _stable_id(bundle.manifest.seed_version, "incident", fixture.seed_key)
+        incident = _registered_entity(
+            session,
+            workspace_id,
+            "incident",
+            fixture.seed_key,
+            incident_id,
+            payload,
+            Incident,
+        )
+        last_author_key = max(fixture.activities, key=lambda item: item.created_at)
+        last_author = users[last_author_key.author_user_seed_key][0]
+        incident_values = {
+            "workspace_id": workspace_id,
+            "branch_id": branch.id,
+            "asset_id": asset.id if asset is not None else None,
+            "reported_by_membership_id": reporter[1].id,
+            "reported_by_name": reporter[0].display_name,
+            "code": fixture.code,
+            "title": fixture.title,
+            "description": fixture.description,
+            "incident_type": fixture.type,
+            "priority": fixture.priority,
+            "status": fixture.status,
+            "creation_idempotency_key": (
+                f"demo:{bundle.manifest.seed_version}:incident:{fixture.seed_key}"
+            ),
+            "request_fingerprint": _checksum(payload),
+            "updated_by_platform_user_id": last_author.id,
+            "created_at": fixture.created_at,
+            "updated_at": fixture.updated_at,
+        }
+        if incident is None:
+            incident = Incident(id=incident_id, **incident_values)
+            session.add(incident)
+            session.flush()
+            _register(
+                session,
+                workspace_id,
+                "incident",
+                fixture.seed_key,
+                incident.id,
+                bundle.manifest.seed_version,
+                payload,
+            )
+        else:
+            for field, incident_value in incident_values.items():
+                setattr(incident, field, incident_value)
+
+        for participant_user_seed_key in fixture.participant_user_seed_keys:
+            participant_user, participant_membership = users[participant_user_seed_key]
+            participant_key = f"{fixture.seed_key}:{participant_user_seed_key}"
+            participant_payload = {
+                "incidentSeedKey": fixture.seed_key,
+                "userSeedKey": participant_user_seed_key,
+            }
+            participant_id = _stable_id(
+                bundle.manifest.seed_version,
+                "incident_participant",
+                participant_key,
+            )
+            participant = _registered_entity(
+                session,
+                workspace_id,
+                "incident_participant",
+                participant_key,
+                participant_id,
+                participant_payload,
+                IncidentParticipant,
+            )
+            participant_values = {
+                "workspace_id": workspace_id,
+                "incident_id": incident.id,
+                "membership_id": participant_membership.id,
+                "participant_name": participant_user.display_name,
+                "created_at": fixture.created_at,
+                "updated_at": fixture.updated_at,
+            }
+            if participant is None:
+                participant = IncidentParticipant(id=participant_id, **participant_values)
+                session.add(participant)
+                session.flush()
+                _register(
+                    session,
+                    workspace_id,
+                    "incident_participant",
+                    participant_key,
+                    participant.id,
+                    bundle.manifest.seed_version,
+                    participant_payload,
+                )
+            else:
+                for field, participant_value in participant_values.items():
+                    setattr(participant, field, participant_value)
+
+        for activity_fixture in fixture.activities:
+            author_user, author_membership = users[activity_fixture.author_user_seed_key]
+            activity_key = f"{fixture.seed_key}:{activity_fixture.seed_key}"
+            activity_payload = {
+                "incidentSeedKey": fixture.seed_key,
+                **activity_fixture.model_dump(mode="json"),
+            }
+            activity_id = _stable_id(
+                bundle.manifest.seed_version,
+                "incident_activity",
+                activity_key,
+            )
+            activity = _registered_entity(
+                session,
+                workspace_id,
+                "incident_activity",
+                activity_key,
+                activity_id,
+                activity_payload,
+                IncidentActivity,
+            )
+            activity_values = {
+                "workspace_id": workspace_id,
+                "incident_id": incident.id,
+                "activity_type": activity_fixture.type,
+                "author_membership_id": author_membership.id,
+                "author_name": author_user.display_name,
+                "message": activity_fixture.message,
+                "created_at": activity_fixture.created_at,
+            }
+            if activity is None:
+                activity = IncidentActivity(id=activity_id, **activity_values)
+                session.add(activity)
+                session.flush()
+                _register(
+                    session,
+                    workspace_id,
+                    "incident_activity",
+                    activity_key,
+                    activity.id,
+                    bundle.manifest.seed_version,
+                    activity_payload,
+                )
+            else:
+                for field, activity_value in activity_values.items():
+                    setattr(activity, field, activity_value)
+
+        for attachment_fixture in fixture.attachments:
+            _, uploader_membership = users[attachment_fixture.uploaded_by_user_seed_key]
+            content = base64.b64decode(attachment_fixture.content_base64, validate=True)
+            _validate_demo_incident_image(attachment_fixture.content_type, content)
+            attachment_key = f"{fixture.seed_key}:{attachment_fixture.seed_key}"
+            attachment_payload = {
+                "incidentSeedKey": fixture.seed_key,
+                **attachment_fixture.model_dump(mode="json"),
+            }
+            attachment_id = _stable_id(
+                bundle.manifest.seed_version,
+                "incident_attachment",
+                attachment_key,
+            )
+            attachment = _registered_entity(
+                session,
+                workspace_id,
+                "incident_attachment",
+                attachment_key,
+                attachment_id,
+                attachment_payload,
+                IncidentAttachment,
+            )
+            attachment_values = {
+                "workspace_id": workspace_id,
+                "incident_id": incident.id,
+                "uploaded_by_membership_id": uploader_membership.id,
+                "original_filename": attachment_fixture.original_filename,
+                "content_type": attachment_fixture.content_type,
+                "size_bytes": len(content),
+                "checksum_sha256": hashlib.sha256(content).hexdigest(),
+                "content": content,
+                "created_at": attachment_fixture.created_at,
+            }
+            if attachment is None:
+                attachment = IncidentAttachment(id=attachment_id, **attachment_values)
+                session.add(attachment)
+                session.flush()
+                _register(
+                    session,
+                    workspace_id,
+                    "incident_attachment",
+                    attachment_key,
+                    attachment.id,
+                    bundle.manifest.seed_version,
+                    attachment_payload,
+                )
+            else:
+                for field, attachment_value in attachment_values.items():
+                    setattr(attachment, field, attachment_value)
+            attachment_count += 1
+
+        maximum_code = max(maximum_code, int(fixture.code.removeprefix("INC-")))
+
+    counter = session.get(IncidentCounter, workspace_id)
+    if counter is None:
+        session.add(IncidentCounter(workspace_id=workspace_id, last_value=maximum_code))
+    else:
+        counter.last_value = max(counter.last_value, maximum_code)
+    session.flush()
+    return len(bundle.incidents.items), attachment_count
+
+
+def _validate_demo_incident_image(content_type: str, content: bytes) -> None:
+    valid = {
+        "image/jpeg": content.startswith(b"\xff\xd8\xff"),
+        "image/png": content.startswith(b"\x89PNG\r\n\x1a\n"),
+        "image/gif": content.startswith((b"GIF87a", b"GIF89a")),
+        "image/webp": (
+            content.startswith(b"RIFF") and len(content) >= 12 and content[8:12] == b"WEBP"
+        ),
+    }
+    if not valid.get(content_type, False):
+        raise RuntimeError("Demo incident image content does not match its content type.")
+    if len(content) > settings.incident_image_max_bytes:
+        raise RuntimeError("Demo incident image exceeds the configured size limit.")
+
+
 def _validate_demo_inventory_profile(
     fixture: DemoInventoryItemProfileFixture,
     item_type: str,
@@ -961,14 +1275,10 @@ def _seed_demo_assets(
     for fixture in bundle.inventory.assets:
         branch = branches.get(fixture.branch_code)
         if branch is None:
-            raise RuntimeError(
-                f"Demo asset references unknown branch {fixture.branch_code!r}."
-            )
+            raise RuntimeError(f"Demo asset references unknown branch {fixture.branch_code!r}.")
         category = categories.get(fixture.category_code)
         if category is None:
-            raise RuntimeError(
-                f"Demo asset references unknown category {fixture.category_code!r}."
-            )
+            raise RuntimeError(f"Demo asset references unknown category {fixture.category_code!r}.")
         payload = fixture.model_dump(mode="json")
         asset_id = _stable_id(bundle.manifest.seed_version, "asset", fixture.seed_key)
         asset = _registered_entity(

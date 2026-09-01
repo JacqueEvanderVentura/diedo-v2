@@ -98,6 +98,7 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - HR overview, profiles, leave, debts, and documents: `http://localhost:8000/api/v1/hr`
 - Appointment resources: `GET http://localhost:8000/api/v1/appointment-resources`
 - Calendar and appointment management: `GET/POST/PATCH http://localhost:8000/api/v1/appointments`
+- Incidents, comments, status and image evidence: `http://localhost:8000/api/v1/incidents`
 - Swagger UI: `http://localhost:8000/swagger/index.html`
 - OpenAPI JSON: `http://localhost:8000/swagger.json`
 
@@ -115,6 +116,8 @@ The HR profile, leave, employee receivables, and document contracts are document
 [`../docs/backend/HR_API.md`](../docs/backend/HR_API.md).
 The branch-scoped calendar, appointment management, recurrence, and concurrency contracts are
 documented in [`../docs/backend/AGENDA_API.md`](../docs/backend/AGENDA_API.md).
+The incident workflow and temporary PostgreSQL image-storage contract are documented in
+[`../docs/backend/INCIDENTS_API.md`](../docs/backend/INCIDENTS_API.md).
 
 ## Quality checks
 

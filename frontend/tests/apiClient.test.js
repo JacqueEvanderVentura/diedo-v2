@@ -48,6 +48,28 @@ describe('apiClient URL base', () => {
     )
   })
 
+  it('descarga blobs autenticados para previews protegidos', async () => {
+    const { apiClient, bindSessionHandlers } = await loadApiClient('/api-backend')
+    bindSessionHandlers({ getAccessToken: () => 'preview-token' })
+    fetch.mockResolvedValueOnce(
+      new Response(new Blob(['image'], { type: 'image/png' }), {
+        status: 200,
+        headers: { 'Content-Type': 'image/png' },
+      })
+    )
+
+    const blob = await apiClient.blob('/api/v1/incidents/id/attachments/image/content')
+
+    expect(blob.type).toBe('image/png')
+    expect(fetch).toHaveBeenCalledWith(
+      '/api-backend/api/v1/incidents/id/attachments/image/content',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ Authorization: 'Bearer preview-token' }),
+      })
+    )
+  })
+
   it('comparte un solo refresh cuando varias requests reciben 401 a la vez', async () => {
     const { apiClient, bindSessionHandlers } = await loadApiClient('/api-backend')
     let accessToken = 'expired-access'

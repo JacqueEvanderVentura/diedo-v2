@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from threading import Barrier
 from uuid import UUID, uuid7
@@ -191,7 +191,8 @@ def test_inventory_complete_http_contract_and_idempotent_ledger(client: TestClie
         },
     )
     assert service_response.status_code == 201, service_response.text
-    assert service_response.json()["stockStatus"] == "not_tracked"
+    service = service_response.json()
+    assert service["stockStatus"] == "not_tracked"
 
     inventory_list = client.get(
         "/api/v1/inventory/items",
@@ -204,6 +205,116 @@ def test_inventory_complete_http_contract_and_idempotent_ledger(client: TestClie
         "service",
         "supply",
     }
+
+    updated_product_response = client.patch(
+        f"/api/v1/inventory/items/{product['id']}",
+        headers=headers,
+        json={
+            "version": product["version"],
+            "name": f"Producto actualizado {suffix}",
+            "description": "Ficha actualizada",
+            "sku": f"UPD-{suffix}",
+            "categoryId": category["id"],
+            "unitOfMeasureId": unit_id,
+            "salePrice": "175.00",
+            "unitCost": "75.00",
+            "taxRate": "16.00",
+            "branchId": branch_id,
+            "minimumStock": "3",
+            "status": "active",
+        },
+    )
+    assert updated_product_response.status_code == 200, updated_product_response.text
+    updated_product = updated_product_response.json()
+    assert updated_product["version"] == product["version"] + 1
+    assert updated_product["sku"] == f"UPD-{suffix}".upper()
+    assert Decimal(updated_product["minimumStock"]) == Decimal("3")
+
+    stale_product = client.patch(
+        f"/api/v1/inventory/items/{product['id']}",
+        headers=headers,
+        json={"version": product["version"], "name": "Cambio obsoleto"},
+    )
+    assert stale_product.status_code == 409
+    assert stale_product.json()["parameter"] == "version"
+
+    invalid_service_update = client.patch(
+        f"/api/v1/inventory/items/{service['id']}",
+        headers=headers,
+        json={"version": service["version"], "unitCost": "10.00"},
+    )
+    assert invalid_service_update.status_code == 400
+
+    duplicate_sku = client.patch(
+        f"/api/v1/inventory/items/{supply['id']}",
+        headers=headers,
+        json={"version": supply["version"], "sku": updated_product["sku"]},
+    )
+    assert duplicate_sku.status_code == 409
+    assert duplicate_sku.json()["parameter"] == "sku"
+
+    invalid_category = client.patch(
+        f"/api/v1/inventory/items/{product['id']}",
+        headers=headers,
+        json={"version": updated_product["version"], "categoryId": str(uuid7())},
+    )
+    assert invalid_category.status_code == 404
+    assert invalid_category.json()["parameter"] == "categoryId"
+
+    invalid_unit = client.patch(
+        f"/api/v1/inventory/items/{product['id']}",
+        headers=headers,
+        json={"version": updated_product["version"], "unitOfMeasureId": str(uuid7())},
+    )
+    assert invalid_unit.status_code == 404
+    assert invalid_unit.json()["parameter"] == "unitOfMeasureId"
+
+    unassigned_branch = client.patch(
+        f"/api/v1/inventory/items/{product['id']}",
+        headers=headers,
+        json={
+            "version": updated_product["version"],
+            "branchId": str(uuid7()),
+            "minimumStock": "4",
+        },
+    )
+    assert unassigned_branch.status_code == 404
+    assert unassigned_branch.json()["parameter"] == "branchId"
+
+    invalid_warehouse = client.patch(
+        f"/api/v1/inventory/items/{product['id']}",
+        headers=headers,
+        json={
+            "version": updated_product["version"],
+            "branchId": branch_id,
+            "warehouseId": str(uuid7()),
+            "minimumStock": "4",
+        },
+    )
+    assert invalid_warehouse.status_code == 404
+    assert invalid_warehouse.json()["parameter"] == "warehouseId"
+
+    invalid_supply_update = client.patch(
+        f"/api/v1/inventory/items/{supply['id']}",
+        headers=headers,
+        json={"version": supply["version"], "salePrice": "20.00"},
+    )
+    assert invalid_supply_update.status_code == 400
+
+    missing_item = client.patch(
+        f"/api/v1/inventory/items/{uuid7()}",
+        headers=headers,
+        json={"version": 1, "name": "No existe"},
+    )
+    assert missing_item.status_code == 404
+    assert missing_item.json()["parameter"] == "itemId"
+    missing_item_detail = client.get(
+        f"/api/v1/inventory/items/{uuid7()}",
+        headers=headers,
+        params={"branchId": branch_id},
+    )
+    assert missing_item_detail.status_code == 404
+    assert missing_item_detail.json()["parameter"] == "itemId"
 
     inventory_summary = client.get(
         "/api/v1/inventory/summary",
@@ -219,6 +330,12 @@ def test_inventory_complete_http_contract_and_idempotent_ledger(client: TestClie
     categories = client.get("/api/v1/inventory/asset-categories", headers=headers)
     assert categories.status_code == 200, categories.text
     asset_category = next(row for row in categories.json() if row["code"] == "equipos")
+    duplicate_asset_category = client.post(
+        "/api/v1/inventory/asset-categories",
+        headers=headers,
+        json={"code": "equipos", "name": f"Equipos duplicados {suffix}"},
+    )
+    assert duplicate_asset_category.status_code == 409
     asset_payload = {
         "name": f"Equipo {suffix}",
         "code": f"EQP-{suffix}",
@@ -294,6 +411,30 @@ def test_inventory_complete_http_contract_and_idempotent_ledger(client: TestClie
     )
     assert stale_asset.status_code == 409
     assert stale_asset.json()["parameter"] == "version"
+
+    invalid_asset_branch = client.patch(
+        f"/api/v1/inventory/assets/{asset['id']}",
+        headers=headers,
+        json={"version": updated_asset.json()["version"], "branchId": str(uuid7())},
+    )
+    assert invalid_asset_branch.status_code == 404
+    assert invalid_asset_branch.json()["parameter"] == "branchId"
+
+    invalid_asset_category = client.patch(
+        f"/api/v1/inventory/assets/{asset['id']}",
+        headers=headers,
+        json={"version": updated_asset.json()["version"], "categoryId": str(uuid7())},
+    )
+    assert invalid_asset_category.status_code == 404
+    assert invalid_asset_category.json()["parameter"] == "categoryId"
+
+    missing_asset = client.patch(
+        f"/api/v1/inventory/assets/{uuid7()}",
+        headers=headers,
+        json={"version": 1, "status": "activo"},
+    )
+    assert missing_asset.status_code == 404
+    assert missing_asset.json()["parameter"] == "assetId"
 
     employee = _create_employee(client, headers, branch_id, suffix)
     outbound_payload = {
@@ -379,8 +520,8 @@ def test_inventory_complete_http_contract_and_idempotent_ledger(client: TestClie
             "employeeId": employee["id"],
             "type": "outbound",
             "search": "Uso",
-            "dateFrom": date.today().isoformat(),
-            "dateTo": date.today().isoformat(),
+            "dateFrom": outbound["createdAt"][:10],
+            "dateTo": outbound["createdAt"][:10],
             "sortBy": "employee",
             "sortDirection": "asc",
         },
@@ -389,6 +530,28 @@ def test_inventory_complete_http_contract_and_idempotent_ledger(client: TestClie
     assert filtered_movements.headers["cache-control"] == "no-store"
     assert filtered_movements.json()["totalItems"] == 1
     assert filtered_movements.json()["items"][0]["id"] == outbound["id"]
+
+    reversed_dates = client.get(
+        "/api/v1/inventory/movements",
+        headers=headers,
+        params={
+            "dateFrom": date.today().isoformat(),
+            "dateTo": (date.today() - timedelta(days=1)).isoformat(),
+        },
+    )
+    assert reversed_dates.status_code == 400
+    assert reversed_dates.json()["parameter"] == "dateTo"
+
+    excessive_date_range = client.get(
+        "/api/v1/inventory/movements",
+        headers=headers,
+        params={
+            "dateFrom": (date.today() - timedelta(days=367)).isoformat(),
+            "dateTo": date.today().isoformat(),
+        },
+    )
+    assert excessive_date_range.status_code == 400
+    assert excessive_date_range.json()["parameter"] == "dateTo"
 
     usage = client.get(
         "/api/v1/inventory/supply-usage",

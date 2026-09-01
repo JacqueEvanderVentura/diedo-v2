@@ -172,9 +172,7 @@ class UpdatePurchaseRequestRequest(ApiModel):
     version: int = Field(ge=1)
     supplier_id: UUID | None = None
     branch_id: UUID | None = None
-    items: list[PurchaseRequestItemInput] | None = Field(
-        default=None, min_length=1, max_length=100
-    )
+    items: list[PurchaseRequestItemInput] | None = Field(default=None, min_length=1, max_length=100)
     priority: PurchaseRequestPriority | None = None
     notes: str | None = Field(default=None, max_length=2000)
     quote_file: PurchaseQuoteFile | None = None

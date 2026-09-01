@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import json
 from dataclasses import dataclass
@@ -131,9 +133,7 @@ class DemoCatalogItemFixture(ApiModel):
     sku: str | None = Field(default=None, min_length=1, max_length=64)
     name: str = Field(min_length=2, max_length=160)
     description: str | None = Field(default=None, max_length=1000)
-    item_type: Literal[
-        "product", "service", "supply", "membership", "asset_template", "other"
-    ]
+    item_type: Literal["product", "service", "supply", "membership", "asset_template", "other"]
     category_seed_key: str
     unit_code: str
     branch_codes: list[str] = Field(min_length=1, max_length=100)
@@ -177,6 +177,66 @@ class DemoAssetFixture(ApiModel):
 class InventoryFixture(ApiModel):
     item_profiles: list[DemoInventoryItemProfileFixture]
     assets: list[DemoAssetFixture]
+
+
+class DemoIncidentActivityFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    type: Literal["created", "status_changed", "comment"]
+    author_user_seed_key: str
+    message: str = Field(min_length=1, max_length=2000)
+    created_at: datetime
+
+
+class DemoIncidentAttachmentFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    original_filename: str = Field(min_length=1, max_length=255)
+    content_type: Literal["image/jpeg", "image/png", "image/webp", "image/gif"]
+    content_base64: str = Field(min_length=1, max_length=7_000_000)
+    uploaded_by_user_seed_key: str
+    created_at: datetime
+
+    @field_validator("content_base64")
+    @classmethod
+    def require_valid_base64_image(cls, value: str) -> str:
+        try:
+            content = base64.b64decode(value, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError("Demo incident attachments must contain valid base64.") from exc
+        if not content:
+            raise ValueError("Demo incident attachments cannot be empty.")
+        return value
+
+
+class DemoIncidentFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    code: str = Field(pattern=r"^INC-[0-9]+$", max_length=32)
+    title: str = Field(min_length=3, max_length=200)
+    description: str = Field(default="", max_length=5000)
+    type: Literal["activo", "infraestructura", "personal"]
+    priority: Literal["baja", "media", "alta", "critica"]
+    status: Literal["abierta", "en_proceso", "resuelta", "cerrada"]
+    branch_code: str
+    asset_seed_key: str | None = None
+    reporter_user_seed_key: str
+    participant_user_seed_keys: list[str] = Field(default_factory=list)
+    activities: list[DemoIncidentActivityFixture] = Field(min_length=1)
+    attachments: list[DemoIncidentAttachmentFixture] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+    @model_validator(mode="after")
+    def require_consistent_incident(self) -> DemoIncidentFixture:
+        if self.type != "activo" and self.asset_seed_key is not None:
+            raise ValueError("Only asset demo incidents may reference an asset.")
+        if self.updated_at < self.created_at:
+            raise ValueError("Demo incident updatedAt cannot precede createdAt.")
+        if len(self.participant_user_seed_keys) != len(set(self.participant_user_seed_keys)):
+            raise ValueError("Demo incident participants must be unique.")
+        return self
+
+
+class IncidentsFixture(ApiModel):
+    items: list[DemoIncidentFixture]
 
 
 class DemoSupplierFixture(ApiModel):
@@ -289,6 +349,7 @@ class DemoBundle:
     configuration: ConfigurationFixture
     catalog: CatalogFixture
     inventory: InventoryFixture
+    incidents: IncidentsFixture
     purchasing: PurchasingFixture
     customers: CustomersFixture
     employees: EmployeesFixture
@@ -306,6 +367,7 @@ def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
         "configuration.json",
         "catalog.json",
         "inventory.json",
+        "incidents.json",
         "purchasing.json",
         "customers.json",
         "employees.json",
@@ -336,6 +398,9 @@ def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
         ),
         inventory=InventoryFixture.model_validate_json(
             (root / "inventory.json").read_text(encoding="utf-8")
+        ),
+        incidents=IncidentsFixture.model_validate_json(
+            (root / "incidents.json").read_text(encoding="utf-8")
         ),
         purchasing=PurchasingFixture.model_validate_json(
             (root / "purchasing.json").read_text(encoding="utf-8")

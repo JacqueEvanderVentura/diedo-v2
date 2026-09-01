@@ -12,6 +12,7 @@ const configuration = JSON.parse(readFileSync(resolve(fixtureRoot, 'configuratio
 const catalog = JSON.parse(readFileSync(resolve(fixtureRoot, 'catalog.json'), 'utf8'))
 const inventory = JSON.parse(readFileSync(resolve(fixtureRoot, 'inventory.json'), 'utf8'))
 const purchasing = JSON.parse(readFileSync(resolve(fixtureRoot, 'purchasing.json'), 'utf8'))
+const incidents = JSON.parse(readFileSync(resolve(fixtureRoot, 'incidents.json'), 'utf8'))
 const customers = JSON.parse(readFileSync(resolve(fixtureRoot, 'customers.json'), 'utf8'))
 const employees = JSON.parse(readFileSync(resolve(fixtureRoot, 'employees.json'), 'utf8'))
 const hr = JSON.parse(readFileSync(resolve(fixtureRoot, 'hr.json'), 'utf8'))
@@ -26,6 +27,7 @@ const snapshot = {
   catalog,
   inventory,
   purchasing,
+  incidents,
   customers,
   employees,
   hr,

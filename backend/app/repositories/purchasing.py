@@ -102,9 +102,7 @@ class PurchasingRepository:
         if active is not None:
             predicates.append(Supplier.status == ("active" if active else "inactive"))
 
-        total_items = (
-            self._session.scalar(select(func.count(Supplier.id)).where(*predicates)) or 0
-        )
+        total_items = self._session.scalar(select(func.count(Supplier.id)).where(*predicates)) or 0
         order_fields: dict[str, Any] = {
             "name": func.lower(Supplier.name),
             "rnc": Supplier.tax_identifier,
@@ -340,11 +338,13 @@ class PurchasingRepository:
                 or_(
                     func.lower(PurchaseRequest.request_number).contains(value),
                     func.lower(PurchaseRequest.requester_name).contains(value),
-                    exists().where(
+                    exists()
+                    .where(
                         Supplier.workspace_id == PurchaseRequest.workspace_id,
                         Supplier.id == PurchaseRequest.supplier_id,
                         func.lower(Supplier.name).contains(value),
-                    ),
+                    )
+                    .correlate(PurchaseRequest),
                 )
             )
 
@@ -633,9 +633,7 @@ class PurchasingRepository:
             target_id=settings.id,
             request_id=request_id,
             details={
-                "approverUserId": str(approver_membership_id)
-                if approver_membership_id
-                else None,
+                "approverUserId": str(approver_membership_id) if approver_membership_id else None,
                 "notifyOnRequest": notify_on_request,
             },
         )
@@ -790,9 +788,7 @@ class PurchasingRepository:
             SupplierBranchAssignment.supplier_id == Supplier.id,
         ]
         if visible_branch_ids is not None:
-            branch_predicates.append(
-                SupplierBranchAssignment.branch_id.in_(visible_branch_ids)
-            )
+            branch_predicates.append(SupplierBranchAssignment.branch_id.in_(visible_branch_ids))
         if branch_id is not None:
             branch_predicates.append(SupplierBranchAssignment.branch_id == branch_id)
         return exists().where(*branch_predicates)

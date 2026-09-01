@@ -6,6 +6,7 @@ const API_CONNECTED_MODULE_SET = new Set([
   'hr',
   'appointments',
   'purchasing',
+  'incidents',
 ])
 
 export const API_CONNECTED_MODULES = Object.freeze([...API_CONNECTED_MODULE_SET])
@@ -21,6 +22,9 @@ export function isModuleAvailable(moduleCode, enabledModules = []) {
 }
 
 export function routeRequirement(pathname) {
+  if (pathname === '/incidencias' || pathname.startsWith('/incidencias/')) {
+    return { module: 'incidents', permission: 'incidents.read' }
+  }
   if (pathname === '/compras' || pathname.startsWith('/compras/')) {
     return { module: 'purchasing', permission: 'purchasing.read' }
   }

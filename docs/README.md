@@ -22,6 +22,7 @@
 | Administración Foundation | [backend/ADMINISTRATION_API.md](./backend/ADMINISTRATION_API.md) |
 | Catálogo | [backend/CATALOG_API.md](./backend/CATALOG_API.md) |
 | Inventario, activos y movimientos | [backend/INVENTORY_API.md](./backend/INVENTORY_API.md) |
+| Incidencias, actividad y evidencias | [backend/INCIDENTS_API.md](./backend/INCIDENTS_API.md) |
 | Clientes, empleados básicos y adjuntos | [backend/MASTER_DATA_API.md](./backend/MASTER_DATA_API.md) |
 | RRHH (overview, solicitudes, cobros y documentos) | [backend/HR_API.md](./backend/HR_API.md) |
 | Schema foundation | [backend/FOUNDATION_SCHEMA.md](./backend/FOUNDATION_SCHEMA.md) |

@@ -32,6 +32,13 @@ from app.db.models.identity import (
     RolePermission,
     WorkspaceMembership,
 )
+from app.db.models.incidents import (
+    Incident,
+    IncidentActivity,
+    IncidentAttachment,
+    IncidentCounter,
+    IncidentParticipant,
+)
 from app.db.models.inventory import (
     Asset,
     AssetCategory,
@@ -81,6 +88,11 @@ __all__ = [
     "EmployeeSupervisor",
     "HrDocumentRecord",
     "HrLeaveRequest",
+    "Incident",
+    "IncidentActivity",
+    "IncidentAttachment",
+    "IncidentCounter",
+    "IncidentParticipant",
     "Item",
     "ItemBranchAssignment",
     "ItemCategory",
