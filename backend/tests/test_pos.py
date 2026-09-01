@@ -346,6 +346,186 @@ def test_register_manager_mutations_do_not_disclose_cash_movements(client: TestC
 
 
 @pytest.mark.integration
+def test_manual_cash_movements_are_idempotent_and_reconcile_the_register(
+    client: TestClient,
+) -> None:
+    _, branch_id = _bootstrap_isolated_branch()
+    headers = _login(client)
+    suffix = uuid7().hex[-12:]
+    state_response = client.get(
+        "/api/v1/pos/state",
+        headers=headers,
+        params={"branchId": str(branch_id)},
+    )
+    assert state_response.status_code == 200, state_response.text
+    methods = {method["code"]: method for method in state_response.json()["paymentMethods"]}
+    product = _create_product(client, headers, branch_id, suffix)
+
+    open_response = client.post(
+        "/api/v1/pos/registers",
+        headers=_idempotent(headers, f"pos-manual-open-{suffix}"),
+        json={
+            "branchId": str(branch_id),
+            "openingCash": "100.00",
+            "currency": "DOP",
+        },
+    )
+    assert open_response.status_code == 201, open_response.text
+    register = open_response.json()
+
+    income_key = f"pos-manual-income-{suffix}"
+    income_payload = {
+        "type": "income",
+        "concept": "Ingreso manual documentado",
+        "amount": "12.00",
+        "paymentMethodId": methods["cash"]["id"],
+        "reference": f"IN-{suffix}",
+        "notes": "Entrada de efectivo",
+        "lines": [
+            {
+                "itemId": product["id"],
+                "description": product["name"],
+                "quantity": "1",
+                "unitCost": "12.00",
+            }
+        ],
+    }
+    income_response = client.post(
+        f"/api/v1/pos/registers/{register['id']}/movements",
+        headers=_idempotent(headers, income_key),
+        json=income_payload,
+    )
+    assert income_response.status_code == 200, income_response.text
+    income = income_response.json()
+    assert income["cashDelta"] == "12.00"
+    assert income["lines"][0]["item"]["id"] == product["id"]
+
+    replay_response = client.post(
+        f"/api/v1/pos/registers/{register['id']}/movements",
+        headers=_idempotent(headers, income_key),
+        json=income_payload,
+    )
+    assert replay_response.status_code == 200, replay_response.text
+    assert replay_response.json()["id"] == income["id"]
+
+    reused_key_response = client.post(
+        f"/api/v1/pos/registers/{register['id']}/movements",
+        headers=_idempotent(headers, income_key),
+        json={**income_payload, "amount": "13.00", "lines": []},
+    )
+    assert reused_key_response.status_code == 409, reused_key_response.text
+    assert reused_key_response.json()["parameter"] == "Idempotency-Key"
+
+    expense_response = client.post(
+        f"/api/v1/pos/registers/{register['id']}/movements",
+        headers=_idempotent(headers, f"pos-manual-expense-{suffix}"),
+        json={
+            "type": "expense",
+            "concept": "Transporte operativo",
+            "amount": "5.00",
+            "paymentMethodId": methods["cash"]["id"],
+            "lines": [
+                {
+                    "description": "Taxi local",
+                    "quantity": "1",
+                    "unitCost": "5.00",
+                }
+            ],
+        },
+    )
+    assert expense_response.status_code == 200, expense_response.text
+    expense = expense_response.json()
+    assert expense["cashDelta"] == "-5.00"
+    assert expense["lines"][0]["item"] == {
+        "id": None,
+        "name": "Taxi local",
+        "sku": None,
+    }
+    assert expense["lines"][0]["unitCost"] == "5.00"
+
+    non_cash_response = client.post(
+        f"/api/v1/pos/registers/{register['id']}/movements",
+        headers=_idempotent(headers, f"pos-manual-noncash-{suffix}"),
+        json={
+            "type": "income",
+            "concept": "Método inválido para caja",
+            "amount": "1.00",
+            "paymentMethodId": methods["card"]["id"],
+        },
+    )
+    assert non_cash_response.status_code == 400, non_cash_response.text
+    assert non_cash_response.json()["parameter"] == "paymentMethodId"
+
+    mismatch_response = client.post(
+        f"/api/v1/pos/registers/{register['id']}/movements",
+        headers=_idempotent(headers, f"pos-manual-mismatch-{suffix}"),
+        json={
+            "type": "expense",
+            "concept": "Detalle inconsistente",
+            "amount": "9.00",
+            "paymentMethodId": methods["cash"]["id"],
+            "lines": [
+                {
+                    "description": "Detalle",
+                    "quantity": "1",
+                    "unitCost": "8.00",
+                }
+            ],
+        },
+    )
+    assert mismatch_response.status_code == 400, mismatch_response.text
+    assert mismatch_response.json()["parameter"] == "lines"
+
+    missing_item_response = client.post(
+        f"/api/v1/pos/registers/{register['id']}/movements",
+        headers=_idempotent(headers, f"pos-manual-missing-item-{suffix}"),
+        json={
+            "type": "expense",
+            "concept": "Artículo inexistente",
+            "amount": "1.00",
+            "paymentMethodId": methods["cash"]["id"],
+            "lines": [
+                {
+                    "itemId": str(uuid7()),
+                    "description": "No existe",
+                    "quantity": "1",
+                    "unitCost": "1.00",
+                }
+            ],
+        },
+    )
+    assert missing_item_response.status_code == 404, missing_item_response.text
+    assert missing_item_response.json()["parameter"] == "lines"
+
+    current_response = client.get(
+        "/api/v1/pos/registers/current",
+        headers=headers,
+        params={"branchId": str(branch_id)},
+    )
+    assert current_response.status_code == 200, current_response.text
+    current = current_response.json()
+    assert current["summary"]["manualIncome"] == "12.00"
+    assert current["summary"]["cashExpenses"] == "5.00"
+    assert current["summary"]["expectedCash"] == "107.00"
+
+    expense_page = client.get(
+        f"/api/v1/pos/registers/{register['id']}/movements",
+        headers=headers,
+        params={"type": "expense"},
+    )
+    assert expense_page.status_code == 200, expense_page.text
+    assert [item["id"] for item in expense_page.json()["items"]] == [expense["id"]]
+
+    close_response = client.post(
+        f"/api/v1/pos/registers/{register['id']}/close",
+        headers=_idempotent(headers, f"pos-manual-close-{suffix}"),
+        json={"countedCash": "107.00", "version": current["version"]},
+    )
+    assert close_response.status_code == 200, close_response.text
+    assert close_response.json()["difference"] == "0.00"
+
+
+@pytest.mark.integration
 def test_terminal_pos_complete_http_flow(client: TestClient, tmp_path: Path) -> None:
     summary, branch_id = _bootstrap_isolated_branch()
     headers = _login(client)
@@ -935,6 +1115,17 @@ def test_terminal_pos_complete_http_flow(client: TestClient, tmp_path: Path) -> 
         assert all(item["soldByName"] for item in register_sales["items"])
         assert all(item["version"] >= 1 for item in register_sales["items"])
 
+        sales_summary_response = client.get(
+            "/api/v1/pos/sales/summary",
+            headers=headers,
+            params={"branchId": str(branch_id)},
+        )
+        assert sales_summary_response.status_code == 200, sales_summary_response.text
+        sales_summary = sales_summary_response.json()
+        assert sales_summary["netSales"] == "60.00"
+        assert sales_summary["salesCount"] == 3
+        assert sales_summary["voidedCount"] == 1
+
         register_list_response = client.get(
             "/api/v1/pos/registers",
             headers=headers,
@@ -959,6 +1150,18 @@ def test_terminal_pos_complete_http_flow(client: TestClient, tmp_path: Path) -> 
             "convertedCount": 1,
             "openTotal": "0.00",
             "heldTotal": "0.00",
+        }
+        quote_page_response = client.get(
+            "/api/v1/pos/quotes",
+            headers=headers,
+            params={"branchId": str(branch_id), "pageSize": 20},
+        )
+        assert quote_page_response.status_code == 200, quote_page_response.text
+        quote_page = quote_page_response.json()
+        assert quote_page["totalItems"] == 2
+        assert {item["status"] for item in quote_page["items"]} == {
+            "cancelled",
+            "converted",
         }
         original_void_movement = next(
             movement
