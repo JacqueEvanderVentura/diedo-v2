@@ -57,6 +57,15 @@ export default function PasivosPage() {
     },
   })
 
+  const remove = async (id) => {
+    try {
+      await deletePasivo(id)
+      toast.success('Pasivo eliminado')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo eliminar el pasivo')
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="pasivos-page">
       <DataFilterBar
@@ -133,7 +142,7 @@ export default function PasivosPage() {
                       <td className="px-6 py-4">
                         <div className="flex justify-end gap-1">
                           <button onClick={() => { setEditing(p); setModalOpen(true) }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></button>
-                          <button onClick={() => { deletePasivo(p.id); toast.success('Pasivo eliminado') }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+                          <button onClick={() => remove(p.id)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
                         </div>
                       </td>
                     </tr>
@@ -151,7 +160,7 @@ export default function PasivosPage() {
                     actions={
                       <div className="flex gap-1">
                         <button onClick={() => { setEditing(p); setModalOpen(true) }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></button>
-                        <button onClick={() => { deletePasivo(p.id); toast.success('Pasivo eliminado') }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+                        <button onClick={() => remove(p.id)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     }
                   />

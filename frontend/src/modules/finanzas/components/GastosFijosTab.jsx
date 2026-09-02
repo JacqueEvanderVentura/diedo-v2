@@ -65,8 +65,22 @@ export function GastosFijosTab() {
 
   const openNew = () => { setEditing(null); setModalOpen(true) }
   const openEdit = (e) => { setEditing(e); setModalOpen(true) }
-  const remove = (e) => { deleteFixed(e.id); toast.success('Gasto fijo eliminado') }
-  const pay = (e) => { payFixed(e.id); toast.success(`Pago registrado: ${e.concept}`) }
+  const remove = async (e) => {
+    try {
+      await deleteFixed(e.id)
+      toast.success('Gasto fijo eliminado')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo eliminar el gasto fijo')
+    }
+  }
+  const pay = async (e) => {
+    try {
+      await payFixed(e.id)
+      toast.success(`Pago registrado: ${e.concept}`)
+    } catch (error) {
+      toast.error(error.message || 'No se pudo registrar el pago')
+    }
+  }
 
   return (
     <div className="space-y-6">

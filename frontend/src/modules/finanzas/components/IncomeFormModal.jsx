@@ -33,6 +33,7 @@ export function IncomeFormModal({ open, onClose, income }) {
   const { addManualIncome, updateManualIncome } = useFinanzasStore()
   const [form, setForm] = useState(empty())
   const [err, setErr] = useState('')
+  const [saving, setSaving] = useState(false)
   const editing = !!income
 
   useEffect(() => {
@@ -51,12 +52,19 @@ export function IncomeFormModal({ open, onClose, income }) {
   const branchOptions = branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.amount || Number(form.amount) <= 0) return setErr('Ingresa un monto válido.')
     if (!form.branchId) return setErr('Selecciona una sucursal.')
-    editing ? updateManualIncome(income.id, form) : addManualIncome(form)
-    toast.success(editing ? 'Ingreso actualizado' : 'Ingreso registrado')
-    onClose()
+    setSaving(true)
+    try {
+      await (editing ? updateManualIncome(income.id, form) : addManualIncome(form))
+      toast.success(editing ? 'Ingreso actualizado' : 'Ingreso registrado')
+      onClose()
+    } catch (error) {
+      setErr(error.message || 'No se pudo guardar el ingreso.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -74,7 +82,7 @@ export function IncomeFormModal({ open, onClose, income }) {
         {err && <p className="text-sm text-red-500">{err}</p>}
         <div className="flex gap-3 pt-1">
           <Button variant="secondary" className="flex-1" onClick={onClose}>Cancelar</Button>
-          <Button className="flex-1" onClick={submit}>Guardar Ingreso</Button>
+          <Button className="flex-1" onClick={submit} disabled={saving}>{saving ? 'Guardando…' : 'Guardar Ingreso'}</Button>
         </div>
       </div>
     </Modal>

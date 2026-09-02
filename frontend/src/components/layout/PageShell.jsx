@@ -8,7 +8,9 @@ import { useCrmStore } from '@/stores/crmStore'
 import { useCustomersStore } from '@/stores/customersStore'
 import { useCatalogStore } from '@/stores/catalogStore'
 import { useConfigStore } from '@/stores/configStore'
+import { useFinanzasStore } from '@/stores/finanzasStore'
 import { useSessionStore } from '@/stores/sessionStore'
+import { requiresFinanceData } from '@/services/moduleAvailability'
 
 const CRM_SECTION_BY_PATH = Object.freeze({
   '/crm': 'overview',
@@ -41,10 +43,15 @@ export function PageShell() {
   const { pathname } = useLocation()
   const { title, subtitle } = getPageMeta(pathname)
   const sessionStatus = useSessionStore((state) => state.status)
+  const canReadFinance = useSessionStore((state) => (
+    state.hasModule('finance') && state.hasPermission('finance.read')
+  ))
   const hydrateCrmSection = useCrmStore((state) => state.hydrateSection)
   const hydrateCustomers = useCustomersStore((state) => state.hydrate)
   const hydrateCatalog = useCatalogStore((state) => state.hydrateFromApi)
+  const hydrateFinance = useFinanzasStore((state) => state.hydrateFromApi)
   const crmSection = CRM_SECTION_BY_PATH[pathname] || null
+  const shouldHydrateFinance = requiresFinanceData(pathname)
 
   useEffect(() => {
     if (!crmSection || !['online', 'demo'].includes(sessionStatus)) return
@@ -60,6 +67,13 @@ export function PageShell() {
         useCustomersStore.getState().mergeCrmProfiles(useCrmStore.getState().customers)
       })
   }, [crmSection, hydrateCatalog, hydrateCrmSection, hydrateCustomers, sessionStatus])
+
+  useEffect(() => {
+    if (!shouldHydrateFinance || sessionStatus !== 'online' || !canReadFinance) return
+    hydrateFinance({ force: true }).catch(() => {
+      // The store exposes the operational error to the finance screens.
+    })
+  }, [canReadFinance, hydrateFinance, pathname, sessionStatus, shouldHydrateFinance])
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">

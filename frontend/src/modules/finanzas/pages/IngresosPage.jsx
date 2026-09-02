@@ -54,6 +54,8 @@ function isToday(v) {
 export default function IngresosPage() {
   const sales = usePosStore((s) => s.sales)
   const manualIncomes = useFinanzasStore((s) => s.manualIncomes)
+  const incomeEntries = useFinanzasStore((s) => s.incomeEntries)
+  const incomesProjected = useFinanzasStore((s) => s.incomesProjected)
   const branches = useConfigStore((s) => s.branches)
 
   const [period, setPeriod] = useState('month')
@@ -64,7 +66,7 @@ export default function IngresosPage() {
   const inPeriod = (v) => period === 'all' || isThisMonth(v)
 
   const allIncomes = useMemo(() => {
-    const fromSales = sales.map((s) => ({
+    const fromSales = incomesProjected ? [] : sales.map((s) => ({
       id: s.id,
       date: s.createdAt,
       customer: s.customer?.name || 'Cliente Mostrador',
@@ -74,7 +76,7 @@ export default function IngresosPage() {
       amount: s.total,
       source: 'POS',
     }))
-    const fromManual = manualIncomes.map((i) => ({
+    const fromManual = (incomesProjected ? incomeEntries : manualIncomes).map((i) => ({
       id: i.id,
       date: i.date,
       customer: i.customer || '—',
@@ -85,7 +87,7 @@ export default function IngresosPage() {
       source: i.source,
     }))
     return [...fromSales, ...fromManual]
-  }, [sales, manualIncomes])
+  }, [sales, manualIncomes, incomeEntries, incomesProjected])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()

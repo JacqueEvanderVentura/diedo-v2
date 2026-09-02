@@ -31,6 +31,7 @@ export function PasivoFormModal({ open, onClose, pasivo }) {
   const { addPasivo, updatePasivo } = useFinanzasStore()
   const [form, setForm] = useState(empty())
   const [err, setErr] = useState('')
+  const [saving, setSaving] = useState(false)
   const editing = !!pasivo
 
   useEffect(() => {
@@ -67,16 +68,23 @@ export function PasivoFormModal({ open, onClose, pasivo }) {
     }))
   }
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.name.trim()) return setErr('Ingresa el nombre del pasivo.')
     if (!form.initialAmount || Number(form.initialAmount) <= 0) return setErr('Ingresa un monto inicial válido.')
     const payload = {
       ...form,
       pendingAmount: form.pendingAmount || form.initialAmount,
     }
-    editing ? updatePasivo(pasivo.id, payload) : addPasivo(payload)
-    toast.success(editing ? 'Pasivo actualizado' : 'Pasivo registrado')
-    onClose()
+    setSaving(true)
+    try {
+      await (editing ? updatePasivo(pasivo.id, payload) : addPasivo(payload))
+      toast.success(editing ? 'Pasivo actualizado' : 'Pasivo registrado')
+      onClose()
+    } catch (error) {
+      setErr(error.message || 'No se pudo guardar el pasivo.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -146,7 +154,7 @@ export function PasivoFormModal({ open, onClose, pasivo }) {
 
         <div className="flex gap-3 pt-1">
           <Button variant="secondary" className="flex-1" onClick={onClose}>Cancelar</Button>
-          <Button className="flex-1" onClick={submit}>{editing ? 'Guardar' : 'Crear Pasivo'}</Button>
+          <Button className="flex-1" onClick={submit} disabled={saving}>{saving ? 'Guardando…' : editing ? 'Guardar' : 'Crear Pasivo'}</Button>
         </div>
       </div>
     </Modal>

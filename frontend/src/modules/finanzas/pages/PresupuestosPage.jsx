@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Plus, ChevronDown, ChevronUp } from 'lucide-react'
 import { useFinanzasStore } from '@/stores/finanzasStore'
@@ -100,12 +100,25 @@ export default function PresupuestosPage() {
       .filter((b) => !q || b.name.toLowerCase().includes(q))
   }, [budgets, branchFilter, groupFilter, query])
 
-  const submit = () => {
+  useEffect(() => {
+    if (branchOptions.length && !branchOptions.some((option) => option.value === branchFilter)) {
+      const branchId = branchOptions[0].value
+      setBranchFilter(branchId)
+      setForm((current) => ({ ...current, branchId }))
+    }
+  }, [branchFilter, branchOptions])
+
+  const submit = async () => {
     if (!form.name.trim()) return toast.error('Ingresa el nombre')
-    addBudget(form)
-    toast.success('Categoría de presupuesto creada')
-    setModalOpen(false)
-    setForm({ name: '', group: 'operaciones', monthlyLimit: '', branchId: branchFilter })
+    if (!form.monthlyLimit || Number(form.monthlyLimit) <= 0) return toast.error('Ingresa una meta mensual válida')
+    try {
+      await addBudget({ ...form, branchId: branchFilter })
+      toast.success('Categoría de presupuesto creada')
+      setModalOpen(false)
+      setForm({ name: '', group: 'operaciones', monthlyLimit: '', branchId: branchFilter })
+    } catch (error) {
+      toast.error(error.message || 'No se pudo crear el presupuesto')
+    }
   }
 
   return (
@@ -136,11 +149,11 @@ export default function PresupuestosPage() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {list.map((b) => {
-          const spent = budgetSpentForMonth(expenses, b.id)
+          const spent = b.spent ?? budgetSpentForMonth(expenses, b.id)
           const pct = budgetUsagePct(spent, b.monthlyLimit)
           const remaining = Math.max(0, b.monthlyLimit - spent)
           const over = spent > b.monthlyLimit
-          const txs = expenses.filter((e) => e.budgetId === b.id && isThisMonth(e.date))
+          const txs = b.transactions || expenses.filter((e) => e.budgetId === b.id && isThisMonth(e.date))
           const open = expanded === b.id
           return (
             <Card key={b.id} className="overflow-hidden" data-testid={`budget-card-${b.id}`}>

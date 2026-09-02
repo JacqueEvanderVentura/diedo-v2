@@ -10,6 +10,7 @@ const API_CONNECTED_MODULE_SET = new Set([
   'incidents',
   'sales',
   'pos',
+  'finance',
 ])
 
 const MODULE_DEPENDENCIES = Object.freeze({
@@ -29,7 +30,16 @@ export function isModuleAvailable(moduleCode, enabledModules = []) {
     && (MODULE_DEPENDENCIES[moduleCode] || []).every((dependency) => enabled.has(dependency))
 }
 
+export function requiresFinanceData(pathname = '') {
+  return pathname === '/finanzas'
+    || pathname.startsWith('/finanzas/')
+    || pathname.startsWith('/reportes/')
+}
+
 export function routeRequirement(pathname) {
+  if (pathname === '/finanzas' || pathname.startsWith('/finanzas/')) {
+    return { module: 'finance', permission: 'finance.read' }
+  }
   if (pathname === '/pos/caja' || pathname.startsWith('/pos/caja/')) {
     return { module: 'pos', permission: 'pos.cash.read' }
   }

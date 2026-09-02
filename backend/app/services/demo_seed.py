@@ -5,6 +5,7 @@ import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import Any, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -35,6 +36,13 @@ from app.db.models import (
     EmployeeHrProfile,
     EmployeeSchedule,
     EmployeeSupervisor,
+    FinanceAccount,
+    FinanceBudget,
+    FinanceExpense,
+    FinanceFixedExpense,
+    FinanceFixedExpensePayment,
+    FinanceLiability,
+    FinanceManualIncome,
     HrDocumentRecord,
     HrLeaveRequest,
     Incident,
@@ -127,6 +135,13 @@ class DemoSeedSummary:
     pos_inventory_movement_count: int = 0
     appointment_count: int = 0
     dashboard_task_count: int = 0
+    finance_budget_count: int = 0
+    finance_expense_count: int = 0
+    finance_fixed_expense_count: int = 0
+    finance_fixed_payment_count: int = 0
+    finance_liability_count: int = 0
+    finance_account_count: int = 0
+    finance_income_count: int = 0
 
 
 def seed_demo_data(
@@ -202,6 +217,12 @@ def seed_demo_data(
         foundation.workspace_id,
         branches,
     )
+    finance_counts = _seed_finance(
+        session,
+        bundle,
+        foundation.workspace_id,
+        branches,
+    )
     return DemoSeedSummary(
         enabled=True,
         seed_version=bundle.manifest.seed_version,
@@ -239,6 +260,290 @@ def seed_demo_data(
         pos_inventory_movement_count=pos_counts.inventory_movements,
         appointment_count=appointment_count,
         dashboard_task_count=dashboard_task_count,
+        finance_budget_count=finance_counts[0],
+        finance_expense_count=finance_counts[1],
+        finance_fixed_expense_count=finance_counts[2],
+        finance_fixed_payment_count=finance_counts[3],
+        finance_liability_count=finance_counts[4],
+        finance_account_count=finance_counts[5],
+        finance_income_count=finance_counts[6],
+    )
+
+
+def _seed_finance(
+    session: Session,
+    bundle: DemoBundle,
+    workspace_id: UUID,
+    branches: dict[str, Branch],
+) -> tuple[int, int, int, int, int, int, int]:
+    seed_version = bundle.manifest.seed_version
+    actor_id = _stable_id(seed_version, "platform_user", "admin")
+    budgets: dict[str, FinanceBudget] = {}
+
+    def branch_for(code: str) -> Branch:
+        branch = branches.get(code)
+        if branch is None:
+            raise RuntimeError(f"Demo finance fixture references unknown branch {code!r}.")
+        return branch
+
+    def upsert[ModelT](
+        *,
+        model: type[ModelT],
+        entity_type: str,
+        seed_key: str,
+        payload: dict[str, object],
+        values: dict[str, object],
+    ) -> ModelT:
+        entity_id = _stable_id(seed_version, entity_type, seed_key)
+        entity = _registered_entity(
+            session,
+            workspace_id,
+            entity_type,
+            seed_key,
+            entity_id,
+            payload,
+            model,
+        )
+        if entity is None:
+            entity = cast(ModelT, cast(Any, model)(id=entity_id, **values))
+            session.add(entity)
+            session.flush()
+            _register(
+                session,
+                workspace_id,
+                entity_type,
+                seed_key,
+                entity_id,
+                seed_version,
+                payload,
+            )
+        else:
+            _assign_demo_values(entity, values)
+        return entity
+
+    for budget_fixture in bundle.finance.budgets:
+        branch = branch_for(budget_fixture.branch_code)
+        payload = budget_fixture.model_dump(mode="json")
+        budget = upsert(
+            model=FinanceBudget,
+            entity_type="finance_budget",
+            seed_key=budget_fixture.seed_key,
+            payload=payload,
+            values={
+                "workspace_id": workspace_id,
+                "branch_id": branch.id,
+                "name": budget_fixture.name,
+                "normalized_name": " ".join(budget_fixture.name.casefold().split()),
+                "budget_group": budget_fixture.group,
+                "monthly_limit": budget_fixture.monthly_limit,
+                "status": "active",
+                "creation_idempotency_key": (
+                    f"demo:{seed_version}:budget:{budget_fixture.seed_key}"
+                ),
+                "request_fingerprint": _checksum(payload),
+                "created_by_platform_user_id": actor_id,
+                "updated_by_platform_user_id": actor_id,
+                "created_at": budget_fixture.created_at,
+                "updated_at": budget_fixture.created_at,
+            },
+        )
+        budgets[budget_fixture.seed_key] = budget
+
+    for expense_fixture in bundle.finance.expenses:
+        branch = branch_for(expense_fixture.branch_code)
+        linked_budget = (
+            budgets.get(expense_fixture.budget_seed_key)
+            if expense_fixture.budget_seed_key
+            else None
+        )
+        if expense_fixture.budget_seed_key and linked_budget is None:
+            raise RuntimeError("Demo finance expense references an unknown budget.")
+        if linked_budget is not None and linked_budget.branch_id != branch.id:
+            raise RuntimeError("Demo finance expense and budget belong to different branches.")
+        payload = expense_fixture.model_dump(mode="json")
+        upsert(
+            model=FinanceExpense,
+            entity_type="finance_expense",
+            seed_key=expense_fixture.seed_key,
+            payload=payload,
+            values={
+                "workspace_id": workspace_id,
+                "branch_id": branch.id,
+                "concept": expense_fixture.concept,
+                "amount": expense_fixture.amount,
+                "category": expense_fixture.category,
+                "expense_date": expense_fixture.date,
+                "payment_status": expense_fixture.status,
+                "budget_id": linked_budget.id if linked_budget else None,
+                "record_status": "active",
+                "creation_idempotency_key": (
+                    f"demo:{seed_version}:expense:{expense_fixture.seed_key}"
+                ),
+                "request_fingerprint": _checksum(payload),
+                "created_by_platform_user_id": actor_id,
+                "updated_by_platform_user_id": actor_id,
+                "created_at": expense_fixture.created_at,
+                "updated_at": expense_fixture.created_at,
+            },
+        )
+
+    fixed_payment_count = 0
+    for fixed_fixture in bundle.finance.fixed_expenses:
+        branch = branch_for(fixed_fixture.branch_code)
+        payload = fixed_fixture.model_dump(mode="json")
+        fixed_expense = upsert(
+            model=FinanceFixedExpense,
+            entity_type="finance_fixed_expense",
+            seed_key=fixed_fixture.seed_key,
+            payload=payload,
+            values={
+                "workspace_id": workspace_id,
+                "branch_id": branch.id,
+                "concept": fixed_fixture.concept,
+                "normalized_concept": " ".join(fixed_fixture.concept.casefold().split()),
+                "amount": fixed_fixture.amount,
+                "category": fixed_fixture.category,
+                "day_of_month": fixed_fixture.day_of_month,
+                "status": "active",
+                "creation_idempotency_key": (
+                    f"demo:{seed_version}:fixed-expense:{fixed_fixture.seed_key}"
+                ),
+                "request_fingerprint": _checksum(payload),
+                "created_by_platform_user_id": actor_id,
+                "updated_by_platform_user_id": actor_id,
+                "created_at": fixed_fixture.created_at,
+                "updated_at": fixed_fixture.created_at,
+            },
+        )
+        for payment_fixture in fixed_fixture.payments:
+            payment_payload = {
+                "fixedExpenseSeedKey": fixed_fixture.seed_key,
+                **payment_fixture.model_dump(mode="json"),
+            }
+            upsert(
+                model=FinanceFixedExpensePayment,
+                entity_type="finance_fixed_payment",
+                seed_key=payment_fixture.seed_key,
+                payload=payment_payload,
+                values={
+                    "workspace_id": workspace_id,
+                    "branch_id": branch.id,
+                    "fixed_expense_id": fixed_expense.id,
+                    "period": payment_fixture.period,
+                    "amount": fixed_fixture.amount,
+                    "paid_on": payment_fixture.paid_on,
+                    "idempotency_key": (
+                        f"demo:{seed_version}:fixed-payment:{payment_fixture.seed_key}"
+                    ),
+                    "request_fingerprint": _checksum(payment_payload),
+                    "created_by_platform_user_id": actor_id,
+                    "created_at": payment_fixture.created_at,
+                },
+            )
+            fixed_payment_count += 1
+
+    for liability_fixture in bundle.finance.liabilities:
+        branch = branch_for(liability_fixture.branch_code)
+        payload = liability_fixture.model_dump(mode="json")
+        upsert(
+            model=FinanceLiability,
+            entity_type="finance_liability",
+            seed_key=liability_fixture.seed_key,
+            payload=payload,
+            values={
+                "workspace_id": workspace_id,
+                "branch_id": branch.id,
+                "name": liability_fixture.name,
+                "normalized_name": " ".join(liability_fixture.name.casefold().split()),
+                "liability_type": liability_fixture.type,
+                "initial_amount": liability_fixture.initial_amount,
+                "pending_amount": liability_fixture.pending_amount,
+                "pay_day": liability_fixture.pay_day,
+                "cut_day": liability_fixture.cut_day,
+                "installment": liability_fixture.installment,
+                "paid_installments": liability_fixture.paid_installments,
+                "total_installments": liability_fixture.total_installments,
+                "category_ids": liability_fixture.category_ids,
+                "status": "active",
+                "creation_idempotency_key": (
+                    f"demo:{seed_version}:liability:{liability_fixture.seed_key}"
+                ),
+                "request_fingerprint": _checksum(payload),
+                "created_by_platform_user_id": actor_id,
+                "updated_by_platform_user_id": actor_id,
+                "created_at": liability_fixture.created_at,
+                "updated_at": liability_fixture.created_at,
+            },
+        )
+
+    for account_fixture in bundle.finance.accounts:
+        branch = branch_for(account_fixture.branch_code)
+        payload = account_fixture.model_dump(mode="json")
+        upsert(
+            model=FinanceAccount,
+            entity_type="finance_account",
+            seed_key=account_fixture.seed_key,
+            payload=payload,
+            values={
+                "workspace_id": workspace_id,
+                "branch_id": branch.id,
+                "name": account_fixture.name,
+                "normalized_name": " ".join(account_fixture.name.casefold().split()),
+                "account_type": account_fixture.type,
+                "bank": account_fixture.bank,
+                "account_number_masked": account_fixture.account_number_masked,
+                "balance": account_fixture.balance,
+                "currency_code": account_fixture.currency,
+                "notes": account_fixture.notes,
+                "status": "active",
+                "creation_idempotency_key": (
+                    f"demo:{seed_version}:account:{account_fixture.seed_key}"
+                ),
+                "request_fingerprint": _checksum(payload),
+                "created_by_platform_user_id": actor_id,
+                "updated_by_platform_user_id": actor_id,
+                "created_at": account_fixture.created_at,
+                "updated_at": account_fixture.created_at,
+            },
+        )
+
+    for income_fixture in bundle.finance.manual_incomes:
+        branch = branch_for(income_fixture.branch_code)
+        payload = income_fixture.model_dump(mode="json")
+        upsert(
+            model=FinanceManualIncome,
+            entity_type="finance_income",
+            seed_key=income_fixture.seed_key,
+            payload=payload,
+            values={
+                "workspace_id": workspace_id,
+                "branch_id": branch.id,
+                "category": income_fixture.category,
+                "amount": income_fixture.amount,
+                "income_date": income_fixture.date,
+                "customer": income_fixture.customer,
+                "source": income_fixture.source,
+                "payment_status": income_fixture.status,
+                "record_status": "active",
+                "creation_idempotency_key": (
+                    f"demo:{seed_version}:income:{income_fixture.seed_key}"
+                ),
+                "request_fingerprint": _checksum(payload),
+                "created_by_platform_user_id": actor_id,
+                "updated_by_platform_user_id": actor_id,
+                "created_at": income_fixture.created_at,
+                "updated_at": income_fixture.created_at,
+            },
+        )
+    session.flush()
+    return (
+        len(bundle.finance.budgets),
+        len(bundle.finance.expenses),
+        len(bundle.finance.fixed_expenses),
+        fixed_payment_count,
+        len(bundle.finance.liabilities),
+        len(bundle.finance.accounts),
+        len(bundle.finance.manual_incomes),
     )
 
 

@@ -20,6 +20,7 @@ const crm = JSON.parse(readFileSync(resolve(fixtureRoot, 'crm.json'), 'utf8'))
 const employees = JSON.parse(readFileSync(resolve(fixtureRoot, 'employees.json'), 'utf8'))
 const hr = JSON.parse(readFileSync(resolve(fixtureRoot, 'hr.json'), 'utf8'))
 const pos = JSON.parse(readFileSync(resolve(fixtureRoot, 'pos.json'), 'utf8'))
+const finance = JSON.parse(readFileSync(resolve(fixtureRoot, 'finance.json'), 'utf8'))
 
 const snapshot = {
   seedVersion: manifest.seedVersion,
@@ -39,6 +40,7 @@ const snapshot = {
   employees,
   hr,
   pos,
+  finance,
 }
 const output = resolve(frontendRoot, 'src', 'data', 'generated', 'demoSnapshot.js')
 mkdirSync(dirname(output), { recursive: true })

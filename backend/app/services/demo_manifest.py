@@ -673,6 +673,135 @@ class PosFixture(ApiModel):
     cash_adjustments: list[DemoPosCashAdjustmentFixture] = Field(default_factory=list)
 
 
+class DemoFinanceBudgetFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    branch_code: str
+    name: str = Field(min_length=1, max_length=160)
+    group: Literal["marketing", "operaciones", "rh", "it"]
+    monthly_limit: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    created_at: datetime
+
+
+class DemoFinanceExpenseFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    branch_code: str
+    budget_seed_key: str | None = None
+    concept: str = Field(min_length=1, max_length=240)
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    category: Literal[
+        "alquiler",
+        "servicios",
+        "nomina",
+        "insumos",
+        "marketing",
+        "mantenimiento",
+        "otros",
+    ]
+    date: date
+    status: Literal["pagado", "pendiente"]
+    created_at: datetime
+
+
+class DemoFinanceFixedPaymentFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    period: date
+    paid_on: date
+    created_at: datetime
+
+    @field_validator("period")
+    @classmethod
+    def require_first_day(cls, value: date) -> date:
+        if value.day != 1:
+            raise ValueError("Demo fixed-expense periods must use the first day.")
+        return value
+
+
+class DemoFinanceFixedExpenseFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    branch_code: str
+    concept: str = Field(min_length=1, max_length=240)
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    category: Literal[
+        "alquiler",
+        "servicios",
+        "nomina",
+        "insumos",
+        "marketing",
+        "mantenimiento",
+        "otros",
+    ]
+    day_of_month: int = Field(ge=1, le=31)
+    payments: list[DemoFinanceFixedPaymentFixture] = Field(default_factory=list)
+    created_at: datetime
+
+
+class DemoFinanceLiabilityFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    branch_code: str
+    name: str = Field(min_length=1, max_length=200)
+    type: Literal["prestamo", "tarjeta"]
+    initial_amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    pending_amount: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
+    pay_day: int = Field(ge=1, le=31)
+    cut_day: int | None = Field(default=None, ge=1, le=31)
+    installment: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=2)
+    paid_installments: int = Field(default=0, ge=0)
+    total_installments: int | None = Field(default=None, gt=0)
+    category_ids: list[str] = Field(default_factory=list, max_length=7)
+    created_at: datetime
+
+    @model_validator(mode="after")
+    def require_consistent_liability(self) -> DemoFinanceLiabilityFixture:
+        if self.pending_amount > self.initial_amount:
+            raise ValueError("Demo pending liability cannot exceed its initial amount.")
+        if self.type == "tarjeta":
+            if self.cut_day is None or any(
+                (self.installment is not None, self.total_installments is not None)
+            ):
+                raise ValueError("Demo cards require cutDay and cannot define installments.")
+            if self.paid_installments:
+                raise ValueError("Demo cards cannot define paid installments.")
+        elif self.cut_day is not None:
+            raise ValueError("Demo loans cannot define cutDay.")
+        if self.total_installments is not None and self.paid_installments > self.total_installments:
+            raise ValueError("Demo paid installments cannot exceed their total.")
+        return self
+
+
+class DemoFinanceAccountFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    branch_code: str
+    name: str = Field(min_length=1, max_length=160)
+    type: Literal["banco", "inversion", "accionistas"]
+    bank: str = Field(default="", max_length=160)
+    account_number_masked: str = Field(default="", max_length=32)
+    balance: Decimal = Field(max_digits=14, decimal_places=2)
+    currency: str = Field(default="DOP", pattern=r"^[A-Z]{3}$")
+    notes: str = Field(default="", max_length=1000)
+    created_at: datetime
+
+
+class DemoFinanceIncomeFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    branch_code: str
+    category: Literal["servicios", "efectivo", "tarjeta", "transferencia", "link"]
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    date: date
+    customer: str = Field(default="", max_length=200)
+    source: str = Field(min_length=1, max_length=48)
+    status: Literal["pagado", "pendiente"]
+    created_at: datetime
+
+
+class FinanceFixture(ApiModel):
+    budgets: list[DemoFinanceBudgetFixture] = Field(default_factory=list)
+    expenses: list[DemoFinanceExpenseFixture] = Field(default_factory=list)
+    fixed_expenses: list[DemoFinanceFixedExpenseFixture] = Field(default_factory=list)
+    liabilities: list[DemoFinanceLiabilityFixture] = Field(default_factory=list)
+    accounts: list[DemoFinanceAccountFixture] = Field(default_factory=list)
+    manual_incomes: list[DemoFinanceIncomeFixture] = Field(default_factory=list)
+
+
 @dataclass(frozen=True)
 class DemoBundle:
     manifest: DemoManifest
@@ -690,6 +819,7 @@ class DemoBundle:
     employees: EmployeesFixture
     hr: HrFixture
     pos: PosFixture
+    finance: FinanceFixture
 
 
 def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
@@ -712,6 +842,7 @@ def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
         "employees.json",
         "hr.json",
         "pos.json",
+        "finance.json",
     }
     if not required <= files.keys():
         raise ValueError("The demo manifest is missing required Phase 0 files.")
@@ -763,4 +894,7 @@ def load_demo_bundle(directory: Path = DEFAULT_DEMO_DATA_DIR) -> DemoBundle:
         ),
         hr=HrFixture.model_validate_json((root / "hr.json").read_text(encoding="utf-8")),
         pos=PosFixture.model_validate_json((root / "pos.json").read_text(encoding="utf-8")),
+        finance=FinanceFixture.model_validate_json(
+            (root / "finance.json").read_text(encoding="utf-8")
+        ),
     )

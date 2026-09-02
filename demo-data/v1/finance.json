@@ -1,1 +1,37 @@
-{"items": []}
+{
+  "budgets": [
+    {"seedKey": "north-marketing", "branchCode": "NORTH", "name": "Marketing", "group": "marketing", "monthlyLimit": 18000, "createdAt": "2026-07-01T13:00:00Z"},
+    {"seedKey": "north-operations", "branchCode": "NORTH", "name": "Operaciones", "group": "operaciones", "monthlyLimit": 42000, "createdAt": "2026-07-01T13:05:00Z"},
+    {"seedKey": "downtown-payroll", "branchCode": "DOWNTOWN", "name": "RH y Nómina", "group": "rh", "monthlyLimit": 135000, "createdAt": "2026-07-01T13:10:00Z"},
+    {"seedKey": "east-infrastructure", "branchCode": "EAST", "name": "IT e Infraestructura", "group": "it", "monthlyLimit": 26000, "createdAt": "2026-07-01T13:15:00Z"}
+  ],
+  "expenses": [
+    {"seedKey": "north-social-campaign", "branchCode": "NORTH", "budgetSeedKey": "north-marketing", "concept": "Campaña de captación en redes sociales", "amount": 6200, "category": "marketing", "date": "2026-09-01", "status": "pagado", "createdAt": "2026-09-01T13:20:00Z"},
+    {"seedKey": "north-disposables", "branchCode": "NORTH", "budgetSeedKey": "north-operations", "concept": "Reposición de guantes y materiales desechables", "amount": 8450, "category": "insumos", "date": "2026-08-30", "status": "pagado", "createdAt": "2026-08-30T15:00:00Z"},
+    {"seedKey": "north-water", "branchCode": "NORTH", "concept": "Servicio de agua de agosto", "amount": 2150, "category": "servicios", "date": "2026-09-01", "status": "pendiente", "createdAt": "2026-09-01T14:00:00Z"},
+    {"seedKey": "downtown-equipment-maintenance", "branchCode": "DOWNTOWN", "concept": "Mantenimiento preventivo de equipos", "amount": 12750, "category": "mantenimiento", "date": "2026-08-28", "status": "pagado", "createdAt": "2026-08-28T16:30:00Z"},
+    {"seedKey": "downtown-uniforms", "branchCode": "DOWNTOWN", "concept": "Uniformes para personal de atención", "amount": 9800, "category": "otros", "date": "2026-08-25", "status": "pagado", "createdAt": "2026-08-25T14:10:00Z"},
+    {"seedKey": "east-router", "branchCode": "EAST", "budgetSeedKey": "east-infrastructure", "concept": "Router empresarial y puntos de acceso", "amount": 22400, "category": "servicios", "date": "2026-08-27", "status": "pagado", "createdAt": "2026-08-27T18:00:00Z"}
+  ],
+  "fixedExpenses": [
+    {"seedKey": "north-rent", "branchCode": "NORTH", "concept": "Alquiler del local", "amount": 48000, "category": "alquiler", "dayOfMonth": 1, "payments": [{"seedKey": "north-rent-2026-09", "period": "2026-09-01", "paidOn": "2026-09-01", "createdAt": "2026-09-01T12:30:00Z"}], "createdAt": "2026-06-01T12:00:00Z"},
+    {"seedKey": "north-connectivity", "branchCode": "NORTH", "concept": "Internet empresarial y telefonía", "amount": 4200, "category": "servicios", "dayOfMonth": 5, "payments": [], "createdAt": "2026-06-01T12:05:00Z"},
+    {"seedKey": "downtown-rent", "branchCode": "DOWNTOWN", "concept": "Alquiler sucursal centro", "amount": 62000, "category": "alquiler", "dayOfMonth": 1, "payments": [{"seedKey": "downtown-rent-2026-09", "period": "2026-09-01", "paidOn": "2026-09-01", "createdAt": "2026-09-01T12:45:00Z"}], "createdAt": "2026-06-01T12:10:00Z"},
+    {"seedKey": "east-electricity", "branchCode": "EAST", "concept": "Energía eléctrica estimada", "amount": 18500, "category": "servicios", "dayOfMonth": 10, "payments": [{"seedKey": "east-electricity-2026-08", "period": "2026-08-01", "paidOn": "2026-08-10", "createdAt": "2026-08-10T15:00:00Z"}], "createdAt": "2026-06-01T12:15:00Z"}
+  ],
+  "liabilities": [
+    {"seedKey": "north-renovation-loan", "branchCode": "NORTH", "name": "Préstamo adecuación sucursal", "type": "prestamo", "initialAmount": 950000, "pendingAmount": 684250, "payDay": 5, "cutDay": null, "installment": 31750, "paidInstallments": 9, "totalInstallments": 36, "categoryIds": ["alquiler", "mantenimiento"], "createdAt": "2025-12-05T13:00:00Z"},
+    {"seedKey": "north-business-card", "branchCode": "NORTH", "name": "Tarjeta corporativa Popular", "type": "tarjeta", "initialAmount": 250000, "pendingAmount": 73580, "payDay": 22, "cutDay": 15, "installment": null, "paidInstallments": 0, "totalInstallments": null, "categoryIds": ["insumos", "marketing"], "createdAt": "2026-01-15T13:00:00Z"},
+    {"seedKey": "downtown-equipment-loan", "branchCode": "DOWNTOWN", "name": "Financiamiento equipos especializados", "type": "prestamo", "initialAmount": 680000, "pendingAmount": 472000, "payDay": 12, "cutDay": null, "installment": 24000, "paidInstallments": 8, "totalInstallments": 30, "categoryIds": ["mantenimiento"], "createdAt": "2026-01-12T13:00:00Z"}
+  ],
+  "accounts": [
+    {"seedKey": "north-operating-account", "branchCode": "NORTH", "name": "Cuenta corriente operativa", "type": "banco", "bank": "Banco BHD", "accountNumberMasked": "****4521", "balance": 286450.75, "currency": "DOP", "notes": "Cobros y pagos operativos de la sucursal.", "createdAt": "2026-01-02T13:00:00Z"},
+    {"seedKey": "downtown-operating-account", "branchCode": "DOWNTOWN", "name": "Cuenta operativa centro", "type": "banco", "bank": "Banco Popular", "accountNumberMasked": "****8890", "balance": 394820.50, "currency": "DOP", "notes": "Cuenta principal de la sucursal centro.", "createdAt": "2026-01-02T13:05:00Z"},
+    {"seedKey": "workspace-reserve-fund", "branchCode": "NORTH", "name": "Fondo de reserva", "type": "inversion", "bank": "AFI Reservas", "accountNumberMasked": "****1138", "balance": 750000, "currency": "DOP", "notes": "Reserva para contingencias y expansión.", "createdAt": "2026-02-01T13:00:00Z"}
+  ],
+  "manualIncomes": [
+    {"seedKey": "north-corporate-package", "branchCode": "NORTH", "category": "transferencia", "amount": 18500, "date": "2026-09-01", "customer": "Grupo Empresarial Demo", "source": "Formulario", "status": "pagado", "createdAt": "2026-09-01T15:30:00Z"},
+    {"seedKey": "downtown-training", "branchCode": "DOWNTOWN", "category": "servicios", "amount": 12000, "date": "2026-08-29", "customer": "Academia Belleza Demo", "source": "Online", "status": "pagado", "createdAt": "2026-08-29T17:00:00Z"},
+    {"seedKey": "east-event-deposit", "branchCode": "EAST", "category": "link", "amount": 9500, "date": "2026-09-01", "customer": "Evento Corporativo Demo", "source": "Online", "status": "pendiente", "createdAt": "2026-09-01T16:10:00Z"}
+  ]
+}

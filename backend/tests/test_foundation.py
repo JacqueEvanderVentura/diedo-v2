@@ -59,8 +59,9 @@ def test_local_bootstrap_is_idempotent_and_installs_minimum_access_model() -> No
         "pos",
         "purchasing",
         "incidents",
+        "finance",
     )
-    assert permission_count == 56
+    assert permission_count == 58
     assert assigned_permission_count == permission_count
     assert second.workspace_id.version == 7
 
@@ -162,6 +163,7 @@ def test_development_foundation_endpoint_reports_seeded_database(client: TestCli
         "catalog",
         "crm",
         "dashboard",
+        "finance",
         "foundation",
         "hr",
         "iam",

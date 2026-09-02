@@ -12,6 +12,15 @@ from app.db.models.crm import (
     CustomerCrmProfile,
 )
 from app.db.models.dashboard import Task
+from app.db.models.finance import (
+    FinanceAccount,
+    FinanceBudget,
+    FinanceExpense,
+    FinanceFixedExpense,
+    FinanceFixedExpensePayment,
+    FinanceLiability,
+    FinanceManualIncome,
+)
 from app.db.models.foundation import (
     Branch,
     LegalEntity,
@@ -117,6 +126,13 @@ __all__ = [
     "EmployeeHrProfile",
     "EmployeeSchedule",
     "EmployeeSupervisor",
+    "FinanceAccount",
+    "FinanceBudget",
+    "FinanceExpense",
+    "FinanceFixedExpense",
+    "FinanceFixedExpensePayment",
+    "FinanceLiability",
+    "FinanceManualIncome",
     "HrDocumentRecord",
     "HrLeaveRequest",
     "Incident",

@@ -15,6 +15,7 @@ export function AccountFormModal({ open, onClose, account }) {
   const { addAccount, updateAccount } = useFinanzasStore()
   const [form, setForm] = useState(empty())
   const [err, setErr] = useState('')
+  const [saving, setSaving] = useState(false)
   const editing = !!account
 
   useEffect(() => {
@@ -34,12 +35,19 @@ export function AccountFormModal({ open, onClose, account }) {
   const typeOptions = ACCOUNT_TYPES.map((t) => ({ value: t.id, label: t.name }))
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.name.trim()) return setErr('Ingresa el nombre de la cuenta.')
     if (!form.branchId) return setErr('Selecciona una sucursal.')
-    editing ? updateAccount(account.id, form) : addAccount(form)
-    toast.success(editing ? 'Cuenta actualizada' : 'Cuenta creada')
-    onClose()
+    setSaving(true)
+    try {
+      await (editing ? updateAccount(account.id, form) : addAccount(form))
+      toast.success(editing ? 'Cuenta actualizada' : 'Cuenta creada')
+      onClose()
+    } catch (error) {
+      setErr(error.message || 'No se pudo guardar la cuenta.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -59,7 +67,7 @@ export function AccountFormModal({ open, onClose, account }) {
         {err && <p className="text-sm text-red-500">{err}</p>}
         <div className="flex gap-3 pt-1">
           <Button variant="secondary" className="flex-1" onClick={onClose}>Cancelar</Button>
-          <Button className="flex-1" onClick={submit}>{editing ? 'Guardar' : 'Crear Cuenta'}</Button>
+          <Button className="flex-1" onClick={submit} disabled={saving}>{saving ? 'Guardando…' : editing ? 'Guardar' : 'Crear Cuenta'}</Button>
         </div>
       </div>
     </Modal>

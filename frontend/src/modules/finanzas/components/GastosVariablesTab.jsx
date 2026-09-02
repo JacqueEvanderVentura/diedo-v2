@@ -30,6 +30,7 @@ import { Receipt } from 'lucide-react'
 
 export function GastosVariablesTab() {
   const expenses = useFinanzasStore((s) => s.expenses)
+  const expensesProjected = useFinanzasStore((s) => s.expensesProjected)
   const deleteExpense = useFinanzasStore((s) => s.deleteExpense)
   const cajaExpenses = usePosStore((s) => s.expenses)
   const branches = useConfigStore((s) => s.branches)
@@ -42,12 +43,12 @@ export function GastosVariablesTab() {
   const branchOptions = [{ value: 'all', label: 'Todas las sucursales' }, ...branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))]
 
   const filtered = useMemo(() => {
-    const caja = cajaExpenses.map((e) => ({ id: e.id, concept: e.concept, amount: e.amount, category: 'otros', date: e.createdAt, branchId: null, status: 'pagado', source: 'caja' }))
+    const caja = expensesProjected ? [] : cajaExpenses.map((e) => ({ id: e.id, concept: e.concept, amount: e.amount, category: 'otros', date: e.createdAt, branchId: null, status: 'pagado', source: 'caja', editable: false }))
     const q = query.trim().toLowerCase()
-    return [...expenses.map((e) => ({ ...e, source: 'finanzas' })), ...caja]
+    return [...expenses.map((e) => ({ ...e, source: e.source || 'finanzas' })), ...caja]
       .filter((e) => branchFilter === 'all' || e.branchId === branchFilter || e.source === 'caja')
       .filter((e) => !q || e.concept.toLowerCase().includes(q) || catName(e.category).toLowerCase().includes(q))
-  }, [expenses, cajaExpenses, branchFilter, query])
+  }, [expenses, expensesProjected, cajaExpenses, branchFilter, query])
 
   const branchNameFor = (branchId, source) => branches.find((b) => b.id === branchId)?.name || (source === 'caja' ? 'Caja' : '—')
 
@@ -84,7 +85,14 @@ export function GastosVariablesTab() {
 
   const openNew = () => { setEditing(null); setModalOpen(true) }
   const openEdit = (e) => { setEditing(e); setModalOpen(true) }
-  const remove = (e) => { deleteExpense(e.id); toast.success('Gasto eliminado') }
+  const remove = async (e) => {
+    try {
+      await deleteExpense(e.id)
+      toast.success('Gasto eliminado')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo eliminar el gasto')
+    }
+  }
 
   return (
     <div className="space-y-6">

@@ -3,12 +3,13 @@ import {
   API_CONNECTED_MODULES,
   isApiConnectedModule,
   isModuleAvailable,
+  requiresFinanceData,
   routeRequirement,
 } from '@/services/moduleAvailability'
 
 describe('moduleAvailability', () => {
   it('limita por entitlement solamente los módulos conectados a la API', () => {
-    const enabled = new Set(['foundation', 'iam', 'catalog', 'crm', 'hr', 'appointments', 'purchasing', 'incidents', 'sales', 'inventory', 'pos'])
+    const enabled = new Set(['foundation', 'iam', 'catalog', 'crm', 'hr', 'appointments', 'purchasing', 'incidents', 'sales', 'inventory', 'pos', 'finance'])
 
     expect(API_CONNECTED_MODULES).toEqual([
       'foundation',
@@ -22,6 +23,7 @@ describe('moduleAvailability', () => {
       'incidents',
       'sales',
       'pos',
+      'finance',
     ])
     expect(isApiConnectedModule('catalog')).toBe(true)
     expect(isModuleAvailable('catalog', enabled)).toBe(true)
@@ -44,6 +46,13 @@ describe('moduleAvailability', () => {
     expect(isModuleAvailable('pos', new Set(['sales', 'pos']))).toBe(false)
     expect(isModuleAvailable('pos', new Set(['inventory', 'pos']))).toBe(false)
     expect(isModuleAvailable('pos', new Set(['sales', 'inventory']))).toBe(false)
+  })
+
+  it('hidrata finanzas al entrar a sus rutas o a reportes que consumen sus agregados', () => {
+    expect(requiresFinanceData('/finanzas')).toBe(true)
+    expect(requiresFinanceData('/finanzas/gastos')).toBe(true)
+    expect(requiresFinanceData('/reportes/generales')).toBe(true)
+    expect(requiresFinanceData('/dashboard')).toBe(false)
   })
 
   it('solo exige contratos backend en las rutas ya conectadas', () => {
@@ -109,6 +118,6 @@ describe('moduleAvailability', () => {
       permission: 'pos.receivables.read',
     })
     expect(routeRequirement('/crm/pipeline')).toBeNull()
-    expect(routeRequirement('/finanzas')).toBeNull()
+    expect(routeRequirement('/finanzas')).toEqual({ module: 'finance', permission: 'finance.read' })
   })
 })

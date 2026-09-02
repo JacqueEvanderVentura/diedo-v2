@@ -194,6 +194,14 @@ IncidentManageGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("incidents.manage")),
 ]
+FinanceReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("finance.read")),
+]
+FinanceManageGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("finance.manage")),
+]
 CustomerReadGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("customer.read")),

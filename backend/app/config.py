@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     refresh_cookie_path: str = "/api/v1/auth"
     local_bootstrap_admin_password: SecretStr | None = None
     demo_seed_enabled: bool = False
-    expected_schema_revision: str = "20260901_0015"
+    expected_schema_revision: str = "20260901_0016"
     attachment_storage_root: Path = _BACKEND_ROOT / ".local" / "attachments"
     attachment_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1, le=10 * 1024 * 1024)
     incident_image_max_bytes: int = Field(default=5 * 1024 * 1024, ge=1, le=10 * 1024 * 1024)

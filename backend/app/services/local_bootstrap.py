@@ -164,6 +164,23 @@ _PERMISSIONS = (
         40,
     ),
     (
+        "finance.read",
+        "finance",
+        "read",
+        "Ver finanzas",
+        "View branch-scoped financial overviews, income, expenses, liabilities, "
+        "budgets, and accounts.",
+        10,
+    ),
+    (
+        "finance.manage",
+        "finance",
+        "manage",
+        "Gestionar finanzas",
+        "Create, update, archive, void, and pay operational financial records.",
+        20,
+    ),
+    (
         "employee.read",
         "hr",
         "read",
@@ -467,8 +484,9 @@ _TERMINAL_POS_PERMISSION_CODES = tuple(
 
 _ROLE_PERMISSION_TEMPLATES = {
     "workspace_admin": _TERMINAL_POS_PERMISSION_CODES
-    + ("dashboard.read", "crm.read", "crm.manage"),
-    "manager": _TERMINAL_POS_PERMISSION_CODES + ("dashboard.read", "crm.read", "crm.manage"),
+    + ("dashboard.read", "crm.read", "crm.manage", "finance.read", "finance.manage"),
+    "manager": _TERMINAL_POS_PERMISSION_CODES
+    + ("dashboard.read", "crm.read", "crm.manage", "finance.read", "finance.manage"),
     "cashier": (
         "dashboard.read",
         "sales.read",
@@ -484,6 +502,7 @@ _ROLE_PERMISSION_TEMPLATES = {
         "dashboard.read",
         "crm.read",
         "crm.manage",
+        "finance.read",
         "sales.read",
         "pos.read",
         "pos.cash.read",
@@ -546,6 +565,7 @@ _MODULES: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
     ("purchasing", "Purchasing", "optional", "available", ("foundation", "catalog")),
     ("inventory", "Inventory and assets", "optional", "available", ("foundation", "catalog")),
     ("incidents", "Incidents", "optional", "available", ("foundation",)),
+    ("finance", "Finanzas", "optional", "available", ("foundation",)),
     ("accounting", "Accounting", "optional", "planned", ("sales", "purchasing")),
     ("hr", "Human resources", "optional", "available", ("foundation",)),
     ("payroll", "Payroll", "optional", "planned", ("hr", "accounting")),
@@ -772,6 +792,7 @@ def bootstrap_local_foundation(
         "pos",
         "purchasing",
         "incidents",
+        "finance",
     )
     for module_code in enabled_modules:
         module_id = session.scalar(

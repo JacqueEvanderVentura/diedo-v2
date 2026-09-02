@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Plus, Pencil, Trash2, Search, PiggyBank } from 'lucide-react'
 import { useFinanzasStore } from '@/stores/finanzasStore'
@@ -34,6 +34,21 @@ export default function CuentasPage() {
       .filter((a) => !q || a.name.toLowerCase().includes(q) || a.bank?.toLowerCase().includes(q))
   }, [accounts, branchFilter, query])
 
+  useEffect(() => {
+    if (branchOptions.length && !branchOptions.some((option) => option.value === branchFilter)) {
+      setBranchFilter(branchOptions[0].value)
+    }
+  }, [branchFilter, branchOptions])
+
+  const remove = async (id) => {
+    try {
+      await deleteAccount(id)
+      toast.success('Cuenta eliminada')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo eliminar la cuenta')
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="cuentas-page">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -68,7 +83,7 @@ export default function CuentasPage() {
                 </div>
                 <div className="flex gap-1">
                   <button onClick={() => { setEditing(a); setModalOpen(true) }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></button>
-                  <button onClick={() => { deleteAccount(a.id); toast.success('Cuenta eliminada') }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+                  <button onClick={() => remove(a.id)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
                 </div>
               </div>
               <p className="mt-4 font-heading text-2xl font-bold text-slate-900">RD$ {formatDOP(a.balance).replace('RD$ ', '')}</p>

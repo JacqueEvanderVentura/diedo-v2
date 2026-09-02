@@ -84,7 +84,9 @@ export default function OverviewPage() {
     { key: 'monto', label: 'Monto' },
   ]
 
-  const margen = stats.ingresosMes > 0 ? ((stats.balance / stats.ingresosMes) * 100).toFixed(1) : '0.0'
+  const margen = stats.netMarginPercent == null
+    ? stats.ingresosMes > 0 ? ((stats.balance / stats.ingresosMes) * 100).toFixed(1) : '0.0'
+    : Number(stats.netMarginPercent).toFixed(1)
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="finanzas-overview">
@@ -139,7 +141,7 @@ export default function OverviewPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between border-b border-slate-50 pb-3">
               <span className="text-sm text-slate-500">Utilidad Bruta (Est.)</span>
-              <span className="font-heading font-bold text-slate-900">{formatDOP(stats.ingresosMes * 0.7)}</span>
+              <span className="font-heading font-bold text-slate-900">{formatDOP(stats.grossProfitEstimate ?? stats.ingresosMes * 0.7)}</span>
             </div>
             <div className="flex items-center justify-between border-b border-slate-50 pb-3">
               <span className="text-sm text-slate-500">Gastos Op.</span>

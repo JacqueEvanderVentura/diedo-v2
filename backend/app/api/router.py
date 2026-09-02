@@ -7,6 +7,7 @@ from app.api.routers import (
     catalog,
     crm,
     dashboard,
+    finance,
     health,
     hr,
     incidents,
@@ -27,6 +28,7 @@ api_router.include_router(agenda.router)
 api_router.include_router(catalog.router)
 api_router.include_router(crm.router)
 api_router.include_router(dashboard.router)
+api_router.include_router(finance.router)
 api_router.include_router(master_data.customers_router)
 api_router.include_router(master_data.employees_router)
 api_router.include_router(hr.router)

@@ -72,6 +72,13 @@ def test_demo_seed_flag_false_is_a_no_op() -> None:
     assert summary.pos_inventory_movement_count == 0
     assert summary.appointment_count == 0
     assert summary.dashboard_task_count == 0
+    assert summary.finance_budget_count == 0
+    assert summary.finance_expense_count == 0
+    assert summary.finance_fixed_expense_count == 0
+    assert summary.finance_fixed_payment_count == 0
+    assert summary.finance_liability_count == 0
+    assert summary.finance_account_count == 0
+    assert summary.finance_income_count == 0
 
 
 @pytest.mark.integration
@@ -527,6 +534,13 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
     assert first.pos_inventory_movement_count == second.pos_inventory_movement_count == 9
     assert first.appointment_count == second.appointment_count == 9
     assert first.dashboard_task_count == second.dashboard_task_count == 18
+    assert first.finance_budget_count == second.finance_budget_count == 4
+    assert first.finance_expense_count == second.finance_expense_count == 6
+    assert first.finance_fixed_expense_count == second.finance_fixed_expense_count == 4
+    assert first.finance_fixed_payment_count == second.finance_fixed_payment_count == 3
+    assert first.finance_liability_count == second.finance_liability_count == 3
+    assert first.finance_account_count == second.finance_account_count == 3
+    assert first.finance_income_count == second.finance_income_count == 3
     assert pos_registry_counts == {
         "cash_movement": 15,
         "cash_register": 4,

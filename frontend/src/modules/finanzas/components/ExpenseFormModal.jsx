@@ -24,6 +24,7 @@ export function ExpenseFormModal({ open, onClose, expense, mode = 'variable' }) 
   const fixed = mode === 'fixed'
   const [form, setForm] = useState(fixed ? emptyFixed() : emptyVariable())
   const [err, setErr] = useState('')
+  const [saving, setSaving] = useState(false)
   const editing = !!expense
 
   useEffect(() => {
@@ -64,18 +65,25 @@ export function ExpenseFormModal({ open, onClose, expense, mode = 'variable' }) 
     })
   }
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.concept.trim()) return setErr('Ingresa el concepto.')
     if (form.amount === '' || Number(form.amount) <= 0) return setErr('Ingresa un monto válido.')
     if (!form.branchId) return setErr('Selecciona una sucursal.')
     const payload = { ...form, budgetId: form.budgetId || null }
-    if (fixed) {
-      editing ? updateFixed(expense.id, payload) : addFixed(payload)
-    } else {
-      editing ? updateExpense(expense.id, payload) : addExpense(payload)
+    setSaving(true)
+    try {
+      if (fixed) {
+        await (editing ? updateFixed(expense.id, payload) : addFixed(payload))
+      } else {
+        await (editing ? updateExpense(expense.id, payload) : addExpense(payload))
+      }
+      toast.success(editing ? 'Gasto actualizado' : 'Gasto registrado')
+      onClose()
+    } catch (error) {
+      setErr(error.message || 'No se pudo guardar el gasto.')
+    } finally {
+      setSaving(false)
     }
-    toast.success(editing ? 'Gasto actualizado' : 'Gasto registrado')
-    onClose()
   }
 
   const title = editing ? (fixed ? 'Editar gasto fijo' : 'Editar gasto') : fixed ? 'Nuevo Gasto Fijo' : 'Registrar Nuevo Gasto'
@@ -146,7 +154,7 @@ export function ExpenseFormModal({ open, onClose, expense, mode = 'variable' }) 
 
         <div className="flex gap-3 pt-1">
           <Button variant="secondary" className="flex-1" onClick={onClose} data-testid="expense-form-cancel">Cancelar</Button>
-          <Button className="flex-1" onClick={submit} data-testid="expense-form-save">{editing ? 'Guardar cambios' : fixed ? 'Crear Gasto Fijo' : 'Enviar Gasto'}</Button>
+          <Button className="flex-1" onClick={submit} disabled={saving} data-testid="expense-form-save">{saving ? 'Guardando…' : editing ? 'Guardar cambios' : fixed ? 'Crear Gasto Fijo' : 'Enviar Gasto'}</Button>
         </div>
       </div>
     </Modal>
