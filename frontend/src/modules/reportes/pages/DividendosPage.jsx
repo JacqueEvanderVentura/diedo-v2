@@ -23,7 +23,7 @@ export default function DividendosPage() {
   const branches = useConfigStore((s) => s.branches)
   const getBranches = useCallback(() => branches, [branches])
   const fetcher = useCallback((params) => fetchDividendReport(getBranches, params), [getBranches])
-  const report = usePaginatedReport(fetcher, { branchId: '', search: '' }, 10, { key: 'dividend', dir: 'desc' })
+  const report = usePaginatedReport(fetcher, { branchId: '', search: '', period: 'month' }, 10, { key: 'dividend', dir: 'desc' })
   const summary = report.summary || { partners: 0, branches: 0, totalDividends: 0 }
 
   return (
@@ -40,6 +40,9 @@ export default function DividendosPage() {
       <ReportFilterBar
         branchId={report.filters.branchId}
         onBranchChange={(v) => report.setFilter('branchId', v)}
+        period={report.filters.period}
+        onPeriodChange={(v) => report.setFilter('period', v)}
+        showPeriod
         search={report.filters.search}
         onSearchChange={(v) => report.setFilter('search', v)}
         searchPlaceholder="Buscar socio o sucursal…"

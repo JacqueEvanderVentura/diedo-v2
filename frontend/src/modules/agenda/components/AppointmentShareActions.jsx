@@ -13,7 +13,7 @@ import {
 import { isProximoAppointment } from '../lib/appointments'
 import { cn } from '@/lib/utils'
 
-export function AppointmentShareActions({ appointment, className, showAudit = true }) {
+export function AppointmentShareActions({ appointment, className }) {
   const [busy, setBusy] = useState(null)
   const staffName = useStaffName()
 
@@ -25,9 +25,9 @@ export function AppointmentShareActions({ appointment, className, showAudit = tr
       staffName: staffName(appointment.employeeId),
       statusLabel: st.name,
       proximo,
-      showAudit,
+      showAudit: false,
     })
-  }, [appointment, staffName, showAudit])
+  }, [appointment, staffName])
 
   const copyImage = async () => {
     if (!model) return

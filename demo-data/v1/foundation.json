@@ -1,7 +1,8 @@
 {
   "branches": [
-    {"seedKey": "north", "code": "NORTH", "name": "Sucursal Norte", "timezone": "America/Santo_Domingo"},
-    {"seedKey": "downtown", "code": "DOWNTOWN", "name": "Sucursal Centro", "timezone": "America/Santo_Domingo"},
-    {"seedKey": "east", "code": "EAST", "name": "Sucursal Este", "timezone": "America/Santo_Domingo"}
+    {"seedKey": "hq", "code": "HQ", "name": "Sede Principal", "timezone": "America/Santo_Domingo", "partners": [{"name": "Gabriela Méndez", "document": "001-1629483-4", "share": 60}, {"name": "Rafael Castillo", "document": "001-1842057-9", "share": 40}]},
+    {"seedKey": "north", "code": "NORTH", "name": "Sucursal Norte", "timezone": "America/Santo_Domingo", "partners": [{"name": "Patricia Gómez", "document": "031-0482176-1", "share": 100}]},
+    {"seedKey": "downtown", "code": "DOWNTOWN", "name": "Sucursal Centro", "timezone": "America/Santo_Domingo", "partners": [{"name": "José Manuel Reyes", "document": "001-1937462-2", "share": 55}, {"name": "Camila Rosario", "document": "402-2786154-8", "share": 45}]},
+    {"seedKey": "east", "code": "EAST", "name": "Sucursal Este", "timezone": "America/Santo_Domingo", "partners": [{"name": "Ángel Báez", "document": "224-0061835-7", "share": 50}, {"name": "Lucía Peña", "document": "001-2014589-0", "share": 50}]}
   ]
 }

@@ -5,16 +5,18 @@ from typing import Any, cast
 from uuid import uuid7
 
 import pytest
-from app.core.errors import InvalidOperationError
+from app.core.errors import InvalidOperationError, ResourceNotFoundError
 from app.core.security import hash_password
 from app.db.models import IncidentAttachment
 from app.db.session import session_scope
-from app.schemas.incidents import CreateIncidentRequest
+from app.schemas.incidents import CreateIncidentCommentRequest, CreateIncidentRequest
+from app.services.authorization import PermissionGrant
 from app.services.incidents import IncidentImageInput, IncidentService
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 _OWNER_EMAIL = "owner@erp.dev"
 _OWNER_PASSWORD = "incidents-owner-password-not-a-secret"
@@ -41,6 +43,10 @@ def _bootstrap_and_login(client: TestClient) -> tuple[dict[str, str], dict[str, 
 def test_incident_schema_normalizes_text_and_rejects_duplicate_participants() -> None:
     branch_id = uuid7()
     membership_id = uuid7()
+    with pytest.raises(ValidationError, match="demasiado corto"):
+        CreateIncidentRequest.model_validate({"title": " a ", "branchId": branch_id})
+    with pytest.raises(ValidationError, match="no puede estar vacío"):
+        CreateIncidentCommentRequest.model_validate({"message": "   ", "version": 1})
     payload = CreateIncidentRequest.model_validate(
         {
             "title": "  Fuga   en recepción ",
@@ -57,6 +63,44 @@ def test_incident_schema_normalizes_text_and_rejects_duplicate_participants() ->
                 "participantIds": [membership_id, membership_id],
             }
         )
+    with pytest.raises(ValidationError, match="Selecciona el empleado"):
+        CreateIncidentRequest.model_validate(
+            {
+                "title": "Ausencia no reportada",
+                "type": "personal",
+                "branchId": branch_id,
+            }
+        )
+    with pytest.raises(ValidationError, match="categoría"):
+        CreateIncidentRequest.model_validate(
+            {
+                "title": "Ausencia no reportada",
+                "type": "personal",
+                "branchId": branch_id,
+                "employeeId": uuid7(),
+            }
+        )
+    with pytest.raises(ValidationError, match="Solo una incidencia de personal"):
+        CreateIncidentRequest.model_validate(
+            {
+                "title": "Fuga en recepción",
+                "type": "infraestructura",
+                "branchId": branch_id,
+                "employeeId": uuid7(),
+                "employeeIncidentKind": "otro",
+            }
+        )
+
+    personal = CreateIncidentRequest.model_validate(
+        {
+            "title": "Ausencia no reportada",
+            "type": "personal",
+            "branchId": branch_id,
+            "employeeId": uuid7(),
+            "employeeIncidentKind": "ausencia",
+        }
+    )
+    assert personal.employee_incident_kind == "ausencia"
 
 
 def test_incident_image_validation_rejects_unsafe_files_and_normalizes_names() -> None:
@@ -86,6 +130,81 @@ def test_incident_image_validation_rejects_unsafe_files_and_normalizes_names() -
     )
     assert normalized.original_filename == "imagen"
     assert normalized.content_type == "image/png"
+
+
+def test_incident_service_rejects_inconsistent_employee_relations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_id = uuid7()
+    branch_id = uuid7()
+    grant = PermissionGrant(
+        permission_code="incidents.create",
+        workspace_id=workspace_id,
+        membership_id=uuid7(),
+        allowed_legal_entity_ids=None,
+        allowed_branch_ids=None,
+    )
+    with Session() as session:
+        service = IncidentService(session)
+        monkeypatch.setattr(
+            service._repository,
+            "incident_by_creation_key",
+            lambda _workspace_id, _key: None,
+        )
+        monkeypatch.setattr(
+            service._repository,
+            "get_active_branch",
+            lambda _workspace_id, _branch_id: object(),
+        )
+        common = {
+            "branch_id": branch_id,
+            "asset_id": None,
+            "participant_ids": [],
+        }
+        with pytest.raises(InvalidOperationError, match="requieren empleado"):
+            service.create_incident(
+                principal=cast(Any, None),
+                grant=grant,
+                values={
+                    **common,
+                    "incident_type": "personal",
+                    "employee_id": None,
+                    "employee_incident_kind": None,
+                },
+                idempotency_key="missing-employee",
+            )
+        with pytest.raises(InvalidOperationError, match="Solo una incidencia"):
+            service.create_incident(
+                principal=cast(Any, None),
+                grant=grant,
+                values={
+                    **common,
+                    "incident_type": "infraestructura",
+                    "employee_id": uuid7(),
+                    "employee_incident_kind": "otro",
+                },
+                idempotency_key="unexpected-employee",
+            )
+        with pytest.raises(InvalidOperationError, match="al menos una imagen"):
+            service.add_images(
+                principal=cast(Any, None),
+                grant=grant,
+                incident_id=uuid7(),
+                expected_version=1,
+                inputs=(),
+                max_files=5,
+                max_bytes=1024,
+            )
+
+    scoped_grant = PermissionGrant(
+        permission_code="incidents.read",
+        workspace_id=workspace_id,
+        membership_id=uuid7(),
+        allowed_legal_entity_ids=None,
+        allowed_branch_ids=frozenset({branch_id}),
+    )
+    with pytest.raises(ResourceNotFoundError, match="dentro de tu alcance"):
+        IncidentService._require_visible_branch(scoped_grant, uuid7())
 
 
 @pytest.mark.integration
@@ -167,10 +286,65 @@ def test_incidents_complete_http_contract_and_database_image_preview(
             **payload,
             "title": "Incidencia de personal",
             "type": "personal",
+            "employeeId": str(uuid7()),
+            "employeeIncidentKind": "ausencia",
         },
     )
     assert invalid_relation.status_code == 400
     assert invalid_relation.json()["parameter"] == "activoId"
+
+    employee_response = client.post(
+        "/api/v1/employees",
+        headers=headers,
+        json={
+            "employeeNumber": f"INC-{suffix}",
+            "firstName": "Persona",
+            "lastName": "Reportada",
+            "position": "Operaciones",
+            "hireDate": date.today().isoformat(),
+            "branchIds": [branch_id],
+        },
+    )
+    assert employee_response.status_code == 201, employee_response.text
+    employee = employee_response.json()
+
+    missing_employee = client.post(
+        "/api/v1/incidents",
+        headers={**headers, "Idempotency-Key": f"incident-missing-employee-{suffix}"},
+        json={
+            "title": f"Ausencia sin empleado válido {suffix}",
+            "description": "Debe rechazarse.",
+            "type": "personal",
+            "priority": "media",
+            "branchId": branch_id,
+            "employeeId": str(uuid7()),
+            "employeeIncidentKind": "ausencia",
+            "participantIds": [membership_id],
+        },
+    )
+    assert missing_employee.status_code == 404
+    assert missing_employee.json()["parameter"] == "employeeId"
+
+    personal_incident = client.post(
+        "/api/v1/incidents",
+        headers={**headers, "Idempotency-Key": f"incident-personal-{suffix}"},
+        json={
+            "title": f"Tardanza documentada {suffix}",
+            "description": "Registro laboral para seguimiento.",
+            "type": "personal",
+            "priority": "media",
+            "branchId": branch_id,
+            "employeeId": employee["id"],
+            "employeeIncidentKind": "tardanza",
+            "participantIds": [membership_id],
+        },
+    )
+    assert personal_incident.status_code == 201, personal_incident.text
+    assert personal_incident.json()["employee"] == {
+        "id": employee["id"],
+        "name": "Persona Reportada",
+    }
+    assert personal_incident.json()["employeeIncidentKind"] == "tardanza"
 
     listed = client.get(
         "/api/v1/incidents",
@@ -342,4 +516,8 @@ def test_incidents_complete_http_contract_and_database_image_preview(
         params={"dateFrom": today, "dateTo": today, "search": suffix},
     )
     assert dated.status_code == 200, dated.text
-    assert dated.json()["totalItems"] == 1
+    assert dated.json()["totalItems"] == 2
+    assert {item["id"] for item in dated.json()["items"]} == {
+        incident["id"],
+        personal_incident.json()["id"],
+    }

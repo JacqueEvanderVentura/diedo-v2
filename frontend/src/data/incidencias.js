@@ -18,6 +18,17 @@ export const INCIDENCIA_TYPES = [
   { id: 'personal', name: 'Personal' },
 ]
 
+export const EMPLOYEE_INCIDENT_KINDS = [
+  { id: 'ausencia', name: 'Ausencia' },
+  { id: 'tardanza', name: 'Tardanza' },
+  { id: 'amonestacion', name: 'Amonestación' },
+  { id: 'licencia_medica', name: 'Licencia médica' },
+  { id: 'otro', name: 'Otro evento laboral' },
+]
+
+export const employeeIncidentKindMeta = (id) =>
+  EMPLOYEE_INCIDENT_KINDS.find((kind) => kind.id === id)
+
 export const TYPE_FILTER_OPTIONS = [
   { value: 'all', label: 'Todos los tipos' },
   ...INCIDENCIA_TYPES.map((t) => ({ value: t.id, label: t.name })),

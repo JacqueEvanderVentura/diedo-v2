@@ -4,12 +4,20 @@ import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
-import { INCIDENCIA_PRIORITIES, INCIDENCIA_TYPES } from '@/data/incidencias'
+import {
+  EMPLOYEE_INCIDENT_KINDS,
+  INCIDENCIA_PRIORITIES,
+  INCIDENCIA_TYPES,
+} from '@/data/incidencias'
 import { cn } from '@/lib/utils'
 import { currentSessionActor } from '@/lib/sessionActor'
 
 const PRIORITY_OPTIONS = INCIDENCIA_PRIORITIES.map((p) => ({ value: p.id, label: p.name }))
 const TYPE_OPTIONS = INCIDENCIA_TYPES.map((t) => ({ value: t.id, label: t.name }))
+const EMPLOYEE_INCIDENT_OPTIONS = EMPLOYEE_INCIDENT_KINDS.map((kind) => ({
+  value: kind.id,
+  label: kind.name,
+}))
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const MAX_IMAGES = 5
@@ -33,6 +41,8 @@ function makeEmpty(branchId) {
     priority: 'media',
     branchId: branchId || '',
     activoId: '',
+    employeeId: '',
+    employeeIncidentKind: '',
     description: '',
     images: [],
     intervenientes: [],
@@ -46,6 +56,7 @@ export function IncidenciaFormModal({
   branches,
   users,
   activos,
+  employees = [],
   canAttach = true,
 }) {
   const fileRef = useRef(null)
@@ -71,6 +82,16 @@ export function IncidenciaFormModal({
       .map((a) => ({ value: a.id, label: `${a.code} — ${a.name}` })),
   ]
   const activeUsers = users.filter((u) => u.active)
+  const employeeOptions = [
+    { value: '', label: 'Seleccionar empleado…' },
+    ...employees
+      .filter((employee) => employee.active !== false)
+      .filter((employee) => (employee.branchIds || [employee.branchId]).includes(form.branchId))
+      .map((employee) => ({
+        value: employee.id,
+        label: `${employee.firstName} ${employee.lastName}`.trim(),
+      })),
+  ]
 
   const toggleInterviniente = (user) => {
     setForm((f) => {
@@ -123,6 +144,12 @@ export function IncidenciaFormModal({
     if (submitting) return
     if (!form.title.trim()) return setErr('Ingresa el título de la incidencia.')
     if (!form.branchId) return setErr('Selecciona una sucursal.')
+    if (form.type === 'personal' && !form.employeeId) {
+      return setErr('Selecciona el empleado relacionado.')
+    }
+    if (form.type === 'personal' && !form.employeeIncidentKind) {
+      return setErr('Selecciona la categoría de incidencia laboral.')
+    }
 
     setErr('')
     setSubmitting(true)
@@ -133,6 +160,13 @@ export function IncidenciaFormModal({
         priority: form.priority,
         branchId: form.branchId,
         activoId: form.type === 'activo' && form.activoId ? form.activoId : null,
+        employeeId: form.type === 'personal' ? form.employeeId : null,
+        employeeName:
+          form.type === 'personal'
+            ? employeeOptions.find((option) => option.value === form.employeeId)?.label
+            : null,
+        employeeIncidentKind:
+          form.type === 'personal' ? form.employeeIncidentKind : null,
         description: form.description.trim(),
         images: form.images.map((image) => image.previewUrl),
         imageFiles: form.images.map((image) => image.file),
@@ -182,6 +216,9 @@ export function IncidenciaFormModal({
                 ...current,
                 type: value,
                 activoId: value === 'activo' ? current.activoId : '',
+                employeeId: value === 'personal' ? current.employeeId : '',
+                employeeIncidentKind:
+                  value === 'personal' ? current.employeeIncidentKind : '',
               }))}
               options={TYPE_OPTIONS}
               disabled={submitting}
@@ -197,7 +234,12 @@ export function IncidenciaFormModal({
           <Field label="Sucursal">
             <Select
               value={form.branchId}
-              onChange={(branchId) => setForm((current) => ({ ...current, branchId, activoId: '' }))}
+              onChange={(branchId) => setForm((current) => ({
+                ...current,
+                branchId,
+                activoId: '',
+                employeeId: '',
+              }))}
               options={branchOptions}
               disabled={submitting}
               data-testid="incidencia-form-branch"
@@ -213,6 +255,32 @@ export function IncidenciaFormModal({
             />
           </Field>
         </div>
+
+        {form.type === 'personal' && (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Empleado relacionado" required>
+              <Select
+                value={form.employeeId}
+                onChange={(value) => set('employeeId', value)}
+                options={employeeOptions}
+                disabled={submitting}
+                data-testid="incidencia-form-employee"
+              />
+            </Field>
+            <Field label="Categoría laboral" required>
+              <Select
+                value={form.employeeIncidentKind}
+                onChange={(value) => set('employeeIncidentKind', value)}
+                options={[
+                  { value: '', label: 'Seleccionar categoría…' },
+                  ...EMPLOYEE_INCIDENT_OPTIONS,
+                ]}
+                disabled={submitting}
+                data-testid="incidencia-form-employee-kind"
+              />
+            </Field>
+          </div>
+        )}
 
         <Field label="Descripción">
           <textarea

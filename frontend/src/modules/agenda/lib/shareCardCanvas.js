@@ -76,7 +76,7 @@ function computeLayout(model, ctx) {
   return { H: h, serviceLines, serviceBoxH, timeBoxH, headerH }
 }
 
-export function buildShareCardModel(appointment, { staffName, statusLabel, proximo, showAudit = true }) {
+export function buildShareCardModel(appointment, { staffName, statusLabel, proximo, showAudit = false }) {
   return {
     customerName: appointment?.customerName || 'Cliente',
     customerPhone: appointment?.customerPhone || '',
@@ -89,8 +89,8 @@ export function buildShareCardModel(appointment, { staffName, statusLabel, proxi
     priceLabel: formatDOP(appointment?.price || 0),
     statusLabel: proximo ? 'Próximo' : statusLabel,
     proximo: !!proximo,
-    createdBy: appointment?.createdBy,
-    updatedBy: appointment?.updatedBy,
+    createdBy: showAudit ? appointment?.createdBy : undefined,
+    updatedBy: showAudit ? appointment?.updatedBy : undefined,
     showAudit,
   }
 }

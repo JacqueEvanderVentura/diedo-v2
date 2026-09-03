@@ -26,6 +26,9 @@ export function mapIncidentFromApi(incident, previous = null) {
     status: incident.status,
     branchId: incident.branchId,
     activoId: incident.activoId || null,
+    employee: incident.employee || null,
+    employeeId: incident.employee?.id || null,
+    employeeIncidentKind: incident.employeeIncidentKind || null,
     reporter: incident.reporter || null,
     intervenientes: incident.intervenientes || [],
     attachments,
@@ -55,6 +58,11 @@ export function incidentToApiPayload(form) {
     priority: form.priority || 'media',
     branchId: form.branchId,
     activoId: form.type === 'activo' && form.activoId ? form.activoId : null,
+    employeeId: form.type === 'personal' && form.employeeId ? form.employeeId : null,
+    employeeIncidentKind:
+      form.type === 'personal' && form.employeeIncidentKind
+        ? form.employeeIncidentKind
+        : null,
     participantIds: (form.intervenientes || []).map((participant) => participant.id),
   }
 }

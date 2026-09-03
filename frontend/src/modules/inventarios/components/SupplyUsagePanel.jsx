@@ -71,7 +71,7 @@ export function SupplyUsagePanel() {
           <div>
             <h3 className="font-heading text-lg font-semibold text-slate-900">Uso de insumos por personal</h3>
             <p className="mt-0.5 text-sm text-slate-500">
-              Salidas atribuidas vs. citas atendidas (confirmada, asistió o completada).
+              Salidas atribuidas vs. citas realmente atendidas (asistió o completada).
             </p>
           </div>
         </div>

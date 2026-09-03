@@ -4,6 +4,7 @@ from app.api.routers import (
     administration,
     agenda,
     auth,
+    backoffice,
     catalog,
     crm,
     dashboard,
@@ -17,12 +18,14 @@ from app.api.routers import (
     permissions,
     pos,
     purchasing,
+    reports,
     users,
 )
 
 api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(auth.router)
+api_router.include_router(backoffice.router)
 api_router.include_router(administration.router)
 api_router.include_router(agenda.router)
 api_router.include_router(catalog.router)
@@ -36,6 +39,7 @@ api_router.include_router(incidents.router)
 api_router.include_router(inventory.router)
 api_router.include_router(pos.router)
 api_router.include_router(purchasing.router)
+api_router.include_router(reports.router)
 api_router.include_router(users.router)
 api_router.include_router(lookups.router)
 api_router.include_router(permissions.roles_router)

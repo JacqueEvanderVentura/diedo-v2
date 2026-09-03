@@ -72,6 +72,7 @@ export function BranchFormModal({
   const [tab, setTab] = useState('general')
   const [form, setForm] = useState(empty(legalEntities))
   const [partnerName, setPartnerName] = useState('')
+  const [partnerDocument, setPartnerDocument] = useState('')
   const [partnerShare, setPartnerShare] = useState('')
   const [error, setError] = useState(null)
   const [submitting, setSubmitting] = useState(false)
@@ -97,6 +98,7 @@ export function BranchFormModal({
         }
       : defaults)
     setPartnerName('')
+    setPartnerDocument('')
     setPartnerShare('')
     setError(null)
     setSubmitting(false)
@@ -162,9 +164,17 @@ export function BranchFormModal({
     if (!partnerName.trim()) return
     setForm((current) => ({
       ...current,
-      partners: [...(current.partners || []), { name: partnerName.trim(), share: Number(partnerShare) || 0 }],
+      partners: [
+        ...(current.partners || []),
+        {
+          name: partnerName.trim(),
+          document: partnerDocument.trim() || null,
+          share: Number(partnerShare) || 0,
+        },
+      ],
     }))
     setPartnerName('')
+    setPartnerDocument('')
     setPartnerShare('')
   }
 
@@ -469,8 +479,9 @@ export function BranchFormModal({
 
         {tab === 'socios' && (
           <div className="space-y-3">
-            <div className="flex gap-2">
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_5rem_auto]">
               <Input data-testid="branch-partner-name" value={partnerName} disabled={submitting || branchFieldsDisabled} onChange={(event) => setPartnerName(event.target.value)} placeholder="Nombre del socio" className="flex-1" />
+              <Input data-testid="branch-partner-document" value={partnerDocument} disabled={submitting || branchFieldsDisabled} onChange={(event) => setPartnerDocument(event.target.value)} placeholder="Cédula / documento" />
               <Input data-testid="branch-partner-share" type="number" value={partnerShare} disabled={submitting || branchFieldsDisabled} onChange={(event) => setPartnerShare(event.target.value)} placeholder="%" className="w-20" />
               <Button type="button" variant="secondary" disabled={submitting || branchFieldsDisabled} onClick={addPartner}>Agregar</Button>
             </div>
@@ -480,7 +491,7 @@ export function BranchFormModal({
               <ul className="space-y-2">
                 {form.partners.map((partner, index) => (
                   <li key={`${partner.name}-${index}`} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
-                    <span>{partner.name}</span>
+                    <span>{partner.name}{partner.document ? ` · ${partner.document}` : ''}</span>
                     <span className="flex items-center gap-2 text-slate-500">{partner.share}% <button type="button" disabled={submitting || branchFieldsDisabled} onClick={() => removePartner(index)} className="text-red-500 disabled:opacity-50">×</button></span>
                   </li>
                 ))}

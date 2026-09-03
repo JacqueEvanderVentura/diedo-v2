@@ -1278,6 +1278,18 @@ def test_checkout_pricing_and_receivable_lock_guards() -> None:
         )
 
     service._require_payment_method = lambda *_args: card  # type: ignore[method-assign]
+    service._price_lines = lambda **_kwargs: (  # type: ignore[method-assign]
+        SimpleNamespace(total=Decimal("10")),
+        (SimpleNamespace(catalog=SimpleNamespace(item=SimpleNamespace(item_type="membership"))),),
+    )
+    with pytest.raises(InvalidOperationError, match="vender una membresía"):
+        service.checkout(
+            principal=principal,
+            grant=grant,
+            values=values,
+            idempotency_key="checkout-membership-customer",
+        )
+
     service._price_lines = lambda **_kwargs: (SimpleNamespace(total=Decimal("10")), ())  # type: ignore[method-assign]
     with pytest.raises(ResourceNotFoundError, match="workspace"):
         service.checkout(

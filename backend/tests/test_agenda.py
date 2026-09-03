@@ -10,6 +10,7 @@ from app.core.security import hash_password
 from app.db.models import (
     AccessScope,
     Appointment,
+    AuditEntry,
     Branch,
     Permission,
     PlatformUser,
@@ -614,6 +615,120 @@ def test_agenda_financial_changes_require_receivables_permission_and_cancel_debt
     )
     assert receivable_response.status_code == 200, receivable_response.text
     assert receivable_response.json()["status"] == "cancelled"
+
+
+@pytest.mark.integration
+def test_appointment_delete_requires_permission_soft_deletes_and_frees_slot(
+    client: TestClient,
+) -> None:
+    owner_headers, context = _bootstrap_and_login(client)
+    workspace_id = UUID(str(context["workspaceId"]))
+    branch_id = UUID(str(context["visibleBranches"][0]["id"]))
+    resources_response = client.get(
+        "/api/v1/appointment-resources",
+        headers=owner_headers,
+        params={"branchId": str(branch_id)},
+    )
+    assert resources_response.status_code == 200, resources_response.text
+    resource_id = resources_response.json()["items"][0]["id"]
+    suffix = uuid7().hex[-12:]
+    scheduled_date = date.today() + timedelta(days=50_000 + uuid7().int % 10_000)
+    payload = _appointment_payload(
+        branch_id=str(branch_id),
+        resource_id=resource_id,
+        scheduled_date=scheduled_date,
+        scheduled_time="14:00",
+        customer_name=f"Cita eliminable {suffix}",
+    )
+    idempotency_key = f"agenda-soft-delete-{suffix}"
+    created_response = client.post(
+        "/api/v1/appointments",
+        headers={**owner_headers, "Idempotency-Key": idempotency_key},
+        json=payload,
+    )
+    assert created_response.status_code == 201, created_response.text
+    appointment = created_response.json()["items"][0]
+
+    manager_email = _create_branch_agenda_manager(workspace_id, branch_id)
+    manager_headers = _login_as_agenda_manager(client, manager_email)
+    forbidden = client.delete(
+        f"/api/v1/appointments/{appointment['id']}",
+        headers=manager_headers,
+        params={"version": appointment["version"]},
+    )
+    assert forbidden.status_code == 403, forbidden.text
+
+    stale = client.delete(
+        f"/api/v1/appointments/{appointment['id']}",
+        headers=owner_headers,
+        params={"version": appointment["version"] + 1},
+    )
+    assert stale.status_code == 409, stale.text
+    assert stale.json()["parameter"] == "version"
+
+    deleted = client.delete(
+        f"/api/v1/appointments/{appointment['id']}",
+        headers=owner_headers,
+        params={"version": appointment["version"]},
+    )
+    assert deleted.status_code == 204, deleted.text
+    assert deleted.content == b""
+
+    listed = client.get(
+        "/api/v1/appointments",
+        headers=owner_headers,
+        params={
+            "branchId": str(branch_id),
+            "dateFrom": scheduled_date.isoformat(),
+            "dateTo": scheduled_date.isoformat(),
+            "search": suffix,
+        },
+    )
+    assert listed.status_code == 200, listed.text
+    assert listed.json()["items"] == []
+
+    missing_update = client.patch(
+        f"/api/v1/appointments/{appointment['id']}",
+        headers=owner_headers,
+        json={"version": appointment["version"] + 1, "status": "completed"},
+    )
+    assert missing_update.status_code == 404, missing_update.text
+
+    repeated_key = client.post(
+        "/api/v1/appointments",
+        headers={**owner_headers, "Idempotency-Key": idempotency_key},
+        json=payload,
+    )
+    assert repeated_key.status_code == 409, repeated_key.text
+    assert repeated_key.json()["parameter"] == "Idempotency-Key"
+
+    with session_scope() as session:
+        stored = session.scalar(
+            select(Appointment).where(Appointment.id == UUID(appointment["id"]))
+        )
+        audit = session.scalar(
+            select(AuditEntry).where(
+                AuditEntry.workspace_id == workspace_id,
+                AuditEntry.target_id == UUID(appointment["id"]),
+                AuditEntry.action == "appointment.delete",
+            )
+        )
+        assert stored is not None
+        assert stored.record_status == "inactive"
+        assert stored.deactivated_at is not None
+        assert stored.status == "confirmed"
+        assert stored.version == appointment["version"] + 1
+        assert audit is not None
+
+    replacement = client.post(
+        "/api/v1/appointments",
+        headers={
+            **owner_headers,
+            "Idempotency-Key": f"agenda-soft-delete-replacement-{suffix}",
+        },
+        json={**payload, "customerName": f"Reemplazo {suffix}"},
+    )
+    assert replacement.status_code == 201, replacement.text
 
 
 @pytest.mark.integration

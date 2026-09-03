@@ -18,9 +18,11 @@ from app.schemas.common import ErrorResponse
 from app.schemas.incidents import (
     CreateIncidentCommentRequest,
     CreateIncidentRequest,
+    EmployeeIncidentKind,
     IncidentActivityResponse,
     IncidentActivityType,
     IncidentAttachmentResponse,
+    IncidentEmployeeResponse,
     IncidentPersonResponse,
     IncidentPriority,
     IncidentResponse,
@@ -72,6 +74,12 @@ def _incident_response(record: IncidentRecord) -> IncidentResponse:
         status=cast(IncidentStatus, incident.status),
         branch_id=incident.branch_id,
         activo_id=incident.asset_id,
+        employee=(
+            IncidentEmployeeResponse(id=incident.employee_id, name=record.employee_name)
+            if incident.employee_id is not None and record.employee_name is not None
+            else None
+        ),
+        employee_incident_kind=cast(EmployeeIncidentKind | None, incident.employee_incident_kind),
         reporter=IncidentPersonResponse(
             id=incident.reported_by_membership_id,
             name=incident.reported_by_name,

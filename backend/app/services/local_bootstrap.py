@@ -173,6 +173,14 @@ _PERMISSIONS = (
         10,
     ),
     (
+        "report.read",
+        "reporting",
+        "read",
+        "Ver reportes",
+        "View consolidated operational and financial reports.",
+        10,
+    ),
+    (
         "finance.manage",
         "finance",
         "manage",
@@ -291,6 +299,14 @@ _PERMISSIONS = (
         "Gestionar citas",
         "Create, reschedule, update, and cancel appointments.",
         20,
+    ),
+    (
+        "appointment.delete",
+        "appointments",
+        "delete",
+        "Eliminar citas",
+        "Deactivate appointments while preserving their audit history.",
+        30,
     ),
     (
         "inventory.read",
@@ -484,9 +500,25 @@ _TERMINAL_POS_PERMISSION_CODES = tuple(
 
 _ROLE_PERMISSION_TEMPLATES = {
     "workspace_admin": _TERMINAL_POS_PERMISSION_CODES
-    + ("dashboard.read", "crm.read", "crm.manage", "finance.read", "finance.manage"),
+    + (
+        "dashboard.read",
+        "crm.read",
+        "crm.manage",
+        "finance.read",
+        "finance.manage",
+        "report.read",
+    ),
     "manager": _TERMINAL_POS_PERMISSION_CODES
-    + ("dashboard.read", "crm.read", "crm.manage", "finance.read", "finance.manage"),
+    + (
+        "dashboard.read",
+        "crm.read",
+        "crm.manage",
+        "finance.read",
+        "finance.manage",
+        "membership.read",
+        "membership.manage",
+        "report.read",
+    ),
     "cashier": (
         "dashboard.read",
         "sales.read",
@@ -503,6 +535,7 @@ _ROLE_PERMISSION_TEMPLATES = {
         "crm.read",
         "crm.manage",
         "finance.read",
+        "report.read",
         "sales.read",
         "pos.read",
         "pos.cash.read",
@@ -566,6 +599,7 @@ _MODULES: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
     ("inventory", "Inventory and assets", "optional", "available", ("foundation", "catalog")),
     ("incidents", "Incidents", "optional", "available", ("foundation",)),
     ("finance", "Finanzas", "optional", "available", ("foundation",)),
+    ("reporting", "Reportes", "optional", "available", ("foundation",)),
     ("accounting", "Accounting", "optional", "planned", ("sales", "purchasing")),
     ("hr", "Human resources", "optional", "available", ("foundation",)),
     ("payroll", "Payroll", "optional", "planned", ("hr", "accounting")),
@@ -793,6 +827,7 @@ def bootstrap_local_foundation(
         "purchasing",
         "incidents",
         "finance",
+        "reporting",
     )
     for module_code in enabled_modules:
         module_id = session.scalar(

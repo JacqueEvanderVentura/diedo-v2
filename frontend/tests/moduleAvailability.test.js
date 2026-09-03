@@ -9,7 +9,7 @@ import {
 
 describe('moduleAvailability', () => {
   it('limita por entitlement solamente los módulos conectados a la API', () => {
-    const enabled = new Set(['foundation', 'iam', 'catalog', 'crm', 'hr', 'appointments', 'purchasing', 'incidents', 'sales', 'inventory', 'pos', 'finance'])
+    const enabled = new Set(['foundation', 'iam', 'catalog', 'crm', 'hr', 'appointments', 'purchasing', 'incidents', 'sales', 'inventory', 'pos', 'finance', 'reporting'])
 
     expect(API_CONNECTED_MODULES).toEqual([
       'foundation',
@@ -24,6 +24,7 @@ describe('moduleAvailability', () => {
       'sales',
       'pos',
       'finance',
+      'reporting',
     ])
     expect(isApiConnectedModule('catalog')).toBe(true)
     expect(isModuleAvailable('catalog', enabled)).toBe(true)
@@ -33,10 +34,7 @@ describe('moduleAvailability', () => {
   it('mantiene disponibles los módulos frontend durante la migración progresiva', () => {
     const enabled = new Set(['foundation', 'iam', 'catalog'])
 
-    for (const moduleCode of [
-      'accounting',
-      'reporting',
-    ]) {
+    for (const moduleCode of ['accounting']) {
       expect(isModuleAvailable(moduleCode, enabled)).toBe(true)
     }
   })
@@ -119,5 +117,9 @@ describe('moduleAvailability', () => {
     })
     expect(routeRequirement('/crm/pipeline')).toBeNull()
     expect(routeRequirement('/finanzas')).toEqual({ module: 'finance', permission: 'finance.read' })
+    expect(routeRequirement('/reportes/generales')).toEqual({
+      module: 'reporting',
+      permission: 'report.read',
+    })
   })
 })

@@ -1,4 +1,4 @@
-const ATTENDED_STATUSES = new Set(['completada', 'asistio', 'confirmada'])
+const ATTENDED_STATUSES = new Set(['completada', 'asistio'])
 
 export function computeSupplyUsageKpis({ movements = [], appointments = [], supplies = [], employees = [] }) {
   const supplyIds = new Set(supplies.map((s) => s.id))

@@ -92,7 +92,10 @@ class AgendaRepository:
         sort_by: str,
         sort_direction: str,
     ) -> AppointmentListResult:
-        filters = [Appointment.workspace_id == workspace_id]
+        filters = [
+            Appointment.workspace_id == workspace_id,
+            Appointment.record_status == "active",
+        ]
         if allowed_branch_ids is not None:
             filters.append(Appointment.branch_id.in_(allowed_branch_ids))
         if branch_id is not None:
@@ -147,6 +150,7 @@ class AgendaRepository:
         statement = select(Appointment).where(
             Appointment.workspace_id == workspace_id,
             Appointment.id == appointment_id,
+            Appointment.record_status == "active",
         )
         if allowed_branch_ids is not None:
             statement = statement.where(Appointment.branch_id.in_(allowed_branch_ids))
@@ -163,6 +167,7 @@ class AgendaRepository:
             self._record_statement().where(
                 Appointment.workspace_id == workspace_id,
                 Appointment.id.in_(appointment_ids),
+                Appointment.record_status == "active",
             )
         ).all()
         by_id = {record.appointment.id: record for record in self._records_from_rows(rows)}
@@ -309,6 +314,7 @@ class AgendaRepository:
         statement = select(Appointment).where(
             Appointment.workspace_id == workspace_id,
             Appointment.branch_id == branch_id,
+            Appointment.record_status == "active",
             Appointment.status.in_(ACTIVE_APPOINTMENT_STATUSES),
             Appointment.starts_at < ends_at,
             Appointment.ends_at > starts_at,

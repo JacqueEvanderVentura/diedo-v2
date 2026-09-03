@@ -4,7 +4,7 @@ const ready = {
   status: 'ready',
   database: 'ok',
   schemaStatus: 'compatible',
-  schemaRevision: '20260829_0006',
+  schemaRevision: '20260903_0017',
 }
 
 const me = {
@@ -65,6 +65,7 @@ const me = {
     'employee.schedule.manage',
     'appointment.read',
     'appointment.manage',
+    'appointment.delete',
   ],
   workspacePermissionCodes: [
     'workspace.read',
@@ -84,6 +85,7 @@ const me = {
     'employee.schedule.manage',
     'appointment.read',
     'appointment.manage',
+    'appointment.delete',
   ],
   enabledModules: ['foundation', 'iam', 'catalog', 'crm', 'hr', 'appointments'],
 }
@@ -126,6 +128,46 @@ const appointmentService = {
   updatedAt: '2026-08-29T12:00:00Z',
 }
 
+const managedAppointment = {
+  id: '01900000-0000-7000-8000-000000000030',
+  branchId: me.visibleBranches[0].id,
+  resource: {
+    id: '01900000-0000-7000-8000-000000000020',
+    branchId: me.visibleBranches[0].id,
+    code: 'CAB-1',
+    name: 'Cabina 1',
+    resourceType: 'room',
+    status: 'active',
+    version: 1,
+  },
+  customer: null,
+  employee: null,
+  service: { id: appointmentService.id, name: appointmentService.name },
+  date: '2026-09-10',
+  time: '14:00',
+  duration: 60,
+  customerName: 'Cliente Agenda E2E',
+  customerPhone: '8095550101',
+  serviceName: appointmentService.name,
+  price: 1500,
+  status: 'pending',
+  notes: null,
+  pendingPayment: false,
+  pendingAmount: 0,
+  firstTime: false,
+  freeTrial: false,
+  reminderSent: true,
+  source: 'staff',
+  recurrence: 'none',
+  repeatCount: 1,
+  createdBy: 'Alex API',
+  updatedBy: 'Alex API',
+  createdAt: '2026-09-03T12:00:00Z',
+  updatedAt: '2026-09-03T12:00:00Z',
+  version: 1,
+  history: [],
+}
+
 const permissionMatrix = {
   roles: [
     { id: adminRoleId, code: 'workspace_admin', name: 'Administrador', version: 3, isSystem: true, permissionCount: 2 },
@@ -166,7 +208,9 @@ async function mockOnline(page, {
   appointmentCreateStatus = 201,
   catalogItems = [appointmentService],
   resourcesByBranch,
+  appointmentItems = [],
 } = {}) {
+  let appointmentState = appointmentItems.map((appointment) => ({ ...appointment }))
   await page.route('**/api-backend/**', async (route) => {
     const request = route.request()
     const requestUrl = new URL(request.url())
@@ -264,7 +308,13 @@ async function mockOnline(page, {
     if (pathname.endsWith('/api/v1/appointments') && request.method() === 'GET') {
       return route.fulfill({
         status: 200,
-        json: { items: [], page: 1, pageSize: 200, totalItems: 0, totalPages: 0 },
+        json: {
+          items: appointmentState,
+          page: 1,
+          pageSize: 200,
+          totalItems: appointmentState.length,
+          totalPages: appointmentState.length ? 1 : 0,
+        },
       })
     }
     if (pathname.endsWith('/api/v1/appointments') && request.method() === 'POST') {
@@ -284,6 +334,40 @@ async function mockOnline(page, {
           ? { items: [] }
           : { message: 'Ese horario ya está ocupado por otra cita.', parameter: 'time' },
       })
+    }
+    const appointmentMatch = pathname.match(/\/api\/v1\/appointments\/([^/]+)$/)
+    if (appointmentMatch && request.method() === 'PATCH') {
+      const payload = request.postDataJSON()
+      const current = appointmentState.find((appointment) => appointment.id === appointmentMatch[1])
+      if (!current) return route.fulfill({ status: 404, json: { message: 'La cita no existe.' } })
+      const updated = {
+        ...current,
+        status: payload.status ?? current.status,
+        version: current.version + 1,
+        updatedAt: '2026-09-03T12:05:00Z',
+      }
+      appointmentState = appointmentState.map((appointment) => (
+        appointment.id === updated.id ? updated : appointment
+      ))
+      if (metrics) {
+        metrics.appointmentPatches = [
+          ...(metrics.appointmentPatches || []),
+          { id: appointmentMatch[1], body: payload },
+        ]
+      }
+      return route.fulfill({ status: 200, json: updated })
+    }
+    if (appointmentMatch && request.method() === 'DELETE') {
+      if (metrics) {
+        metrics.appointmentDeletes = [
+          ...(metrics.appointmentDeletes || []),
+          { id: appointmentMatch[1], version: requestUrl.searchParams.get('version') },
+        ]
+      }
+      appointmentState = appointmentState.filter(
+        (appointment) => appointment.id !== appointmentMatch[1]
+      )
+      return route.fulfill({ status: 204, body: '' })
     }
     return route.fulfill({ status: 404, json: { message: 'Mock no configurado' } })
   })
@@ -390,6 +474,61 @@ test('Agenda filtra servicios por sucursal y bloquea sucursales sin cabinas', as
   await page.getByTestId('appointment-field-service').click()
   await expect(page.getByRole('option', { name: /Servicio exclusivo Centro/ })).toBeVisible()
   await expect(page.getByRole('option', { name: /Consulta terapéutica/ })).toHaveCount(0)
+})
+
+test('Gestión de citas edita el estado en línea y confirma la eliminación lógica', async ({ page }) => {
+  const metrics = { appointmentPatches: [], appointmentDeletes: [] }
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await mockOnline(page, { metrics, appointmentItems: [managedAppointment] })
+  await page.goto('/agenda/gestion')
+
+  const appointmentRow = page.getByTestId(`gestion-row-${managedAppointment.id}`)
+  await expect(appointmentRow).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Precio' })).toHaveCount(0)
+
+  await appointmentRow.getByTestId(`gestion-status-${managedAppointment.id}`).click()
+  await page.getByRole('option', { name: 'Completada' }).click()
+  await expect.poll(() => metrics.appointmentPatches).toHaveLength(1)
+  expect(metrics.appointmentPatches[0]).toEqual({
+    id: managedAppointment.id,
+    body: { status: 'completed', version: 1 },
+  })
+  await expect(appointmentRow.getByTestId(`gestion-status-${managedAppointment.id}`)).toContainText('Completada')
+
+  await appointmentRow.getByTestId(`gestion-delete-${managedAppointment.id}`).click()
+  await expect(page.getByTestId('delete-appointment-modal')).toBeVisible()
+  expect(metrics.appointmentDeletes).toHaveLength(0)
+  await page.getByTestId('delete-appointment-cancel').click()
+  await expect(page.getByTestId('delete-appointment-modal')).toHaveCount(0)
+  expect(metrics.appointmentDeletes).toHaveLength(0)
+
+  await appointmentRow.getByTestId(`gestion-delete-${managedAppointment.id}`).click()
+  await page.getByTestId('delete-appointment-confirm').click()
+  await expect.poll(() => metrics.appointmentDeletes).toHaveLength(1)
+  expect(metrics.appointmentDeletes[0]).toEqual({
+    id: managedAppointment.id,
+    version: '2',
+  })
+  await expect(page.getByTestId(`gestion-row-${managedAppointment.id}`)).toHaveCount(0)
+})
+
+test('Gestión de citas oculta eliminar sin el permiso dedicado', async ({ page }) => {
+  const scheduler = {
+    ...me,
+    effectivePermissionCodes: me.effectivePermissionCodes.filter(
+      (permission) => permission !== 'appointment.delete'
+    ),
+    workspacePermissionCodes: me.workspacePermissionCodes.filter(
+      (permission) => permission !== 'appointment.delete'
+    ),
+  }
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await mockOnline(page, { currentUser: scheduler, appointmentItems: [managedAppointment] })
+  await page.goto('/agenda/gestion')
+
+  const appointmentRow = page.getByTestId(`gestion-row-${managedAppointment.id}`)
+  await expect(appointmentRow.getByTestId(`gestion-status-${managedAppointment.id}`)).toBeVisible()
+  await expect(appointmentRow.getByTestId(`gestion-delete-${managedAppointment.id}`)).toHaveCount(0)
 })
 
 test('refresh 401 no inventa usuario y redirige al login', async ({ page }) => {

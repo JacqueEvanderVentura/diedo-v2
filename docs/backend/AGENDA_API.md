@@ -9,13 +9,14 @@ transaccional en PostgreSQL. Todos los recursos y citas pertenecen a un `workspa
 - `appointment_resources`: cabinas u otros recursos exclusivos de una sucursal. Cada sucursal
   recibe las cinco cabinas del flujo actual al crearse.
 - `appointments`: horario local y zona horaria de la sucursal, ventana UTC, snapshots de cliente,
-  servicio y precio, empleado/recurso, estado, recurrencia, versión optimista e idempotencia.
+  servicio y precio, empleado/recurso, estado operativo, estado activo/inactivo del registro,
+  recurrencia, versión optimista e idempotencia.
 - `appointment_events`: historial append-only que alimenta la auditoría de Gestión de citas.
 - `audit_entries`: además recibe el evento resumido para la auditoría global del ERP.
 
 Los estados externos son `pending`, `confirmed`, `completed`, `attended`, `no_show`, `cancelled`,
-`delayed` y `rescheduled`. Cancelar es una actualización de estado; no se elimina una cita y no se
-pierde trazabilidad.
+`delayed` y `rescheduled`. Cancelar sigue siendo una actualización operativa. Eliminar es una
+desactivación independiente: conserva el estado que tenía la cita y toda su trazabilidad.
 
 Cuando `serviceId` está presente debe identificar un ítem `service` activo y asignado a la misma
 sucursal. El catálogo expone su `itemType` y las sucursales asignadas para que el cliente pueda
@@ -42,12 +43,14 @@ el otro recibe `409`:
 
 Citas paralelas sí son válidas cuando usan cabinas y empleados diferentes. `cancelled`,
 `completed`, `attended` y `no_show` dejan de bloquear la ventana. Una serie recurrente se confirma
-en una sola transacción: si una ocurrencia tiene conflicto, no se crea ninguna.
+en una sola transacción: si una ocurrencia tiene conflicto, no se crea ninguna. Una cita
+desactivada tampoco bloquea el horario, aunque su último estado operativo fuera activo.
 
 ## Endpoints
 
-Todos requieren Bearer token. Las lecturas usan `appointment.read` y las mutaciones
-`appointment.manage`.
+Todos requieren Bearer token. Las lecturas usan `appointment.read`; crear, editar y cambiar estado
+usan `appointment.manage`; eliminar requiere el permiso separado `appointment.delete`, asignado al
+rol administrador del workspace por defecto.
 
 ### Recursos
 
@@ -69,7 +72,7 @@ La respuesta lleva `Cache-Control: no-store`.
 `POST /api/v1/appointments`
 
 Requiere `Idempotency-Key` de 8 a 128 caracteres. El mismo key y payload devuelve la creación
-original; reutilizar el key con otros datos devuelve `409`. La respuesta siempre es
+original; reutilizar el key con otros datos o con una cita ya eliminada devuelve `409`. La respuesta siempre es
 `{ "items": [...] }`, incluso para una cita única.
 
 ```json
@@ -99,6 +102,22 @@ original; reutilizar el key con otros datos devuelve `409`. La respuesta siempre
 }
 ```
 
+Gestión de citas puede enviar únicamente `status` y `version` para cambiar el estado desde el
+selector de la tabla; el formulario completo conserva el mismo endpoint.
+
+### Eliminar una cita
+
+`DELETE /api/v1/appointments/{appointmentId}?version={version}`
+
+Devuelve `204 No Content`. La operación requiere `appointment.delete`, bloquea el registro y valida
+su versión dentro de la transacción. La cita pasa a estado interno `inactive`, deja de aparecer en
+Calendario, Gestión, Dashboard y métricas operativas, conserva su historial y libera la cabina y el
+empleado para una nueva reserva. No cambia su estado operativo a `cancelled`.
+
+Si la cita tiene una cuenta por cobrar pendiente, también se exige `pos.receivables.manage`; una
+cuenta sin abonos se cancela junto con la desactivación. Si ya tiene cobros parciales, la operación
+devuelve `409` para no perder consistencia financiera.
+
 Para una serie, `recurrence` puede ser `weekly` o `monthly` y `repeatCount` debe estar entre 2 y
 12. Las fechas y horas se interpretan en la zona horaria actual de la sucursal; esa zona queda como
 snapshot de la cita.
@@ -122,5 +141,5 @@ vacaciones, jornada y solapamiento. Para cancelar:
 
 El frontend hidrata desde la API al entrar, consulta el rango visible del calendario, vuelve a
 leer inmediatamente después de cada mutación y hace polling mientras Calendario o Gestión están
-activos. La validación del navegador sirve para orientar; el POST/PATCH y las restricciones de
+activos. La validación del navegador sirve para orientar; el POST/PATCH/DELETE y las restricciones de
 PostgreSQL son siempre la autoridad final.

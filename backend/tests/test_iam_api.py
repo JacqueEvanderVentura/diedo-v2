@@ -279,7 +279,7 @@ def test_users_roles_permissions_and_branch_isolation(client: TestClient) -> Non
     matrix_response = client.get("/api/v1/permissions/matrix", headers=admin_headers)
     assert matrix_response.status_code == 200
     matrix = matrix_response.json()
-    assert matrix["totalPermissions"] == 58
+    assert matrix["totalPermissions"] == 60
     permission_ids = {
         permission["code"]: permission["id"]
         for module in matrix["modules"]
@@ -291,9 +291,9 @@ def test_users_roles_permissions_and_branch_isolation(client: TestClient) -> Non
     role_summary_response = client.get("/api/v1/roles/summary", headers=admin_headers)
     assert role_summary_response.status_code == 200
     role_summary = role_summary_response.json()
-    assert role_summary["totalPermissions"] == 58
+    assert role_summary["totalPermissions"] == 60
     role_cards = {role["code"]: role for role in role_summary["roles"]}
-    assert role_cards["workspace_admin"]["permissionCount"] == 58
+    assert role_cards["workspace_admin"]["permissionCount"] == 60
     assert role_cards["workspace_admin"]["permissionPercentage"] == 100
     assert role_cards["manager"]["permissionCount"] >= 0
     assert 0 <= role_cards["manager"]["permissionPercentage"] <= 100

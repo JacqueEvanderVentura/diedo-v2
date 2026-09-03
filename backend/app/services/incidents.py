@@ -145,6 +145,29 @@ class IncidentService:
                 "El activo no existe, está dado de baja o no pertenece a la sucursal.",
                 "activoId",
             )
+        employee_id = cast(UUID | None, values.get("employee_id"))
+        employee_incident_kind = cast(str | None, values.get("employee_incident_kind"))
+        if incident_type == "personal":
+            if employee_id is None or employee_incident_kind is None:
+                raise InvalidOperationError(
+                    "Las incidencias de personal requieren empleado y categoría laboral.",
+                    "employeeId",
+                )
+            if (
+                self._repository.active_employee_in_branch(
+                    grant.workspace_id, branch_id, employee_id
+                )
+                is None
+            ):
+                raise ResourceNotFoundError(
+                    "El empleado no existe, está inactivo o no pertenece a la sucursal.",
+                    "employeeId",
+                )
+        elif employee_id is not None or employee_incident_kind is not None:
+            raise InvalidOperationError(
+                "Solo una incidencia de personal puede relacionar un empleado.",
+                "employeeId",
+            )
         participant_ids = set(cast(list[UUID], values.pop("participant_ids")))
         participant_names = self._repository.active_participant_names(
             grant.workspace_id, participant_ids

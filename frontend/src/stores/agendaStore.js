@@ -298,32 +298,63 @@ export const useAgendaStore = create((set, get) => ({
     if (!current) return null
     const session = useSessionStore.getState()
     if (session.status === 'online') {
-      const cancellation = getAppointmentReceivablePolicy({
+      if (!session.hasPermission('appointment.delete')) {
+        throw new Error('No tienes permiso para eliminar citas.')
+      }
+      const deletion = getAppointmentReceivablePolicy({
         appointment: current,
         online: true,
         canManageReceivables: session.hasPermission('pos.receivables.manage'),
       })
-      if (!cancellation.canCancel) throw new Error(cancellation.cancelReason)
+      if (!deletion.canDelete) throw new Error(deletion.deleteReason)
     }
     if (session.status === 'demo') {
-      const cancelled = updateDemoAppointment(current, { status: 'cancelada' })
-      set((state) => ({ appointments: replaceAppointment(state.appointments, cancelled) }))
+      set((state) => ({
+        appointments: state.appointments.filter((appointment) => appointment.id !== id),
+      }))
       removeAppointmentReceivable(id)
-      return cancelled
+      return current
     }
     try {
-      const cancelled = await appointmentsGateway.mutate('cancelAppointment', id, current.version)
-      set((state) => ({ appointments: replaceAppointment(state.appointments, cancelled) }))
+      await appointmentsGateway.mutate('deleteAppointment', id, current.version)
+      set((state) => ({
+        appointments: state.appointments.filter((appointment) => appointment.id !== id),
+      }))
       removeAppointmentReceivable(id)
-      await get().hydrateAppointments({ force: true, params: mutationScope(cancelled) }).catch(() => {})
-      return cancelled
+      await get().hydrateAppointments({ force: true, params: mutationScope(current) }).catch(() => {})
+      return current
     } catch (error) {
       await get().hydrateAppointments({ force: true, params: mutationScope(current) }).catch(() => {})
       throw error
     }
   },
 
-  setStatus: async (id, status) => get().updateAppointment(id, { status }),
+  setStatus: async (id, status) => {
+    const current = get().appointments.find((appointment) => appointment.id === id)
+    if (!current) throw new Error('Cita no encontrada.')
+    if (current.status === status) return current
+    if (useSessionStore.getState().status === 'demo') {
+      const updated = updateDemoAppointment(current, { status })
+      set((state) => ({ appointments: replaceAppointment(state.appointments, updated) }))
+      syncAppointmentReceivable(updated)
+      return updated
+    }
+    try {
+      const updated = await appointmentsGateway.mutate(
+        'updateAppointmentStatus',
+        id,
+        status,
+        current.version
+      )
+      set((state) => ({ appointments: replaceAppointment(state.appointments, updated) }))
+      syncAppointmentReceivable(updated)
+      await get().hydrateAppointments({ force: true, params: mutationScope(updated) }).catch(() => {})
+      return updated
+    } catch (error) {
+      await get().hydrateAppointments({ force: true, params: mutationScope(current) }).catch(() => {})
+      throw error
+    }
+  },
 
   getByDate: (dateKey) => get().appointments
     .filter((appointment) => appointment.date === dateKey)

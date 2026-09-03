@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useId } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { X } from 'lucide-react'
@@ -6,6 +6,7 @@ import { modalBackdropTransition, modalPanelTransition } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
 export function Modal({ open, onClose, title, children, testId, wide = false, xlarge = false, bodyClassName }) {
+  const titleId = useId()
   useEffect(() => {
     if (!open) return
     const onKey = (e) => {
@@ -39,6 +40,9 @@ export function Modal({ open, onClose, title, children, testId, wide = false, xl
             animate={modalPanelTransition.animate}
             exit={modalPanelTransition.exit}
             transition={modalPanelTransition.transition}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
             data-testid={testId}
             className={cn(
               'relative z-10 w-full rounded-2xl border border-slate-100 bg-white shadow-xl',
@@ -46,9 +50,11 @@ export function Modal({ open, onClose, title, children, testId, wide = false, xl
             )}
           >
             <div className="flex items-center justify-between border-b border-slate-100 p-5">
-              <div className="min-w-0 text-lg font-semibold tracking-tight text-slate-900">{title}</div>
+              <div id={titleId} className="min-w-0 text-lg font-semibold tracking-tight text-slate-900">{title}</div>
               <button
+                type="button"
                 onClick={onClose}
+                aria-label="Cerrar modal"
                 data-testid="modal-close"
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
               >

@@ -189,6 +189,7 @@ def seed_demo_data(
         foundation.workspace_id,
         branches,
     )
+    _seed_employees(session, bundle, foundation.workspace_id, branches)
     incident_counts = _seed_incidents(
         session,
         bundle,
@@ -197,8 +198,13 @@ def seed_demo_data(
     )
     _seed_customers(session, bundle, foundation.workspace_id, branches)
     crm_counts = _seed_crm(session, bundle, foundation.workspace_id, branches)
-    _seed_employees(session, bundle, foundation.workspace_id, branches)
     appointment_count = _seed_agenda(
+        session,
+        bundle,
+        foundation.workspace_id,
+        branches,
+    )
+    usage_movement_count = _seed_inventory_usage_movements(
         session,
         bundle,
         foundation.workspace_id,
@@ -246,7 +252,7 @@ def seed_demo_data(
         inventory_profile_count=inventory_counts[1],
         inventory_stock_balance_count=inventory_counts[2],
         inventory_asset_count=inventory_counts[3],
-        inventory_movement_count=inventory_counts[4],
+        inventory_movement_count=inventory_counts[4] + usage_movement_count,
         purchasing_supplier_count=len(bundle.purchasing.suppliers),
         purchase_request_count=len(bundle.purchasing.requests),
         incident_count=incident_counts[0],
@@ -1436,6 +1442,31 @@ def _seed_incidents(
             )
         if asset is not None and asset.branch_id != branch.id:
             raise RuntimeError("Demo incident asset must belong to its branch.")
+        employee = (
+            session.get(
+                Employee,
+                _stable_id(
+                    bundle.manifest.seed_version,
+                    "employee",
+                    fixture.employee_seed_key,
+                ),
+            )
+            if fixture.employee_seed_key
+            else None
+        )
+        if fixture.employee_seed_key and employee is None:
+            raise RuntimeError("Demo incident references an unknown employee.")
+        if employee is not None:
+            assignment = session.scalar(
+                select(EmployeeBranchAssignment).where(
+                    EmployeeBranchAssignment.workspace_id == workspace_id,
+                    EmployeeBranchAssignment.employee_id == employee.id,
+                    EmployeeBranchAssignment.branch_id == branch.id,
+                    EmployeeBranchAssignment.status == "active",
+                )
+            )
+            if assignment is None:
+                raise RuntimeError("Demo incident employee is not assigned to its branch.")
 
         payload = fixture.model_dump(mode="json")
         incident_id = _stable_id(bundle.manifest.seed_version, "incident", fixture.seed_key)
@@ -1454,6 +1485,8 @@ def _seed_incidents(
             "workspace_id": workspace_id,
             "branch_id": branch.id,
             "asset_id": asset.id if asset is not None else None,
+            "employee_id": employee.id if employee is not None else None,
+            "employee_incident_kind": fixture.employee_incident_kind,
             "reported_by_membership_id": reporter[1].id,
             "reported_by_name": reporter[0].display_name,
             "code": fixture.code,
@@ -1667,9 +1700,11 @@ def _validate_demo_inventory_profile(
     if unknown_branches:
         unknown = ", ".join(sorted(unknown_branches))
         raise RuntimeError(f"Demo inventory profile references unknown branches: {unknown}.")
-    if item_type == "service":
+    if item_type in {"service", "membership"}:
         if fixture.sale_price is None or fixture.unit_cost is not None or fixture.stock_by_branch:
-            raise RuntimeError("Demo services require a sale price and cannot control stock.")
+            raise RuntimeError(
+                "Demo services and memberships require a sale price and cannot control stock."
+            )
     elif item_type == "product":
         if fixture.sale_price is None or fixture.unit_cost is None:
             raise RuntimeError("Demo products require sale price and unit cost.")
@@ -1838,6 +1873,190 @@ def _seed_opening_movement(
         line.item_name = item.name
         line.item_sku = item.sku
         line.unit_symbol = unit.symbol
+
+
+def _seed_inventory_usage_movements(
+    session: Session,
+    bundle: DemoBundle,
+    workspace_id: UUID,
+    branches: dict[str, Branch],
+) -> int:
+    if not bundle.inventory.usage_movements:
+        return 0
+    warehouses = _ensure_demo_warehouses(
+        session,
+        bundle.manifest.seed_version,
+        workspace_id,
+        branches,
+    )
+    for fixture in bundle.inventory.usage_movements:
+        branch = branches.get(fixture.branch_code)
+        if branch is None:
+            raise RuntimeError(
+                f"Demo usage movement references unknown branch {fixture.branch_code!r}."
+            )
+        employee = session.get(
+            Employee,
+            _stable_id(bundle.manifest.seed_version, "employee", fixture.employee_seed_key),
+        )
+        if employee is None:
+            raise RuntimeError("Demo usage movement references an unknown employee.")
+        assignment = session.scalar(
+            select(EmployeeBranchAssignment).where(
+                EmployeeBranchAssignment.workspace_id == workspace_id,
+                EmployeeBranchAssignment.employee_id == employee.id,
+                EmployeeBranchAssignment.branch_id == branch.id,
+                EmployeeBranchAssignment.status == "active",
+            )
+        )
+        if assignment is None:
+            raise RuntimeError("Demo usage employee is not assigned to the movement branch.")
+        appointment = None
+        if fixture.appointment_seed_key:
+            appointment = session.get(
+                Appointment,
+                _stable_id(
+                    bundle.manifest.seed_version,
+                    "appointment",
+                    fixture.appointment_seed_key,
+                ),
+            )
+            if (
+                appointment is None
+                or appointment.branch_id != branch.id
+                or appointment.employee_id != employee.id
+            ):
+                raise RuntimeError("Demo usage appointment must belong to the employee and branch.")
+        creator = session.get(
+            PlatformUser,
+            _stable_id(
+                bundle.manifest.seed_version,
+                "platform_user",
+                fixture.created_by_user_seed_key,
+            ),
+        )
+        if creator is None:
+            raise RuntimeError("Demo usage movement creator is missing.")
+
+        payload = fixture.model_dump(mode="json")
+        movement_id = _stable_id(
+            bundle.manifest.seed_version, "inventory_usage_movement", fixture.seed_key
+        )
+        movement = _registered_entity(
+            session,
+            workspace_id,
+            "inventory_usage_movement",
+            fixture.seed_key,
+            movement_id,
+            payload,
+            InventoryMovement,
+        )
+        movement_values = {
+            "workspace_id": workspace_id,
+            "branch_id": branch.id,
+            "warehouse_id": warehouses[fixture.branch_code].id,
+            "movement_type": "outbound",
+            "employee_id": employee.id,
+            "appointment_id": appointment.id if appointment else None,
+            "comment": fixture.comment,
+            "idempotency_key": (f"demo:{bundle.manifest.seed_version}:usage:{fixture.seed_key}"),
+            "request_fingerprint": _checksum(payload),
+            "created_by_platform_user_id": creator.id,
+            "created_at": fixture.created_at,
+        }
+        if movement is None:
+            movement = InventoryMovement(id=movement_id, **movement_values)
+            session.add(movement)
+            session.flush()
+            _register(
+                session,
+                workspace_id,
+                "inventory_usage_movement",
+                fixture.seed_key,
+                movement.id,
+                bundle.manifest.seed_version,
+                payload,
+            )
+        else:
+            for field, value in movement_values.items():
+                setattr(movement, field, value)
+
+        for line_fixture in fixture.lines:
+            item = session.get(
+                Item,
+                _stable_id(bundle.manifest.seed_version, "item", line_fixture.item_seed_key),
+            )
+            if item is None or item.item_type != "supply":
+                raise RuntimeError("Demo usage movements may only contain known supplies.")
+            balance = session.scalar(
+                select(InventoryStockBalance).where(
+                    InventoryStockBalance.workspace_id == workspace_id,
+                    InventoryStockBalance.warehouse_id == warehouses[fixture.branch_code].id,
+                    InventoryStockBalance.item_id == item.id,
+                )
+            )
+            profile = session.scalar(
+                select(InventoryItemProfile).where(
+                    InventoryItemProfile.workspace_id == workspace_id,
+                    InventoryItemProfile.item_id == item.id,
+                )
+            )
+            unit = session.get(UnitOfMeasure, item.unit_of_measure_id)
+            if balance is None or profile is None or unit is None:
+                raise RuntimeError("Demo usage supply inventory configuration is incomplete.")
+            before = balance.quantity
+            after = before - line_fixture.quantity
+            if after < 0:
+                raise RuntimeError("Demo usage movement would produce negative stock.")
+            balance.quantity = after
+
+            line_key = f"{fixture.seed_key}:{line_fixture.item_seed_key}"
+            line_payload = {
+                **line_fixture.model_dump(mode="json"),
+                "movementSeedKey": fixture.seed_key,
+                "quantityBefore": str(before),
+                "quantityAfter": str(after),
+            }
+            line_id = _stable_id(bundle.manifest.seed_version, "inventory_usage_line", line_key)
+            line = _registered_entity(
+                session,
+                workspace_id,
+                "inventory_usage_line",
+                line_key,
+                line_id,
+                line_payload,
+                InventoryMovementLine,
+            )
+            line_values = {
+                "workspace_id": workspace_id,
+                "movement_id": movement.id,
+                "item_id": item.id,
+                "quantity_delta": -line_fixture.quantity,
+                "quantity_before": before,
+                "quantity_after": after,
+                "unit_cost_snapshot": profile.unit_cost,
+                "item_name": item.name,
+                "item_sku": item.sku,
+                "unit_symbol": unit.symbol,
+            }
+            if line is None:
+                line = InventoryMovementLine(id=line_id, **line_values)
+                session.add(line)
+                session.flush()
+                _register(
+                    session,
+                    workspace_id,
+                    "inventory_usage_line",
+                    line_key,
+                    line.id,
+                    bundle.manifest.seed_version,
+                    line_payload,
+                )
+            else:
+                for field, value in line_values.items():
+                    setattr(line, field, value)
+    session.flush()
+    return len(bundle.inventory.usage_movements)
 
 
 def _seed_demo_assets(
@@ -3039,7 +3258,9 @@ def _seed_branches(
                 name=fixture.name,
                 status="active",
                 timezone=fixture.timezone,
-                configuration={},
+                configuration={
+                    "partners": [partner.model_dump(mode="json") for partner in fixture.partners]
+                },
             )
             session.add(branch)
             session.flush()
@@ -3057,6 +3278,10 @@ def _seed_branches(
             branch.name = fixture.name
             branch.timezone = fixture.timezone
             branch.status = "active"
+            branch.configuration = {
+                **(branch.configuration or {}),
+                "partners": [partner.model_dump(mode="json") for partner in fixture.partners],
+            }
         branches[branch.code] = branch
 
     for branch in branches.values():

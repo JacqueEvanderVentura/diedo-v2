@@ -202,6 +202,10 @@ FinanceManageGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("finance.manage")),
 ]
+ReportReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("report.read")),
+]
 CustomerReadGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("customer.read")),
@@ -273,4 +277,8 @@ AppointmentReadGrant = Annotated[
 AppointmentManageGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("appointment.manage")),
+]
+AppointmentDeleteGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("appointment.delete")),
 ]

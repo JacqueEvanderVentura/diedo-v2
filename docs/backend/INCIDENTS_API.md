@@ -21,6 +21,11 @@ as `404`, not as a cross-tenant or cross-branch existence signal.
 - `type`: `activo`, `infraestructura`, `personal`.
 - `priority`: `baja`, `media`, `alta`, `critica`.
 - `status`: `abierta`, `en_proceso`, `resuelta`, `cerrada`.
+- Una incidencia `personal` requiere `employeeId` y `employeeIncidentKind`; las categorías son
+  `ausencia`, `tardanza`, `amonestacion`, `licencia_medica` y `otro`. El empleado debe estar activo
+  y asignado a la sucursal de la incidencia.
+- Los demás tipos no pueden relacionar un empleado. Las vacaciones se mantienen en solicitudes de
+  RRHH para conservar una sola fuente de verdad.
 - New reports start as `abierta` and receive a workspace-local `INC-NNNN` code.
 - `activoId` is optional, but when present the type must be `activo`; the asset must be active and
   belong to the incident branch.
@@ -50,7 +55,8 @@ no-store`.
 
 Each incident includes the existing view fields (`code`, `title`, `description`, `type`, `priority`,
 `status`, `branchId`, `activoId`, `intervenientes`, `images`, `activity`, `createdAt`, `updatedAt`).
-It also exposes `reporter`, `attachments`, and `version`. `images` contains the same preview URLs
+It also exposes `employee`, `employeeIncidentKind`, `reporter`, `attachments`, and `version`.
+`images` contains the same preview URLs
 present in `attachments[].previewUrl`, so the UI adapter can continue producing the current array of
 image sources.
 
@@ -73,7 +79,7 @@ metadata, checksums, and preview URLs while moving only the binary storage adapt
 
 ## 6. Demo data
 
-The canonical `demo-data/v1/incidents.json` fixture contains six deterministic reports covering
+The canonical `demo-data/v1/incidents.json` fixture contains eight deterministic reports covering
 asset, infrastructure, and personnel incidents; open, in-progress, resolved, and closed states;
 branch/user/asset relationships; participants; and activity history. `INC-1188` includes a
 synthetic PNG evidence file whose bytes are persisted in `incident_attachments`.

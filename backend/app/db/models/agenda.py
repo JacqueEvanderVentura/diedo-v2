@@ -136,6 +136,15 @@ class Appointment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             "'cancelled', 'delayed', 'rescheduled')",
             name="status_values",
         ),
+        CheckConstraint(
+            "record_status IN ('active', 'inactive')",
+            name="record_status_values",
+        ),
+        CheckConstraint(
+            "(record_status = 'active' AND deactivated_at IS NULL) OR "
+            "(record_status = 'inactive' AND deactivated_at IS NOT NULL)",
+            name="deactivation_consistency",
+        ),
         CheckConstraint("source IN ('staff', 'self')", name="source_values"),
         CheckConstraint("recurrence IN ('none', 'weekly', 'monthly')", name="recurrence_values"),
         CheckConstraint("repeat_count >= 1 AND repeat_count <= 12", name="repeat_count_range"),
@@ -149,7 +158,10 @@ class Appointment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             ("branch_id", "="),
             ("resource_id", "="),
             ("scheduled_period", "&&"),
-            where=text("status IN ('pending', 'confirmed', 'delayed', 'rescheduled')"),
+            where=text(
+                "record_status = 'active' AND "
+                "status IN ('pending', 'confirmed', 'delayed', 'rescheduled')"
+            ),
             using="gist",
             name="excl_appointments_resource_period",
         ),
@@ -160,6 +172,7 @@ class Appointment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             ("scheduled_period", "&&"),
             where=text(
                 "employee_id IS NOT NULL AND "
+                "record_status = 'active' AND "
                 "status IN ('pending', 'confirmed', 'delayed', 'rescheduled')"
             ),
             using="gist",
@@ -182,6 +195,7 @@ class Appointment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
         Index("ix_appointments_workspace_employee", "workspace_id", "employee_id", "starts_at"),
         Index("ix_appointments_workspace_service", "workspace_id", "service_id"),
         Index("ix_appointments_workspace_resource", "workspace_id", "resource_id", "starts_at"),
+        Index("ix_appointments_workspace_record_status", "workspace_id", "record_status"),
     )
 
     workspace_id: Mapped[UUID] = mapped_column(
@@ -212,6 +226,10 @@ class Appointment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="confirmed", server_default=text("'confirmed'")
     )
+    record_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="active", server_default=text("'active'")
+    )
+    deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(String(2000))
     pending_payment: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")

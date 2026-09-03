@@ -219,7 +219,9 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
             select(func.count(DemoSeedRegistry.id)).where(
                 DemoSeedRegistry.workspace_id == second.workspace_id,
                 DemoSeedRegistry.seed_version == "v1",
-                DemoSeedRegistry.entity_type == "inventory_opening_movement",
+                DemoSeedRegistry.entity_type.in_(
+                    {"inventory_opening_movement", "inventory_usage_movement"}
+                ),
             )
         )
         purchasing_supplier_count = session.scalar(
@@ -492,13 +494,13 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
     assert first.catalog_item_count == second.catalog_item_count == 22
     assert first.catalog_assignment_count == second.catalog_assignment_count == 66
     assert first.inventory_warehouse_count == second.inventory_warehouse_count == 4
-    assert first.inventory_profile_count == second.inventory_profile_count == 21
+    assert first.inventory_profile_count == second.inventory_profile_count == 22
     assert first.inventory_stock_balance_count == second.inventory_stock_balance_count == 40
     assert first.inventory_asset_count == second.inventory_asset_count == 16
-    assert first.inventory_movement_count == second.inventory_movement_count == 35
+    assert first.inventory_movement_count == second.inventory_movement_count == 39
     assert first.purchasing_supplier_count == second.purchasing_supplier_count == 2
     assert first.purchase_request_count == second.purchase_request_count == 2
-    assert first.incident_count == second.incident_count == incident_count == 6
+    assert first.incident_count == second.incident_count == incident_count == 8
     assert (
         first.incident_attachment_count
         == second.incident_attachment_count
@@ -509,10 +511,10 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
     assert catalog_item_count == 22
     assert catalog_assignment_count == 66
     assert inventory_warehouse_count == 4
-    assert inventory_profile_count == 21
+    assert inventory_profile_count == 22
     assert inventory_stock_balance_count == 40
     assert inventory_asset_count == 16
-    assert inventory_movement_count == 35
+    assert inventory_movement_count == 39
     assert purchasing_supplier_count == 2
     assert purchase_request_count == 2
     assert seeded_incident is not None
@@ -525,9 +527,9 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
     assert supplies_per_branch == {"DOWNTOWN": 4, "EAST": 4, "HQ": 4, "NORTH": 4}
     assert stock_items_per_branch == {"DOWNTOWN": 10, "EAST": 10, "HQ": 10, "NORTH": 10}
     assert assets_per_branch == {"DOWNTOWN": 4, "EAST": 4, "HQ": 4, "NORTH": 4}
-    assert first.pos_register_count == second.pos_register_count == 4
+    assert first.pos_register_count == second.pos_register_count == 8
     assert first.pos_quote_count == second.pos_quote_count == 6
-    assert first.pos_sale_count == second.pos_sale_count == 16
+    assert first.pos_sale_count == second.pos_sale_count == 20
     assert first.pos_receivable_count == second.pos_receivable_count == 6
     assert first.pos_payment_count == second.pos_payment_count == 5
     assert first.pos_cash_movement_count == second.pos_cash_movement_count == 15
@@ -543,14 +545,14 @@ def test_local_demo_seed_is_repeatable_and_covers_iam_scenarios() -> None:
     assert first.finance_income_count == second.finance_income_count == 3
     assert pos_registry_counts == {
         "cash_movement": 15,
-        "cash_register": 4,
+        "cash_register": 8,
         "customer_payment": 5,
         "customer_receivable": 6,
         "pos_inventory_movement": 9,
-        "sale": 16,
+        "sale": 20,
         "sales_quote": 6,
     }
-    assert sale_statuses == {"completed": 14, "voided": 2}
+    assert sale_statuses == {"completed": 18, "voided": 2}
     assert quote_statuses == {"cancelled": 1, "converted": 1, "expired": 1, "open": 3}
     assert receivable_statuses == {"cancelled": 1, "paid": 1, "partial": 2, "pending": 2}
     assert payment_statuses == {"posted": 4, "reversed": 1}

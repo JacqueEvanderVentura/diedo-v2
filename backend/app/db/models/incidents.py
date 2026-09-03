@@ -56,6 +56,12 @@ class Incident(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             ondelete="RESTRICT",
             name="fk_incidents_workspace_reporter",
         ),
+        ForeignKeyConstraint(
+            ["workspace_id", "employee_id"],
+            ["employees.workspace_id", "employees.id"],
+            ondelete="RESTRICT",
+            name="fk_incidents_workspace_employee",
+        ),
         CheckConstraint(
             "incident_type IN ('activo', 'infraestructura', 'personal')",
             name="type_values",
@@ -71,6 +77,15 @@ class Incident(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
         CheckConstraint(
             "asset_id IS NULL OR incident_type = 'activo'",
             name="asset_requires_asset_type",
+        ),
+        CheckConstraint(
+            "(incident_type = 'personal' AND "
+            "((employee_id IS NULL AND employee_incident_kind IS NULL) OR "
+            "(employee_id IS NOT NULL AND employee_incident_kind IN "
+            "('ausencia', 'tardanza', 'amonestacion', 'licencia_medica', 'otro')))) OR "
+            "(incident_type <> 'personal' AND employee_id IS NULL "
+            "AND employee_incident_kind IS NULL)",
+            name="employee_incident_fields",
         ),
         Index(
             "ix_incidents_workspace_branch_status_created",
@@ -92,6 +107,13 @@ class Incident(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             "created_at",
         ),
         Index(
+            "ix_incidents_workspace_employee_created",
+            "workspace_id",
+            "employee_id",
+            "created_at",
+            postgresql_where=text("employee_id IS NOT NULL"),
+        ),
+        Index(
             "uq_incidents_workspace_idempotency",
             "workspace_id",
             "creation_idempotency_key",
@@ -104,6 +126,8 @@ class Incident(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     )
     branch_id: Mapped[UUID] = mapped_column(nullable=False)
     asset_id: Mapped[UUID | None] = mapped_column()
+    employee_id: Mapped[UUID | None] = mapped_column(nullable=True)
+    employee_incident_kind: Mapped[str | None] = mapped_column(String(24))
     reported_by_membership_id: Mapped[UUID] = mapped_column(nullable=False)
     reported_by_name: Mapped[str] = mapped_column(String(160), nullable=False)
     code: Mapped[str] = mapped_column(String(32), nullable=False)

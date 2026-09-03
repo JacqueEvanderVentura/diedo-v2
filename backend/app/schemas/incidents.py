@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from app.schemas.common import ApiModel
 
@@ -10,6 +10,7 @@ IncidentType = Literal["activo", "infraestructura", "personal"]
 IncidentPriority = Literal["baja", "media", "alta", "critica"]
 IncidentStatus = Literal["abierta", "en_proceso", "resuelta", "cerrada"]
 IncidentActivityType = Literal["created", "status_changed", "comment"]
+EmployeeIncidentKind = Literal["ausencia", "tardanza", "amonestacion", "licencia_medica", "otro"]
 IncidentSortField = Literal["code", "title", "priority", "status", "createdAt", "updatedAt"]
 SortDirection = Literal["asc", "desc"]
 
@@ -25,6 +26,8 @@ class CreateIncidentRequest(ApiModel):
     priority: IncidentPriority = "media"
     branch_id: UUID
     activo_id: UUID | None = None
+    employee_id: UUID | None = None
+    employee_incident_kind: EmployeeIncidentKind | None = None
     participant_ids: list[UUID] = Field(default_factory=list, max_length=50)
 
     @field_validator("title")
@@ -47,6 +50,17 @@ class CreateIncidentRequest(ApiModel):
             raise ValueError("No repitas intervinientes.")
         return value
 
+    @model_validator(mode="after")
+    def require_type_specific_relation(self) -> CreateIncidentRequest:
+        if self.type == "personal":
+            if self.employee_id is None:
+                raise ValueError("Selecciona el empleado relacionado con la incidencia.")
+            if self.employee_incident_kind is None:
+                raise ValueError("Selecciona la categoría de incidencia laboral.")
+        elif self.employee_id is not None or self.employee_incident_kind is not None:
+            raise ValueError("Solo una incidencia de personal puede relacionar un empleado.")
+        return self
+
 
 class UpdateIncidentStatusRequest(ApiModel):
     status: IncidentStatus
@@ -67,6 +81,11 @@ class CreateIncidentCommentRequest(ApiModel):
 
 
 class IncidentPersonResponse(ApiModel):
+    id: UUID
+    name: str
+
+
+class IncidentEmployeeResponse(ApiModel):
     id: UUID
     name: str
 
@@ -100,6 +119,8 @@ class IncidentResponse(ApiModel):
     status: IncidentStatus
     branch_id: UUID
     activo_id: UUID | None
+    employee: IncidentEmployeeResponse | None
+    employee_incident_kind: EmployeeIncidentKind | None
     reporter: IncidentPersonResponse
     intervenientes: list[IncidentPersonResponse]
     attachments: list[IncidentAttachmentResponse]

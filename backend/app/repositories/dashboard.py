@@ -192,6 +192,7 @@ class DashboardRepository:
         conditions = [
             Appointment.workspace_id == workspace_id,
             Appointment.scheduled_date == scheduled_date,
+            Appointment.record_status == "active",
             Appointment.status != "cancelled",
         ]
         branch_filter = self._branch_filter(
@@ -221,6 +222,7 @@ class DashboardRepository:
         conditions = [
             Appointment.workspace_id == workspace_id,
             Appointment.scheduled_date == scheduled_date,
+            Appointment.record_status == "active",
             Appointment.status != "cancelled",
         ]
         branch_filter = self._branch_filter(
@@ -388,6 +390,7 @@ class DashboardRepository:
     ) -> tuple[Appointment, ...]:
         conditions = [
             Appointment.workspace_id == workspace_id,
+            Appointment.record_status == "active",
             Appointment.created_at >= starts_at,
             Appointment.created_at < ends_at,
         ]

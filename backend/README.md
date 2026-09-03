@@ -64,7 +64,8 @@ The eight neutral `demo.*@example.com` identities use the password supplied thro
 environment. The seed is safe to repeat, validates manifest checksums, uses stable IDs, and includes
 workspace-wide and branch-scoped users, five customers, thirteen basic employees, schedules and
 supervisor links. It also installs 21 commercial inventory profiles, 40 branch stock balances,
-16 assets, and 35 opening movements across HQ, NORTH, DOWNTOWN, and EAST. Purchasing adds two
+16 assets, 35 opening movements, and four employee-linked supply exits across HQ, NORTH,
+DOWNTOWN, and EAST. Purchasing adds two
 suppliers and two requests with approval settings. Terminal POS adds four cash registers, six
 quotes, sixteen sales, six receivables, five receivable payments, fifteen cash movements, and nine
 inventory movements. The scenario includes open and reconciled shifts, discounts, voids, partial
@@ -92,6 +93,7 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - Database/schema readiness: `GET http://localhost:8000/health/ready`
 - Local foundation status: `GET http://localhost:8000/dev/foundation`
 - Authentication: `POST http://localhost:8000/api/v1/auth/login`
+- Backoffice workspace provisioning: `POST http://localhost:8000/api/v1/backoffice/workspaces`
 - Session context: `GET http://localhost:8000/api/v1/auth/me`
 - Workspace settings: `GET/PATCH http://localhost:8000/api/v1/workspace/settings`
 - Branches: `GET/POST/PATCH/DELETE http://localhost:8000/api/v1/branches`
@@ -120,6 +122,8 @@ Swagger and ReDoc are disabled when `APP_ENV=production`.
 
 The IAM contract and security decisions are documented in
 [`../docs/backend/IAM_API.md`](../docs/backend/IAM_API.md).
+Workspace provisioning and its separate platform credential are documented in
+[`../docs/backend/BACKOFFICE_API.md`](../docs/backend/BACKOFFICE_API.md).
 The read-only dashboard contract and period/branch semantics are documented in
 [`../docs/backend/DASHBOARD_API.md`](../docs/backend/DASHBOARD_API.md).
 The workspace, legal entity, branch, and payment-method contracts are documented in

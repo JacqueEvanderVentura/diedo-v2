@@ -1,15 +1,16 @@
 import { useState, useMemo, useCallback } from 'react'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
 import { CalendarCheck, UserX, CalendarClock, Percent, Globe, Ban, Eye, Pencil } from 'lucide-react'
-import { useAgendaStore, toKey, statusMeta } from '@/stores/agendaStore'
+import { useAgendaStore, statusMeta } from '@/stores/agendaStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useRrhhStore } from '@/stores/rrhhStore'
 import { ReportFilterBar } from '../components/ReportFilterBar'
 import { Pagination } from '../components/Pagination'
 import { StatCard, ChartCard } from '../components/ReportPrimitives'
-import { inAppointmentPeriod, AGENDA_REPORT_PERIODS } from '../lib/reportes'
-import { fetchAgendaReport } from '@/services/reportApi'
+import { AGENDA_REPORT_PERIODS } from '../lib/reportes'
+import { fetchAgendaReport, fetchAgendaSummary } from '@/services/reportApi'
 import { usePaginatedReport } from '../hooks/usePaginatedReport'
+import { useReportSummary } from '../hooks/useReportSummary'
 import {
   ResponsiveList,
   ResponsiveTable,
@@ -36,8 +37,6 @@ const STATUS_META = [
   { id: 'reprogramada', name: 'Reprogramadas', color: '#3b82f6' },
   { id: 'asistio', name: 'Asistió', color: '#10b981' },
 ]
-const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
-
 export default function AgendaReportPage() {
   const appointments = useAgendaStore((s) => s.appointments)
   const branches = useConfigStore((s) => s.branches)
@@ -55,7 +54,7 @@ export default function AgendaReportPage() {
   )
 
   const openEdit = (apt) => {
-    setEditing(apt)
+    setEditing(appointments.find((item) => item.id === apt.id) || apt)
     setFormOpen(true)
   }
 
@@ -64,23 +63,6 @@ export default function AgendaReportPage() {
     [appointments, editing]
   )
 
-  const filtered = useMemo(
-    () => appointments.filter((a) => inAppointmentPeriod(a.date, period) && (!branchId || a.branchId === branchId) && (!status || a.status === status)),
-    [appointments, period, branchId, status]
-  )
-
-  const counts = useMemo(() => {
-    const c = { completada: 0, confirmada: 0, pendiente: 0, noshow: 0, cancelada: 0 }
-    filtered.forEach((a) => { c[a.status] = (c[a.status] || 0) + 1 })
-    return c
-  }, [filtered])
-
-  const cumplidas = counts.completada
-  const noShow = counts.noshow
-  const canceladas = counts.cancelada
-  const selfBooking = filtered.filter((a) => a.source === 'self').length
-  const asistencia = cumplidas + noShow > 0 ? ((cumplidas / (cumplidas + noShow)) * 100).toFixed(2) : '0.00'
-
   const employees = useRrhhStore((s) => s.employees)
   const employeeName = (id) => {
     const rrhh = employees.find((e) => e.id === id)
@@ -88,52 +70,50 @@ export default function AgendaReportPage() {
     return '—'
   }
 
-  const attendedVsTotal = filtered.length > 0
-    ? `${cumplidas} / ${filtered.length} (${((cumplidas / filtered.length) * 100).toFixed(2)}%)`
-    : '0 / 0'
-
-  const byEmployee = useMemo(() => {
-    const map = {}
-    filtered.filter((a) => a.employeeId && a.status === 'completada').forEach((a) => {
-      const name = employeeName(a.employeeId)
-      map[name] = (map[name] || 0) + 1
-    })
-    return Object.entries(map)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 8)
-  }, [filtered, employees])
-
-  const bySource = useMemo(() => {
-    const staff = filtered.filter((a) => a.source !== 'self').length
-    const self = filtered.filter((a) => a.source === 'self').length
-    return [
-      { id: 'staff', name: 'Equipo', value: staff, color: '#3b82f6' },
-      { id: 'self', name: 'Auto-agendado', value: self, color: '#f59e0b' },
-    ].filter((s) => s.value > 0)
-  }, [filtered])
-
-  const pie = useMemo(
-    () => STATUS_META.map((s) => ({ ...s, value: counts[s.id] || 0 })).filter((s) => s.value > 0),
-    [counts]
-  )
-
-  // Cumplidas vs No-show — últimos 7 días (datos reales de la agenda).
-  const weekly = useMemo(() => {
-    const now = new Date()
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (6 - i))
-      const key = toKey(d)
-      const dayAppts = appointments.filter((a) => a.date === key)
-      return {
-        label: `${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()]}`,
-        Cumplidas: dayAppts.filter((a) => a.status === 'completada').length,
-        'No-show': dayAppts.filter((a) => a.status === 'noshow').length,
-      }
-    })
-  }, [appointments])
-
   const getAppointments = useCallback(() => appointments, [appointments])
+  const getEmployees = useCallback(() => employees, [employees])
+  const summaryFetcher = useCallback(
+    () => fetchAgendaSummary(getAppointments, getEmployees, { branchId, status, search, period }),
+    [getAppointments, getEmployees, branchId, status, search, period]
+  )
+  const summary = useReportSummary(summaryFetcher, {
+    total: 0,
+    attended: 0,
+    noShow: 0,
+    cancelled: 0,
+    selfBooking: 0,
+    attendanceRate: 0,
+    statusDistribution: [],
+    weekly: [],
+    byEmployee: [],
+    bySource: [],
+  })
+  const {
+    total,
+    attended,
+    noShow,
+    cancelled,
+    selfBooking,
+    attendanceRate,
+    statusDistribution,
+    weekly,
+    byEmployee,
+    bySource: sourceData,
+  } = summary.data
+
+  const attendedVsTotal = total > 0
+    ? `${attended} / ${total} (${((attended / total) * 100).toFixed(2)}%)`
+    : '0 / 0'
+  const bySource = sourceData
+    .filter((item) => item.value > 0)
+    .map((item) => ({
+      ...item,
+      color: item.id === 'self' ? '#f59e0b' : '#3b82f6',
+    }))
+  const pie = STATUS_META.map((meta) => ({
+    ...meta,
+    value: statusDistribution.find((item) => item.id === meta.id)?.value || 0,
+  })).filter((item) => item.value > 0)
   const fetcher = useCallback(
     (params) => fetchAgendaReport(getAppointments, { ...params, branchId, status, search, period }),
     [getAppointments, branchId, status, search, period]
@@ -165,16 +145,16 @@ export default function AgendaReportPage() {
         onStatusChange={setStatus}
         statusOptions={STATUS_META.map((s) => ({ value: s.id, label: s.name }))}
         showBranch={false}
-        onRefresh={listReport.reload}
+        onRefresh={() => { summary.reload(); listReport.reload() }}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-        <StatCard label="Citas (período)" value={filtered.length} icon={CalendarClock} tone="brand" testId="report-stat-citas" />
+        <StatCard label="Citas (período)" value={total} icon={CalendarClock} tone="brand" testId="report-stat-citas" />
         <StatCard label="Citas atendidas / total" value={attendedVsTotal} icon={CalendarCheck} tone="emerald" testId="report-stat-attended-ratio" />
         <StatCard label="No-show" value={noShow} icon={UserX} tone="red" testId="report-stat-noshow" />
-        <StatCard label="Canceladas" value={canceladas} icon={Ban} tone="amber" testId="report-stat-canceladas" />
+        <StatCard label="Canceladas" value={cancelled} icon={Ban} tone="amber" testId="report-stat-canceladas" />
         <StatCard label="Auto-agendadas" value={selfBooking} icon={Globe} tone="violet" testId="report-stat-self" />
-        <StatCard label="Tasa de asistencia" value={`${asistencia}%`} icon={Percent} tone="slate" sub="Cumplidas vs no-show" testId="report-stat-asistencia" />
+        <StatCard label="Tasa de asistencia" value={`${Number(attendanceRate).toFixed(2)}%`} icon={Percent} tone="slate" sub="Cumplidas vs no-show" testId="report-stat-asistencia" />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -320,7 +300,7 @@ export default function AgendaReportPage() {
                         <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatCompactDate(a.date)}</td>
                         <td className="whitespace-nowrap px-4 py-3 text-slate-600">{a.time}</td>
                         <td className="px-4 py-3 font-medium text-slate-800">{client}</td>
-                        <td className="px-4 py-3 text-slate-600">{employeeName(a.employeeId)}</td>
+                        <td className="px-4 py-3 text-slate-600">{a.employeeName || employeeName(a.employeeId)}</td>
                         <td className="px-4 py-3 text-slate-600">{a.serviceName || a.service}</td>
                         <td className="px-4 py-3 text-xs text-slate-500">{a.createdBy || '—'}</td>
                         <td className="px-4 py-3 text-xs text-slate-500">{a.updatedBy || '—'}</td>
@@ -389,7 +369,7 @@ export default function AgendaReportPage() {
                     }
                   />
                   <MobileCardGrid>
-                    <MobileField label="Empleado">{employeeName(a.employeeId)}</MobileField>
+                    <MobileField label="Empleado">{a.employeeName || employeeName(a.employeeId)}</MobileField>
                     <MobileField label="Servicio">{a.serviceName || a.service}</MobileField>
                     <MobileField label="Creado por">{a.createdBy || '—'}</MobileField>
                     <MobileField label="Editado por" fullWidth>{a.updatedBy || '—'}</MobileField>

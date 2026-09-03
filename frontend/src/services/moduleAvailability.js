@@ -11,6 +11,7 @@ const API_CONNECTED_MODULE_SET = new Set([
   'sales',
   'pos',
   'finance',
+  'reporting',
 ])
 
 const MODULE_DEPENDENCIES = Object.freeze({
@@ -37,6 +38,9 @@ export function requiresFinanceData(pathname = '') {
 }
 
 export function routeRequirement(pathname) {
+  if (pathname === '/reportes' || pathname.startsWith('/reportes/')) {
+    return { module: 'reporting', permission: 'report.read' }
+  }
   if (pathname === '/finanzas' || pathname.startsWith('/finanzas/')) {
     return { module: 'finance', permission: 'finance.read' }
   }

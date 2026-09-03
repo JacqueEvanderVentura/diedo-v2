@@ -14,6 +14,8 @@ from app.db.models import (
     Asset,
     AuditEntry,
     Branch,
+    Employee,
+    EmployeeBranchAssignment,
     Incident,
     IncidentActivity,
     IncidentAttachment,
@@ -58,6 +60,7 @@ class IncidentAttachmentContentRecord(IncidentAttachmentRecord):
 @dataclass(frozen=True)
 class IncidentRecord:
     incident: Incident
+    employee_name: str | None
     participants: tuple[IncidentParticipantRecord, ...]
     activity: tuple[IncidentActivityRecord, ...]
     attachments: tuple[IncidentAttachmentRecord, ...]
@@ -469,6 +472,25 @@ class IncidentRepository:
             )
         )
 
+    def active_employee_in_branch(
+        self, workspace_id: UUID, branch_id: UUID, employee_id: UUID
+    ) -> Employee | None:
+        return self._session.scalar(
+            select(Employee)
+            .join(
+                EmployeeBranchAssignment,
+                (EmployeeBranchAssignment.workspace_id == Employee.workspace_id)
+                & (EmployeeBranchAssignment.employee_id == Employee.id),
+            )
+            .where(
+                Employee.workspace_id == workspace_id,
+                Employee.id == employee_id,
+                Employee.status == "active",
+                EmployeeBranchAssignment.branch_id == branch_id,
+                EmployeeBranchAssignment.status == "active",
+            )
+        )
+
     def active_participant_names(
         self, workspace_id: UUID, membership_ids: set[UUID]
     ) -> dict[UUID, str]:
@@ -534,6 +556,13 @@ class IncidentRepository:
         if not incidents:
             return ()
         incident_ids = {incident.id for incident in incidents}
+        employee_ids = {incident.employee_id for incident in incidents if incident.employee_id}
+        employee_names = {
+            employee.id: f"{employee.first_name} {employee.last_name}".strip()
+            for employee in self._session.scalars(
+                select(Employee).where(Employee.id.in_(employee_ids))
+            )
+        }
         participants_by_incident: defaultdict[UUID, list[IncidentParticipantRecord]] = defaultdict(
             list
         )
@@ -597,6 +626,11 @@ class IncidentRepository:
         return tuple(
             IncidentRecord(
                 incident=incident,
+                employee_name=(
+                    employee_names.get(incident.employee_id)
+                    if incident.employee_id is not None
+                    else None
+                ),
                 participants=tuple(participants_by_incident[incident.id]),
                 activity=tuple(activity_by_incident[incident.id]),
                 attachments=tuple(attachments_by_incident[incident.id]),

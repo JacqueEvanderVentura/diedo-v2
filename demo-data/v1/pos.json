@@ -3,7 +3,11 @@
     {"seedKey": "hq-current", "branchCode": "HQ", "openedByUserSeedKey": "cashier", "openingCash": 5000, "openedAt": "2026-09-01T12:00:00Z", "status": "open", "notes": "Turno operativo actual para pruebas integrales del POS."},
     {"seedKey": "north-aug31", "branchCode": "NORTH", "openedByUserSeedKey": "manager-north", "openingCash": 3500, "openedAt": "2026-08-31T12:00:00Z", "status": "closed", "notes": "Turno histórico con diferencia positiva de arqueo.", "closedByUserSeedKey": "manager-north", "closedAt": "2026-08-31T22:00:00Z", "closingDifference": 50},
     {"seedKey": "downtown-aug30", "branchCode": "DOWNTOWN", "openedByUserSeedKey": "manager-center", "openingCash": 4500, "openedAt": "2026-08-30T13:00:00Z", "status": "closed", "notes": "Turno histórico con faltante documentado.", "closedByUserSeedKey": "manager-center", "closedAt": "2026-08-30T23:00:00Z", "closingDifference": -75},
-    {"seedKey": "east-aug29", "branchCode": "EAST", "openedByUserSeedKey": "admin", "openingCash": 3000, "openedAt": "2026-08-29T14:00:00Z", "status": "closed", "notes": "Turno histórico cuadrado.", "closedByUserSeedKey": "admin", "closedAt": "2026-08-29T22:00:00Z", "closingDifference": 0}
+    {"seedKey": "east-aug29", "branchCode": "EAST", "openedByUserSeedKey": "admin", "openingCash": 3000, "openedAt": "2026-08-29T14:00:00Z", "status": "closed", "notes": "Turno histórico cuadrado.", "closedByUserSeedKey": "admin", "closedAt": "2026-08-29T22:00:00Z", "closingDifference": 0},
+    {"seedKey": "north-membership-sep", "branchCode": "NORTH", "openedByUserSeedKey": "manager-north", "openingCash": 0, "openedAt": "2026-09-01T12:00:00Z", "status": "closed", "notes": "Turno histórico para membresía activa.", "closedByUserSeedKey": "manager-north", "closedAt": "2026-09-01T14:00:00Z", "closingDifference": 0},
+    {"seedKey": "downtown-membership-aug", "branchCode": "DOWNTOWN", "openedByUserSeedKey": "seller-center", "openingCash": 0, "openedAt": "2026-08-08T12:00:00Z", "status": "closed", "notes": "Turno histórico para membresía próxima a vencer.", "closedByUserSeedKey": "seller-center", "closedAt": "2026-08-08T14:00:00Z", "closingDifference": 0},
+    {"seedKey": "east-membership-jul", "branchCode": "EAST", "openedByUserSeedKey": "seller-east", "openingCash": 0, "openedAt": "2026-07-20T12:00:00Z", "status": "closed", "notes": "Turno histórico para membresía vencida.", "closedByUserSeedKey": "seller-east", "closedAt": "2026-07-20T14:00:00Z", "closingDifference": 0},
+    {"seedKey": "north-membership-jun", "branchCode": "NORTH", "openedByUserSeedKey": "manager-north", "openingCash": 0, "openedAt": "2026-06-01T12:00:00Z", "status": "closed", "notes": "Turno histórico para membresía inactiva.", "closedByUserSeedKey": "manager-north", "closedAt": "2026-06-01T14:00:00Z", "closingDifference": 0}
   ],
   "quotes": [
     {
@@ -104,6 +108,22 @@
     {
       "seedKey": "east-card-lip-retail", "saleNumber": "VTA-99000016", "branchCode": "EAST", "registerSeedKey": "east-aug29", "customerSeedKey": "c4", "paymentMethodSeedKey": "card", "soldByUserSeedKey": "seller-east",
       "lines": [{"itemSeedKey": "upper-lip-session", "quantity": 1}, {"itemSeedKey": "coca-cola", "quantity": 1}], "paymentReference": "CARD-EAST-774", "completedAt": "2026-08-29T18:30:00Z"
+    },
+    {
+      "seedKey": "north-membership-active", "saleNumber": "VTA-99000017", "branchCode": "NORTH", "registerSeedKey": "north-membership-sep", "customerSeedKey": "c3", "paymentMethodSeedKey": "card", "soldByUserSeedKey": "manager-north",
+      "lines": [{"itemSeedKey": "charm-membership", "quantity": 1}], "paymentReference": "MEM-ACT-001", "notes": "Membresía de prueba activa.", "completedAt": "2026-09-01T13:00:00Z"
+    },
+    {
+      "seedKey": "downtown-membership-upcoming", "saleNumber": "VTA-99000018", "branchCode": "DOWNTOWN", "registerSeedKey": "downtown-membership-aug", "customerSeedKey": "c2", "paymentMethodSeedKey": "card", "soldByUserSeedKey": "seller-center",
+      "lines": [{"itemSeedKey": "charm-membership", "quantity": 1}], "paymentReference": "MEM-PRO-001", "notes": "Membresía de prueba próxima a vencer.", "completedAt": "2026-08-08T13:00:00Z"
+    },
+    {
+      "seedKey": "east-membership-expired", "saleNumber": "VTA-99000019", "branchCode": "EAST", "registerSeedKey": "east-membership-jul", "customerSeedKey": "c4", "paymentMethodSeedKey": "card", "soldByUserSeedKey": "seller-east",
+      "lines": [{"itemSeedKey": "charm-membership", "quantity": 1}], "paymentReference": "MEM-VEN-001", "notes": "Membresía de prueba vencida.", "completedAt": "2026-07-20T13:00:00Z"
+    },
+    {
+      "seedKey": "north-membership-inactive", "saleNumber": "VTA-99000020", "branchCode": "NORTH", "registerSeedKey": "north-membership-jun", "customerSeedKey": "c1", "paymentMethodSeedKey": "card", "soldByUserSeedKey": "manager-north",
+      "lines": [{"itemSeedKey": "charm-membership", "quantity": 1}], "paymentReference": "MEM-INA-001", "notes": "Membresía de prueba inactiva.", "completedAt": "2026-06-01T13:00:00Z"
     }
   ],
   "cashAdjustments": [

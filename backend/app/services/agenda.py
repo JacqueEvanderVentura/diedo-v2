@@ -127,6 +127,11 @@ class AgendaService:
         fingerprint = self._fingerprint(values)
         existing = self._repository.records_for_idempotency_key(grant.workspace_id, idempotency_key)
         if existing:
+            if any(record.appointment.record_status == "inactive" for record in existing):
+                raise ConflictError(
+                    "La clave de idempotencia corresponde a una cita eliminada.",
+                    "Idempotency-Key",
+                )
             if any(record.appointment.request_fingerprint != fingerprint for record in existing):
                 raise ConflictError(
                     "La clave de idempotencia ya fue usada con otros datos.",
@@ -266,6 +271,13 @@ class AgendaService:
                 grant.workspace_id, idempotency_key
             )
             if concurrent_retry:
+                if any(
+                    record.appointment.record_status == "inactive" for record in concurrent_retry
+                ):
+                    raise ConflictError(
+                        "La clave de idempotencia corresponde a una cita eliminada.",
+                        "Idempotency-Key",
+                    ) from exc
                 if any(
                     record.appointment.request_fingerprint != fingerprint
                     for record in concurrent_retry
@@ -436,10 +448,11 @@ class AgendaService:
                 request_id=get_request_id(),
                 details={"changedFields": sorted(changes), "version": appointment.version},
             )
-            PosService(self._session).sync_appointment_receivable(
-                principal=principal,
-                appointment=appointment,
-            )
+            if had_pending_balance or will_have_pending_balance:
+                PosService(self._session).sync_appointment_receivable(
+                    principal=principal,
+                    appointment=appointment,
+                )
             self._session.commit()
         except ConflictError:
             self._session.rollback()
@@ -456,6 +469,80 @@ class AgendaService:
         if not records:
             raise RuntimeError("Updated appointment could not be reloaded.")
         return records[0]
+
+    def deactivate_appointment(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        appointment_id: UUID,
+        expected_version: int,
+    ) -> None:
+        appointment = self._repository.get_appointment(
+            workspace_id=grant.workspace_id,
+            appointment_id=appointment_id,
+            allowed_branch_ids=grant.allowed_branch_ids,
+            lock=True,
+        )
+        if appointment is None:
+            raise ResourceNotFoundError("La cita no existe.", "appointmentId")
+        if appointment.version != expected_version:
+            raise ConflictError("La cita cambió desde la última lectura.", "version")
+        had_pending_balance = self._has_pending_balance(
+            status=appointment.status,
+            pending_payment=appointment.pending_payment,
+            pending_amount=appointment.pending_amount,
+        )
+        if had_pending_balance:
+            self._require_receivables_manage(principal, {appointment.branch_id})
+
+        appointment.record_status = "inactive"
+        appointment.deactivated_at = datetime.now(UTC)
+        appointment.updated_by_platform_user_id = principal.platform_user_id
+        appointment.version += 1
+
+        try:
+            self._session.flush()
+            self._repository.add_event(
+                workspace_id=grant.workspace_id,
+                appointment_id=appointment.id,
+                actor_platform_user_id=principal.platform_user_id,
+                actor_name=principal.display_name,
+                action="update",
+                changes=[
+                    {
+                        "field": "recordStatus",
+                        "label": "Registro",
+                        "from": "active",
+                        "to": "inactive",
+                    }
+                ],
+                request_id=get_request_id(),
+            )
+            self._repository.add_audit(
+                workspace_id=grant.workspace_id,
+                actor_platform_user_id=principal.platform_user_id,
+                action="appointment.delete",
+                appointment_id=appointment.id,
+                request_id=get_request_id(),
+                details={
+                    "branchId": str(appointment.branch_id),
+                    "recordStatus": "inactive",
+                    "version": appointment.version,
+                },
+            )
+            if had_pending_balance:
+                PosService(self._session).sync_appointment_receivable(
+                    principal=principal,
+                    appointment=appointment,
+                )
+            self._session.commit()
+        except ConflictError:
+            self._session.rollback()
+            raise
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise ConflictError("No fue posible eliminar la cita.") from exc
 
     def _validate_references(
         self,

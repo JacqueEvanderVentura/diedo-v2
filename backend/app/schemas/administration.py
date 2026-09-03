@@ -133,6 +133,7 @@ class UpdateLegalEntityRequest(ApiModel):
 
 class BranchPartner(ApiModel):
     name: str = Field(min_length=2, max_length=160)
+    document: str | None = Field(default=None, max_length=32)
     share: Decimal = Field(ge=0, le=100)
 
 

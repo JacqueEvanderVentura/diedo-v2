@@ -32,11 +32,18 @@ class DemoManifest(ApiModel):
     files: list[ManifestFile]
 
 
+class DemoBranchPartnerFixture(ApiModel):
+    name: str = Field(min_length=2, max_length=160)
+    document: str | None = Field(default=None, max_length=32)
+    share: Decimal = Field(ge=0, le=100)
+
+
 class DemoBranchFixture(ApiModel):
     seed_key: str
     code: str
     name: str
     timezone: str
+    partners: list[DemoBranchPartnerFixture] = Field(default_factory=list)
 
 
 class FoundationFixture(ApiModel):
@@ -337,9 +344,33 @@ class DemoAssetFixture(ApiModel):
     notes: str | None = Field(default=None, max_length=1000)
 
 
+class DemoInventoryUsageLineFixture(ApiModel):
+    item_seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    quantity: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
+
+
+class DemoInventoryUsageMovementFixture(ApiModel):
+    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
+    branch_code: str
+    employee_seed_key: str
+    appointment_seed_key: str | None = None
+    created_by_user_seed_key: str
+    created_at: datetime
+    comment: str | None = Field(default=None, max_length=1000)
+    lines: list[DemoInventoryUsageLineFixture] = Field(min_length=1, max_length=50)
+
+    @model_validator(mode="after")
+    def require_unique_items(self) -> DemoInventoryUsageMovementFixture:
+        item_keys = [line.item_seed_key for line in self.lines]
+        if len(item_keys) != len(set(item_keys)):
+            raise ValueError("Demo usage movements cannot repeat an item.")
+        return self
+
+
 class InventoryFixture(ApiModel):
     item_profiles: list[DemoInventoryItemProfileFixture]
     assets: list[DemoAssetFixture]
+    usage_movements: list[DemoInventoryUsageMovementFixture] = Field(default_factory=list)
 
 
 class DemoIncidentActivityFixture(ApiModel):
@@ -380,6 +411,10 @@ class DemoIncidentFixture(ApiModel):
     status: Literal["abierta", "en_proceso", "resuelta", "cerrada"]
     branch_code: str
     asset_seed_key: str | None = None
+    employee_seed_key: str | None = None
+    employee_incident_kind: (
+        Literal["ausencia", "tardanza", "amonestacion", "licencia_medica", "otro"] | None
+    ) = None
     reporter_user_seed_key: str
     participant_user_seed_keys: list[str] = Field(default_factory=list)
     activities: list[DemoIncidentActivityFixture] = Field(min_length=1)
@@ -391,6 +426,11 @@ class DemoIncidentFixture(ApiModel):
     def require_consistent_incident(self) -> DemoIncidentFixture:
         if self.type != "activo" and self.asset_seed_key is not None:
             raise ValueError("Only asset demo incidents may reference an asset.")
+        if self.type == "personal":
+            if self.employee_seed_key is None or self.employee_incident_kind is None:
+                raise ValueError("Personal demo incidents require an employee and kind.")
+        elif self.employee_seed_key is not None or self.employee_incident_kind is not None:
+            raise ValueError("Only personal demo incidents may reference an employee.")
         if self.updated_at < self.created_at:
             raise ValueError("Demo incident updatedAt cannot precede createdAt.")
         if len(self.participant_user_seed_keys) != len(set(self.participant_user_seed_keys)):

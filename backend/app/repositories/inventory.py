@@ -1424,7 +1424,8 @@ class InventoryRepository:
         appointment_predicates: list[ColumnElement[bool]] = [
             Appointment.workspace_id == workspace_id,
             Appointment.employee_id.is_not(None),
-            Appointment.status.in_(("confirmed", "completed", "attended")),
+            Appointment.record_status == "active",
+            Appointment.status.in_(("completed", "attended")),
         ]
         if visible_branch_ids is not None:
             predicates.append(InventoryMovement.branch_id.in_(visible_branch_ids))

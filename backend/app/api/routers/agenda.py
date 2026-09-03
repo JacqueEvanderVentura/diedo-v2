@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Header, Query, Response, status
 
 from app.api.deps import (
+    AppointmentDeleteGrant,
     AppointmentManageGrant,
     AppointmentReadGrant,
     CurrentPrincipal,
@@ -235,3 +236,29 @@ def update_appointment(
         ),
     )
     return _appointment_response(record)
+
+
+@router.delete(
+    "/appointments/{appointment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Eliminar lógicamente una cita con control de versión",
+    responses={
+        **_SECURITY_RESPONSES,
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
+)
+def delete_appointment(
+    appointment_id: UUID,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: AppointmentDeleteGrant,
+    version: Annotated[int, Query(ge=1)],
+) -> Response:
+    AgendaService(database).deactivate_appointment(
+        principal=principal,
+        grant=grant,
+        appointment_id=appointment_id,
+        expected_version=version,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

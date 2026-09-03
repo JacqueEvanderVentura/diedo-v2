@@ -59,6 +59,8 @@
       "status": "cerrada",
       "branchCode": "HQ",
       "assetSeedKey": null,
+      "employeeSeedKey": "emp-1",
+      "employeeIncidentKind": "ausencia",
       "reporterUserSeedKey": "cashier",
       "participantUserSeedKeys": ["cashier", "admin"],
       "activities": [
@@ -68,6 +70,48 @@
       "attachments": [],
       "createdAt": "2026-08-26T08:35:00Z",
       "updatedAt": "2026-08-27T11:40:00Z"
+    },
+    {
+      "seedKey": "repeated-lateness",
+      "code": "INC-1171",
+      "title": "Tardanza reiterada en apertura de cabina",
+      "description": "Se registró una llegada después del inicio del turno por segunda ocasión.",
+      "type": "personal",
+      "priority": "media",
+      "status": "en_proceso",
+      "branchCode": "NORTH",
+      "assetSeedKey": null,
+      "employeeSeedKey": "emp-4",
+      "employeeIncidentKind": "tardanza",
+      "reporterUserSeedKey": "manager-north",
+      "participantUserSeedKeys": ["manager-north", "supervisor"],
+      "activities": [
+        {"seedKey": "reported", "type": "created", "authorUserSeedKey": "manager-north", "message": "Tardanza registrada para seguimiento con la colaboradora.", "createdAt": "2026-09-01T13:30:00Z"}
+      ],
+      "attachments": [],
+      "createdAt": "2026-09-01T13:30:00Z",
+      "updatedAt": "2026-09-01T13:30:00Z"
+    },
+    {
+      "seedKey": "protocol-warning",
+      "code": "INC-1169",
+      "title": "Amonestación por omitir protocolo de cierre",
+      "description": "Se documenta la omisión del checklist de cierre y entrega de materiales.",
+      "type": "personal",
+      "priority": "media",
+      "status": "abierta",
+      "branchCode": "DOWNTOWN",
+      "assetSeedKey": null,
+      "employeeSeedKey": "emp-3",
+      "employeeIncidentKind": "amonestacion",
+      "reporterUserSeedKey": "manager-center",
+      "participantUserSeedKeys": ["manager-center", "admin"],
+      "activities": [
+        {"seedKey": "reported", "type": "created", "authorUserSeedKey": "manager-center", "message": "Amonestación registrada y pendiente de descargo.", "createdAt": "2026-09-02T18:10:00Z"}
+      ],
+      "attachments": [],
+      "createdAt": "2026-09-02T18:10:00Z",
+      "updatedAt": "2026-09-02T18:10:00Z"
     },
     {
       "seedKey": "east-cooling-system",

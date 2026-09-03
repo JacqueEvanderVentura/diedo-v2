@@ -1,27 +1,76 @@
 // Generated from demo-data/v1; do not edit.
 export const DEMO_SNAPSHOT = Object.freeze({
   "seedVersion": "v1",
-  "schemaVersion": "20260901_0016",
+  "schemaVersion": "20260903_0019",
   "workspaceSlug": "local-erp",
   "foundation": {
     "branches": [
       {
+        "seedKey": "hq",
+        "code": "HQ",
+        "name": "Sede Principal",
+        "timezone": "America/Santo_Domingo",
+        "partners": [
+          {
+            "name": "Gabriela Méndez",
+            "document": "001-1629483-4",
+            "share": 60
+          },
+          {
+            "name": "Rafael Castillo",
+            "document": "001-1842057-9",
+            "share": 40
+          }
+        ]
+      },
+      {
         "seedKey": "north",
         "code": "NORTH",
         "name": "Sucursal Norte",
-        "timezone": "America/Santo_Domingo"
+        "timezone": "America/Santo_Domingo",
+        "partners": [
+          {
+            "name": "Patricia Gómez",
+            "document": "031-0482176-1",
+            "share": 100
+          }
+        ]
       },
       {
         "seedKey": "downtown",
         "code": "DOWNTOWN",
         "name": "Sucursal Centro",
-        "timezone": "America/Santo_Domingo"
+        "timezone": "America/Santo_Domingo",
+        "partners": [
+          {
+            "name": "José Manuel Reyes",
+            "document": "001-1937462-2",
+            "share": 55
+          },
+          {
+            "name": "Camila Rosario",
+            "document": "402-2786154-8",
+            "share": 45
+          }
+        ]
       },
       {
         "seedKey": "east",
         "code": "EAST",
         "name": "Sucursal Este",
-        "timezone": "America/Santo_Domingo"
+        "timezone": "America/Santo_Domingo",
+        "partners": [
+          {
+            "name": "Ángel Báez",
+            "document": "224-0061835-7",
+            "share": 50
+          },
+          {
+            "name": "Lucía Peña",
+            "document": "001-2014589-0",
+            "share": 50
+          }
+        ]
       }
     ]
   },
@@ -32,11 +81,12 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "branchCode": "HQ",
         "resourceCode": "cab1",
         "customerSeedKey": "c1",
+        "employeeSeedKey": "emp-1",
         "serviceSeedKey": "underarm-session",
         "date": "2026-09-01",
         "time": "09:30",
         "durationMinutes": 30,
-        "status": "confirmed",
+        "status": "completed",
         "createdAt": "2026-09-01T11:45:00Z"
       },
       {
@@ -61,7 +111,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "date": "2026-09-01",
         "time": "10:00",
         "durationMinutes": 60,
-        "status": "confirmed",
+        "status": "completed",
         "createdAt": "2026-09-01T12:10:00Z"
       },
       {
@@ -86,7 +136,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "date": "2026-09-01",
         "time": "11:00",
         "durationMinutes": 30,
-        "status": "confirmed",
+        "status": "completed",
         "createdAt": "2026-09-01T12:30:00Z"
       },
       {
@@ -112,7 +162,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "date": "2026-09-01",
         "time": "13:30",
         "durationMinutes": 45,
-        "status": "confirmed",
+        "status": "no_show",
         "createdAt": "2026-09-01T12:50:00Z"
       },
       {
@@ -138,7 +188,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "date": "2026-09-02",
         "time": "10:00",
         "durationMinutes": 60,
-        "status": "confirmed",
+        "status": "completed",
         "createdAt": "2026-09-01T13:10:00Z"
       }
     ]
@@ -1045,6 +1095,11 @@ export const DEMO_SNAPSHOT = Object.freeze({
   "inventory": {
     "itemProfiles": [
       {
+        "itemSeedKey": "charm-membership",
+        "salePrice": 1000,
+        "taxRate": 0
+      },
+      {
         "itemSeedKey": "remaining-cycle-half",
         "salePrice": 8000,
         "taxRate": 18
@@ -1409,6 +1464,84 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "purchaseDate": "2019-05-08",
         "notes": "Fuera de servicio"
       }
+    ],
+    "usageMovements": [
+      {
+        "seedKey": "hq-emp1-maria-supplies",
+        "branchCode": "HQ",
+        "employeeSeedKey": "emp-1",
+        "appointmentSeedKey": "hq-maria-morning",
+        "createdByUserSeedKey": "admin",
+        "createdAt": "2026-09-01T14:15:00Z",
+        "comment": "Insumos utilizados en sesión de axilas",
+        "lines": [
+          {
+            "itemSeedKey": "nitrile-gloves",
+            "quantity": 1
+          },
+          {
+            "itemSeedKey": "laser-conductive-gel",
+            "quantity": 1
+          }
+        ]
+      },
+      {
+        "seedKey": "north-emp4-facial-supplies",
+        "branchCode": "NORTH",
+        "employeeSeedKey": "emp-4",
+        "appointmentSeedKey": "north-ana-facial",
+        "createdByUserSeedKey": "manager-north",
+        "createdAt": "2026-09-01T15:30:00Z",
+        "comment": "Consumo de cabina para facial hidratante",
+        "lines": [
+          {
+            "itemSeedKey": "nitrile-gloves",
+            "quantity": 2
+          },
+          {
+            "itemSeedKey": "disposable-towels",
+            "quantity": 1
+          }
+        ]
+      },
+      {
+        "seedKey": "north-emp4-legs-supplies",
+        "branchCode": "NORTH",
+        "employeeSeedKey": "emp-4",
+        "appointmentSeedKey": "north-ana-tomorrow",
+        "createdByUserSeedKey": "manager-north",
+        "createdAt": "2026-09-02T16:00:00Z",
+        "comment": "Insumos para sesión de piernas completas",
+        "lines": [
+          {
+            "itemSeedKey": "nitrile-gloves",
+            "quantity": 1
+          },
+          {
+            "itemSeedKey": "laser-conductive-gel",
+            "quantity": 2
+          }
+        ]
+      },
+      {
+        "seedKey": "downtown-emp3-followup-supplies",
+        "branchCode": "DOWNTOWN",
+        "employeeSeedKey": "emp-3",
+        "appointmentSeedKey": "downtown-jose-followup",
+        "createdByUserSeedKey": "manager-center",
+        "createdAt": "2026-09-01T16:20:00Z",
+        "comment": "Consumo registrado para seguimiento",
+        "lines": [
+          {
+            "itemSeedKey": "nitrile-gloves",
+            "quantity": 1
+          },
+          {
+            "itemSeedKey": "isopropyl-alcohol",
+            "quantity": 1
+          }
+        ]
+      }
     ]
   },
   "purchasing": {
@@ -1590,6 +1723,8 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "status": "cerrada",
         "branchCode": "HQ",
         "assetSeedKey": null,
+        "employeeSeedKey": "emp-1",
+        "employeeIncidentKind": "ausencia",
         "reporterUserSeedKey": "cashier",
         "participantUserSeedKeys": [
           "cashier",
@@ -1614,6 +1749,66 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "attachments": [],
         "createdAt": "2026-08-26T08:35:00Z",
         "updatedAt": "2026-08-27T11:40:00Z"
+      },
+      {
+        "seedKey": "repeated-lateness",
+        "code": "INC-1171",
+        "title": "Tardanza reiterada en apertura de cabina",
+        "description": "Se registró una llegada después del inicio del turno por segunda ocasión.",
+        "type": "personal",
+        "priority": "media",
+        "status": "en_proceso",
+        "branchCode": "NORTH",
+        "assetSeedKey": null,
+        "employeeSeedKey": "emp-4",
+        "employeeIncidentKind": "tardanza",
+        "reporterUserSeedKey": "manager-north",
+        "participantUserSeedKeys": [
+          "manager-north",
+          "supervisor"
+        ],
+        "activities": [
+          {
+            "seedKey": "reported",
+            "type": "created",
+            "authorUserSeedKey": "manager-north",
+            "message": "Tardanza registrada para seguimiento con la colaboradora.",
+            "createdAt": "2026-09-01T13:30:00Z"
+          }
+        ],
+        "attachments": [],
+        "createdAt": "2026-09-01T13:30:00Z",
+        "updatedAt": "2026-09-01T13:30:00Z"
+      },
+      {
+        "seedKey": "protocol-warning",
+        "code": "INC-1169",
+        "title": "Amonestación por omitir protocolo de cierre",
+        "description": "Se documenta la omisión del checklist de cierre y entrega de materiales.",
+        "type": "personal",
+        "priority": "media",
+        "status": "abierta",
+        "branchCode": "DOWNTOWN",
+        "assetSeedKey": null,
+        "employeeSeedKey": "emp-3",
+        "employeeIncidentKind": "amonestacion",
+        "reporterUserSeedKey": "manager-center",
+        "participantUserSeedKeys": [
+          "manager-center",
+          "admin"
+        ],
+        "activities": [
+          {
+            "seedKey": "reported",
+            "type": "created",
+            "authorUserSeedKey": "manager-center",
+            "message": "Amonestación registrada y pendiente de descargo.",
+            "createdAt": "2026-09-02T18:10:00Z"
+          }
+        ],
+        "attachments": [],
+        "createdAt": "2026-09-02T18:10:00Z",
+        "updatedAt": "2026-09-02T18:10:00Z"
       },
       {
         "seedKey": "east-cooling-system",
@@ -2176,6 +2371,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "contractType": "Indefinido",
         "hireDate": "2020-01-15",
         "branchCodes": [
+          "HQ",
           "DOWNTOWN",
           "NORTH",
           "EAST"
@@ -2654,6 +2850,54 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "notes": "Turno histórico cuadrado.",
         "closedByUserSeedKey": "admin",
         "closedAt": "2026-08-29T22:00:00Z",
+        "closingDifference": 0
+      },
+      {
+        "seedKey": "north-membership-sep",
+        "branchCode": "NORTH",
+        "openedByUserSeedKey": "manager-north",
+        "openingCash": 0,
+        "openedAt": "2026-09-01T12:00:00Z",
+        "status": "closed",
+        "notes": "Turno histórico para membresía activa.",
+        "closedByUserSeedKey": "manager-north",
+        "closedAt": "2026-09-01T14:00:00Z",
+        "closingDifference": 0
+      },
+      {
+        "seedKey": "downtown-membership-aug",
+        "branchCode": "DOWNTOWN",
+        "openedByUserSeedKey": "seller-center",
+        "openingCash": 0,
+        "openedAt": "2026-08-08T12:00:00Z",
+        "status": "closed",
+        "notes": "Turno histórico para membresía próxima a vencer.",
+        "closedByUserSeedKey": "seller-center",
+        "closedAt": "2026-08-08T14:00:00Z",
+        "closingDifference": 0
+      },
+      {
+        "seedKey": "east-membership-jul",
+        "branchCode": "EAST",
+        "openedByUserSeedKey": "seller-east",
+        "openingCash": 0,
+        "openedAt": "2026-07-20T12:00:00Z",
+        "status": "closed",
+        "notes": "Turno histórico para membresía vencida.",
+        "closedByUserSeedKey": "seller-east",
+        "closedAt": "2026-07-20T14:00:00Z",
+        "closingDifference": 0
+      },
+      {
+        "seedKey": "north-membership-jun",
+        "branchCode": "NORTH",
+        "openedByUserSeedKey": "manager-north",
+        "openingCash": 0,
+        "openedAt": "2026-06-01T12:00:00Z",
+        "status": "closed",
+        "notes": "Turno histórico para membresía inactiva.",
+        "closedByUserSeedKey": "manager-north",
+        "closedAt": "2026-06-01T14:00:00Z",
         "closingDifference": 0
       }
     ],
@@ -3167,6 +3411,78 @@ export const DEMO_SNAPSHOT = Object.freeze({
         ],
         "paymentReference": "CARD-EAST-774",
         "completedAt": "2026-08-29T18:30:00Z"
+      },
+      {
+        "seedKey": "north-membership-active",
+        "saleNumber": "VTA-99000017",
+        "branchCode": "NORTH",
+        "registerSeedKey": "north-membership-sep",
+        "customerSeedKey": "c3",
+        "paymentMethodSeedKey": "card",
+        "soldByUserSeedKey": "manager-north",
+        "lines": [
+          {
+            "itemSeedKey": "charm-membership",
+            "quantity": 1
+          }
+        ],
+        "paymentReference": "MEM-ACT-001",
+        "notes": "Membresía de prueba activa.",
+        "completedAt": "2026-09-01T13:00:00Z"
+      },
+      {
+        "seedKey": "downtown-membership-upcoming",
+        "saleNumber": "VTA-99000018",
+        "branchCode": "DOWNTOWN",
+        "registerSeedKey": "downtown-membership-aug",
+        "customerSeedKey": "c2",
+        "paymentMethodSeedKey": "card",
+        "soldByUserSeedKey": "seller-center",
+        "lines": [
+          {
+            "itemSeedKey": "charm-membership",
+            "quantity": 1
+          }
+        ],
+        "paymentReference": "MEM-PRO-001",
+        "notes": "Membresía de prueba próxima a vencer.",
+        "completedAt": "2026-08-08T13:00:00Z"
+      },
+      {
+        "seedKey": "east-membership-expired",
+        "saleNumber": "VTA-99000019",
+        "branchCode": "EAST",
+        "registerSeedKey": "east-membership-jul",
+        "customerSeedKey": "c4",
+        "paymentMethodSeedKey": "card",
+        "soldByUserSeedKey": "seller-east",
+        "lines": [
+          {
+            "itemSeedKey": "charm-membership",
+            "quantity": 1
+          }
+        ],
+        "paymentReference": "MEM-VEN-001",
+        "notes": "Membresía de prueba vencida.",
+        "completedAt": "2026-07-20T13:00:00Z"
+      },
+      {
+        "seedKey": "north-membership-inactive",
+        "saleNumber": "VTA-99000020",
+        "branchCode": "NORTH",
+        "registerSeedKey": "north-membership-jun",
+        "customerSeedKey": "c1",
+        "paymentMethodSeedKey": "card",
+        "soldByUserSeedKey": "manager-north",
+        "lines": [
+          {
+            "itemSeedKey": "charm-membership",
+            "quantity": 1
+          }
+        ],
+        "paymentReference": "MEM-INA-001",
+        "notes": "Membresía de prueba inactiva.",
+        "completedAt": "2026-06-01T13:00:00Z"
       }
     ],
     "cashAdjustments": [

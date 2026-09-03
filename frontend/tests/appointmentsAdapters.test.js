@@ -126,24 +126,24 @@ describe('adaptadores de Agenda', () => {
       appointment,
       online: true,
       canManageReceivables: false,
-    })).toMatchObject({ canManagePending: false, canCancel: false })
+    })).toMatchObject({ canManagePending: false, canCancel: false, canDelete: false })
 
     expect(getAppointmentReceivablePolicy({
       appointment,
       online: true,
       canManageReceivables: true,
-    })).toMatchObject({ canManagePending: true, canCancel: true })
+    })).toMatchObject({ canManagePending: true, canCancel: true, canDelete: true })
 
     expect(getAppointmentReceivablePolicy({
       appointment,
       online: false,
       canManageReceivables: false,
-    })).toMatchObject({ canManagePending: true, canCancel: true })
+    })).toMatchObject({ canManagePending: true, canCancel: true, canDelete: true })
 
     expect(getAppointmentReceivablePolicy({
       appointment: { pendingPayment: true, pendingAmount: 0 },
       online: true,
       canManageReceivables: false,
-    }).canCancel).toBe(true)
+    })).toMatchObject({ canCancel: true, canDelete: true })
   })
 })

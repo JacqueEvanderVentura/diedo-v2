@@ -1,5 +1,6 @@
 {
   "itemProfiles": [
+    {"itemSeedKey": "charm-membership", "salePrice": 1000, "taxRate": 0},
     {"itemSeedKey": "remaining-cycle-half", "salePrice": 8000, "taxRate": 18},
     {"itemSeedKey": "underarm-session", "salePrice": 900, "taxRate": 18},
     {"itemSeedKey": "full-legs-session", "salePrice": 1200, "taxRate": 18},
@@ -108,5 +109,59 @@
     {"seedKey": "east-admin-laptop", "name": "Laptop de sucursal", "code": "TEC-EAS-005", "categoryCode": "tecnologia", "branchCode": "EAST", "acquisitionValue": 39500, "status": "activo", "location": "Administración", "purchaseDate": "2023-12-11"},
     {"seedKey": "east-cooling-system", "name": "Sistema de enfriamiento láser", "code": "EQP-EAS-007", "categoryCode": "equipos", "branchCode": "EAST", "acquisitionValue": 68000, "status": "reparacion", "location": "Cabina 1", "purchaseDate": "2023-07-19", "notes": "Pendiente de repuesto"},
     {"seedKey": "east-old-treatment-bed", "name": "Camilla de tratamiento antigua", "code": "MOB-EAS-001", "categoryCode": "mobiliario", "branchCode": "EAST", "acquisitionValue": 12000, "status": "baja", "location": "Almacén", "purchaseDate": "2019-05-08", "notes": "Fuera de servicio"}
+  ],
+  "usageMovements": [
+    {
+      "seedKey": "hq-emp1-maria-supplies",
+      "branchCode": "HQ",
+      "employeeSeedKey": "emp-1",
+      "appointmentSeedKey": "hq-maria-morning",
+      "createdByUserSeedKey": "admin",
+      "createdAt": "2026-09-01T14:15:00Z",
+      "comment": "Insumos utilizados en sesión de axilas",
+      "lines": [
+        {"itemSeedKey": "nitrile-gloves", "quantity": 1},
+        {"itemSeedKey": "laser-conductive-gel", "quantity": 1}
+      ]
+    },
+    {
+      "seedKey": "north-emp4-facial-supplies",
+      "branchCode": "NORTH",
+      "employeeSeedKey": "emp-4",
+      "appointmentSeedKey": "north-ana-facial",
+      "createdByUserSeedKey": "manager-north",
+      "createdAt": "2026-09-01T15:30:00Z",
+      "comment": "Consumo de cabina para facial hidratante",
+      "lines": [
+        {"itemSeedKey": "nitrile-gloves", "quantity": 2},
+        {"itemSeedKey": "disposable-towels", "quantity": 1}
+      ]
+    },
+    {
+      "seedKey": "north-emp4-legs-supplies",
+      "branchCode": "NORTH",
+      "employeeSeedKey": "emp-4",
+      "appointmentSeedKey": "north-ana-tomorrow",
+      "createdByUserSeedKey": "manager-north",
+      "createdAt": "2026-09-02T16:00:00Z",
+      "comment": "Insumos para sesión de piernas completas",
+      "lines": [
+        {"itemSeedKey": "nitrile-gloves", "quantity": 1},
+        {"itemSeedKey": "laser-conductive-gel", "quantity": 2}
+      ]
+    },
+    {
+      "seedKey": "downtown-emp3-followup-supplies",
+      "branchCode": "DOWNTOWN",
+      "employeeSeedKey": "emp-3",
+      "appointmentSeedKey": "downtown-jose-followup",
+      "createdByUserSeedKey": "manager-center",
+      "createdAt": "2026-09-01T16:20:00Z",
+      "comment": "Consumo registrado para seguimiento",
+      "lines": [
+        {"itemSeedKey": "nitrile-gloves", "quantity": 1},
+        {"itemSeedKey": "isopropyl-alcohol", "quantity": 1}
+      ]
+    }
   ]
 }

@@ -18,6 +18,7 @@
 | **Plan Backend ↔ Frontend por fases** | [PLAN_IMPLEMENTACION_BACKEND_FRONTEND.md](./PLAN_IMPLEMENTACION_BACKEND_FRONTEND.md) |
 | **Handoff Jean Paul** | [BACKEND_HANDOFF_JEAN_PAUL.md](./BACKEND_HANDOFF_JEAN_PAUL.md) |
 | Contrato global | [backend/GLOBAL.md](./backend/GLOBAL.md) |
+| Aprovisionamiento de workspaces | [backend/BACKOFFICE_API.md](./backend/BACKOFFICE_API.md) |
 | Dashboard y agregados operativos | [backend/DASHBOARD_API.md](./backend/DASHBOARD_API.md) |
 | IAM (auth, users, permisos) | [backend/IAM_API.md](./backend/IAM_API.md) |
 | Administración Foundation | [backend/ADMINISTRATION_API.md](./backend/ADMINISTRATION_API.md) |

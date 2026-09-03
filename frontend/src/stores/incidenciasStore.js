@@ -31,6 +31,9 @@ const DEMO_ASSET_IDS = {
 const demoUsersBySeedKey = new Map(
   DEMO_SNAPSHOT.iam.users.map((user) => [user.seedKey, user])
 )
+const demoEmployeesBySeedKey = new Map(
+  DEMO_SNAPSHOT.employees.items.map((employee) => [employee.seedKey, employee])
+)
 
 const SEED = DEMO_SNAPSHOT.incidents.items.map((incident) => {
   const attachments = (incident.attachments || []).map((attachment) => ({
@@ -53,6 +56,17 @@ const SEED = DEMO_SNAPSHOT.incidents.items.map((incident) => {
     status: incident.status,
     branchId: DEMO_BRANCH_IDS[incident.branchCode] || incident.branchCode,
     activoId: DEMO_ASSET_IDS[incident.assetSeedKey] || null,
+    employee: incident.employeeSeedKey
+      ? {
+        id: incident.employeeSeedKey,
+        name: [
+          demoEmployeesBySeedKey.get(incident.employeeSeedKey)?.firstName,
+          demoEmployeesBySeedKey.get(incident.employeeSeedKey)?.lastName,
+        ].filter(Boolean).join(' ') || incident.employeeSeedKey,
+      }
+      : null,
+    employeeId: incident.employeeSeedKey || null,
+    employeeIncidentKind: incident.employeeIncidentKind || null,
     reporter: {
       id: `demo:${incident.reporterUserSeedKey}`,
       name: demoUsersBySeedKey.get(incident.reporterUserSeedKey)?.displayName || 'Sistema demo',
@@ -177,6 +191,11 @@ function localIncident(data) {
     status: 'abierta',
     branchId: data.branchId || null,
     activoId: data.activoId || null,
+    employee: data.employeeId
+      ? { id: data.employeeId, name: data.employeeName || data.employeeId }
+      : null,
+    employeeId: data.employeeId || null,
+    employeeIncidentKind: data.employeeIncidentKind || null,
     reporter: { id: null, name: data.reportedBy || 'Sistema local' },
     intervenientes: data.intervenientes || [],
     attachments: [],

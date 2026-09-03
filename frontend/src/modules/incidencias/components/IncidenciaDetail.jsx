@@ -7,7 +7,14 @@ import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { MentionInput } from '@/components/ui/MentionInput'
 import { MentionText } from '@/components/ui/MentionText'
-import { initials, priorityMeta, statusMeta, typeMeta, INCIDENCIA_STATUSES } from '@/data/incidencias'
+import {
+  employeeIncidentKindMeta,
+  initials,
+  priorityMeta,
+  statusMeta,
+  typeMeta,
+  INCIDENCIA_STATUSES,
+} from '@/data/incidencias'
 import { cn } from '@/lib/utils'
 import { currentSessionActor } from '@/lib/sessionActor'
 
@@ -45,6 +52,7 @@ export function IncidenciaDetail({
   const pr = priorityMeta(item.priority)
   const st = statusMeta(item.status)
   const tp = typeMeta(item.type)
+  const employeeKind = employeeIncidentKindMeta(item.employeeIncidentKind)
   const previewItems = item.attachments?.length
     ? item.attachments
         .filter((attachment) => attachment.previewObjectUrl)
@@ -111,6 +119,11 @@ export function IncidenciaDetail({
           <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{tp.name}</span>
           {branchName && <span className="text-xs text-slate-400">· {branchName}</span>}
           {activoName && <span className="text-xs text-slate-400">· {activoName}</span>}
+          {item.employee?.name && (
+            <span className="text-xs text-slate-400">
+              · {item.employee.name}{employeeKind ? ` — ${employeeKind.name}` : ''}
+            </span>
+          )}
         </div>
         {item.description && <p className="mt-4 text-sm leading-relaxed text-slate-600">{item.description}</p>}
       </div>

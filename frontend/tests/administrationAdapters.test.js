@@ -148,7 +148,7 @@ describe('administration adapters', () => {
       version: 3,
     })
     expect(branchPartnersPatchToApi(form, branch)).toEqual({
-      details: { partners: [{ name: 'Grace Hopper', share: 100 }] },
+      details: { partners: [{ name: 'Grace Hopper', document: null, share: 100 }] },
       version: 3,
     })
   })

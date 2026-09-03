@@ -61,8 +61,15 @@ export const appointmentsApi = {
       appointmentPatchToApiPayload(payload, version)
     )
   ),
-  cancelAppointment: async (id, version) => mapAppointmentFromApi(
-    await apiClient.patch(`/api/v1/appointments/${id}`, { status: 'cancelled', version })
+  updateAppointmentStatus: async (id, status, version) => mapAppointmentFromApi(
+    await apiClient.patch(`/api/v1/appointments/${id}`, {
+      status: appointmentStatusToApi(status),
+      version,
+    })
+  ),
+  deleteAppointment: (id, version) => apiClient.delete(
+    `/api/v1/appointments/${id}`,
+    { version }
   ),
 }
 

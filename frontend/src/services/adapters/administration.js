@@ -132,6 +132,7 @@ export function branchPartnersPatchToApi(form, branch) {
     details: {
       partners: (form.partners || []).map((partner) => ({
         name: partner.name.trim(),
+        document: optionalText(partner.document),
         share: Number(partner.share) || 0,
       })),
     },
@@ -170,6 +171,7 @@ function branchDetailsForCreate(form, independentBusiness) {
     independentBusiness,
     partners: (form.partners || []).map((partner) => ({
       name: partner.name.trim(),
+      document: optionalText(partner.document),
       share: Number(partner.share) || 0,
     })),
   }

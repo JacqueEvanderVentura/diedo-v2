@@ -282,7 +282,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
       <div className="space-y-4">
         <div className="flex flex-col items-center gap-3">
           <AppointmentShareCard appointment={previewAppointment} showAudit={editing} />
-          {editing && <AppointmentShareActions appointment={previewAppointment} showAudit />}
+          {editing && <AppointmentShareActions appointment={previewAppointment} />}
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

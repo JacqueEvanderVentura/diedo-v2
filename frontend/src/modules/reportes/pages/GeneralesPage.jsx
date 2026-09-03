@@ -1,22 +1,21 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
 import { TrendingUp, TrendingDown, Wallet } from 'lucide-react'
 import { usePosStore } from '@/stores/posStore'
 import { useFinanzasStore } from '@/stores/finanzasStore'
 import { useConfigStore } from '@/stores/configStore'
 import { formatDOP, formatCompact } from '@/lib/format'
-import { METHOD_LABELS } from '@/modules/crm/lib/crm'
 import { Select } from '@/components/ui/Select'
 import { ReportFilterBar } from '../components/ReportFilterBar'
 import { Pagination } from '../components/Pagination'
 import { StatCard, ChartCard } from '../components/ReportPrimitives'
 import {
-  buildIncomeExpenseSeries,
-  incomeDistribution,
-  financialTotals,
-} from '../lib/reportes'
-import { fetchTransactionsReport, fetchExpenseCategoryReport } from '@/services/reportApi'
+  fetchExpenseCategoryReport,
+  fetchGeneralSummary,
+  fetchTransactionsReport,
+} from '@/services/reportApi'
 import { usePaginatedReport } from '../hooks/usePaginatedReport'
+import { useReportSummary } from '../hooks/useReportSummary'
 import {
   ResponsiveList,
   ResponsiveTable,
@@ -57,26 +56,21 @@ export default function GeneralesPage() {
   const [txType, setTxType] = useState('')
   const [catSearch, setCatSearch] = useState('')
 
-  const totals = useMemo(
-    () => financialTotals(sales, expenses, manualIncomes, period, branchId),
-    [sales, expenses, manualIncomes, period, branchId]
-  )
-
-  const incomeExpenseSeries = useMemo(
-    () => buildIncomeExpenseSeries(sales, expenses, manualIncomes, period, branchId),
-    [sales, expenses, manualIncomes, period, branchId]
-  )
-
-  const incomePie = useMemo(
-    () => incomeDistribution(sales, manualIncomes, period, branchId, METHOD_LABELS),
-    [sales, manualIncomes, period, branchId]
-  )
-
   const getData = useCallback(
     () => ({ sales, expenses, incomes: manualIncomes }),
     [sales, expenses, manualIncomes]
   )
   const getExpenses = useCallback(() => expenses, [expenses])
+  const summaryFetcher = useCallback(
+    () => fetchGeneralSummary(getData, { branchId, period }),
+    [getData, branchId, period]
+  )
+  const summary = useReportSummary(summaryFetcher, {
+    totals: { ingresos: 0, gastos: 0, balance: 0 },
+    incomeExpenseSeries: [],
+    incomePie: [],
+  })
+  const { totals, incomeExpenseSeries, incomePie } = summary.data
 
   const txFetcher = useCallback(
     (params) => fetchTransactionsReport(getData, { ...params, branchId, period, type: txType, search: txSearch }),
@@ -102,7 +96,7 @@ export default function GeneralesPage() {
         onPeriodChange={setPeriod}
         showPeriod
         showSearch={false}
-        onRefresh={() => { txReport.reload(); catReport.reload() }}
+        onRefresh={() => { summary.reload(); txReport.reload(); catReport.reload() }}
       />
 
       <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">

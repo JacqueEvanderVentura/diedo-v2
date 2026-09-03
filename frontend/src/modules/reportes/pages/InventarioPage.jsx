@@ -1,15 +1,16 @@
-import { useMemo, useCallback, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { Package, Boxes, AlertTriangle } from 'lucide-react'
-import { useCatalogStore, LOW_STOCK_THRESHOLD } from '@/stores/catalogStore'
+import { useCatalogStore } from '@/stores/catalogStore'
 import { usePosStore } from '@/stores/posStore'
 import { CATEGORIES } from '@/data/products'
 import { formatDOP } from '@/lib/format'
 import { StatCard, ChartCard } from '../components/ReportPrimitives'
 import { ReportFilterBar } from '../components/ReportFilterBar'
 import { Pagination } from '../components/Pagination'
-import { fetchInventoryReport } from '@/services/reportApi'
+import { fetchInventoryReport, fetchInventorySummary } from '@/services/reportApi'
 import { usePaginatedReport } from '../hooks/usePaginatedReport'
+import { useReportSummary } from '../hooks/useReportSummary'
 import {
   ResponsiveList,
   ResponsiveTable,
@@ -42,44 +43,32 @@ export default function InventarioPage() {
   const [category, setCategory] = useState('')
   const [search, setSearch] = useState('')
 
-  const stockItems = useMemo(() => products.filter((p) => p.type === 'product' && p.stock !== null), [products])
-
-  const stats = useMemo(() => {
-    const withStock = stockItems.filter((p) => p.stock > 0)
-    const valueCost = stockItems.reduce((a, p) => a + (Number(p.cost) || Number(p.price) * 0.6 || 0) * (p.stock || 0), 0)
-    const valueSale = stockItems.reduce((a, p) => a + (Number(p.price) || 0) * (p.stock || 0), 0)
-    const low = stockItems.filter((p) => p.stock <= LOW_STOCK_THRESHOLD).length
-    return { count: withStock.length, valueCost, valueSale, low }
-  }, [stockItems])
-
-  const stockBars = useMemo(
-    () => stockItems.filter((p) => p.stock > 0).sort((a, b) => b.stock - a.stock).slice(0, 8).map((p) => ({ label: p.name.length > 14 ? p.name.slice(0, 14) + '…' : p.name, value: p.stock })),
-    [stockItems]
-  )
-
-  const valueByCat = useMemo(() => {
-    const map = {}
-    stockItems.forEach((p) => {
-      const unitCost = Number(p.cost) || Number(p.price) * 0.6 || 0
-      map[p.category] = (map[p.category] || 0) + unitCost * (p.stock || 0)
-    })
-    return Object.entries(map).filter(([, v]) => v > 0).map(([id, value]) => ({ id, name: catName(id), value }))
-  }, [stockItems])
-
-  const marginBars = useMemo(() => {
-    return stockItems
-      .filter((p) => p.price > 0)
-      .map((p) => {
-        const cost = Number(p.cost) || p.price * 0.6
-        const margin = p.price > 0 ? ((p.price - cost) / p.price) * 100 : 0
-        return { label: p.name.length > 14 ? `${p.name.slice(0, 14)}…` : p.name, margin: Number(margin.toFixed(1)) }
-      })
-      .sort((a, b) => b.margin - a.margin)
-      .slice(0, 8)
-  }, [stockItems])
-
   const getProducts = useCallback(() => products, [products])
   const getSales = useCallback(() => sales, [sales])
+  const summaryFetcher = useCallback(
+    () => fetchInventorySummary(getProducts, getSales, { branchId, category, search }),
+    [getProducts, getSales, branchId, category, search]
+  )
+  const summary = useReportSummary(summaryFetcher, {
+    count: 0,
+    valueCost: 0,
+    valueSale: 0,
+    low: 0,
+    stock: [],
+    valueByCategory: [],
+    margins: [],
+    categories: [],
+  })
+  const stats = summary.data
+  const stockBars = stats.stock
+  const valueByCat = stats.valueByCategory.map((item) => ({
+    ...item,
+    name: item.name === item.id ? catName(item.id) : item.name,
+  }))
+  const marginBars = stats.margins
+  const categoryOptions = stats.categories.length
+    ? stats.categories.map((item) => ({ value: item.id, label: item.name }))
+    : CATEGORIES.map((item) => ({ value: item.id, label: item.name }))
   const fetcher = useCallback(
     (params) => fetchInventoryReport(getProducts, getSales, { ...params, branchId, category, search }),
     [getProducts, getSales, branchId, category, search]
@@ -94,14 +83,14 @@ export default function InventarioPage() {
         search={search}
         onSearchChange={(v) => { setSearch(v); tableReport.setPage(1) }}
         searchPlaceholder="Buscar producto…"
-        onRefresh={tableReport.reload}
+        onRefresh={() => { summary.reload(); tableReport.reload() }}
         extra={(
           <div className="min-w-[180px] flex-1">
             <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-400">Categoría</label>
             <Select
               value={category}
               onChange={(v) => { setCategory(v); tableReport.setPage(1) }}
-              options={[{ value: '', label: 'Todas' }, ...CATEGORIES.map((c) => ({ value: c.id, label: c.name }))]}
+              options={[{ value: '', label: 'Todas' }, ...categoryOptions]}
             />
           </div>
         )}
@@ -111,7 +100,7 @@ export default function InventarioPage() {
         <StatCard label="Productos con stock" value={stats.count} icon={Boxes} tone="brand" testId="report-stat-inv-count" />
         <StatCard label="Valor inventario (costo)" value={formatDOP(stats.valueCost)} icon={Package} tone="emerald" testId="report-stat-inv-value-cost" />
         <StatCard label="Valor inventario (venta)" value={formatDOP(stats.valueSale)} icon={Package} tone="brand" testId="report-stat-inv-value-sale" />
-        <StatCard label="Bajo stock" value={stats.low} icon={AlertTriangle} tone="amber" sub={`≤ ${LOW_STOCK_THRESHOLD} unidades`} testId="report-stat-inv-low" />
+        <StatCard label="Bajo stock" value={stats.low} icon={AlertTriangle} tone="amber" sub="Según mínimo configurado" testId="report-stat-inv-low" />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

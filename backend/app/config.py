@@ -37,9 +37,10 @@ class Settings(BaseSettings):
     refresh_token_days: int = Field(default=30, ge=1, le=90)
     refresh_cookie_name: str = "erp_refresh"
     refresh_cookie_path: str = "/api/v1/auth"
+    backoffice_api_key: SecretStr | None = None
     local_bootstrap_admin_password: SecretStr | None = None
     demo_seed_enabled: bool = False
-    expected_schema_revision: str = "20260901_0016"
+    expected_schema_revision: str = "20260903_0019"
     attachment_storage_root: Path = _BACKEND_ROOT / ".local" / "attachments"
     attachment_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1, le=10 * 1024 * 1024)
     incident_image_max_bytes: int = Field(default=5 * 1024 * 1024, ge=1, le=10 * 1024 * 1024)
@@ -54,6 +55,14 @@ class Settings(BaseSettings):
             secret == _LOCAL_JWT_SECRET or secret.startswith("replace-with-")
         ):
             raise ValueError("JWT_SECRET_KEY must be provided outside local environments.")
+        if self.backoffice_api_key is not None:
+            backoffice_key = self.backoffice_api_key.get_secret_value()
+            if len(backoffice_key) < 32:
+                raise ValueError("BACKOFFICE_API_KEY must contain at least 32 characters.")
+            if self.app_env in {"staging", "production"} and backoffice_key.startswith(
+                "replace-with-"
+            ):
+                raise ValueError("BACKOFFICE_API_KEY must not use a placeholder value.")
         return self
 
     @property

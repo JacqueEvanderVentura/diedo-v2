@@ -5,13 +5,13 @@ import { useAgendaStore, statusMeta, APPOINTMENT_STATUSES } from '@/stores/agend
 import { useConfigStore } from '@/stores/configStore'
 import { useRrhhStore } from '@/stores/rrhhStore'
 import { staffOptionsForBranch, allStaffOptions, resolveStaffName } from '@/modules/rrhh/lib/staff'
-import { formatDOP } from '@/lib/format'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { AppointmentFormModal } from '../components/AppointmentFormModal'
 import { AppointmentShareModal } from '../components/AppointmentShareModal'
+import { DeleteAppointmentModal } from '../components/DeleteAppointmentModal'
 import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
 import { formatShortDate, endTime } from '../lib/calendar'
 import { isProximoAppointment } from '../lib/appointments'
@@ -23,8 +23,40 @@ import { useAgendaPolling } from '../hooks/useAgendaPolling'
 import { useSessionStore } from '@/stores/sessionStore'
 import { getAppointmentReceivablePolicy } from '../lib/receivablePermissions'
 
-function ActionButtons({ apt, onEdit, onDelete, onShare, canManage, online, canManageReceivables }) {
-  const cancellation = getAppointmentReceivablePolicy({ appointment: apt, online, canManageReceivables })
+function AppointmentStatusControl({ apt, canManage, changing, onChange, online, canManageReceivables }) {
+  const currentStatus = statusMeta(apt.status)
+  const proximo = isProximoAppointment(apt)
+  const receivablePolicy = getAppointmentReceivablePolicy({ appointment: apt, online, canManageReceivables })
+  const options = APPOINTMENT_STATUSES.map((status) => ({
+    value: status.id,
+    label: status.name,
+    disabled: status.id === 'cancelada' && !receivablePolicy.canCancel,
+  }))
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {canManage ? (
+        <Select
+          value={apt.status}
+          onChange={(nextStatus) => nextStatus !== apt.status && onChange(apt, nextStatus)}
+          options={options}
+          size="sm"
+          variant="muted"
+          disabled={changing}
+          className="w-36"
+          menuMinWidth={160}
+          data-testid={`gestion-status-${apt.id}`}
+        />
+      ) : (
+        <Badge tone={currentStatus.tone}>{currentStatus.name}</Badge>
+      )}
+      {proximo && <Badge tone="warning">Próximo</Badge>}
+    </div>
+  )
+}
+
+function ActionButtons({ apt, onEdit, onDelete, onShare, canManage, canDelete, online, canManageReceivables }) {
+  const deletion = getAppointmentReceivablePolicy({ appointment: apt, online, canManageReceivables })
   return (
     <div className="flex items-center justify-end gap-1">
       <WhatsAppMenuButton
@@ -49,38 +81,36 @@ function ActionButtons({ apt, onEdit, onDelete, onShare, canManage, online, canM
         <Share2 className="h-4 w-4" />
       </button>
       {canManage && (
-        <>
+        <button
+          type="button"
+          onClick={() => onEdit(apt)}
+          title="Editar"
+          aria-label="Editar cita"
+          data-testid={`gestion-edit-${apt.id}`}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600"
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+      )}
+      {canDelete && (
+        <span title={deletion.deleteReason || 'Eliminar'}>
           <button
             type="button"
-            onClick={() => onEdit(apt)}
-            title="Editar"
-            data-testid={`gestion-edit-${apt.id}`}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600"
+            onClick={() => onDelete(apt)}
+            disabled={!deletion.canDelete}
+            aria-label={deletion.deleteReason || 'Eliminar cita'}
+            data-testid={`gestion-delete-${apt.id}`}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <Pencil className="h-4 w-4" />
+            <Trash2 className="h-4 w-4" />
           </button>
-          <span title={cancellation.cancelReason || 'Cancelar'}>
-            <button
-              type="button"
-              onClick={() => onDelete(apt)}
-              disabled={!cancellation.canCancel}
-              aria-label={cancellation.cancelReason || 'Cancelar'}
-              data-testid={`gestion-delete-${apt.id}`}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          </span>
-        </>
+        </span>
       )}
     </div>
   )
 }
 
-function AppointmentMobileCard({ apt, branchName, staffName, onEdit, onDelete, onShare, canManage, online, canManageReceivables }) {
-  const st = statusMeta(apt.status)
-  const proximo = isProximoAppointment(apt)
-
+function AppointmentMobileCard({ apt, branchName, staffName, onEdit, onDelete, onShare, onStatusChange, canManage, canDelete, statusChanging, online, canManageReceivables }) {
   return (
     <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-soft" data-testid={`gestion-card-${apt.id}`}>
       <div className="flex items-start justify-between gap-3">
@@ -88,7 +118,14 @@ function AppointmentMobileCard({ apt, branchName, staffName, onEdit, onDelete, o
           <p className="font-semibold text-slate-900">{apt.customerName}</p>
           <p className="mt-0.5 truncate text-sm text-slate-500">{apt.serviceName || '—'}</p>
         </div>
-        <Badge tone={proximo ? 'warning' : st.tone}>{proximo ? 'Próximo' : st.name}</Badge>
+        <AppointmentStatusControl
+          apt={apt}
+          canManage={canManage}
+          changing={statusChanging}
+          onChange={onStatusChange}
+          online={online}
+          canManageReceivables={canManageReceivables}
+        />
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
         <div>
@@ -108,9 +145,8 @@ function AppointmentMobileCard({ apt, branchName, staffName, onEdit, onDelete, o
           <p className="mt-0.5 text-slate-700">{branchName}</p>
         </div>
       </div>
-      <div className="mt-3 flex items-center justify-between border-t border-slate-50 pt-3">
-        <span className="font-heading text-sm font-bold text-blue-600">{formatDOP(apt.price || 0)}</span>
-        <ActionButtons apt={apt} onEdit={onEdit} onDelete={onDelete} onShare={onShare} canManage={canManage} online={online} canManageReceivables={canManageReceivables} />
+      <div className="mt-3 flex items-center justify-end border-t border-slate-50 pt-3">
+        <ActionButtons apt={apt} onEdit={onEdit} onDelete={onDelete} onShare={onShare} canManage={canManage} canDelete={canDelete} online={online} canManageReceivables={canManageReceivables} />
       </div>
     </div>
   )
@@ -119,11 +155,13 @@ function AppointmentMobileCard({ apt, branchName, staffName, onEdit, onDelete, o
 export default function GestionCitasPage() {
   const appointments = useAgendaStore((s) => s.appointments)
   const deleteAppointment = useAgendaStore((s) => s.deleteAppointment)
+  const setAppointmentStatus = useAgendaStore((s) => s.setStatus)
   const dataState = useAgendaStore((s) => s.dataState)
   const hydrateAppointments = useAgendaStore((s) => s.hydrateAppointments)
   const rrhhEmployees = useRrhhStore((s) => s.employees)
   const branches = useConfigStore((s) => s.branches)
   const canManage = useSessionStore((s) => s.hasPermission('appointment.manage'))
+  const canDelete = useSessionStore((s) => s.hasPermission('appointment.delete'))
   const canManageReceivables = useSessionStore((s) => s.hasPermission('pos.receivables.manage'))
   const online = useSessionStore((s) => s.status === 'online')
 
@@ -134,6 +172,9 @@ export default function GestionCitasPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [shareTarget, setShareTarget] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting] = useState(false)
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null)
 
   const appointmentQuery = useMemo(
     () => branchId === 'all' ? {} : { branchId },
@@ -179,7 +220,6 @@ export default function GestionCitasPage() {
       employee: (a) => staffName(a.employeeId),
       branch: (a) => branchMap[a.branchId] || '',
       status: (a) => a.status || '',
-      price: (a) => a.price || 0,
     },
   })
 
@@ -193,18 +233,48 @@ export default function GestionCitasPage() {
     setModalOpen(true)
   }
 
-  const remove = async (apt) => {
-    const cancellation = getAppointmentReceivablePolicy({ appointment: apt, online, canManageReceivables })
-    if (!cancellation.canCancel) {
-      toast.info(cancellation.cancelReason)
+  const requestDelete = (apt) => {
+    const deletion = getAppointmentReceivablePolicy({ appointment: apt, online, canManageReceivables })
+    if (!deletion.canDelete) {
+      toast.info(deletion.deleteReason)
       return
     }
-    if (!window.confirm(`¿Cancelar la cita de ${apt.customerName}?`)) return
+    setDeleteTarget(apt)
+  }
+
+  const confirmDelete = async () => {
+    if (!deleteTarget || deleting) return
+    setDeleting(true)
     try {
-      await deleteAppointment(apt.id)
-      toast.success('Cita cancelada')
+      await deleteAppointment(deleteTarget.id)
+      setDeleteTarget(null)
+      toast.success('Cita eliminada')
     } catch (error) {
-      toast.error(error.message || 'No se pudo cancelar la cita')
+      toast.error(error.message || 'No se pudo eliminar la cita')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const changeStatus = async (apt, nextStatus) => {
+    if (statusUpdatingId) return
+    const receivablePolicy = getAppointmentReceivablePolicy({
+      appointment: apt,
+      online,
+      canManageReceivables,
+    })
+    if (nextStatus === 'cancelada' && !receivablePolicy.canCancel) {
+      toast.info(receivablePolicy.cancelReason)
+      return
+    }
+    setStatusUpdatingId(apt.id)
+    try {
+      await setAppointmentStatus(apt.id, nextStatus)
+      toast.success('Estado de la cita actualizado')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo actualizar el estado')
+    } finally {
+      setStatusUpdatingId(null)
     }
   }
 
@@ -261,10 +331,10 @@ export default function GestionCitasPage() {
       {displayRows.length === 0 ? (
         <EmptyState icon={CalendarDays} title="Sin citas" description="No hay citas con esos filtros." className="py-14" />
       ) : (
-        <ResponsiveList minTableWidth={960} columnCount={8}>
+        <ResponsiveList minTableWidth={840} columnCount={7}>
           <ResponsiveTable testId="gestion-table">
               <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
-              <table className="w-full min-w-[960px] text-sm">
+              <table className="w-full min-w-[840px] text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
                     <SortableTh column="customer" className="px-6 py-4">Cliente / Servicio</SortableTh>
@@ -273,14 +343,11 @@ export default function GestionCitasPage() {
                     <SortableTh column="employee" className="px-6 py-4">Empleado</SortableTh>
                     <SortableTh column="branch" className="px-6 py-4">Sucursal</SortableTh>
                     <SortableTh column="status" className="px-6 py-4">Estado</SortableTh>
-                    <SortableTh column="price" align="right" className="px-6 py-4">Precio</SortableTh>
                     <SortableTh sortable={false} align="right" className="px-6 py-4">Acciones</SortableTh>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {displayRows.map((apt) => {
-                    const st = statusMeta(apt.status)
-                    const proximo = isProximoAppointment(apt)
                     return (
                       <tr key={apt.id} className="transition-colors hover:bg-slate-50/60" data-testid={`gestion-row-${apt.id}`}>
                         <td className="px-6 py-4">
@@ -294,11 +361,17 @@ export default function GestionCitasPage() {
                         <td className="whitespace-nowrap px-6 py-4 text-slate-600">{staffName(apt.employeeId)}</td>
                         <td className="whitespace-nowrap px-6 py-4 text-slate-600">{branchMap[apt.branchId] || '—'}</td>
                         <td className="px-6 py-4">
-                          <Badge tone={proximo ? 'warning' : st.tone}>{proximo ? 'Próximo' : st.name}</Badge>
+                          <AppointmentStatusControl
+                            apt={apt}
+                            canManage={canManage}
+                            changing={statusUpdatingId === apt.id}
+                            onChange={changeStatus}
+                            online={online}
+                            canManageReceivables={canManageReceivables}
+                          />
                         </td>
-                        <td className="whitespace-nowrap px-6 py-4 text-right font-heading font-bold text-blue-600">{formatDOP(apt.price || 0)}</td>
                         <td className="px-6 py-4">
-                          <ActionButtons apt={apt} onEdit={openEdit} onDelete={remove} onShare={setShareTarget} canManage={canManage} online={online} canManageReceivables={canManageReceivables} />
+                          <ActionButtons apt={apt} onEdit={openEdit} onDelete={requestDelete} onShare={setShareTarget} canManage={canManage} canDelete={canDelete} online={online} canManageReceivables={canManageReceivables} />
                         </td>
                       </tr>
                     )
@@ -316,9 +389,12 @@ export default function GestionCitasPage() {
                 branchName={branchMap[apt.branchId] || '—'}
                 staffName={staffName}
                 onEdit={openEdit}
-                onDelete={remove}
+                onDelete={requestDelete}
                 onShare={setShareTarget}
+                onStatusChange={changeStatus}
                 canManage={canManage}
+                canDelete={canDelete}
+                statusChanging={statusUpdatingId === apt.id}
                 online={online}
                 canManageReceivables={canManageReceivables}
               />
@@ -329,6 +405,12 @@ export default function GestionCitasPage() {
 
       <AppointmentFormModal open={modalOpen} onClose={() => setModalOpen(false)} appointment={editing} />
       <AppointmentShareModal open={!!shareTarget} onClose={() => setShareTarget(null)} appointment={shareTarget} />
+      <DeleteAppointmentModal
+        appointment={deleteTarget}
+        loading={deleting}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+      />
     </div>
   )
 }

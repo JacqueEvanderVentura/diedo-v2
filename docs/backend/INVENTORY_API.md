@@ -94,6 +94,11 @@ Outbound payloads require `branchId`, `employeeId`, and one to 100 unique lines 
 must be active in the branch; an appointment, when provided, must belong to that employee and
 branch. Stock cannot become negative.
 
+The usage aggregate reports appointment counts only for `completed` or `attended` appointments;
+`confirmed` remains scheduled work and is not treated as delivered. Canonical demo data includes
+four outbound movements linked to real employees and completed appointments so this view and the
+Personal report are populated in local/test environments.
+
 Adjustment payloads require `branchId`, a non-empty `comment`, and lines shaped as
 `{itemId, quantity}`, where quantity is the new physical count rather than a delta. A no-op
 adjustment is rejected. Movement responses preserve `quantityBefore`, `quantityAfter`,

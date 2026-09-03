@@ -1119,6 +1119,13 @@ class PosService:
             discount_type=cast(str | None, values.get("discount_type")),
             discount_value=cast(Decimal | None, values.get("discount_value")),
         )
+        if customer is None and any(
+            line.catalog.item.item_type == "membership" for line in priced_lines
+        ):
+            raise InvalidOperationError(
+                "Selecciona un cliente registrado para vender una membresía.",
+                "customerId",
+            )
         workspace = self._repository.workspace(grant.workspace_id)
         if workspace is None:
             raise ResourceNotFoundError("El workspace no existe.")
@@ -1967,7 +1974,8 @@ class PosService:
         existing = self._repository.receivable_for_appointment(
             appointment.workspace_id, appointment.id, lock=True
         )
-        if appointment.status == "cancelled":
+        appointment_removed = appointment.record_status == "inactive"
+        if appointment.status == "cancelled" or appointment_removed:
             appointment.pending_payment = False
             appointment.pending_amount = Decimal("0")
         should_exist = appointment.pending_payment and appointment.pending_amount > 0
@@ -1986,7 +1994,11 @@ class PosService:
                 )
             existing.status = "cancelled"
             existing.cancelled_at = datetime.now(UTC)
-            existing.cancellation_reason = "Saldo pendiente retirado desde Agenda."
+            existing.cancellation_reason = (
+                "Cita eliminada desde Agenda."
+                if appointment_removed
+                else "Saldo pendiente retirado desde Agenda."
+            )
             existing.updated_by_platform_user_id = principal.platform_user_id
             existing.version += 1
             return existing

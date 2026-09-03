@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, Users, DollarSign, Receipt, TrendingUp } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
@@ -41,11 +41,19 @@ export default function MembresiasPage() {
   const fetcher = useCallback((params) => fetchMembershipReport(params), [])
   const report = usePaginatedReport(fetcher, { branchId: '', status: '', search: '', plan: '' }, 10, { key: 'clientName', dir: 'asc' })
 
-  const summary = report.summary || { activeCount: 0, mrr: 0, avgTicket: 0, proximo: 0, vencido: 0 }
-  const growth = useMemo(
-    () => ['mar', 'abr', 'may', 'jun', 'jul', 'ago'].map((m, i) => ({ label: m, value: 9000 + i * 4500 })),
-    []
-  )
+  const summary = report.summary || {
+    activeCount: 0,
+    mrr: 0,
+    avgTicket: 0,
+    proximo: 0,
+    vencido: 0,
+    newThisMonth: 0,
+    growthPct: 0,
+    growth: [],
+    plans: [],
+  }
+  const growth = summary.growth || []
+  const plans = summary.plans?.length ? summary.plans : MEMBERSHIP_PLANS
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="report-membresias">
@@ -74,15 +82,15 @@ export default function MembresiasPage() {
             <Select
               value={report.filters.plan || ''}
               onChange={(v) => report.setFilter('plan', v)}
-              options={[{ value: '', label: 'Todos los planes' }, ...MEMBERSHIP_PLANS.map((p) => ({ value: p, label: p }))]}
+              options={[{ value: '', label: 'Todos los planes' }, ...plans.map((p) => ({ value: p, label: p }))]}
             />
           </div>
         )}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Miembros activos" value={summary.activeCount} icon={Users} tone="brand" sub="+30 este mes" />
-        <StatCard label="Monto recurrente (MRR)" value={formatDOP(summary.mrr)} icon={DollarSign} tone="emerald" sub="+12% vs mes anterior" />
+        <StatCard label="Miembros activos" value={summary.activeCount} icon={Users} tone="brand" sub={`+${summary.newThisMonth || 0} este mes`} />
+        <StatCard label="Monto recurrente (MRR)" value={formatDOP(summary.mrr)} icon={DollarSign} tone="emerald" sub={`${summary.growthPct > 0 ? '+' : ''}${summary.growthPct || 0}% vs mes anterior`} />
         <StatCard label="Ticket promedio" value={formatDOP(summary.avgTicket)} icon={Receipt} tone="slate" sub={`Basado en ${summary.activeCount} membresías activas`} />
         <StatCard label="Próximos a vencer" value={summary.proximo} icon={TrendingUp} tone="amber" sub={`${summary.vencido} vencidos`} />
       </div>

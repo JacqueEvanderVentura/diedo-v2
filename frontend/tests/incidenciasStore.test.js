@@ -137,6 +137,8 @@ describe('store de Incidencias conectado a la API', () => {
       priority: 'alta',
       branchId: 'branch-id',
       activoId: null,
+      employeeId: null,
+      employeeIncidentKind: null,
       participantIds: ['membership-id'],
     })
     expect(mocks.uploadAttachments).toHaveBeenCalledWith('incident-id', 1, [file])
@@ -144,6 +146,44 @@ describe('store de Incidencias conectado a la API', () => {
       id: 'incident-id',
       version: 2,
       images: ['blob:authenticated-preview'],
+    })
+  })
+
+  it('conserva la relación laboral al crear una incidencia de personal', async () => {
+    useIncidenciasStore.setState({ apiContext: { hydrated: true }, incidencias: [] })
+    mocks.create.mockResolvedValue(apiIncident({
+      type: 'personal',
+      employee: { id: 'employee-id', name: 'Ana Vargas' },
+      employeeIncidentKind: 'amonestacion',
+    }))
+
+    await useIncidenciasStore.getState().addIncidencia({
+      title: 'Incumplimiento de protocolo',
+      description: 'Se documenta para seguimiento.',
+      type: 'personal',
+      priority: 'media',
+      branchId: 'branch-id',
+      employeeId: 'employee-id',
+      employeeIncidentKind: 'amonestacion',
+      intervenientes: [],
+      imageFiles: [],
+    }, { isOnline: true })
+
+    expect(mocks.create).toHaveBeenCalledWith({
+      title: 'Incumplimiento de protocolo',
+      description: 'Se documenta para seguimiento.',
+      type: 'personal',
+      priority: 'media',
+      branchId: 'branch-id',
+      activoId: null,
+      employeeId: 'employee-id',
+      employeeIncidentKind: 'amonestacion',
+      participantIds: [],
+    })
+    expect(useIncidenciasStore.getState().incidencias[0]).toMatchObject({
+      employeeId: 'employee-id',
+      employee: { id: 'employee-id', name: 'Ana Vargas' },
+      employeeIncidentKind: 'amonestacion',
     })
   })
 

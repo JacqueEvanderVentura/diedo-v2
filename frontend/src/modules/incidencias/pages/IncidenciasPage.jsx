@@ -8,6 +8,7 @@ import { useNotificationsStore } from '@/stores/notificationsStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useActivosStore } from '@/stores/activosStore'
 import { useSessionStore } from '@/stores/sessionStore'
+import { useRrhhStore } from '@/stores/rrhhStore'
 import { usersApi } from '@/services/usersApi'
 import { extractMentionedUserIds, plainMessagePreview } from '@/lib/mentions'
 import { currentSessionActor } from '@/lib/sessionActor'
@@ -35,6 +36,8 @@ export default function IncidenciasPage() {
   const branches = useConfigStore((s) => s.branches)
   const localUsers = useConfigStore((s) => s.users)
   const activos = useActivosStore((s) => s.activos)
+  const employees = useRrhhStore((s) => s.employees)
+  const hydrateEmployees = useRrhhStore((s) => s.hydrateEmployees)
   const hydrateAssets = useActivosStore((s) => s.hydrateFromApi)
   const isOnline = useSessionStore((s) => s.isOnline())
   const isAuthenticated = useSessionStore((s) => s.isAuthenticated())
@@ -63,6 +66,7 @@ export default function IncidenciasPage() {
     const requests = [
       hydrateFromApi().catch(() => null),
       hydrateAssets().catch(() => null),
+      hydrateEmployees().catch(() => null),
     ]
     if (canReadMemberships) {
       requests.push(
@@ -91,6 +95,7 @@ export default function IncidenciasPage() {
     canReadMemberships,
     hydrateFromApi,
     hydrateAssets,
+    hydrateEmployees,
   ])
 
   useEffect(() => {
@@ -257,6 +262,7 @@ export default function IncidenciasPage() {
         branches={branches}
         users={users}
         activos={activos}
+        employees={employees}
         canAttach={canManage}
       />
     </div>
