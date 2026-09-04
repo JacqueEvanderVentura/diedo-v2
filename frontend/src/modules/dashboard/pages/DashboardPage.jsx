@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { useConfigStore } from '@/stores/configStore'
-import { DASHBOARD_FILTERS, LEADS_BY_PERIOD } from '@/data/dashboard'
+import { DASHBOARD_FILTERS } from '@/data/dashboard'
 import { useSessionStore } from '@/stores/sessionStore'
 import { buildBranchFilterOptions } from '@/lib/branches'
 import { Select } from '@/components/ui/Select'
@@ -66,7 +66,7 @@ export default function DashboardPage() {
     {
       id: 'leads',
       label: 'Leads Activos',
-      value: LEADS_BY_PERIOD[period],
+      value: summary.activeLeads,
       kind: 'number',
       tag: 'Oportunidades en progreso',
       icon: 'UserPlus',

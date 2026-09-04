@@ -79,7 +79,7 @@ All JSON fields use `camelCase`. Expected errors use the common `{message, param
 | POST | `/api/v1/users/invitations` | `membership.manage` | Create a one-use, expiring invitation. The raw token is omitted unless explicit local demo mode is enabled. |
 | POST | `/api/v1/users/invitations/accept` | Public token | Activate the invited membership. New identities must send `password`; existing identities must omit it and retain their global credential. |
 | DELETE | `/api/v1/users/invitations/{invitationId}` | `membership.manage` | Revoke a pending invitation. |
-| POST | `/api/v1/users/{membershipId}/password-reset` | `membership.manage` | Reset a single-workspace identity and revoke all of that identity's sessions. Multi-workspace identities require a global verified flow. |
+| POST | `/api/v1/users/{membershipId}/password-reset` | `membership.manage` | Reset a single-workspace identity and revoke all of that identity's sessions. A `workspace_admin` target additionally requires the actor to be a `workspace_admin`. Multi-workspace identities require a global verified flow. |
 | GET | `/api/v1/roles` | `role.read` | List active roles and granted-permission counts. |
 | GET | `/api/v1/roles/summary` | `role.read` | Return granted counts and percentages for role summary cards. |
 | GET | `/api/v1/permissions/matrix` | `role.read` | Return dynamic module/action rows and grants by role. |
@@ -117,6 +117,15 @@ Administrative password reset is intentionally conservative: if the platform ide
 membership row in more than one workspace, the workspace endpoint returns `409` and a future global
 verified recovery flow must be used. A permitted reset revokes every session for the platform
 identity, not only sessions for the membership named in the URL.
+
+An actor with `membership.manage` may reset users below the workspace-admin level. Resetting a
+membership with an active, workspace-wide `workspace_admin` assignment requires the actor to have
+that same active assignment; otherwise the endpoint returns `403`. A `workspace_admin` can reset an
+ordinary administrator or manager.
+
+All newly established passwords use the same policy: 8 to 128 characters, with at least one
+uppercase letter and one special character. Login keeps accepting existing credentials so users
+with older passwords can authenticate and migrate them through the change-password flow.
 
 ### User list query
 

@@ -21,7 +21,7 @@ from app.schemas.permissions import (
     ReplaceRolePermissionsBatchRequest,
     ReplaceRolePermissionsRequest,
 )
-from app.schemas.users import CreateUserRequest
+from app.schemas.users import CreateUserRequest, PasswordResetRequest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -122,7 +122,7 @@ def test_iam_schemas_normalize_and_reject_ambiguous_collections() -> None:
         {
             "displayName": "  Pablo   Lara  ",
             "email": "pablo@example.com",
-            "password": "long-password-not-secret",
+            "password": "Long!password-not-secret",
             "roleAssignments": [{"roleId": role_id, "scopeType": "branch", "branchId": branch_id}],
         }
     )
@@ -133,7 +133,7 @@ def test_iam_schemas_normalize_and_reject_ambiguous_collections() -> None:
             {
                 "displayName": "Pablo Lara",
                 "email": "pablo@example.com",
-                "password": "long-password-not-secret",
+                "password": "Long!password-not-secret",
                 "roleAssignments": [
                     {"roleId": role_id, "scopeType": "branch", "branchId": branch_id},
                     {"roleId": role_id, "scopeType": "branch", "branchId": branch_id},
@@ -145,7 +145,7 @@ def test_iam_schemas_normalize_and_reject_ambiguous_collections() -> None:
             {
                 "displayName": "Pablo Lara",
                 "email": "pablo@example.com",
-                "password": "long-password-not-secret",
+                "password": "Long!password-not-secret",
                 "roleAssignments": [
                     {
                         "roleId": role_id,
@@ -160,7 +160,7 @@ def test_iam_schemas_normalize_and_reject_ambiguous_collections() -> None:
             {
                 "displayName": "Pablo Lara",
                 "email": "pablo@example.com",
-                "password": "long-password-not-secret",
+                "password": "Long!password-not-secret",
                 "roleAssignments": [{"roleId": role_id, "scopeType": "legalEntity"}],
             }
         )
@@ -175,6 +175,15 @@ def test_iam_schemas_normalize_and_reject_ambiguous_collections() -> None:
                 ]
             }
         )
+
+
+def test_new_password_policy_requires_eight_characters_uppercase_and_special() -> None:
+    valid = PasswordResetRequest.model_validate({"newPassword": "Abcdefg!"})
+    assert valid.new_password.get_secret_value() == "Abcdefg!"
+
+    for password in ("Abc!", "abcdefg!", "Abcdefgh"):
+        with pytest.raises(ValidationError):
+            PasswordResetRequest.model_validate({"newPassword": password})
 
 
 def test_openapi_marks_only_protected_iam_routes_as_bearer(app_client: TestClient) -> None:

@@ -28,7 +28,7 @@ X-Backoffice-Key: <secret>
   "owner": {
     "email": "propietario@example.com",
     "displayName": "Persona B",
-    "password": "una-clave-inicial-segura"
+    "password": "Clave!inicial-segura"
   }
 }
 ```
@@ -37,7 +37,8 @@ The password is required only when the email is a new platform identity. If the 
 an account in another workspace, omit `owner.password`; the existing global credential is kept and
 the person can switch workspaces after login. An existing identity without an active password is
 rejected so an unusable owner is never attached. Passwords and the backoffice key are never
-returned.
+returned. New passwords must contain 8 to 128 characters, at least one uppercase letter, and at
+least one special character.
 
 `slug` is the stable, lowercase workspace identifier. A duplicate slug returns HTTP 409. The
 workspace is deliberately created without a fake company or branch. The owner can then create each

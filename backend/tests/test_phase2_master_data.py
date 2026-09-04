@@ -165,7 +165,7 @@ def test_phase2_customers_employees_schedules_and_attachments(
         json={
             "displayName": f"Usuario Empleado {suffix}",
             "email": f"employee.user.{suffix}@example.com",
-            "password": "phase-two-user-password-not-a-secret",
+            "password": "Phase!two-user-password-not-a-secret",
             "roleAssignments": [
                 {
                     "roleId": seller_role_id,

@@ -39,6 +39,7 @@ class DashboardSummaryResponse(ApiModel):
     ends_at: datetime
     currency_code: str
     revenue: DecimalString
+    active_leads: int = Field(ge=0)
     appointments_today: int = Field(ge=0)
     open_tasks: int = Field(ge=0)
     generated_at: datetime

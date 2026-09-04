@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  isWorkspaceAdmin,
   mapSessionUser,
   mapUserFromApi,
   roleAssignmentsToPayload,
@@ -19,6 +20,18 @@ const options = {
 }
 
 describe('IAM user adapters', () => {
+  it('detecta workspace_admin tanto en sesiones como en usuarios de la lista', () => {
+    expect(isWorkspaceAdmin({
+      roleAssignments: [{ role: { code: 'workspace_admin' }, scope: { type: 'workspace' } }],
+    })).toBe(true)
+    expect(isWorkspaceAdmin({
+      roleAssignments: [{ roleCode: 'workspace_admin', scopeType: 'workspace' }],
+    })).toBe(true)
+    expect(isWorkspaceAdmin({
+      roleAssignments: [{ roleCode: 'workspace_admin', scopeType: 'branch' }],
+    })).toBe(false)
+  })
+
   it('conserva separadas las capacidades workspace del union efectivo', () => {
     const user = mapSessionUser({
       userId: 'user-1',

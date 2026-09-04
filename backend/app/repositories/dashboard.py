@@ -14,11 +14,12 @@ from app.db.models import (
     Appointment,
     Branch,
     CashRegister,
+    CrmActivity,
+    CrmLead,
     InventoryMovement,
     InventoryStockBalance,
     Item,
     Sale,
-    Task,
     Workspace,
 )
 
@@ -158,6 +159,28 @@ class DashboardRepository:
         )
         return tuple((int(row[0]), row[1]) for row in rows)
 
+    def active_lead_count(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID | None,
+        allowed_branch_ids: frozenset[UUID] | None,
+        starts_at: datetime,
+        ends_at: datetime,
+    ) -> int:
+        conditions = [
+            CrmLead.workspace_id == workspace_id,
+            CrmLead.status.not_in(("descartado", "convertido")),
+            CrmLead.created_at >= starts_at,
+            CrmLead.created_at < ends_at,
+        ]
+        branch_filter = self._branch_filter(
+            CrmLead.branch_id, branch_id=branch_id, allowed_branch_ids=allowed_branch_ids
+        )
+        if branch_filter is not None:
+            conditions.append(branch_filter)
+        return int(self._session.scalar(select(func.count(CrmLead.id)).where(*conditions)) or 0)
+
     def open_task_count(
         self,
         *,
@@ -168,17 +191,17 @@ class DashboardRepository:
         ends_at: datetime,
     ) -> int:
         conditions = [
-            Task.workspace_id == workspace_id,
-            Task.status.in_(("open", "in_progress")),
-            Task.due_at >= starts_at,
-            Task.due_at < ends_at,
+            CrmActivity.workspace_id == workspace_id,
+            CrmActivity.completed_at.is_(None),
+            CrmActivity.due_at >= starts_at,
+            CrmActivity.due_at < ends_at,
         ]
         branch_filter = self._branch_filter(
-            Task.branch_id, branch_id=branch_id, allowed_branch_ids=allowed_branch_ids
+            CrmActivity.branch_id, branch_id=branch_id, allowed_branch_ids=allowed_branch_ids
         )
         if branch_filter is not None:
             conditions.append(branch_filter)
-        return int(self._session.scalar(select(func.count(Task.id)).where(*conditions)) or 0)
+        return int(self._session.scalar(select(func.count(CrmActivity.id)).where(*conditions)) or 0)
 
     def appointments_today(
         self,
@@ -419,22 +442,23 @@ class DashboardRepository:
         starts_at: datetime,
         ends_at: datetime,
         limit: int,
-    ) -> tuple[Task, ...]:
+    ) -> tuple[CrmActivity, ...]:
         conditions = [
-            Task.workspace_id == workspace_id,
-            Task.created_at >= starts_at,
-            Task.created_at < ends_at,
+            CrmActivity.workspace_id == workspace_id,
+            CrmActivity.completed_at.is_(None),
+            CrmActivity.created_at >= starts_at,
+            CrmActivity.created_at < ends_at,
         ]
         branch_filter = self._branch_filter(
-            Task.branch_id, branch_id=branch_id, allowed_branch_ids=allowed_branch_ids
+            CrmActivity.branch_id, branch_id=branch_id, allowed_branch_ids=allowed_branch_ids
         )
         if branch_filter is not None:
             conditions.append(branch_filter)
         return tuple(
             self._session.scalars(
-                select(Task)
+                select(CrmActivity)
                 .where(*conditions)
-                .order_by(Task.created_at.desc(), Task.id.desc())
+                .order_by(CrmActivity.created_at.desc(), CrmActivity.id.desc())
                 .limit(limit)
             )
         )

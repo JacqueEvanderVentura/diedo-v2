@@ -130,7 +130,10 @@ function buildDemoDashboard(snapshot, { period = 'week', branchId = 'all' } = {}
     .filter((sale) => sale.status !== 'voided' && inPeriod(sale.completedAt))
     .map((sale) => ({ ...sale, total: demoSaleTotal(snapshot, sale) }))
   const trend = buildTrend(period, start, end, sales)
-  const tasks = (snapshot.dashboard?.tasks || []).filter(matchesBranch)
+  const activeLeads = (snapshot.crm?.leads || [])
+    .filter(matchesBranch)
+    .filter((lead) => !['descartado', 'convertido'].includes(lead.status) && inPeriod(lead.createdAt))
+  const tasks = (snapshot.crm?.activities || []).filter(matchesBranch)
   const customers = new Map(snapshot.customers.items.map((item) => [item.seedKey, item]))
   const catalog = new Map(snapshot.catalog.items.map((item) => [item.seedKey, item]))
   const today = dateKey(new Date())
@@ -191,14 +194,14 @@ function buildDemoDashboard(snapshot, { period = 'week', branchId = 'all' } = {}
       icon: 'CalendarClock',
       to: '/agenda/calendario',
     })),
-    ...tasks.filter((item) => inPeriod(item.createdAt)).map((item) => ({
+    ...tasks.filter((item) => !item.completedAt && inPeriod(item.createdAt)).map((item) => ({
       id: `task:${item.seedKey}`,
       branchId: DEMO_ID_BY_BRANCH_CODE[item.branchCode],
       title: `Tarea abierta: ${item.title}`,
       occurredAt: item.createdAt,
       source: 'Tareas',
       icon: 'ClipboardList',
-      to: item.sourceRoute,
+      to: '/crm/seguimiento',
     })),
   ].sort((a, b) => new Date(b.occurredAt) - new Date(a.occurredAt)).slice(0, 10)
   return {
@@ -206,8 +209,9 @@ function buildDemoDashboard(snapshot, { period = 'week', branchId = 'all' } = {}
       period,
       branchId: branchId === 'all' ? null : branchId,
       revenue: trend.total,
+      activeLeads: activeLeads.length,
       appointmentsToday: appointments.length,
-      openTasks: tasks.filter((item) => ['open', 'in_progress'].includes(item.status) && inPeriod(item.dueAt)).length,
+      openTasks: tasks.filter((item) => !item.completedAt && item.dueAt && inPeriod(item.dueAt)).length,
       currencyCode: 'DOP',
     },
     trend: { ...trend, period, branchId: branchId === 'all' ? null : branchId, currencyCode: 'DOP' },

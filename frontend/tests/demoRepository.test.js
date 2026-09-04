@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DemoRepository } from '@/services/demoRepository'
 import { DEMO_SNAPSHOT } from '@/data/generated/demoSnapshot'
 
 describe('DemoRepository', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('expone la misma versión y conteos del snapshot canónico generado', () => {
     const repository = new DemoRepository(DEMO_SNAPSHOT)
 
@@ -53,5 +57,19 @@ describe('DemoRepository', () => {
     expect(repository.pos().cashAdjustments).toHaveLength(5)
     expect(repository.session()).toMatchObject({ source: 'demo', seedVersion: 'v1' })
     expect(JSON.stringify(DEMO_SNAPSHOT)).not.toMatch(/password|refreshToken|accessToken/i)
+  })
+
+  it('construye los KPIs de leads y tareas desde los datos reales de CRM', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-01T16:00:00Z'))
+    const dashboard = new DemoRepository(DEMO_SNAPSHOT).dashboard({ period: 'quarter' })
+
+    expect(dashboard.summary.activeLeads).toBe(5)
+    expect(dashboard.summary.openTasks).toBe(4)
+    expect(dashboard.activity.filter((item) => item.source === 'Tareas')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ title: 'Tarea abierta: Levantar sucursales y almacenes', to: '/crm/seguimiento' }),
+      ])
+    )
   })
 })

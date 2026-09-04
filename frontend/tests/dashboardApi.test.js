@@ -10,7 +10,7 @@ describe('cliente API del Dashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.get
-      .mockResolvedValueOnce({ revenue: '2500.50', appointmentsToday: 3, openTasks: 4 })
+      .mockResolvedValueOnce({ revenue: '2500.50', activeLeads: 7, appointmentsToday: 3, openTasks: 4 })
       .mockResolvedValueOnce({ total: '2500.50', points: [{ label: 'lun 1', value: '2500.50' }] })
       .mockResolvedValueOnce({ items: [{ id: 'stock-1', units: '2.000', minimumUnits: '5.000' }] })
       .mockResolvedValueOnce({ items: [{ id: 'appointment-1', status: 'confirmed' }] })
@@ -28,6 +28,7 @@ describe('cliente API del Dashboard', () => {
       ['/api/v1/dashboard/activity', { period: 'month', branchId: 'branch-id', limit: 10 }],
     ])
     expect(result.summary.revenue).toBe(2500.5)
+    expect(result.summary.activeLeads).toBe(7)
     expect(result.trend.points[0].value).toBe(2500.5)
     expect(result.stockAlerts[0].units).toBe(2)
     expect(result.appointments[0].status).toBe('confirmada')

@@ -25,6 +25,7 @@ export function mapDashboardResponse({ summary, trend, stockAlerts, appointments
     summary: {
       ...summary,
       revenue: Number(summary?.revenue) || 0,
+      activeLeads: Number(summary?.activeLeads) || 0,
       appointmentsToday: Number(summary?.appointmentsToday) || 0,
       openTasks: Number(summary?.openTasks) || 0,
     },

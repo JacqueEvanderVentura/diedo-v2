@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import EmailStr, Field, SecretStr
 
 from app.schemas.common import ApiModel
+from app.schemas.passwords import NewPassword
 
 
 class LoginRequest(ApiModel):
@@ -94,7 +95,7 @@ class SwitchWorkspaceRequest(ApiModel):
 
 class ChangePasswordRequest(ApiModel):
     current_password: SecretStr = Field(min_length=1, max_length=128)
-    new_password: SecretStr = Field(min_length=12, max_length=128)
+    new_password: NewPassword
 
 
 class UpdateProfileRequest(ApiModel):

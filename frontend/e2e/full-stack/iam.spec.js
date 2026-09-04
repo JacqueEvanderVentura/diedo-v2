@@ -128,7 +128,7 @@ test('usuario real crea y edita múltiples roleAssignments/scopes persistentes',
 
   await page.getByTestId('usuario-name').fill('Persona Full Stack IAM')
   await page.getByTestId('usuario-email').fill('persona.full.stack.iam@example.com')
-  await page.getByTestId('usuario-password-input').fill('password-full-stack-iam-2026')
+  await page.getByTestId('usuario-password-input').fill('Password!full-stack-iam-2026')
   await choose(page, 'usuario-assignment-role-0', 'Vendedor')
   await choose(page, 'usuario-assignment-target-0', 'Sucursal Norte')
   await page.getByTestId('usuario-assignment-add').click()

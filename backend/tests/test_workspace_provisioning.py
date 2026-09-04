@@ -27,7 +27,7 @@ from pydantic import SecretStr, ValidationError
 from sqlalchemy import func, select
 
 _BACKOFFICE_KEY = "test-backoffice-key-with-at-least-32-characters"
-_OWNER_PASSWORD = "owner-password-not-a-production-secret"
+_OWNER_PASSWORD = "Owner!password-not-a-production-secret"
 
 
 def _payload(*, slug: str = "grupo-persona-b", email: str = "persona-b@example.com") -> dict:

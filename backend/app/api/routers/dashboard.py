@@ -53,6 +53,7 @@ def get_dashboard_summary(
         ends_at=result.context.ends_at,
         currency_code=result.context.currency_code,
         revenue=result.revenue,
+        active_leads=result.active_leads,
         appointments_today=result.appointments_today,
         open_tasks=result.open_tasks,
         generated_at=result.context.generated_at,

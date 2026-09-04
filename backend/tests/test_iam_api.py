@@ -309,7 +309,7 @@ def test_users_roles_permissions_and_branch_isolation(client: TestClient) -> Non
 
     unique = str(uuid7()).replace("-", "")
     manager_email = f"manager-{unique}@example.com"
-    manager_password = "manager-password-not-a-secret"
+    manager_password = "Manager!password-not-a-secret"
     create_manager = client.post(
         "/api/v1/users",
         headers=admin_headers,
@@ -338,7 +338,7 @@ def test_users_roles_permissions_and_branch_isolation(client: TestClient) -> Non
         json={
             "displayName": "Duplicate Email",
             "email": manager_email.upper(),
-            "password": "duplicate-password-not-a-secret",
+            "password": "Duplicate!password-not-a-secret",
             "roleAssignments": [
                 {
                     "roleId": manager["id"],
@@ -420,7 +420,7 @@ def test_users_roles_permissions_and_branch_isolation(client: TestClient) -> Non
         json={
             "displayName": "Superior Role",
             "email": f"superior-{unique}@example.com",
-            "password": "superior-password-not-a-secret",
+            "password": "Superior!password-not-a-secret",
             "roleAssignments": [
                 {
                     "roleId": roles["workspace_admin"]["id"],
@@ -438,7 +438,7 @@ def test_users_roles_permissions_and_branch_isolation(client: TestClient) -> Non
         json={
             "displayName": "Outside Branch",
             "email": f"outside-{unique}@example.com",
-            "password": "outside-password-not-a-secret",
+            "password": "Outside!password-not-a-secret",
             "roleAssignments": [
                 {
                     "roleId": roles["seller"]["id"],
@@ -457,7 +457,7 @@ def test_users_roles_permissions_and_branch_isolation(client: TestClient) -> Non
         json={
             "displayName": "Secondary User",
             "email": secondary_email,
-            "password": "secondary-password-not-a-secret",
+            "password": "Secondary!password-not-a-secret",
             "roleAssignments": [
                 {
                     "roleId": roles["seller"]["id"],
@@ -564,7 +564,7 @@ def test_role_assignments_are_explicit_versioned_and_scope_safe(client: TestClie
         json={
             "displayName": "Contrato Obsoleto",
             "email": f"obsolete-{suffix}@example.com",
-            "password": "obsolete-contract-password",
+            "password": "Obsolete!contract-password",
             "roleId": roles["seller"]["id"],
             "branchIds": [str(primary_branch_id)],
         },
@@ -599,7 +599,7 @@ def test_role_assignments_are_explicit_versioned_and_scope_safe(client: TestClie
         json={
             "displayName": "Rol De Otro Workspace",
             "email": f"foreign-role-{suffix}@example.com",
-            "password": "foreign-role-password",
+            "password": "Foreign!role-password",
             "roleAssignments": [
                 {
                     "roleId": str(foreign_role_id),
@@ -613,7 +613,7 @@ def test_role_assignments_are_explicit_versioned_and_scope_safe(client: TestClie
     assert foreign_role_assignment.json()["parameter"] == "roleAssignments"
 
     multi_email = f"multi-scope-{suffix}@example.com"
-    multi_password = "multi-scope-password-not-a-secret"
+    multi_password = "Multi!scope-password-not-a-secret"
     created = client.post(
         "/api/v1/users",
         headers=admin_headers,
@@ -735,7 +735,7 @@ def test_role_assignments_are_explicit_versioned_and_scope_safe(client: TestClie
         json={
             "displayName": "Pseudo Admin Solo Sucursal",
             "email": f"rejected-branch-admin-{suffix}@example.com",
-            "password": "rejected-branch-admin-password",
+            "password": "Rejected!branch-admin-password",
             "roleAssignments": [
                 {
                     "roleId": roles["workspace_admin"]["id"],
@@ -770,7 +770,7 @@ def test_role_assignments_are_explicit_versioned_and_scope_safe(client: TestClie
     assert rejected_entity_admin.json()["parameter"] == "roleAssignments"
 
     branch_manager_email = f"branch-manager-{suffix}@example.com"
-    branch_manager_password = "branch-manager-password-not-secret"
+    branch_manager_password = "Branch!manager-password-not-secret"
     branch_manager = client.post(
         "/api/v1/users",
         headers=admin_headers,
@@ -889,7 +889,7 @@ def test_role_assignments_are_explicit_versioned_and_scope_safe(client: TestClie
         json={
             "displayName": "No Debe Crearse",
             "email": f"denied-workspace-{suffix}@example.com",
-            "password": "denied-workspace-password",
+            "password": "Denied!workspace-password",
             "roleAssignments": [{"roleId": roles["seller"]["id"], "scopeType": "workspace"}],
         },
     )
@@ -900,7 +900,7 @@ def test_role_assignments_are_explicit_versioned_and_scope_safe(client: TestClie
         json={
             "displayName": "Tampoco Debe Crearse",
             "email": f"denied-entity-{suffix}@example.com",
-            "password": "denied-entity-password",
+            "password": "Denied!entity-password",
             "roleAssignments": [
                 {
                     "roleId": roles["seller"]["id"],
@@ -1447,7 +1447,7 @@ def test_concurrent_admin_demotions_preserve_one_workspace_admin(
             json={
                 "displayName": f"Concurrent Admin {index}",
                 "email": f"concurrent-admin-{suffix}@example.com",
-                "password": f"concurrent-admin-{suffix}-password",
+                "password": f"Concurrent!admin-{suffix}-password",
                 "roleAssignments": [
                     {
                         "roleId": workspace_admin_role_id,
@@ -1611,7 +1611,7 @@ def test_existing_identity_invitation_keeps_global_password_and_hides_token(
     invitation_payload = invitation_response.json()
     assert "acceptToken" not in invitation_payload
 
-    attempted_password = "attacker-selected-password"
+    attempted_password = "Attacker!selected-password"
     password_takeover = client.post(
         "/api/v1/users/invitations/accept",
         json={"token": raw_token, "password": attempted_password},
@@ -1656,7 +1656,7 @@ def test_existing_identity_invitation_keeps_global_password_and_hides_token(
 
     new_identity_token = f"new-identity-invitation-token-{uuid7().hex}"
     new_identity_email = f"invited-new-{uuid7().hex[:16]}@example.com"
-    new_identity_password = "new-invited-identity-password"
+    new_identity_password = "New!invited-identity-password"
     monkeypatch.setattr(
         "app.services.users.secrets.token_urlsafe",
         lambda _size: new_identity_token,
@@ -1715,7 +1715,7 @@ def test_admin_password_reset_is_global_only_for_single_workspace_identity(
 
     def create_user(label: str) -> tuple[dict[str, object], str]:
         suffix = uuid7().hex[:16]
-        password = f"{label}-{suffix}-old-password"
+        password = f"{label.capitalize()}!{suffix}-old-password"
         response = client.post(
             "/api/v1/users",
             headers=owner_headers,
@@ -1737,7 +1737,7 @@ def test_admin_password_reset_is_global_only_for_single_workspace_identity(
     single_user, single_old_password = create_user("single")
     single_tokens_a = _login(client, str(single_user["email"]), single_old_password)
     single_tokens_b = _login(client, str(single_user["email"]), single_old_password)
-    single_new_password = "single-workspace-new-password"
+    single_new_password = "Single!workspace-new-password"
     reset_single = client.post(
         f"/api/v1/users/{single_user['id']}/password-reset",
         headers=owner_headers,
@@ -1777,7 +1777,7 @@ def test_admin_password_reset_is_global_only_for_single_workspace_identity(
             )
         )
 
-    rejected_password = "multi-workspace-rejected-password"
+    rejected_password = "Multi!workspace-rejected-password"
     reset_multi = client.post(
         f"/api/v1/users/{multi_user['id']}/password-reset",
         headers=owner_headers,
@@ -1815,3 +1815,83 @@ def test_admin_password_reset_is_global_only_for_single_workspace_identity(
             )
         )
         assert multi_audit is None
+
+
+@pytest.mark.integration
+def test_admin_cannot_reset_workspace_admin_password_but_inverse_is_allowed(
+    client: TestClient,
+) -> None:
+    _bootstrap_owner()
+    owner_headers = _authorization(_login(client, _OWNER_EMAIL, _OWNER_PASSWORD))
+    owner_me = client.get("/api/v1/auth/me", headers=owner_headers)
+    assert owner_me.status_code == 200, owner_me.text
+
+    matrix_response = client.get("/api/v1/permissions/matrix", headers=owner_headers)
+    assert matrix_response.status_code == 200, matrix_response.text
+    matrix = matrix_response.json()
+    roles = {role["code"]: role for role in matrix["roles"]}
+    permission_ids = {
+        permission["code"]: permission["id"]
+        for module in matrix["modules"]
+        for permission in module["permissions"]
+    }
+    manager = roles["manager"]
+    grant_manage = client.put(
+        f"/api/v1/roles/{manager['id']}/permissions",
+        headers=owner_headers,
+        json={
+            "permissionIds": [permission_ids["membership.manage"]],
+            "version": manager["version"],
+        },
+    )
+    assert grant_manage.status_code == 200, grant_manage.text
+
+    suffix = uuid7().hex[:16]
+    manager_old_password = "Manager!old-password"
+    created_manager = client.post(
+        "/api/v1/users",
+        headers=owner_headers,
+        json={
+            "displayName": "Workspace Manager",
+            "email": f"workspace-manager-{suffix}@example.com",
+            "password": manager_old_password,
+            "roleAssignments": [
+                {
+                    "roleId": manager["id"],
+                    "scopeType": "workspace",
+                }
+            ],
+        },
+    )
+    assert created_manager.status_code == 201, created_manager.text
+    manager = created_manager.json()
+    manager_headers = _authorization(
+        _login(client, str(manager["email"]), manager_old_password)
+    )
+
+    denied = client.post(
+        f"/api/v1/users/{owner_me.json()['membershipId']}/password-reset",
+        headers=manager_headers,
+        json={"newPassword": "Blocked!password"},
+    )
+    assert denied.status_code == 403, denied.text
+    assert denied.json()["message"] == (
+        "Solo un workspace admin puede restablecer la contraseña de otro workspace admin."
+    )
+    assert _login(client, _OWNER_EMAIL, _OWNER_PASSWORD)["accessToken"]
+
+    manager_new_password = "Manager!new-password"
+    allowed = client.post(
+        f"/api/v1/users/{manager['id']}/password-reset",
+        headers=owner_headers,
+        json={"newPassword": manager_new_password},
+    )
+    assert allowed.status_code == 204, allowed.text
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": manager["email"], "password": manager_old_password},
+        ).status_code
+        == 401
+    )
+    assert _login(client, str(manager["email"]), manager_new_password)["accessToken"]

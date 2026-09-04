@@ -16,7 +16,7 @@ endpoints requieren Bearer token, el permiso `dashboard.read` y el entitlement `
 
 | Método y ruta | Resultado |
 |---|---|
-| `GET /api/v1/dashboard/summary` | Ingresos, citas de hoy y tareas abiertas del período. |
+| `GET /api/v1/dashboard/summary` | Ingresos, leads activos, citas de hoy y tareas abiertas del período. |
 | `GET /api/v1/dashboard/sales-trend` | Serie horaria, diaria, semanal o mensual según el período. |
 | `GET /api/v1/dashboard/stock-alerts` | Balances actuales con cantidad menor o igual al mínimo. |
 | `GET /api/v1/dashboard/appointments` | Citas no canceladas del día, ordenadas por hora. |
@@ -28,10 +28,12 @@ endpoints requieren Bearer token, el permiso `dashboard.read` y el entitlement `
 ## Fuentes y semántica
 
 - Ingresos y tendencia suman únicamente ventas POS con estado `completed` por `completed_at`.
-- Tareas abiertas son registros `open` o `in_progress` cuya fecha límite cae dentro del período.
+- Leads activos son leads CRM en estado `nuevo`, `contactado` o `calificado`, creados dentro del
+  período.
+- Tareas abiertas son seguimientos CRM pendientes cuya fecha límite cae dentro del período.
 - Las alertas de stock se calculan sobre `inventory_stock_balances`, sin snapshots duplicados.
 - La actividad reciente combina registros existentes y se ordena de forma descendente por fecha.
-- Los indicadores CRM no se duplican en este contrato; su resumen consolidado vive en
-  `GET /api/v1/crm/overview`.
+- La actividad reciente incluye los seguimientos CRM pendientes y enlaza a `/crm/seguimiento`.
 
-La migración `20260901_0014` instala el módulo, el permiso y la tabla branch-scoped `tasks`.
+El dashboard reutiliza las entidades persistentes de CRM y no mantiene snapshots duplicados para
+estos indicadores.

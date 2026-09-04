@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import EmailStr, Field, SecretStr, field_validator
 
 from app.schemas.common import ApiModel
+from app.schemas.passwords import NewPassword
 
 
 class RoleReference(ApiModel):
@@ -113,7 +114,7 @@ class UserFormOptionsResponse(ApiModel):
 class CreateUserRequest(ApiModel):
     display_name: str = Field(min_length=2, max_length=160)
     email: EmailStr
-    password: SecretStr = Field(min_length=12, max_length=128)
+    password: NewPassword
     role_assignments: list[RoleAssignmentInput] = Field(min_length=1, max_length=100)
 
     @field_validator("display_name")
@@ -181,8 +182,8 @@ class InvitationResponse(ApiModel):
 
 class AcceptInvitationRequest(ApiModel):
     token: SecretStr = Field(min_length=40, max_length=256)
-    password: SecretStr | None = Field(default=None, min_length=12, max_length=128)
+    password: NewPassword | None = None
 
 
 class PasswordResetRequest(ApiModel):
-    new_password: SecretStr = Field(min_length=12, max_length=128)
+    new_password: NewPassword

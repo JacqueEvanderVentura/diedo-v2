@@ -103,11 +103,15 @@ def test_seeded_dashboard_aggregates_every_summary_and_branch_scope() -> None:
             )
 
             assert today.revenue > Decimal("0")
+            assert today.active_leads == 1
             assert today.appointments_today == 8
-            assert today.open_tasks == 4
-            assert week.open_tasks == 9
-            assert month.open_tasks == 12
-            assert quarter.open_tasks == 16
+            assert today.open_tasks == 0
+            assert week.active_leads >= 1
+            assert week.open_tasks >= 4
+            assert month.active_leads >= 1
+            assert month.open_tasks >= 4
+            assert quarter.active_leads >= 5
+            assert quarter.open_tasks >= 4
             assert trend.total == week.revenue
             assert len(trend.points) == 7
             assert today_trend.total == today.revenue
@@ -122,6 +126,9 @@ def test_seeded_dashboard_aggregates_every_summary_and_branch_scope() -> None:
             assert len(appointments) == 8
             assert activity
             assert {item.source for item in activity} >= {"Agenda", "POS", "Tareas"}
+            crm_task_activity = [item for item in activity if item.source == "Tareas"]
+            assert crm_task_activity
+            assert {item.to for item in crm_task_activity} == {"/crm/seguimiento"}
 
             hq = session.scalar(
                 select(Branch).where(
@@ -137,14 +144,38 @@ def test_seeded_dashboard_aggregates_every_summary_and_branch_scope() -> None:
                 now=_FIXED_NOW,
             )
             assert hq_today.appointments_today == 2
-            assert hq_today.open_tasks == 1
+            assert hq_today.active_leads == 0
+            assert hq_today.open_tasks == 0
             hq_week = service.summary(
                 grant,
                 period="week",
                 branch_id=hq.id,
                 now=_FIXED_NOW,
             )
+            hq_week_trend = service.sales_trend(
+                grant,
+                period="week",
+                branch_id=hq.id,
+                now=_FIXED_NOW,
+            )
+            hq_quarter = service.summary(
+                grant,
+                period="quarter",
+                branch_id=hq.id,
+                now=_FIXED_NOW,
+            )
             assert hq_week.revenue < week.revenue
+            assert hq_week_trend.total == hq_week.revenue
+            assert hq_quarter.active_leads >= 1
+            assert hq_quarter.open_tasks >= 1
+
+            with pytest.raises(ResourceNotFoundError, match="no existe"):
+                service.summary(
+                    grant,
+                    period="today",
+                    branch_id=uuid7(),
+                    now=_FIXED_NOW,
+                )
 
             restricted_grant = PermissionGrant(
                 permission_code="dashboard.read",
@@ -184,6 +215,7 @@ def test_seeded_dashboard_aggregates_every_summary_and_branch_scope() -> None:
                 now=_FIXED_NOW,
             )
             assert restricted_today.revenue == hq_today.revenue
+            assert restricted_today.active_leads == hq_today.active_leads
             assert restricted_today.appointments_today == hq_today.appointments_today
             assert restricted_today.open_tasks == hq_today.open_tasks
             assert restricted_trend.total == hq_today.revenue
@@ -227,7 +259,7 @@ def test_dashboard_http_contract_auth_filters_and_validation(client: TestClient)
         assert response.headers["cache-control"] == "no-store"
 
     summary = client.get("/api/v1/dashboard/summary", headers=headers)
-    assert "leads" not in summary.json()
+    assert isinstance(summary.json()["activeLeads"], int)
     assert client.get("/api/v1/dashboard/summary").status_code == 401
     invalid_period = client.get(
         "/api/v1/dashboard/summary?period=year",

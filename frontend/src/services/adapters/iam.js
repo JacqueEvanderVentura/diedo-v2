@@ -25,6 +25,13 @@ export function normalizeRoleAssignments(assignments = []) {
   }))
 }
 
+export function isWorkspaceAdmin(user) {
+  return (user?.roleAssignments || []).some((assignment) => (
+    (assignment.roleCode || assignment.role?.code) === 'workspace_admin'
+    && (assignment.scopeType || assignment.scope?.type) === 'workspace'
+  ))
+}
+
 export function roleAssignmentsToPayload(assignments = []) {
   return assignments.map((assignment) => {
     const payload = {

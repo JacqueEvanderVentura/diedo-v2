@@ -7,7 +7,7 @@ const SOURCE_ROUTES = {
   POS: '/pos/caja',
   Inventario: '/inventarios',
   Agenda: '/agenda/calendario',
-  Tareas: '/dashboard',
+  Tareas: '/crm/seguimiento',
 }
 
 function activityTime(item) {

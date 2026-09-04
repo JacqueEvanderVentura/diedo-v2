@@ -301,6 +301,18 @@ class UsersService:
         if current is None:
             raise ResourceNotFoundError("El usuario no existe.", "membershipId")
         self._require_target_within_grant(grant, current)
+        target_is_workspace_admin = any(
+            assignment.role.code == "workspace_admin"
+            and assignment.scope_type == "workspace"
+            for assignment in current.role_assignments
+        )
+        if target_is_workspace_admin and not self._repository.is_workspace_admin(
+            grant.workspace_id,
+            principal.membership_id,
+        ):
+            raise AuthorizationError(
+                "Solo un workspace admin puede restablecer la contraseña de otro workspace admin."
+            )
         user = self._repository.platform_user(current.platform_user_id, lock=True)
         if user is None:
             raise ResourceNotFoundError("El usuario no existe.", "membershipId")

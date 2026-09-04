@@ -65,7 +65,8 @@ const userItem = {
   version: 7,
 }
 
-function sessionUser({ canManage = true } = {}) {
+function sessionUser({ canManage = true, workspaceAdmin = true } = {}) {
+  const primaryRole = workspaceAdmin ? formOptions.roles[0] : formOptions.roles[1]
   return {
     userId: ids.user,
     membershipId: ids.membership,
@@ -83,10 +84,10 @@ function sessionUser({ canManage = true } = {}) {
     },
     roleAssignments: [{
       id: ids.workspaceAssignment,
-      role: formOptions.roles[0],
+      role: primaryRole,
       scope: { type: 'workspace', legalEntityId: null, branchId: null },
     }],
-    primaryRole: formOptions.roles[0],
+    primaryRole,
     visibleBranches: formOptions.branches,
     effectiveScope: { workspaceWide: true, legalEntityIds: [], branchIds: [] },
     effectivePermissionCodes: [
@@ -103,7 +104,7 @@ function sessionUser({ canManage = true } = {}) {
   }
 }
 
-async function mockUsersApi(page, { canManage = true, createStatus = 201 } = {}) {
+async function mockUsersApi(page, { canManage = true, workspaceAdmin = true, createStatus = 201 } = {}) {
   const calls = {
     create: [],
     update: [],
@@ -128,7 +129,7 @@ async function mockUsersApi(page, { canManage = true, createStatus = 201 } = {})
       })
     }
     if (pathname.endsWith('/api/v1/auth/me')) {
-      return route.fulfill({ status: 200, json: sessionUser({ canManage }) })
+      return route.fulfill({ status: 200, json: sessionUser({ canManage, workspaceAdmin }) })
     }
     if (pathname.endsWith('/api/v1/users/summary')) {
       return route.fulfill({
@@ -242,7 +243,7 @@ test('create envía múltiples roleAssignments sin campos legacy', async ({ page
 
   await page.getByTestId('usuario-name').fill('Nueva Persona')
   await page.getByTestId('usuario-email').fill('nueva@example.com')
-  await page.getByTestId('usuario-password-input').fill('password-seguro-para-e2e')
+  await page.getByTestId('usuario-password-input').fill('Password!seguro-para-e2e')
   await choose(page, 'usuario-assignment-role-0', 'Vendedor')
   await choose(page, 'usuario-assignment-target-0', 'Principal')
   await page.getByTestId('usuario-assignment-add').click()
@@ -256,7 +257,7 @@ test('create envía múltiples roleAssignments sin campos legacy', async ({ page
   expect(calls.create[0]).toEqual({
     displayName: 'Nueva Persona',
     email: 'nueva@example.com',
-    password: 'password-seguro-para-e2e',
+    password: 'Password!seguro-para-e2e',
     roleAssignments: [
       { roleId: ids.sellerRole, scopeType: 'branch', branchId: ids.mainBranch },
       { roleId: ids.adminRole, scopeType: 'workspace' },
@@ -290,17 +291,39 @@ test('invite envía scope legalEntity con su target', async ({ page }) => {
 
 test('reset de contraseña recarga la versión antes de la siguiente edición', async ({ page }) => {
   const calls = await mockUsersApi(page)
-  page.on('dialog', (dialog) => dialog.accept('password-temporal-seguro-2026'))
   await page.goto('/configuracion/usuarios')
 
   await page.getByTestId(`usuario-password-${ids.membership}`).click()
+  await expect(page.getByTestId('usuario-password-modal')).toBeVisible()
+  await page.getByTestId('usuario-password-new').fill('password-temporal!')
+  await page.getByTestId('usuario-password-confirm').fill('password-temporal!')
+  await page.getByTestId('usuario-password-submit').click()
+  await expect(page.getByTestId('usuario-password-error')).toContainText('mayúscula')
+  expect(calls.password).toEqual([])
+
+  await page.getByTestId('usuario-password-new').fill('Temporal!2026')
+  await page.getByTestId('usuario-password-confirm').fill('Temporal!2026')
+  await page.getByTestId('usuario-password-submit').click()
 
   await expect.poll(() => calls.password.length).toBe(1)
+  expect(calls.password[0]).toEqual({ newPassword: 'Temporal!2026' })
+  await expect(page.getByTestId('usuario-password-modal')).toHaveCount(0)
   await expect.poll(() => calls.list).toBeGreaterThanOrEqual(2)
   await page.getByTestId(`usuario-edit-${ids.membership}`).click()
   await page.getByTestId('usuario-submit').click()
   await expect.poll(() => calls.update.length).toBe(1)
   expect(calls.update[0].version).toBe(userItem.version + 1)
+})
+
+test('admin común no puede abrir el reset de un workspace admin', async ({ page }) => {
+  const calls = await mockUsersApi(page, { workspaceAdmin: false })
+  await page.goto('/configuracion/usuarios')
+
+  const resetButton = page.getByTestId(`usuario-password-${ids.membership}`)
+  await expect(resetButton).toBeDisabled()
+  await expect(resetButton).toHaveAttribute('title', /workspace admin/)
+  await expect(page.getByTestId('usuario-password-modal')).toHaveCount(0)
+  expect(calls.password).toEqual([])
 })
 
 test('un error de submit conserva el editor abierto y muestra el error API', async ({ page }) => {
@@ -310,7 +333,7 @@ test('un error de submit conserva el editor abierto y muestra el error API', asy
 
   await page.getByTestId('usuario-name').fill('Correo Duplicado')
   await page.getByTestId('usuario-email').fill('duplicado@example.com')
-  await page.getByTestId('usuario-password-input').fill('password-seguro-para-e2e')
+  await page.getByTestId('usuario-password-input').fill('Password!seguro-para-e2e')
   await choose(page, 'usuario-assignment-role-0', 'Vendedor')
   await choose(page, 'usuario-assignment-target-0', 'Principal')
   await page.getByTestId('usuario-submit').click()

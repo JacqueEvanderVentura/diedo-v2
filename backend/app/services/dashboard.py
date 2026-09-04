@@ -37,6 +37,7 @@ class DashboardContext:
 class DashboardSummary:
     context: DashboardContext
     revenue: Decimal
+    active_leads: int
     appointments_today: int
     open_tasks: int
 
@@ -81,6 +82,13 @@ class DashboardService:
         return DashboardSummary(
             context=context,
             revenue=self._repository.revenue_total(
+                workspace_id=grant.workspace_id,
+                branch_id=branch_id,
+                allowed_branch_ids=grant.allowed_branch_ids,
+                starts_at=context.starts_at,
+                ends_at=context.ends_at,
+            ),
+            active_leads=self._repository.active_lead_count(
                 workspace_id=grant.workspace_id,
                 branch_id=branch_id,
                 allowed_branch_ids=grant.allowed_branch_ids,
@@ -300,7 +308,7 @@ class DashboardService:
                     occurred_at=task.created_at,
                     source="Tareas",
                     icon="ClipboardList",
-                    to=task.source_route,
+                    to="/crm/seguimiento",
                 )
             )
         activity.sort(key=lambda item: (item.occurred_at, item.id), reverse=True)

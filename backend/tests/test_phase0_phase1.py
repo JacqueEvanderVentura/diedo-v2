@@ -180,7 +180,7 @@ def test_phase1_invitations_user_lifecycle_sessions_and_last_admin(
     assert invitation["status"] == "pending"
     assert len(invitation["acceptToken"]) >= 40
 
-    invited_password = "invited-phase-one-password-not-secret"
+    invited_password = "Invited!phase-one-password-not-secret"
     accepted = client.post(
         "/api/v1/users/invitations/accept",
         json={"token": invitation["acceptToken"], "password": invited_password},
@@ -202,7 +202,7 @@ def test_phase1_invitations_user_lifecycle_sessions_and_last_admin(
         json={"displayName": "Persona Invitada Actualizada"},
     )
     assert profile.status_code == 204
-    new_password = "updated-phase-one-password-not-secret"
+    new_password = "Updated!phase-one-password-not-secret"
     changed_password = client.post(
         "/api/v1/auth/change-password",
         headers=invited_headers,

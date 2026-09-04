@@ -6,6 +6,7 @@ let latestRequest = 0
 
 const EMPTY_SUMMARY = Object.freeze({
   revenue: 0,
+  activeLeads: 0,
   appointmentsToday: 0,
   openTasks: 0,
   currencyCode: 'DOP',

@@ -4,6 +4,7 @@ import { ephemeralJsonStorage } from '@/services/storagePolicy'
 import { BRANCHES, CATEGORIES, PAYMENT_METHODS } from '@/data/products'
 import { PERMISSION_MODULES, buildDefaultMatrix, USER_ROLES } from '@/data/permisos'
 import { DEFAULT_WHATSAPP_TEMPLATES } from '@/data/whatsappTemplates'
+import { newPasswordError } from '@/lib/passwordPolicy'
 
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 
@@ -184,7 +185,8 @@ export const useConfigStore = create(
       changeOwnPassword: (userId, _currentPassword, newPassword) => {
         const user = get().users.find((u) => u.id === userId)
         if (!user) return { ok: false, error: 'Usuario no encontrado.' }
-        if (!newPassword || newPassword.length < 6) return { ok: false, error: 'La nueva contraseña debe tener al menos 6 caracteres.' }
+        const policyError = newPasswordError(newPassword)
+        if (policyError) return { ok: false, error: policyError }
         return { ok: true }
       },
 

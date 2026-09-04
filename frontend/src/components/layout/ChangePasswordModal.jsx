@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useConfigStore } from '@/stores/configStore'
 import { authApi } from '@/services/authApi'
+import { newPasswordError, PASSWORD_REQUIREMENTS } from '@/lib/passwordPolicy'
 
 export function ChangePasswordModal({ open, onClose, userId, online = false }) {
   const changeOwnPassword = useConfigStore((s) => s.changeOwnPassword)
@@ -30,7 +31,8 @@ export function ChangePasswordModal({ open, onClose, userId, online = false }) {
   const submit = async () => {
     setErr('')
     if (!current.trim()) return setErr('Ingresa tu contraseña actual.')
-    if (!next || next.length < (online ? 12 : 6)) return setErr(`La nueva contraseña debe tener al menos ${online ? 12 : 6} caracteres.`)
+    const policyError = newPasswordError(next)
+    if (policyError) return setErr(policyError)
     if (next !== confirm) return setErr('Las contraseñas nuevas no coinciden.')
     if (current === next) return setErr('La nueva contraseña debe ser diferente a la actual.')
 
@@ -55,7 +57,7 @@ export function ChangePasswordModal({ open, onClose, userId, online = false }) {
     <Modal open={open} onClose={handleClose} title="Cambiar contraseña" testId="change-password-modal">
       <div className="space-y-4">
         <p className="text-sm text-slate-500">
-          Usa una contraseña segura de al menos {online ? 12 : 6} caracteres. Solo tú puedes cambiar tu propia clave.
+          {PASSWORD_REQUIREMENTS} Solo tú puedes cambiar tu propia clave.
         </p>
 
         <div>
@@ -76,7 +78,7 @@ export function ChangePasswordModal({ open, onClose, userId, online = false }) {
             autoComplete="new-password"
             value={next}
             onChange={(e) => setNext(e.target.value)}
-            placeholder="Mínimo 6 caracteres"
+            placeholder="Mínimo 8 caracteres"
           />
         </div>
 

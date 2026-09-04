@@ -8,6 +8,7 @@ import { usersApi } from '@/services/usersApi'
 import {
   mapUserFromApi,
   mapUserSummary,
+  isWorkspaceAdmin,
   normalizeRoleAssignments,
   roleAssignmentsToPayload,
   validateRoleAssignments,
@@ -34,6 +35,8 @@ import { matchesBranch, buildBranchFilterOptions } from '@/lib/branches'
 import { configPageClass } from '../lib/pageShell'
 import { cn } from '@/lib/utils'
 import { FEATURES } from '@/config/features'
+import { newPasswordError, PASSWORD_REQUIREMENTS } from '@/lib/passwordPolicy'
+import { UserPasswordResetModal } from '../components/UserPasswordResetModal'
 
 const ROLE_TONE = { Administrador: 'brand', Gerente: 'success', Supervisor: 'warning', Cajero: 'neutral', Vendedor: 'neutral' }
 const SCOPE_OPTIONS = [
@@ -205,6 +208,7 @@ function RoleAssignmentsEditor({ assignments, options, onChange, disabled }) {
 export default function UsuariosPage({ embedded = false }) {
   const isOnline = useSessionStore((s) => s.isOnline())
   const canManageMemberships = useSessionStore((s) => s.hasPermission('membership.manage'))
+  const sessionUser = useSessionStore((s) => s.user)
   const localUsers = useConfigStore((s) => s.users)
   const localBranches = useConfigStore((s) => s.branches)
   const addUser = useConfigStore((s) => s.addUser)
@@ -263,6 +267,7 @@ export default function UsuariosPage({ embedded = false }) {
   const [modalOpen, setModalOpen] = useState(false)
   const [inviteMode, setInviteMode] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [passwordUser, setPasswordUser] = useState(null)
   const [form, setForm] = useState(() => emptyForm())
   const [err, setErr] = useState('')
 
@@ -336,8 +341,9 @@ export default function UsuariosPage({ embedded = false }) {
     setErr('')
     if (!form.name.trim()) return setErr('Ingresa el nombre.')
     if (!form.email.trim()) return setErr('Ingresa el email.')
-    if (!editing && !inviteMode && (!form.password || form.password.length < (isOnline ? 12 : 6))) {
-      return setErr(isOnline ? 'La contraseña debe tener al menos 12 caracteres.' : 'La contraseña debe tener al menos 6 caracteres.')
+    if (!editing && !inviteMode) {
+      const policyError = newPasswordError(form.password)
+      if (policyError) return setErr(policyError)
     }
 
     if (isOnline) {
@@ -419,22 +425,30 @@ export default function UsuariosPage({ embedded = false }) {
     }
   }
 
-  const resetOnlinePassword = async (user) => {
-    if (!canManageMemberships || pendingAction) return
-    const password = window.prompt(`Nueva contraseña temporal para ${user.name} (mínimo 12 caracteres):`)
-    if (password === null) return
-    if (password.length < 12) return toast.error('La contraseña debe tener al menos 12 caracteres.')
-    setPendingAction(`password:${user.id}`)
+  const actorIsWorkspaceAdmin = isWorkspaceAdmin(sessionUser)
+  const canResetPasswordFor = (user) => (
+    canManageMemberships && (actorIsWorkspaceAdmin || !isWorkspaceAdmin(user))
+  )
+
+  const openPasswordReset = (user) => {
+    if (!canResetPasswordFor(user) || pendingAction) return
+    setPasswordUser(user)
+  }
+
+  const resetOnlinePassword = async (password) => {
+    if (!passwordUser || !canResetPasswordFor(passwordUser) || pendingAction) return
+    setPendingAction(`password:${passwordUser.id}`)
     try {
-      await usersApi.resetPassword(user.id, password)
-      const reloaded = await loadApiData()
+      await usersApi.resetPassword(passwordUser.id, password)
+      const reloaded = await loadApiData({ notifyError: false })
       if (!reloaded) {
         toast.error('La contraseña cambió, pero no se pudo refrescar la versión del usuario. Recarga antes de editarlo.')
-        return
+      } else {
+        toast.success('Contraseña restablecida y sesiones revocadas')
       }
-      toast.success('Contraseña restablecida y sesiones revocadas')
+      setPasswordUser(null)
     } catch (error) {
-      toast.error(error.message || 'No se pudo restablecer la contraseña.')
+      throw new Error(error.message || 'No se pudo restablecer la contraseña.')
     } finally {
       setPendingAction(null)
     }
@@ -564,10 +578,10 @@ export default function UsuariosPage({ embedded = false }) {
                         {isOnline ? (
                           canManageMemberships && (
                             <button
-                              title="Restablecer contraseña"
+                              title={canResetPasswordFor(u) ? 'Restablecer contraseña' : 'Solo un workspace admin puede cambiar la contraseña de otro workspace admin'}
                               aria-label={`Restablecer contraseña de ${u.name}`}
-                              onClick={() => resetOnlinePassword(u)}
-                              disabled={Boolean(pendingAction)}
+                              onClick={() => openPasswordReset(u)}
+                              disabled={Boolean(pendingAction) || !canResetPasswordFor(u)}
                               data-testid={`usuario-password-${u.id}`}
                               className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-amber-50 hover:text-amber-600 disabled:cursor-not-allowed disabled:opacity-40"
                             >
@@ -620,7 +634,7 @@ export default function UsuariosPage({ embedded = false }) {
                     <span />
                     <div className="flex gap-1">
                       <button onClick={() => { setInviteMode(false); setEditing(u); setModalOpen(true) }} disabled={Boolean(pendingAction)} aria-label={`Editar ${u.name}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-40"><Pencil className="h-4 w-4" /></button>
-                      {isOnline ? <button onClick={() => resetOnlinePassword(u)} disabled={Boolean(pendingAction)} aria-label={`Restablecer contraseña de ${u.name}`}><KeyRound className="h-4 w-4" /></button> : <button onClick={() => { deleteUser(u.id); toast.success('Usuario eliminado') }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>}
+                      {isOnline ? <button title={canResetPasswordFor(u) ? 'Restablecer contraseña' : 'Solo un workspace admin puede cambiar la contraseña de otro workspace admin'} onClick={() => openPasswordReset(u)} disabled={Boolean(pendingAction) || !canResetPasswordFor(u)} aria-label={`Restablecer contraseña de ${u.name}`}><KeyRound className="h-4 w-4" /></button> : <button onClick={() => { deleteUser(u.id); toast.success('Usuario eliminado') }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>}
                     </div>
                 </MobileCardFooter>}
               </MobileCard>
@@ -633,7 +647,7 @@ export default function UsuariosPage({ embedded = false }) {
         <div className="space-y-4">
           <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Nombre Completo *</label><Input value={form.name} disabled={submitting || Boolean(editing && isOnline)} onChange={(e) => set('name', e.target.value)} placeholder="Nombre del usuario" data-testid="usuario-name" /></div>
           <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Email *</label><Input type="email" value={form.email} disabled={submitting || Boolean(editing && isOnline)} onChange={(e) => set('email', e.target.value)} placeholder="email@ejemplo.com" data-testid="usuario-email" /></div>
-          {!editing && !inviteMode && <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Contraseña *</label><Input type="password" value={form.password} disabled={submitting} onChange={(e) => set('password', e.target.value)} placeholder={isOnline ? 'Mínimo 12 caracteres' : 'Mínimo 6 caracteres'} data-testid="usuario-password-input" /></div>}
+          {!editing && !inviteMode && <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Contraseña *</label><Input type="password" value={form.password} disabled={submitting} onChange={(e) => set('password', e.target.value)} placeholder="Mínimo 8 caracteres" data-testid="usuario-password-input" /><p className="mt-1.5 text-xs text-slate-500">{PASSWORD_REQUIREMENTS}</p></div>}
           {isOnline ? (
             <RoleAssignmentsEditor
               assignments={form.roleAssignments}
@@ -680,6 +694,13 @@ export default function UsuariosPage({ embedded = false }) {
           </div>
         </div>
       </Modal>
+      <UserPasswordResetModal
+        open={Boolean(passwordUser)}
+        user={passwordUser}
+        onClose={() => setPasswordUser(null)}
+        onSubmit={resetOnlinePassword}
+        submitting={pendingAction === `password:${passwordUser?.id}`}
+      />
     </div>
   )
 }
