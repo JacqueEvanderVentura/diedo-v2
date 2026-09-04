@@ -28,12 +28,15 @@ Estas variables son de compilación; modificarlas exige reconstruir `web`.
 ## Despliegue y operación
 
 1. Railway espera que Backend CI y Frontend CI terminen correctamente.
-2. El pre-deploy de `api` ejecuta `python -m alembic upgrade head` y después
-   `python -m app.scripts.seed_demo`.
+2. El pre-deploy de `api` ejecuta `python -m app.scripts.predeploy`, que aplica Alembic y después
+   reconcilia el seed demo en un único proceso secuencial.
 3. Verificar `/health/ready` en `api`, `/health` y una ruta profunda en `web`.
 4. Revisar logs sin copiar secretos y comprobar login, refresh, `/api/v1/auth/me` y un flujo de archivo.
-5. Programar snapshots del volumen PostgreSQL diarios, semanales y mensuales. Probar restauración
-   periódicamente en un entorno aislado.
+5. Al habilitar un plan Railway con backups, programar snapshots del volumen PostgreSQL diarios,
+   semanales y mensuales y probar restauración periódicamente en un entorno aislado. El plan Hobby
+   activo reporta `maxBackupsCount=0`, por lo que Railway rechazó la creación de estos horarios el
+   2026-09-03. Hasta actualizar el plan, exportar PostgreSQL a almacenamiento externo siguiendo una
+   política equivalente y verificar periódicamente que los archivos sean restaurables.
 
 Para crear un cliente limpio, usar `POST /api/v1/backoffice/workspaces` con `X-Backoffice-Key` y los
 datos reales del propietario. Este flujo no ejecuta el seed demo y crea roles, permisos, módulos,
@@ -49,5 +52,12 @@ unidades, métodos de pago y configuración propios del nuevo workspace.
 
 ## Inventario desplegado
 
-Se completará con los IDs de proyecto, entorno y servicios y con los dominios `web`/`api` al finalizar
-el despliegue inicial.
+- Proyecto `diedo-production`: `3ad8fb51-7f62-4229-93a4-daba5d21ab91`.
+- Entorno `production`: `2a2b155b-36fc-450e-b981-42d2247fdca9`.
+- `web`: `1d1e6938-b0b0-48e6-8da9-04d6831873be`,
+  `https://web-production-be856.up.railway.app`.
+- `api`: `c8aa818d-ce14-450c-bc17-6135809923a4`,
+  `https://api-production-b1fb.up.railway.app`.
+- `Postgres`: `d73beb6e-85ce-440e-ae3a-defaa409056a`; volumen persistente
+  `9c904dd9-f1be-4094-b351-85e569f19146` montado en `/var/lib/postgresql/data`.
+- Bucket privado `uploads`: `2becfe0b-9672-47ce-ad7b-81b53928af96`.
