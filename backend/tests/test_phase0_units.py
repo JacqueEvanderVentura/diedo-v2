@@ -157,7 +157,9 @@ def test_seed_demo_cli_hashes_password_and_reconciles(monkeypatch, capsys) -> No
     monkeypatch.setattr(
         seed_demo,
         "seed_demo_data",
-        lambda _session, password_hash: received.append(password_hash) or _demo_summary(),
+        lambda _session, password_hash, **_kwargs: (
+            received.append(password_hash) or _demo_summary()
+        ),
     )
 
     seed_demo.main()
