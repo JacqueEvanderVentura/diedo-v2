@@ -35,7 +35,11 @@ def main() -> None:
         return
     password_hash = hash_password(configured_password.get_secret_value())
     with session_scope() as session:
-        summary = seed_demo_data(session, password_hash)
+        summary = seed_demo_data(
+            session,
+            password_hash,
+            production_authorized=settings.app_env == "production",
+        )
     print(json.dumps(asdict(summary), default=str, indent=2, ensure_ascii=False))
 
 

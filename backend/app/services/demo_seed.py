@@ -149,6 +149,7 @@ def seed_demo_data(
     password_hash: str | None,
     *,
     enabled: bool | None = None,
+    production_authorized: bool = False,
 ) -> DemoSeedSummary:
     should_seed = settings.demo_seed_enabled if enabled is None else enabled
     bundle = load_demo_bundle()
@@ -161,7 +162,10 @@ def seed_demo_data(
             demo_user_count=0,
             payment_method_count=0,
         )
-    if settings.app_env not in {"development", "test"}:
+    environment_allowed = settings.app_env in {"development", "test"} or (
+        settings.app_env == "production" and production_authorized
+    )
+    if not environment_allowed:
         raise RuntimeError("Demo seeding is disabled outside development and test.")
     if password_hash is None:
         raise RuntimeError("A local demo password is required when demo seeding is enabled.")
