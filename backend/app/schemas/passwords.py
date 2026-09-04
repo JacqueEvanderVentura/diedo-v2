@@ -10,10 +10,7 @@ def _validate_password_strength(value: SecretStr) -> SecretStr:
     password = value.get_secret_value()
     if not any(character.isupper() for character in password):
         raise ValueError("La contraseña debe incluir al menos una mayúscula.")
-    if not any(
-        not character.isalnum() and not character.isspace()
-        for character in password
-    ):
+    if not any(not character.isalnum() and not character.isspace() for character in password):
         raise ValueError("La contraseña debe incluir al menos un carácter especial.")
     return value
 

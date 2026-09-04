@@ -1865,9 +1865,7 @@ def test_admin_cannot_reset_workspace_admin_password_but_inverse_is_allowed(
     )
     assert created_manager.status_code == 201, created_manager.text
     manager = created_manager.json()
-    manager_headers = _authorization(
-        _login(client, str(manager["email"]), manager_old_password)
-    )
+    manager_headers = _authorization(_login(client, str(manager["email"]), manager_old_password))
 
     denied = client.post(
         f"/api/v1/users/{owner_me.json()['membershipId']}/password-reset",

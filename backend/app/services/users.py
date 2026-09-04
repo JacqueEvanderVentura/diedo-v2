@@ -302,8 +302,7 @@ class UsersService:
             raise ResourceNotFoundError("El usuario no existe.", "membershipId")
         self._require_target_within_grant(grant, current)
         target_is_workspace_admin = any(
-            assignment.role.code == "workspace_admin"
-            and assignment.scope_type == "workspace"
+            assignment.role.code == "workspace_admin" and assignment.scope_type == "workspace"
             for assignment in current.role_assignments
         )
         if target_is_workspace_admin and not self._repository.is_workspace_admin(
