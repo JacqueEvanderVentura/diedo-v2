@@ -2,7 +2,7 @@ from datetime import date
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, File, Form, Query, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 
 from app.api.attachment_response import authorized_attachment_response
@@ -523,6 +523,31 @@ def download_customer_attachment(
     )
 
 
+@customers_router.delete(
+    "/{customer_id}/attachments/{attachment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Eliminar un adjunto del cliente",
+    responses=_WRITE_RESPONSES,
+)
+def delete_customer_attachment(
+    customer_id: UUID,
+    attachment_id: UUID,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: CustomerManageGrant,
+    storage: AttachmentStorageDep,
+) -> Response:
+    MasterDataService(database).delete_attachment(
+        principal=principal,
+        grant=grant,
+        owner_type="customer",
+        owner_id=customer_id,
+        attachment_id=attachment_id,
+        storage=storage,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @employees_router.get("/{employee_id}/attachments", summary="Listar adjuntos del empleado")
 def list_employee_attachments(
     employee_id: UUID,
@@ -581,3 +606,28 @@ def download_employee_attachment(
         owner_id=employee_id,
         attachment_id=attachment_id,
     )
+
+
+@employees_router.delete(
+    "/{employee_id}/attachments/{attachment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Eliminar un adjunto del empleado",
+    responses=_WRITE_RESPONSES,
+)
+def delete_employee_attachment(
+    employee_id: UUID,
+    attachment_id: UUID,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: EmployeeManageGrant,
+    storage: AttachmentStorageDep,
+) -> Response:
+    MasterDataService(database).delete_attachment(
+        principal=principal,
+        grant=grant,
+        owner_type="employee",
+        owner_id=employee_id,
+        attachment_id=attachment_id,
+        storage=storage,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

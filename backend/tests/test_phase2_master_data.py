@@ -246,6 +246,31 @@ def test_phase2_customers_employees_schedules_and_attachments(
         )
         assert downloaded.status_code == 200
         assert downloaded.content == pdf
+        retained_delete = client.delete(
+            f"/api/v1/customers/{customer['id']}/attachments/{attachment['id']}",
+            headers=headers,
+        )
+        assert retained_delete.status_code == 400
+        assert retained_delete.json()["parameter"] == "retentionUntil"
+
+        deletable_response = client.post(
+            f"/api/v1/customers/{customer['id']}/attachments",
+            headers=headers,
+            files={"file": ("deletable.pdf", pdf, "application/pdf")},
+        )
+        assert deletable_response.status_code == 201, deletable_response.text
+        deletable = deletable_response.json()
+        deleted = client.delete(
+            f"/api/v1/customers/{customer['id']}/attachments/{deletable['id']}",
+            headers=headers,
+        )
+        assert deleted.status_code == 204
+        deleted_download = client.get(
+            f"/api/v1/customers/{customer['id']}/attachments/{deletable['id']}/content",
+            headers=headers,
+        )
+        assert deleted_download.status_code == 404
+        assert len(list((tmp_path / "attachments").rglob("*.pdf"))) == 1
 
         bad_mime = client.post(
             f"/api/v1/customers/{customer['id']}/attachments",

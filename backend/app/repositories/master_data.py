@@ -725,6 +725,41 @@ class MasterDataRepository:
         )
         return self._attachment_record(row) if row is not None else None
 
+    def delete_attachment(
+        self,
+        *,
+        workspace_id: UUID,
+        owner_type: str,
+        owner_id: UUID,
+        attachment_id: UUID,
+        actor_platform_user_id: UUID,
+        request_id: str,
+    ) -> bool:
+        owner_column = (
+            Attachment.customer_id if owner_type == "customer" else Attachment.employee_id
+        )
+        attachment = self._session.scalar(
+            select(Attachment).where(
+                Attachment.workspace_id == workspace_id,
+                Attachment.id == attachment_id,
+                owner_column == owner_id,
+            )
+        )
+        if attachment is None:
+            return False
+        self._session.delete(attachment)
+        self._add_audit(
+            workspace_id=workspace_id,
+            actor_platform_user_id=actor_platform_user_id,
+            action=f"master_data.{owner_type}.attachment.delete",
+            target_type="attachment",
+            target_id=attachment_id,
+            request_id=request_id,
+            details={"ownerType": owner_type, "ownerId": str(owner_id)},
+        )
+        self._session.flush()
+        return True
+
     def _customer_records(self, customers: Sequence[Customer]) -> tuple[CustomerRecord, ...]:
         ids = {customer.id for customer in customers}
         branches = self._customer_branches(ids)

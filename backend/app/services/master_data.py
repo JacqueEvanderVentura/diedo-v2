@@ -454,6 +454,41 @@ class MasterDataService:
             raise ResourceNotFoundError("El adjunto no existe.", "attachmentId")
         return record
 
+    def delete_attachment(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        owner_type: str,
+        owner_id: UUID,
+        attachment_id: UUID,
+        storage: AttachmentStorage,
+    ) -> None:
+        record = self.get_attachment(
+            grant=grant,
+            owner_type=owner_type,
+            owner_id=owner_id,
+            attachment_id=attachment_id,
+        )
+        if record.retention_until is not None and record.retention_until >= date.today():
+            raise InvalidOperationError(
+                "El adjunto no puede eliminarse durante su período de retención.",
+                "retentionUntil",
+            )
+        storage.delete(record.storage_key)
+        deleted = self._repository.delete_attachment(
+            workspace_id=grant.workspace_id,
+            owner_type=owner_type,
+            owner_id=owner_id,
+            attachment_id=attachment_id,
+            actor_platform_user_id=principal.platform_user_id,
+            request_id=get_request_id(),
+        )
+        if not deleted:
+            self._session.rollback()
+            raise ResourceNotFoundError("El adjunto no existe.", "attachmentId")
+        self._session.commit()
+
     def _require_owner(self, grant: PermissionGrant, owner_type: str, owner_id: UUID) -> None:
         if owner_type == "customer":
             self.get_customer(grant, owner_id)
