@@ -5,8 +5,9 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, File, Form, Header, Query, Response, UploadFile, status
-from starlette.responses import FileResponse
+from fastapi.responses import StreamingResponse
 
+from app.api.attachment_response import authorized_attachment_response
 from app.api.deps import (
     AttachmentStorageDep,
     CurrentPrincipal,
@@ -1273,7 +1274,7 @@ def reverse_payment(
 
 @router.get(
     "/proofs/{proof_id}/content",
-    response_class=FileResponse,
+    response_class=StreamingResponse,
     responses=_RESPONSES,
 )
 def get_proof_content(
@@ -1281,14 +1282,15 @@ def get_proof_content(
     database: DatabaseSession,
     grant: PosReceivablesReadGrant,
     storage: AttachmentStorageDep,
-) -> FileResponse:
+) -> StreamingResponse:
     proof = PosService(database).get_proof(grant, proof_id)
-    return FileResponse(
-        path=storage.path_for(proof.storage_key),
-        media_type=proof.content_type,
+    return authorized_attachment_response(
+        storage,
+        storage_key=proof.storage_key,
+        content_type=proof.content_type,
         filename=proof.original_filename,
+        size_bytes=proof.size_bytes,
         headers={
-            "Cache-Control": "private, no-store",
             "ETag": f'"{proof.checksum_sha256}"',
         },
     )

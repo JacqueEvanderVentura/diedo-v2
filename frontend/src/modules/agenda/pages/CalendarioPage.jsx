@@ -14,6 +14,7 @@ import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
 import { DataSourceNotice } from '@/components/ui/DataSourceNotice'
 import { useAgendaPolling } from '../hooks/useAgendaPolling'
 import { useSessionStore } from '@/stores/sessionStore'
+import { FEATURES } from '@/config/features'
 import {
   addDaysKey,
   addMonthsKey,
@@ -137,12 +138,16 @@ export default function CalendarioPage() {
             className="w-auto min-w-[140px]"
             data-testid="calendar-branch"
           />
-          <Button variant="secondary" size="sm" onClick={() => setLinkModalOpen(true)} data-testid="calendar-booking-link">
-            <Link2 className="h-4 w-4" /> Enlace agendación
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => toast('Horarios (próximamente)')} data-testid="calendar-schedules">
-            <Clock className="h-4 w-4" /> Horarios
-          </Button>
+          {FEATURES.selfBooking && (
+            <Button variant="secondary" size="sm" onClick={() => setLinkModalOpen(true)} data-testid="calendar-booking-link">
+              <Link2 className="h-4 w-4" /> Enlace agendación
+            </Button>
+          )}
+          {FEATURES.calendarSchedules && (
+            <Button variant="secondary" size="sm" onClick={() => toast('Horarios (próximamente)')} data-testid="calendar-schedules">
+              <Clock className="h-4 w-4" /> Horarios
+            </Button>
+          )}
           <Button size="sm" onClick={() => openNew()} disabled={!canManage} data-testid="calendar-multi">
             <Plus className="h-4 w-4" /> Cita Múltiple
           </Button>
@@ -245,12 +250,14 @@ export default function CalendarioPage() {
         wide
       />
 
-      <BookingLinkModal
-        open={linkModalOpen}
-        onClose={() => setLinkModalOpen(false)}
-        branchId={branchId}
-        branchName={branches.find((b) => b.id === branchId)?.name || ''}
-      />
+      {FEATURES.selfBooking && (
+        <BookingLinkModal
+          open={linkModalOpen}
+          onClose={() => setLinkModalOpen(false)}
+          branchId={branchId}
+          branchName={branches.find((b) => b.id === branchId)?.name || ''}
+        />
+      )}
     </div>
   )
 }

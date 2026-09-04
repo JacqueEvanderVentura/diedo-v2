@@ -22,10 +22,11 @@ import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
 import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
 import { cn } from '@/lib/utils'
 import { LeadFormModal } from '../components/LeadFormModal'
+import { FEATURES } from '@/config/features'
 
 const TABS = [
   { id: 'lista', label: 'Lista', icon: List },
-  { id: 'descubrir', label: 'Descubrir', icon: Sparkles },
+  ...(FEATURES.crmDiscovery ? [{ id: 'descubrir', label: 'Descubrir', icon: Sparkles }] : []),
   { id: 'criterios', label: 'Criterios', icon: SlidersHorizontal },
 ]
 

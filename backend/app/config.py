@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -40,11 +40,31 @@ class Settings(BaseSettings):
     backoffice_api_key: SecretStr | None = None
     local_bootstrap_admin_password: SecretStr | None = None
     demo_seed_enabled: bool = False
+    allow_production_demo_seed: bool = False
+    demo_admin_password: SecretStr | None = None
+    user_invitations_enabled: bool | None = None
     expected_schema_revision: str = "20260903_0019"
+    attachment_storage_backend: Literal["local", "s3"] = "local"
     attachment_storage_root: Path = _BACKEND_ROOT / ".local" / "attachments"
+    s3_bucket: str | None = None
+    s3_endpoint_url: str | None = None
+    s3_region: str = "us-east-1"
+    s3_connect_timeout_seconds: int = Field(default=5, ge=1, le=30)
+    s3_read_timeout_seconds: int = Field(default=30, ge=1, le=120)
     attachment_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1, le=10 * 1024 * 1024)
     incident_image_max_bytes: int = Field(default=5 * 1024 * 1024, ge=1, le=10 * 1024 * 1024)
     incident_image_max_files: int = Field(default=5, ge=1, le=20)
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_postgresql_driver(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        if value.startswith("postgres://"):
+            return value.replace("postgres://", "postgresql+psycopg://", 1)
+        if value.startswith("postgresql://"):
+            return value.replace("postgresql://", "postgresql+psycopg://", 1)
+        return value
 
     @model_validator(mode="after")
     def require_deployment_jwt_secret(self) -> Settings:
@@ -63,6 +83,17 @@ class Settings(BaseSettings):
                 "replace-with-"
             ):
                 raise ValueError("BACKOFFICE_API_KEY must not use a placeholder value.")
+        if self.attachment_storage_backend == "s3":
+            missing = [
+                name
+                for name, value in (
+                    ("S3_BUCKET", self.s3_bucket),
+                    ("S3_ENDPOINT_URL", self.s3_endpoint_url),
+                )
+                if not value
+            ]
+            if missing:
+                raise ValueError("S3 attachment storage requires: " + ", ".join(missing) + ".")
         return self
 
     @property
@@ -77,6 +108,12 @@ class Settings(BaseSettings):
     def expose_demo_invitation_tokens(self) -> bool:
         """Expose one-use invitation tokens only in an explicit local demo/test mode."""
         return self.demo_seed_enabled and self.app_env in {"development", "test"}
+
+    @property
+    def invitations_enabled(self) -> bool:
+        if self.user_invitations_enabled is not None:
+            return self.user_invitations_enabled
+        return self.app_env in {"development", "test"}
 
 
 @lru_cache

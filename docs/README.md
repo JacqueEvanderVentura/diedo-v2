@@ -15,6 +15,8 @@
 
 | Recurso | Ubicación |
 |---------|-----------|
+| **Runbook de producción Railway** | [RAILWAY_RUNBOOK.md](./RAILWAY_RUNBOOK.md) |
+| **Backlog de producción** | [PRODUCTION_BACKLOG.md](./PRODUCTION_BACKLOG.md) |
 | **Plan Backend ↔ Frontend por fases** | [PLAN_IMPLEMENTACION_BACKEND_FRONTEND.md](./PLAN_IMPLEMENTACION_BACKEND_FRONTEND.md) |
 | **Handoff Jean Paul** | [BACKEND_HANDOFF_JEAN_PAUL.md](./BACKEND_HANDOFF_JEAN_PAUL.md) |
 | Contrato global | [backend/GLOBAL.md](./backend/GLOBAL.md) |

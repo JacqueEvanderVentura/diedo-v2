@@ -1,0 +1,27 @@
+{
+  auto_https off
+}
+
+:{$PORT:8080} {
+  root * /srv
+  encode zstd gzip
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    -Server
+  }
+
+  handle /health {
+    header Cache-Control "no-store"
+    respond "ok" 200
+  }
+
+  handle {
+    try_files {path} /index.html
+    file_server
+  }
+}

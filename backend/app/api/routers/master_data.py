@@ -3,8 +3,9 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, File, Form, Query, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 
+from app.api.attachment_response import authorized_attachment_response
 from app.api.deps import (
     AttachmentStorageDep,
     CurrentPrincipal,
@@ -446,17 +447,19 @@ def _download_attachment(
     owner_type: str,
     owner_id: UUID,
     attachment_id: UUID,
-) -> FileResponse:
+) -> StreamingResponse:
     record = MasterDataService(database).get_attachment(
         grant=grant,
         owner_type=owner_type,
         owner_id=owner_id,
         attachment_id=attachment_id,
     )
-    return FileResponse(
-        path=storage.path_for(record.storage_key),
-        media_type=record.content_type,
+    return authorized_attachment_response(
+        storage,
+        storage_key=record.storage_key,
+        content_type=record.content_type,
         filename=record.original_filename,
+        size_bytes=record.size_bytes,
     )
 
 
@@ -500,7 +503,7 @@ def upload_customer_attachment(
 
 @customers_router.get(
     "/{customer_id}/attachments/{attachment_id}/content",
-    response_class=FileResponse,
+    response_class=StreamingResponse,
     summary="Descargar un adjunto autorizado del cliente",
 )
 def download_customer_attachment(
@@ -509,7 +512,7 @@ def download_customer_attachment(
     database: DatabaseSession,
     grant: CustomerReadGrant,
     storage: AttachmentStorageDep,
-) -> FileResponse:
+) -> StreamingResponse:
     return _download_attachment(
         database=database,
         grant=grant,
@@ -560,7 +563,7 @@ def upload_employee_attachment(
 
 @employees_router.get(
     "/{employee_id}/attachments/{attachment_id}/content",
-    response_class=FileResponse,
+    response_class=StreamingResponse,
     summary="Descargar un adjunto autorizado del empleado",
 )
 def download_employee_attachment(
@@ -569,7 +572,7 @@ def download_employee_attachment(
     database: DatabaseSession,
     grant: EmployeeReadGrant,
     storage: AttachmentStorageDep,
-) -> FileResponse:
+) -> StreamingResponse:
     return _download_attachment(
         database=database,
         grant=grant,

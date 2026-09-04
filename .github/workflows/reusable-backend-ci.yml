@@ -61,3 +61,7 @@ jobs:
 
       - name: Run tests
         run: python -m pytest --cov=app --cov-report=term-missing --cov-fail-under=90
+
+      - name: Build production container
+        working-directory: .
+        run: docker build --file backend/Dockerfile .

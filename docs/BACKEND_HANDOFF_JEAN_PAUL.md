@@ -1,5 +1,8 @@
 # Backend handoff — Jean Paul
 
+> Documento histórico. Para el estado vigente de producción consulta
+> [RAILWAY_RUNBOOK.md](./RAILWAY_RUNBOOK.md) y [PRODUCTION_BACKLOG.md](./PRODUCTION_BACKLOG.md).
+
 This document is for **Jean Paul**, who owns the backend. It explains what exists today after merging `main`’s API into the `full-stack` branch, how the React frontend talks to it, what is still mock-only, and what CRUDs you need to build next.
 
 ---

@@ -42,7 +42,14 @@ from app.schemas.users import (
     UserSummaryResponse,
     WorkspaceRoleAssignmentInput,
 )
+from app.services.errors import InvalidOperationError
 from app.services.users import UsersService, user_initials
+
+
+def _require_invitations_enabled() -> None:
+    if not settings.invitations_enabled:
+        raise InvalidOperationError("Las invitaciones no están habilitadas en este entorno.")
+
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
@@ -231,6 +238,7 @@ def create_invitation(
     principal: CurrentPrincipal,
     grant: MembershipManageGrant,
 ) -> InvitationResponse:
+    _require_invitations_enabled()
     invitation, email, raw_token = UsersService(database).create_invitation(
         principal=principal,
         grant=grant,
@@ -261,6 +269,7 @@ def accept_invitation(
     payload: AcceptInvitationRequest,
     database: DatabaseSession,
 ) -> UserListItem:
+    _require_invitations_enabled()
     user = UsersService(database).accept_invitation(
         payload.token.get_secret_value(),
         payload.password.get_secret_value() if payload.password is not None else None,
@@ -279,6 +288,7 @@ def revoke_invitation(
     database: DatabaseSession,
     grant: MembershipManageGrant,
 ) -> Response:
+    _require_invitations_enabled()
     UsersService(database).revoke_invitation(grant, invitation_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

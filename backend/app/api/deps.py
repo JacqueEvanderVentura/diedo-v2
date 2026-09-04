@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends
@@ -7,7 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.session import get_session
-from app.services.attachment_storage import AttachmentStorage, LocalAttachmentStorage
+from app.services.attachment_storage import (
+    AttachmentStorage,
+    LocalAttachmentStorage,
+    S3AttachmentStorage,
+)
 from app.services.auth import AuthPrincipal, AuthService
 from app.services.authorization import AuthorizationService, PermissionGrant
 from app.services.errors import AuthenticationError
@@ -15,7 +20,18 @@ from app.services.errors import AuthenticationError
 DatabaseSession = Annotated[Session, Depends(get_session)]
 
 
+@lru_cache
 def get_attachment_storage() -> AttachmentStorage:
+    if settings.attachment_storage_backend == "s3":
+        assert settings.s3_bucket is not None
+        assert settings.s3_endpoint_url is not None
+        return S3AttachmentStorage(
+            bucket=settings.s3_bucket,
+            endpoint_url=settings.s3_endpoint_url,
+            region=settings.s3_region,
+            connect_timeout_seconds=settings.s3_connect_timeout_seconds,
+            read_timeout_seconds=settings.s3_read_timeout_seconds,
+        )
     return LocalAttachmentStorage(settings.attachment_storage_root)
 
 

@@ -2,6 +2,8 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 
 import { AppFrame, PageShell } from '@/components/layout/PageShell'
 import { AuthGate } from '@/components/auth/AuthGate'
+import { FeatureUnavailablePage } from '@/components/layout/FeatureUnavailablePage'
+import { FEATURES } from '@/config/features'
 import LoginPage from '@/modules/auth/pages/LoginPage'
 
 import DashboardPage from '@/modules/dashboard/pages/DashboardPage'
@@ -94,9 +96,15 @@ export function AppRoutes() {
 
       <Route path="/login" element={<LoginPage />} />
 
-      <Route path="/agendar" element={<AgendarPage />} />
+      <Route
+        path="/agendar"
+        element={FEATURES.selfBooking ? <AgendarPage /> : <FeatureUnavailablePage title="Agendación pública próximamente" />}
+      />
 
-      <Route path="/agendar/perfil" element={<PerfilPublicoPage />} />
+      <Route
+        path="/agendar/perfil"
+        element={FEATURES.selfBooking ? <PerfilPublicoPage /> : <FeatureUnavailablePage title="Perfil público próximamente" />}
+      />
 
       <Route element={<AuthGate />}>
 
@@ -152,8 +160,8 @@ export function AppRoutes() {
           <Route path="/rrhh/solicitudes" element={<SolicitudesPage />} />
           <Route path="/rrhh/cuentas-por-cobrar" element={<RrhhCxcPage />} />
           <Route path="/rrhh/documentos" element={<DocumentosPage />} />
-          <Route path="/rrhh/nomina" element={<NominaPage />} />
-          <Route path="/rrhh/performance" element={<PerformancePage />} />
+          <Route path="/rrhh/nomina" element={FEATURES.payroll ? <NominaPage /> : <FeatureUnavailablePage title="Nómina próximamente" />} />
+          <Route path="/rrhh/performance" element={FEATURES.performance ? <PerformancePage /> : <FeatureUnavailablePage title="Evaluaciones próximamente" />} />
 
           <Route path="/finanzas" element={<OverviewPage />} />
 

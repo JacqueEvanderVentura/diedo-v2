@@ -1,0 +1,43 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [full-stack]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build production bundle
+        env:
+          VITE_API_BASE_URL: https://api.example.invalid
+          VITE_DEMO_SEED_ENABLED: 'false'
+        run: npm run build
+
+      - name: Build production container
+        working-directory: .
+        run: docker build --file frontend/Dockerfile --build-arg VITE_API_BASE_URL=https://api.example.invalid .

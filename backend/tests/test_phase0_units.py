@@ -103,6 +103,7 @@ def test_seed_demo_cli_supports_explicitly_disabled_seed(monkeypatch, capsys) ->
         SimpleNamespace(
             app_env="test",
             demo_seed_enabled=False,
+            demo_admin_password=None,
             local_bootstrap_admin_password=None,
         ),
     )
@@ -115,8 +116,11 @@ def test_seed_demo_cli_supports_explicitly_disabled_seed(monkeypatch, capsys) ->
 
     seed_demo.main()
 
-    assert received == [None]
-    assert json.loads(capsys.readouterr().out)["seed_version"] == "test-v1"
+    assert received == []
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "skipped",
+        "reason": "demo_seed_disabled",
+    }
 
 
 def test_seed_demo_cli_rejects_enabled_seed_without_password(monkeypatch) -> None:
@@ -126,12 +130,40 @@ def test_seed_demo_cli_rejects_enabled_seed_without_password(monkeypatch) -> Non
         SimpleNamespace(
             app_env="development",
             demo_seed_enabled=True,
+            demo_admin_password=None,
             local_bootstrap_admin_password=None,
         ),
     )
 
-    with pytest.raises(RuntimeError, match="LOCAL_BOOTSTRAP_ADMIN_PASSWORD"):
+    with pytest.raises(RuntimeError, match="DEMO_ADMIN_PASSWORD or LOCAL_BOOTSTRAP_ADMIN_PASSWORD"):
         seed_demo.main()
+
+
+def test_seed_demo_cli_hashes_password_and_reconciles(monkeypatch, capsys) -> None:
+    secret = SimpleNamespace(get_secret_value=lambda: "secret")
+    received: list[object] = []
+    monkeypatch.setattr(
+        seed_demo,
+        "settings",
+        SimpleNamespace(
+            app_env="development",
+            demo_seed_enabled=True,
+            demo_admin_password=secret,
+            local_bootstrap_admin_password=None,
+        ),
+    )
+    monkeypatch.setattr(seed_demo, "hash_password", lambda password: f"hashed:{password}")
+    monkeypatch.setattr(seed_demo, "session_scope", _fake_session_scope)
+    monkeypatch.setattr(
+        seed_demo,
+        "seed_demo_data",
+        lambda _session, password_hash: received.append(password_hash) or _demo_summary(),
+    )
+
+    seed_demo.main()
+
+    assert received == ["hashed:secret"]
+    assert json.loads(capsys.readouterr().out)["seed_version"] == "test-v1"
 
 
 def test_seed_local_demo_cli_hashes_password_and_forces_seed(monkeypatch, capsys) -> None:
@@ -158,13 +190,12 @@ def test_seed_local_demo_cli_hashes_password_and_forces_seed(monkeypatch, capsys
     assert json.loads(capsys.readouterr().out)["enabled"] is False
 
 
-@pytest.mark.parametrize("module", [seed_demo, seed_local_demo])
-def test_demo_seed_clis_reject_production_environment(monkeypatch, module) -> None:
+def test_local_demo_seed_cli_rejects_production_environment(monkeypatch) -> None:
     monkeypatch.setattr(
-        module,
+        seed_local_demo,
         "settings",
         SimpleNamespace(app_env="production", local_bootstrap_admin_password=None),
     )
 
     with pytest.raises(RuntimeError, match="disabled outside development and test"):
-        module.main()
+        seed_local_demo.main()

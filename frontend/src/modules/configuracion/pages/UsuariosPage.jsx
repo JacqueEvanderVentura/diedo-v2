@@ -33,6 +33,7 @@ import { useSortedRows } from '@/hooks/useTableControls'
 import { matchesBranch, buildBranchFilterOptions } from '@/lib/branches'
 import { configPageClass } from '../lib/pageShell'
 import { cn } from '@/lib/utils'
+import { FEATURES } from '@/config/features'
 
 const ROLE_TONE = { Administrador: 'brand', Gerente: 'success', Supervisor: 'warning', Cajero: 'neutral', Vendedor: 'neutral' }
 const SCOPE_OPTIONS = [
@@ -474,7 +475,7 @@ export default function UsuariosPage({ embedded = false }) {
         </div>
         {(!isOnline || canManageMemberships) && (
           <div className="flex gap-2">
-            {isOnline && (
+            {isOnline && FEATURES.invitations && (
               <Button
                 variant="secondary"
                 onClick={() => { setInviteMode(true); setEditing(null); setModalOpen(true) }}
