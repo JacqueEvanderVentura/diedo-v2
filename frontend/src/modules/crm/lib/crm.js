@@ -14,6 +14,14 @@ export const METHOD_ICON = {
   cxc: 'Clock',
 }
 
+export function summarizeActiveSales(sales = []) {
+  const active = sales.filter((sale) => sale.status !== 'voided')
+  return {
+    count: active.length,
+    total: active.reduce((sum, sale) => sum + (Number(sale.total) || 0), 0),
+  }
+}
+
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 
 export function fmtDate(iso) {

@@ -154,7 +154,7 @@ describe('adaptadores de Terminal POS', () => {
     })).toThrow('falta su versión sincronizada')
   })
 
-  it('respeta anulaciones backend y excluye ventas anuladas del turno', () => {
+  it('respeta anulaciones backend y conserva las facturas anuladas en el turno', () => {
     expect(mapReceivableFromApi({
       id: 'receivable-cancelled',
       amount: '100',
@@ -166,12 +166,13 @@ describe('adaptadores de Terminal POS', () => {
       register: { id: 'register-id', status: 'open', branchId: 'branch-id' },
       sales: [
         { id: 'sale-active', registerId: 'register-id', total: '100', status: 'completed', lines: [] },
-        { id: 'sale-voided', registerId: 'register-id', total: '90', status: 'voided', lines: [] },
+        { id: 'sale-voided', registerId: 'register-id', total: '90', status: 'voided', voidedAt: '2026-09-01T12:00:00Z', voidReason: 'Duplicada', lines: [] },
       ],
     }, { branchId: 'branch-id' })
 
     expect(mapped.sales).toHaveLength(2)
-    expect(mapped.shiftSales.map((sale) => sale.id)).toEqual(['sale-active'])
+    expect(mapped.shiftSales.map((sale) => sale.id)).toEqual(['sale-active', 'sale-voided'])
+    expect(mapped.sales[1]).toMatchObject({ voidedAt: '2026-09-01T12:00:00Z', voidReason: 'Duplicada' })
   })
 
   it('fuerza vencida desde el boolean backend sin degradar pagadas ni anuladas', () => {

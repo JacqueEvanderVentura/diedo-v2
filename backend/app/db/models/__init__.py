@@ -20,6 +20,7 @@ from app.db.models.finance import (
     FinanceFixedExpensePayment,
     FinanceLiability,
     FinanceManualIncome,
+    FinancePosIncomeCorrection,
 )
 from app.db.models.foundation import (
     Branch,
@@ -133,6 +134,7 @@ __all__ = [
     "FinanceFixedExpensePayment",
     "FinanceLiability",
     "FinanceManualIncome",
+    "FinancePosIncomeCorrection",
     "HrDocumentRecord",
     "HrLeaveRequest",
     "Incident",

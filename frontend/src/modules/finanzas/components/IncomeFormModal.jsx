@@ -8,12 +8,19 @@ import { useFinanzasStore } from '@/stores/finanzasStore'
 import { useConfigStore } from '@/stores/configStore'
 import { todayKey } from '@/stores/agendaStore'
 
-const CATEGORY_OPTIONS = [
+const MANUAL_CATEGORY_OPTIONS = [
   { value: 'servicios', label: 'Servicios' },
   { value: 'efectivo', label: 'Efectivo' },
   { value: 'tarjeta', label: 'Tarjeta' },
   { value: 'transferencia', label: 'Transferencias Bancarias' },
   { value: 'link', label: 'Link de pago' },
+]
+
+const POS_CATEGORY_OPTIONS = [
+  { value: 'cash', label: 'Efectivo (POS)' },
+  { value: 'card', label: 'Tarjeta (POS)' },
+  { value: 'transfer', label: 'Transferencia (POS)' },
+  { value: 'credit', label: 'Crédito (POS)' },
 ]
 
 const STATUS_OPTIONS = [
@@ -30,11 +37,13 @@ const SOURCE_OPTIONS = [
 const empty = () => ({ category: 'servicios', branchId: '', amount: '', date: todayKey(), customer: '', source: 'Formulario', status: 'pagado' })
 
 export function IncomeFormModal({ open, onClose, income }) {
-  const { addManualIncome, updateManualIncome } = useFinanzasStore()
+  const addManualIncome = useFinanzasStore((state) => state.addManualIncome)
+  const updateIncome = useFinanzasStore((state) => state.updateIncome)
   const [form, setForm] = useState(empty())
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
   const editing = !!income
+  const isPosIncome = income?.origin === 'pos' || (income?.source === 'POS' && !!income?.reference)
 
   useEffect(() => {
     if (!open) return
@@ -50,6 +59,12 @@ export function IncomeFormModal({ open, onClose, income }) {
 
   const { branches } = useConfigStore.getState()
   const branchOptions = branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))
+  const baseCategoryOptions = isPosIncome
+    ? [...MANUAL_CATEGORY_OPTIONS, ...POS_CATEGORY_OPTIONS]
+    : MANUAL_CATEGORY_OPTIONS
+  const categoryOptions = form.category && !baseCategoryOptions.some((option) => option.value === form.category)
+    ? [{ value: form.category, label: `${form.category} (POS)` }, ...baseCategoryOptions]
+    : baseCategoryOptions
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
   const submit = async () => {
@@ -57,7 +72,7 @@ export function IncomeFormModal({ open, onClose, income }) {
     if (!form.branchId) return setErr('Selecciona una sucursal.')
     setSaving(true)
     try {
-      await (editing ? updateManualIncome(income.id, form) : addManualIncome(form))
+      await (editing ? updateIncome(income.id, form) : addManualIncome(form))
       toast.success(editing ? 'Ingreso actualizado' : 'Ingreso registrado')
       onClose()
     } catch (error) {
@@ -68,21 +83,26 @@ export function IncomeFormModal({ open, onClose, income }) {
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Registrar Nuevo Ingreso" wide testId="income-form-modal">
+    <Modal open={open} onClose={onClose} title={editing ? 'Editar ingreso' : 'Registrar nuevo ingreso'} wide testId="income-form-modal">
       <div className="space-y-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Categoría *</label><Select value={form.category} onChange={(v) => set('category', v)} options={CATEGORY_OPTIONS} /></div>
+          <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Categoría *</label><Select value={form.category} onChange={(v) => set('category', v)} options={categoryOptions} /></div>
           <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Sucursal *</label><Select value={form.branchId} onChange={(v) => set('branchId', v)} options={branchOptions} /></div>
           <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Monto *</label><Input type="number" value={form.amount} onChange={(e) => set('amount', e.target.value)} placeholder="0.00" /></div>
           <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Fecha *</label><Input type="date" value={form.date} onChange={(e) => set('date', e.target.value)} /></div>
           <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Cliente</label><Input value={form.customer} onChange={(e) => set('customer', e.target.value)} placeholder="Nombre del cliente" /></div>
-          <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Fuente</label><Select value={form.source} onChange={(v) => set('source', v)} options={SOURCE_OPTIONS} /></div>
+          <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Fuente</label><Select value={form.source} onChange={(v) => set('source', v)} options={SOURCE_OPTIONS} disabled={isPosIncome} /></div>
           <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Estado</label><Select value={form.status} onChange={(v) => set('status', v)} options={STATUS_OPTIONS} /></div>
         </div>
+        {isPosIncome && (
+          <p className="rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-700">
+            Esta corrección modifica los reportes financieros; la venta original y su inventario permanecen intactos en Caja.
+          </p>
+        )}
         {err && <p className="text-sm text-red-500">{err}</p>}
         <div className="flex gap-3 pt-1">
           <Button variant="secondary" className="flex-1" onClick={onClose}>Cancelar</Button>
-          <Button className="flex-1" onClick={submit} disabled={saving}>{saving ? 'Guardando…' : 'Guardar Ingreso'}</Button>
+          <Button className="flex-1" onClick={submit} disabled={saving}>{saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Guardar ingreso'}</Button>
         </div>
       </div>
     </Modal>

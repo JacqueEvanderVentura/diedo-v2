@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     allow_production_demo_seed: bool = False
     demo_admin_password: SecretStr | None = None
     user_invitations_enabled: bool | None = None
-    expected_schema_revision: str = "20260903_0019"
+    expected_schema_revision: str = "20260907_0020"
     attachment_storage_backend: Literal["local", "s3"] = "local"
     attachment_storage_root: Path = _BACKEND_ROOT / ".local" / "attachments"
     s3_bucket: str | None = None

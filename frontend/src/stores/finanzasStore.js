@@ -19,7 +19,7 @@ import {
 } from '@/services/adapters/finance'
 import { ephemeralJsonStorage, registerSensitiveStateCleaner } from '@/services/storagePolicy'
 import { useSessionStore } from '@/stores/sessionStore'
-import { isThisMonth } from '@/modules/finanzas/lib/finanzas'
+import { isRecognizedPosIncome, isThisMonth } from '@/modules/finanzas/lib/finanzas'
 
 const genId = (prefix = 'fin') =>
   `${prefix}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
@@ -256,7 +256,9 @@ export const useFinanzasStore = create(
               pasivos,
               budgets,
               accounts,
-              manualIncomes: incomeEntries.filter((item) => item.editable),
+              manualIncomes: incomeEntries.filter((item) => (
+                item.origin === 'manual' || (item.origin == null && item.source !== 'POS')
+              )),
               incomeEntries,
               incomesProjected: true,
               overview: mapFinanceOverviewFromApi(overviewResponse),
@@ -563,18 +565,23 @@ export const useFinanzasStore = create(
         return income
       },
 
-      updateManualIncome: async (id, data) => {
+      updateIncome: async (id, data) => {
         if (!isOnline()) {
           set((state) => ({
             manualIncomes: state.manualIncomes.map((item) => item.id === id
               ? { ...item, ...data, amount: Number(data.amount ?? item.amount) || 0 }
               : item),
+            incomeEntries: state.incomeEntries.map((item) => item.id === id
+              ? { ...item, ...data, amount: Number(data.amount ?? item.amount) || 0 }
+              : item),
           }))
-          return get().manualIncomes.find((item) => item.id === id)
+          return get().incomeEntries.find((item) => item.id === id)
+            || get().manualIncomes.find((item) => item.id === id)
         }
-        const current = get().manualIncomes.find((item) => item.id === id)
+        const current = get().incomeEntries.find((item) => item.id === id)
+          || get().manualIncomes.find((item) => item.id === id)
         if (!current?.version) throw new Error('Vuelve a cargar el ingreso antes de editarlo.')
-        const income = mapFinanceIncomeFromApi(await financeApi.updateManualIncome(id, {
+        const income = mapFinanceIncomeFromApi(await financeApi.updateIncome(id, {
           version: current.version,
           ...manualIncomeToApiPayload({ ...current, ...data }),
         }))
@@ -582,16 +589,24 @@ export const useFinanzasStore = create(
         return income
       },
 
-      deleteManualIncome: async (id) => {
-        const current = get().manualIncomes.find((item) => item.id === id)
+      updateManualIncome: (id, data) => get().updateIncome(id, data),
+
+      deleteIncome: async (id) => {
+        const current = get().incomeEntries.find((item) => item.id === id)
+          || get().manualIncomes.find((item) => item.id === id)
         if (isOnline()) {
           if (!current?.version) throw new Error('Vuelve a cargar el ingreso antes de eliminarlo.')
-          await financeApi.deleteManualIncome(id, current.version)
+          await financeApi.deleteIncome(id, current.version)
           await get().hydrateFromApi({ force: true })
         } else {
-          set((state) => ({ manualIncomes: state.manualIncomes.filter((item) => item.id !== id) }))
+          set((state) => ({
+            manualIncomes: state.manualIncomes.filter((item) => item.id !== id),
+            incomeEntries: state.incomeEntries.filter((item) => item.id !== id),
+          }))
         }
       },
+
+      deleteManualIncome: (id) => get().deleteIncome(id),
 
       getOverviewStats: (sales = []) => {
         const { overview, expenses, fixedExpenses, pasivos, manualIncomes } = get()
@@ -606,7 +621,7 @@ export const useFinanzasStore = create(
           }
         }
         const salesTotal = sales
-          .filter((sale) => isThisMonth(sale.createdAt))
+          .filter((sale) => isRecognizedPosIncome(sale) && isThisMonth(sale.recognizedAt))
           .reduce((sum, sale) => sum + (sale.total || 0), 0)
         const incomeTotal = salesTotal + sumInMonth(manualIncomes, 'date')
         const expenseTotal = sumInMonth(expenses, 'date')
@@ -637,7 +652,7 @@ export const useFinanzasStore = create(
             return parsed.getMonth() === month && parsed.getFullYear() === year
           }
           const salesTotal = sales
-            .filter((sale) => matchesMonth(sale.createdAt))
+            .filter((sale) => isRecognizedPosIncome(sale) && matchesMonth(sale.recognizedAt))
             .reduce((sum, sale) => sum + (sale.total || 0), 0)
           const manualTotal = get().manualIncomes
             .filter((income) => matchesMonth(income.date))

@@ -64,6 +64,8 @@ export const financeApi = {
 
   listAllIncomes: (params) => listAll('/api/v1/finance/incomes', params),
   createManualIncome: (payload) => create('/api/v1/finance/manual-incomes', payload),
+  updateIncome: (id, payload) => update(`/api/v1/finance/incomes/${id}`, payload),
+  deleteIncome: (id, version) => remove(`/api/v1/finance/incomes/${id}`, version),
   updateManualIncome: (id, payload) => update(`/api/v1/finance/manual-incomes/${id}`, payload),
   deleteManualIncome: (id, version) => remove(`/api/v1/finance/manual-incomes/${id}`, version),
 }

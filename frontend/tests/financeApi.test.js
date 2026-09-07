@@ -63,6 +63,8 @@ describe('cliente API de Finanzas', () => {
     await financeApi.createBudget({ name: 'Operaciones' })
     await financeApi.createAccount({ name: 'Banco' })
     await financeApi.createManualIncome({ amount: 20 })
+    await financeApi.updateIncome('income-id', { version: 2, amount: 30 })
+    await financeApi.deleteIncome('income-id', 3)
 
     expect(mocks.post).toHaveBeenCalledWith(
       '/api/v1/finance/expenses',
@@ -93,5 +95,12 @@ describe('cliente API de Finanzas', () => {
       { amount: 20 },
       { headers: { 'Idempotency-Key': expect.any(String) } }
     )
+    expect(mocks.patch).toHaveBeenCalledWith('/api/v1/finance/incomes/income-id', {
+      version: 2,
+      amount: 30,
+    })
+    expect(mocks.delete).toHaveBeenCalledWith('/api/v1/finance/incomes/income-id', {
+      version: 3,
+    })
   })
 })

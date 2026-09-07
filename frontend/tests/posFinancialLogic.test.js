@@ -7,6 +7,8 @@ import {
   summarizeCxcAccounts,
 } from '@/modules/pos/lib/cxcAccounts'
 import { buildShiftMovements, sumByMethod } from '@/modules/pos/lib/caja'
+import { summarizeActiveSales } from '@/modules/crm/lib/crm'
+import { isRecognizedPosIncome } from '@/modules/finanzas/lib/finanzas'
 import { getReceivableVoidPolicy, POS_PROOF_ACCEPT } from '@/modules/pos/lib/receivables'
 
 describe('reglas financieras de Terminal POS', () => {
@@ -75,15 +77,24 @@ describe('reglas financieras de Terminal POS', () => {
     })
   })
 
-  it('identifica CxC de citas y excluye ventas anuladas de caja', () => {
+  it('conserva facturas anuladas en el historial, pero las excluye de los totales', () => {
     expect(getAccountRowMeta({ kind: 'receivable', source: 'appointment' }).label).toBe('Agenda')
 
     const sales = [
       { id: 'active', status: 'completed', method: 'efectivo', total: 100, createdAt: '2026-09-01T10:00:00Z' },
       { id: 'voided', status: 'voided', method: 'efectivo', total: 75, createdAt: '2026-09-01T11:00:00Z' },
     ]
-    expect(buildShiftMovements({ shiftSales: sales })).toHaveLength(1)
+    const movements = buildShiftMovements({ shiftSales: sales })
+    expect(movements).toHaveLength(2)
+    expect(movements.find((movement) => movement.id === 'voided')).toMatchObject({ status: 'voided' })
     expect(sumByMethod(sales, 'efectivo')).toBe(100)
+    expect(summarizeActiveSales(sales)).toEqual({ count: 1, total: 100 })
+  })
+
+  it('reconoce una venta POS como ingreso sólo al cerrar caja y mientras no esté anulada', () => {
+    expect(isRecognizedPosIncome({ status: 'completed', recognizedAt: null })).toBe(false)
+    expect(isRecognizedPosIncome({ status: 'completed', recognizedAt: '2026-09-01T12:00:00Z' })).toBe(true)
+    expect(isRecognizedPosIncome({ status: 'voided', recognizedAt: '2026-09-01T12:00:00Z' })).toBe(false)
   })
 
   it('sólo permite anular CxC compatibles sin pagos aplicados', () => {

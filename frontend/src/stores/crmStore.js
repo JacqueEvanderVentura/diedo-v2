@@ -415,7 +415,7 @@ export const useCrmStore = create(
             notes: lead.scoreNotes || null,
           })
           await Promise.all([
-            get().hydrateSection('leads'),
+            get().hydrateSection('pipeline'),
             get().hydrateSection('customers'),
             useCustomersStore.getState().hydrate({ force: true }),
           ])
@@ -437,13 +437,21 @@ export const useCrmStore = create(
           leads: s.leads.map((l) =>
             l.id === leadId ? { ...l, status: 'convertido', customerId: customer.id, updatedAt: now() } : l
           ),
+          opportunities: s.opportunities.map((opportunity) => (
+            opportunity.leadId === leadId
+              ? { ...opportunity, customerId: customer.id, customerName: customer.name, updatedAt: now() }
+              : opportunity
+          )),
         }))
         return customer
       },
 
-      addToPipeline: (leadId) => {
+      addToPipeline: async (leadId) => {
         const lead = get().leads.find((l) => l.id === leadId)
         if (!lead) return null
+        if (lead.opportunityId) {
+          return get().opportunities.find((opportunity) => opportunity.id === lead.opportunityId) || null
+        }
         const opp = {
           id: genId('opp'),
           title: `${lead.company || lead.name} — Oportunidad`,
@@ -457,6 +465,34 @@ export const useCrmStore = create(
           createdAt: now(),
           updatedAt: now(),
         }
+        if (isOnline()) {
+          try {
+            const response = await crmApi.createLeadOpportunity(leadId, {
+              title: opp.title,
+              stage: opp.stage,
+              value: opp.value,
+              notes: opp.notes || null,
+            })
+            const saved = mapOpportunityFromApi(response)
+            set((s) => ({
+              opportunities: [saved, ...s.opportunities.filter((item) => item.id !== saved.id)],
+              leads: s.leads.map((item) => (
+                item.id === leadId
+                  ? {
+                      ...item,
+                      opportunityId: saved.id,
+                      status: item.status === 'nuevo' ? 'contactado' : item.status,
+                      updatedAt: saved.updatedAt,
+                    }
+                  : item
+              )),
+            }))
+            return saved
+          } catch (error) {
+            reportMutationError(set, error)
+            throw error
+          }
+        }
         set((s) => ({
           opportunities: [opp, ...s.opportunities],
           leads: s.leads.map((l) =>
@@ -465,67 +501,58 @@ export const useCrmStore = create(
               : l
           ),
         }))
-        if (isOnline()) {
-          crmApi.createLeadOpportunity(leadId, {
-            title: opp.title,
-            stage: opp.stage,
-            value: opp.value,
-            notes: opp.notes || null,
-          })
-            .then((response) => {
-              const saved = mapOpportunityFromApi(response)
-              set((s) => ({
-                opportunities: [
-                  saved,
-                  ...s.opportunities.filter((item) => item.id !== opp.id),
-                ],
-                leads: s.leads.map((item) => (
-                  item.id === leadId
-                    ? { ...item, opportunityId: saved.id, status: item.status === 'nuevo' ? 'contactado' : item.status }
-                    : item
-                )),
-              }))
-            })
-            .catch((error) => reportMutationError(set, error))
-        }
         return opp
       },
 
-      addOpportunity: (data) => {
+      addOpportunity: async (data) => {
         const opp = { id: genId('opp'), createdAt: now(), updatedAt: now(), stage: 'nuevo', value: 0, ...data }
-        set((s) => ({ opportunities: [opp, ...s.opportunities] }))
         if (isOnline()) {
-          crmApi.createOpportunity({
-            branchId: opp.branchId,
-            leadId: opp.leadId || null,
-            customerId: opp.customerId || null,
-            title: opp.title,
-            customerName: opp.customerName,
-            stage: opp.stage,
-            value: opp.value,
-            notes: opp.notes || null,
-          })
-            .then((response) => {
-              const saved = mapOpportunityFromApi(response)
-              set((s) => ({
-                opportunities: [
-                  saved,
-                  ...s.opportunities.filter((item) => item.id !== opp.id),
-                ],
-              }))
+          try {
+            const response = await crmApi.createOpportunity({
+              branchId: opp.branchId,
+              leadId: opp.leadId || null,
+              customerId: opp.customerId || null,
+              assignedMembershipId: opp.assignedUserId || null,
+              title: opp.title,
+              customerName: opp.customerName,
+              stage: opp.stage,
+              value: opp.value,
+              notes: opp.notes || null,
             })
-            .catch((error) => reportMutationError(set, error))
+            const saved = mapOpportunityFromApi(response)
+            set((s) => ({
+              opportunities: [saved, ...s.opportunities.filter((item) => item.id !== saved.id)],
+              leads: saved.leadId
+                ? s.leads.map((lead) => (
+                    lead.id === saved.leadId
+                      ? { ...lead, opportunityId: saved.id, status: lead.status === 'nuevo' ? 'contactado' : lead.status }
+                      : lead
+                  ))
+                : s.leads,
+            }))
+            return saved
+          } catch (error) {
+            reportMutationError(set, error)
+            throw error
+          }
         }
+        set((s) => ({
+          opportunities: [opp, ...s.opportunities],
+          leads: opp.leadId
+            ? s.leads.map((lead) => (
+                lead.id === opp.leadId
+                  ? { ...lead, opportunityId: opp.id, status: lead.status === 'nuevo' ? 'contactado' : lead.status }
+                  : lead
+              ))
+            : s.leads,
+        }))
         return opp
       },
 
       updateOpportunityStage: (id, stage) => get().updateOpportunity(id, { stage }),
 
-      updateOpportunity: (id, data) => {
+      updateOpportunity: async (id, data) => {
         const current = get().opportunities.find((opportunity) => opportunity.id === id)
-        set((s) => ({
-          opportunities: s.opportunities.map((o) => (o.id === id ? { ...o, ...data, updatedAt: now() } : o)),
-        }))
         if (isOnline() && current) {
           const payload = { version: current.version }
           const fields = ['customerId', 'title', 'customerName', 'stage', 'value', 'notes', 'lostReason']
@@ -535,16 +562,23 @@ export const useCrmStore = create(
           if (payload.stage === 'perdido' && !payload.lostReason) {
             payload.lostReason = 'Marcada como perdida desde el pipeline.'
           }
-          crmApi.updateOpportunity(id, payload)
-            .then((response) => {
-              const saved = mapOpportunityFromApi(response)
-              set((s) => ({ opportunities: replaceById(s.opportunities, saved) }))
-            })
-            .catch((error) => reportMutationError(set, error))
+          try {
+            const response = await crmApi.updateOpportunity(id, payload)
+            const saved = mapOpportunityFromApi(response)
+            set((s) => ({ opportunities: replaceById(s.opportunities, saved) }))
+            return saved
+          } catch (error) {
+            reportMutationError(set, error)
+            throw error
+          }
         }
+        if (!current) return null
+        const updated = { ...current, ...data, updatedAt: now() }
+        set((s) => ({ opportunities: replaceById(s.opportunities, updated) }))
+        return updated
       },
 
-      addActivity: (data) => {
+      addActivity: async (data) => {
         const relatedOpportunity = get().opportunities.find(
           (opportunity) => opportunity.id === data.opportunityId
         )
@@ -555,73 +589,82 @@ export const useCrmStore = create(
           id: genId('act'),
           createdAt: now(),
           completedAt: null,
-          assignedUserId: currentSessionActor().id,
+          assignedUserId: useSessionStore.getState().user?.membershipId || currentSessionActor().id,
           branchId,
           ...data,
         }
-        set((s) => ({ activities: [act, ...s.activities] }))
         if (isOnline()) {
-          crmApi.createActivity({
-            branchId,
-            leadId: act.leadId || null,
-            opportunityId: act.opportunityId || null,
-            customerId: act.customerId || null,
-            type: act.type,
-            title: act.title,
-            description: act.description || null,
-            customerName: act.customerName || null,
-            dueAt: act.dueAt || null,
-          })
-            .then((response) => {
-              const saved = mapActivityFromApi(response)
-              set((s) => ({
-                activities: [saved, ...s.activities.filter((item) => item.id !== act.id)],
-              }))
+          try {
+            const response = await crmApi.createActivity({
+              branchId,
+              leadId: act.leadId || null,
+              opportunityId: act.opportunityId || null,
+              customerId: act.customerId || null,
+              assignedMembershipId: act.assignedUserId || null,
+              type: act.type,
+              title: act.title,
+              description: act.description || null,
+              customerName: act.customerName || null,
+              dueAt: act.dueAt || null,
             })
-            .catch((error) => reportMutationError(set, error))
+            const saved = mapActivityFromApi(response)
+            set((s) => ({ activities: [saved, ...s.activities.filter((item) => item.id !== saved.id)] }))
+            return saved
+          } catch (error) {
+            reportMutationError(set, error)
+            throw error
+          }
         }
+        set((s) => ({ activities: [act, ...s.activities] }))
         return act
       },
 
-      updateActivity: (id, data) => {
+      updateActivity: async (id, data) => {
         const current = get().activities.find((activity) => activity.id === id)
-        set((s) => ({
-          activities: s.activities.map((a) => (a.id === id ? { ...a, ...data } : a)),
-        }))
         if (isOnline() && current) {
           const payload = { version: current.version }
           const fields = ['type', 'title', 'description', 'customerName', 'dueAt']
           fields.forEach((field) => {
             if (data[field] !== undefined) payload[field] = data[field]
           })
-          crmApi.updateActivity(id, payload)
-            .then((response) => {
-              const saved = mapActivityFromApi(response)
-              set((s) => ({ activities: replaceById(s.activities, saved) }))
-            })
-            .catch((error) => reportMutationError(set, error))
+          if (data.assignedUserId !== undefined) payload.assignedMembershipId = data.assignedUserId
+          try {
+            const response = await crmApi.updateActivity(id, payload)
+            const saved = mapActivityFromApi(response)
+            set((s) => ({ activities: replaceById(s.activities, saved) }))
+            return saved
+          } catch (error) {
+            reportMutationError(set, error)
+            throw error
+          }
         }
+        if (!current) return null
+        const updated = { ...current, ...data }
+        set((s) => ({ activities: replaceById(s.activities, updated) }))
+        return updated
       },
 
-      toggleActivityComplete: (id) => {
+      toggleActivityComplete: async (id) => {
         const current = get().activities.find((activity) => activity.id === id)
-        set((s) => ({
-          activities: s.activities.map((a) =>
-            a.id === id ? { ...a, completedAt: a.completedAt ? null : now() } : a
-          ),
-        }))
         if (isOnline() && current) {
           const request = current.completedAt ? crmApi.reopenActivity : crmApi.completeActivity
-          request(id, current.version)
-            .then((response) => {
-              const saved = mapActivityFromApi(response)
-              set((s) => ({ activities: replaceById(s.activities, saved) }))
-            })
-            .catch((error) => reportMutationError(set, error))
+          try {
+            const response = await request(id, current.version)
+            const saved = mapActivityFromApi(response)
+            set((s) => ({ activities: replaceById(s.activities, saved) }))
+            return saved
+          } catch (error) {
+            reportMutationError(set, error)
+            throw error
+          }
         }
+        if (!current) return null
+        const updated = { ...current, completedAt: current.completedAt ? null : now() }
+        set((s) => ({ activities: replaceById(s.activities, updated) }))
+        return updated
       },
 
-      addQuote: (data) => {
+      addQuote: async (data) => {
         const count = get().quotes.length + 1
         const quote = {
           id: genId('qt'),
@@ -633,68 +676,71 @@ export const useCrmStore = create(
           updatedAt: now(),
           ...data,
         }
-        set((s) => ({ quotes: [quote, ...s.quotes] }))
         if (isOnline()) {
-          crmApi.createQuote({
-            opportunityId: quote.opportunityId || null,
-            customerId: quote.customerId,
-            branchId: quote.branchId,
-            lines: quote.items.map((item) => ({
-              itemId: item.itemId || item.id,
-              quantity: item.qty || 1,
-              unitPrice: item.price,
-            })),
-            notes: quote.notes || null,
-            validUntil: quote.validUntil || null,
-            status: quote.status,
-          })
-            .then((response) => {
-              const saved = mapCrmQuoteFromApi(response)
-              set((s) => ({
-                quotes: [saved, ...s.quotes.filter((item) => item.id !== quote.id)],
-              }))
+          try {
+            const response = await crmApi.createQuote({
+              opportunityId: quote.opportunityId || null,
+              customerId: quote.customerId,
+              branchId: quote.branchId,
+              lines: quote.items.map((item) => ({
+                itemId: item.itemId || item.id,
+                quantity: item.qty || 1,
+                unitPrice: item.price,
+              })),
+              notes: quote.notes || null,
+              validUntil: quote.validUntil || null,
+              status: quote.status,
             })
-            .catch((error) => reportMutationError(set, error))
+            const saved = mapCrmQuoteFromApi(response)
+            set((s) => ({ quotes: [saved, ...s.quotes.filter((item) => item.id !== saved.id)] }))
+            return saved
+          } catch (error) {
+            reportMutationError(set, error)
+            throw error
+          }
         }
+        set((s) => ({ quotes: [quote, ...s.quotes] }))
         return quote
       },
 
-      updateQuote: (id, data) => {
+      updateQuote: async (id, data) => {
         const current = get().quotes.find((quote) => quote.id === id)
-        set((s) => ({
-          quotes: s.quotes.map((q) => (q.id === id ? { ...q, ...data, updatedAt: now() } : q)),
-        }))
         if (isOnline() && current) {
           const payload = { version: current.version }
           if (data.status !== undefined) payload.status = data.status
           if (data.validUntil !== undefined) payload.validUntil = data.validUntil
           if (data.notes !== undefined) payload.notes = data.notes
-          crmApi.updateQuote(id, payload)
-            .then((response) => {
-              const saved = mapCrmQuoteFromApi(response)
-              set((s) => ({ quotes: replaceById(s.quotes, saved) }))
-            })
-            .catch((error) => reportMutationError(set, error))
+          try {
+            const response = await crmApi.updateQuote(id, payload)
+            const saved = mapCrmQuoteFromApi(response)
+            set((s) => ({ quotes: replaceById(s.quotes, saved) }))
+            return saved
+          } catch (error) {
+            reportMutationError(set, error)
+            throw error
+          }
         }
+        if (!current) return null
+        const updated = { ...current, ...data, updatedAt: now() }
+        set((s) => ({ quotes: replaceById(s.quotes, updated) }))
+        return updated
       },
 
-      deleteQuote: (id) => {
+      deleteQuote: async (id) => {
         const current = get().quotes.find((quote) => quote.id === id)
         if (isOnline() && current) {
-          set((s) => ({
-            quotes: s.quotes.map((quote) => (
-              quote.id === id ? { ...quote, status: 'cancelada', updatedAt: now() } : quote
-            )),
-          }))
-          crmApi.cancelQuote(id, current.version)
-            .then((response) => {
-              const saved = mapCrmQuoteFromApi(response)
-              set((s) => ({ quotes: replaceById(s.quotes, saved) }))
-            })
-            .catch((error) => reportMutationError(set, error))
-          return
+          try {
+            const response = await crmApi.cancelQuote(id, current.version)
+            const saved = mapCrmQuoteFromApi(response)
+            set((s) => ({ quotes: replaceById(s.quotes, saved) }))
+            return saved
+          } catch (error) {
+            reportMutationError(set, error)
+            throw error
+          }
         }
         set((s) => ({ quotes: s.quotes.filter((q) => q.id !== id) }))
+        return current || null
       },
 
       clearSensitive: () => set({

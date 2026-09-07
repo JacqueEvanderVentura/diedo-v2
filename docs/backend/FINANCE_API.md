@@ -16,8 +16,10 @@ usan `finance.read`; las mutaciones usan `finance.manage`.
 - `finance_accounts` registra caja, banco u otras cuentas. El número se persiste únicamente
   enmascarado; las credenciales bancarias no forman parte del modelo.
 - `finance_manual_incomes` guarda ingresos capturados por formulario.
-- Ventas completadas de POS se proyectan como ingresos no editables y egresos de Caja no
-  reversados se proyectan como gastos no editables. Finanzas no copia esas transacciones.
+- Ventas completadas de POS se proyectan como ingresos únicamente después de cerrar su Caja; la
+  fecha de reconocimiento es `cash_registers.closed_at`. Las ventas anuladas quedan fuera de la
+  proyección, mientras que los egresos de Caja no reversados se proyectan como gastos. Finanzas no
+  copia esas transacciones.
 
 Todas las entidades operativas pertenecen a un workspace y una sucursal. Las referencias compuestas
 y restricciones de base de datos impiden relaciones cruzadas entre workspaces.
@@ -62,15 +64,17 @@ ingresos admiten rango de fechas, estado, origen y orden; presupuestos y gastos 
 - Las tarjetas exigen día de corte y pago; montos, cuotas, fechas y saldos se validan tanto en el API
   como mediante constraints de PostgreSQL.
 - Las bajas son lógicas para preservar historial financiero y trazabilidad.
+- El cierre de Caja reconoce sus ventas POS en Finanzas. Anular después una venta retira ese ingreso
+  de listas, totales y tendencias, pero conserva la factura con estado `voided` en Ventas.
 - Las respuestas incluyen `Cache-Control: no-store` y cada mutación genera auditoría `finance.*`.
 
 ## Overview
 
 `GET /overview` recibe `period=YYYY-MM`, `branchId` opcional y `trendMonths`. Devuelve ingresos,
 gastos variables y fijos pagados, balance, margen neto, deuda pendiente, presupuesto consumido,
-balance de cuentas y una serie mensual. El cálculo usa ventas completadas, movimientos válidos de
-Caja y registros propios de Finance, evitando sumar dos veces los datos que el frontend antes
-componía localmente.
+balance de cuentas y una serie mensual. El cálculo usa ventas completadas de cajas cerradas,
+movimientos válidos de Caja y registros propios de Finance, evitando sumar dos veces los datos que
+el frontend antes componía localmente.
 
 ## Frontend y datos demo
 

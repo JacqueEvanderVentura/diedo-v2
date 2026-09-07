@@ -51,9 +51,9 @@ export function mapCrmQuoteFromApi(record) {
     structuralStatus: quote.status,
     total: numberValue(quote.total),
     items: lines.map((line) => ({
-      id: line.id || line.itemId,
-      itemId: line.itemId,
-      name: line.name || line.itemName,
+      id: line.id || line.itemId || line.item?.id,
+      itemId: line.itemId || line.item?.id,
+      name: line.name || line.itemName || line.item?.name || 'Ítem sin nombre',
       qty: numberValue(line.quantity ?? line.qty),
       price: numberValue(line.unitPrice ?? line.price),
     })),

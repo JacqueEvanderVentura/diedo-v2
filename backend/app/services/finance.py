@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.request_context import get_request_id
 from app.db.models import (
     AuditEntry,
+    CashRegister,
     FinanceAccount,
     FinanceBudget,
     FinanceExpense,
@@ -22,6 +23,8 @@ from app.db.models import (
     FinanceFixedExpensePayment,
     FinanceLiability,
     FinanceManualIncome,
+    FinancePosIncomeCorrection,
+    Sale,
 )
 from app.repositories.finance import (
     AccountStatsRecord,
@@ -875,6 +878,181 @@ class FinanceService:
             sort_direction=sort_direction,
         )
 
+    def update_income(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        income_id: UUID,
+        expected_version: int,
+        changes: dict[str, Any],
+    ) -> IncomeViewRecord:
+        manual = self._repository.get_manual_income(
+            grant.workspace_id, income_id, grant.allowed_branch_ids
+        )
+        if manual is not None:
+            allowed_categories = {"servicios", "efectivo", "tarjeta", "transferencia", "link"}
+            if "category" in changes and changes["category"] not in allowed_categories:
+                raise InvalidOperationError(
+                    "La categoría no es válida para un ingreso manual.", "category"
+                )
+            updated = self.update_manual_income(
+                principal=principal,
+                grant=grant,
+                income_id=income_id,
+                expected_version=expected_version,
+                changes=changes,
+            )
+            return self._manual_income_record(updated)
+
+        context = self._repository.get_pos_income(
+            grant.workspace_id,
+            income_id,
+            grant.allowed_branch_ids,
+            for_update=True,
+        )
+        if context is None:
+            raise ResourceNotFoundError("El ingreso no existe.", "incomeId")
+        sale, correction, register = context
+        if correction is not None and correction.record_status != "active":
+            raise ResourceNotFoundError("El ingreso no existe.", "incomeId")
+        current_version = correction.version if correction is not None else sale.version
+        if current_version != expected_version:
+            raise ConflictError("El recurso cambió; vuelve a cargarlo antes de guardar.", "version")
+        source = changes.get("source")
+        if source is not None and str(source).casefold() != "pos":
+            raise InvalidOperationError(
+                "La fuente original de una venta POS no se puede cambiar.", "source"
+            )
+        workspace = self._required_workspace(grant.workspace_id)
+        base = self._pos_income_snapshot(sale, register, workspace.timezone)
+        if correction is not None:
+            base.update(
+                {
+                    "branch_id": correction.branch_id,
+                    "category": correction.category,
+                    "amount": correction.amount,
+                    "income_date": correction.income_date,
+                    "customer": correction.customer,
+                    "payment_status": correction.payment_status,
+                }
+            )
+        mapping = {
+            "category": "category",
+            "branch_id": "branch_id",
+            "amount": "amount",
+            "date": "income_date",
+            "customer": "customer",
+            "status": "payment_status",
+        }
+        for source_name, target_name in mapping.items():
+            if source_name in changes:
+                base[target_name] = changes[source_name]
+        branch_id = cast(UUID, base["branch_id"])
+        self._require_branch(grant, branch_id)
+        base["category"] = self._normalize_required_text(str(base["category"]))
+        base["customer"] = self._normalize_text(str(base["customer"]))
+
+        if correction is None:
+            correction = FinancePosIncomeCorrection(
+                id=uuid7(),
+                workspace_id=grant.workspace_id,
+                sale_id=sale.id,
+                **base,
+                version=sale.version + 1,
+                created_by_platform_user_id=principal.platform_user_id,
+                updated_by_platform_user_id=principal.platform_user_id,
+            )
+            self._repository.add(correction)
+        else:
+            for key, value in base.items():
+                setattr(correction, key, value)
+            correction.version += 1
+            correction.updated_by_platform_user_id = principal.platform_user_id
+        self._add_audit(
+            workspace_id=grant.workspace_id,
+            principal=principal,
+            action="finance.pos_income.correct",
+            target_type="pos_sale_income",
+            target_id=sale.id,
+            details={
+                "branchId": str(branch_id),
+                "correctionId": str(correction.id),
+                "version": correction.version,
+            },
+        )
+        self._commit_or_conflict("No se pudo corregir el ingreso de POS.")
+        return self._pos_income_record(sale, correction, register, workspace.timezone)
+
+    def void_income(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        income_id: UUID,
+        expected_version: int,
+    ) -> None:
+        manual = self._repository.get_manual_income(
+            grant.workspace_id, income_id, grant.allowed_branch_ids
+        )
+        if manual is not None:
+            self.void_manual_income(
+                principal=principal,
+                grant=grant,
+                income_id=income_id,
+                expected_version=expected_version,
+            )
+            return
+
+        context = self._repository.get_pos_income(
+            grant.workspace_id,
+            income_id,
+            grant.allowed_branch_ids,
+            for_update=True,
+        )
+        if context is None:
+            raise ResourceNotFoundError("El ingreso no existe.", "incomeId")
+        sale, correction, register = context
+        if correction is not None and correction.record_status != "active":
+            raise ResourceNotFoundError("El ingreso no existe.", "incomeId")
+        current_version = correction.version if correction is not None else sale.version
+        if current_version != expected_version:
+            raise ConflictError("El recurso cambió; vuelve a cargarlo antes de guardar.", "version")
+        now = datetime.now(UTC)
+        if correction is None:
+            workspace = self._required_workspace(grant.workspace_id)
+            correction = FinancePosIncomeCorrection(
+                id=uuid7(),
+                workspace_id=grant.workspace_id,
+                sale_id=sale.id,
+                **self._pos_income_snapshot(sale, register, workspace.timezone),
+                record_status="voided",
+                voided_at=now,
+                voided_by_platform_user_id=principal.platform_user_id,
+                version=sale.version + 1,
+                created_by_platform_user_id=principal.platform_user_id,
+                updated_by_platform_user_id=principal.platform_user_id,
+            )
+            self._repository.add(correction)
+        else:
+            correction.record_status = "voided"
+            correction.voided_at = now
+            correction.voided_by_platform_user_id = principal.platform_user_id
+            correction.version += 1
+            correction.updated_by_platform_user_id = principal.platform_user_id
+        self._add_audit(
+            workspace_id=grant.workspace_id,
+            principal=principal,
+            action="finance.pos_income.exclude",
+            target_type="pos_sale_income",
+            target_id=sale.id,
+            details={
+                "correctionId": str(correction.id),
+                "version": correction.version,
+            },
+        )
+        self._commit_or_conflict("No se pudo excluir el ingreso de POS.")
+
     def get_manual_income(self, grant: PermissionGrant, income_id: UUID) -> FinanceManualIncome:
         income = self._repository.get_manual_income(
             grant.workspace_id, income_id, grant.allowed_branch_ids
@@ -1110,6 +1288,83 @@ class FinanceService:
             "net_margin_percent": margin,
             "trend": trend,
         }
+
+    @staticmethod
+    def _pos_income_snapshot(
+        sale: Sale,
+        register: CashRegister,
+        timezone: str,
+    ) -> dict[str, Any]:
+        if register.closed_at is None:
+            raise InvalidOperationError(
+                "La venta POS todavía no es un ingreso porque su caja sigue abierta.",
+                "incomeId",
+            )
+        return {
+            "branch_id": sale.branch_id,
+            "category": sale.payment_method_code,
+            "amount": sale.total,
+            "income_date": register.closed_at.astimezone(ZoneInfo(timezone)).date(),
+            "customer": sale.customer_name or "Cliente Mostrador",
+            "payment_status": ("pagado" if sale.settlement_policy == "immediate" else "pendiente"),
+        }
+
+    @staticmethod
+    def _manual_income_record(income: FinanceManualIncome) -> IncomeViewRecord:
+        return IncomeViewRecord(
+            id=income.id,
+            date=income.income_date,
+            customer=income.customer,
+            category=income.category,
+            branch_id=income.branch_id,
+            status=income.payment_status,
+            amount=income.amount,
+            source=income.source,
+            reference=None,
+            origin="manual",
+            adjusted=False,
+            editable=True,
+            version=income.version,
+            created_at=income.created_at,
+            updated_at=income.updated_at,
+        )
+
+    def _pos_income_record(
+        self,
+        sale: Sale,
+        correction: FinancePosIncomeCorrection | None,
+        register: CashRegister,
+        timezone: str,
+    ) -> IncomeViewRecord:
+        values = self._pos_income_snapshot(sale, register, timezone)
+        if correction is not None:
+            values.update(
+                {
+                    "branch_id": correction.branch_id,
+                    "category": correction.category,
+                    "amount": correction.amount,
+                    "income_date": correction.income_date,
+                    "customer": correction.customer,
+                    "payment_status": correction.payment_status,
+                }
+            )
+        return IncomeViewRecord(
+            id=sale.id,
+            date=cast(date, values["income_date"]),
+            customer=cast(str, values["customer"]),
+            category=cast(str, values["category"]),
+            branch_id=cast(UUID, values["branch_id"]),
+            status=cast(str, values["payment_status"]),
+            amount=cast(Decimal, values["amount"]),
+            source="POS",
+            reference=sale.sale_number,
+            origin="pos",
+            adjusted=correction is not None,
+            editable=True,
+            version=correction.version if correction is not None else sale.version,
+            created_at=register.closed_at,
+            updated_at=correction.updated_at if correction is not None else register.closed_at,
+        )
 
     def _create_idempotent(
         self,

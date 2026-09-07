@@ -3,6 +3,7 @@ import { Printer, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
 import { useConfigStore } from '@/stores/configStore'
 import { formatDOP } from '@/lib/format'
 import { fmtDateTime, METHOD_LABELS, METHOD_ICON } from '../lib/crm'
@@ -32,6 +33,7 @@ export function SaleDetailModal({ open, onClose, sale }) {
   const Icon = Icons[METHOD_ICON[sale.method]] || Icons.Circle
   const ctx = { branches, settings, paymentMethods }
   const invoice = buildInvoiceDataFromSale(sale, ctx)
+  const isVoided = sale.status === 'voided'
 
   const print = () => {
     printSaleInvoice(sale, ctx)
@@ -48,12 +50,18 @@ export function SaleDetailModal({ open, onClose, sale }) {
       <div className="space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl bg-slate-50 p-4">
           <div>
-            <p className="font-heading text-lg font-bold text-slate-900" data-testid="sale-detail-id">{sale.id.toUpperCase()}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-heading text-lg font-bold text-slate-900" data-testid="sale-detail-id">{sale.id.toUpperCase()}</p>
+              <Badge tone={isVoided ? 'danger' : 'success'}>{isVoided ? 'Anulada' : 'Completada'}</Badge>
+            </div>
             <p className="mt-1 text-sm text-slate-500">{fmtDateTime(sale.createdAt)} · {branchName}</p>
             <p className="mt-2 font-semibold text-slate-800">{sale.customer?.name || 'Cliente Mostrador'}</p>
+            {isVoided && sale.voidReason && (
+              <p className="mt-2 text-xs font-medium text-red-600">Motivo: {sale.voidReason}</p>
+            )}
           </div>
           <div className="text-right">
-            <p className="font-heading text-2xl font-bold text-blue-600">{formatDOP(sale.total)}</p>
+            <p className={cn('font-heading text-2xl font-bold text-blue-600', isVoided && 'text-slate-400 line-through')}>{formatDOP(sale.total)}</p>
             <span className="mt-1 inline-flex items-center gap-1.5 text-sm text-slate-600">
               <Icon className="h-4 w-4 text-slate-400" />
               {METHOD_LABELS[sale.method] || sale.method}

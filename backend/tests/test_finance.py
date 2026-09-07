@@ -1,12 +1,13 @@
 from collections.abc import Generator
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, cast
-from uuid import uuid7
+from uuid import UUID, uuid7
+from zoneinfo import ZoneInfo
 
 import pytest
 from app.core.security import hash_password
-from app.db.models import AuditEntry
+from app.db.models import AuditEntry, CashRegister, Sale
 from app.db.session import dispose_engine, get_engine, get_session
 from app.main import app
 from app.schemas.finance import (
@@ -96,6 +97,123 @@ def test_finance_schemas_reject_inconsistent_liabilities_and_periods() -> None:
 
 
 @pytest.mark.integration
+def test_pos_income_is_recognized_on_register_close_and_removed_on_sale_void(
+    finance_context: tuple[TestClient, Session],
+) -> None:
+    client, database = finance_context
+    headers, session_context = _login(client)
+    hq = next(branch for branch in session_context["visibleBranches"] if branch["code"] == "HQ")
+    register = database.scalar(
+        select(CashRegister).where(
+            CashRegister.workspace_id == UUID(session_context["workspaceId"]),
+            CashRegister.branch_id == UUID(hq["id"]),
+            CashRegister.status == "open",
+        )
+    )
+    assert register is not None
+    sale = database.scalar(
+        select(Sale).where(
+            Sale.workspace_id == UUID(session_context["workspaceId"]),
+            Sale.cash_register_id == register.id,
+            Sale.payment_method_code == "card",
+            Sale.status == "completed",
+        )
+    )
+    assert sale is not None
+    sale_id = str(sale.id)
+    sale_total = sale.total
+
+    before_close = client.get(
+        "/api/v1/finance/incomes",
+        headers=headers,
+        params={"pageSize": 200},
+    )
+    assert before_close.status_code == 200, before_close.text
+    assert sale_id not in {item["id"] for item in before_close.json()["items"]}
+
+    current_response = client.get(
+        "/api/v1/pos/registers/current",
+        headers=headers,
+        params={"branchId": str(hq["id"])},
+    )
+    assert current_response.status_code == 200, current_response.text
+    current = current_response.json()
+    close_response = client.post(
+        f"/api/v1/pos/registers/{register.id}/close",
+        headers={**headers, "Idempotency-Key": f"finance-close-{uuid7().hex}"},
+        json={
+            "countedCash": current["expectedCash"],
+            "notes": "Reconocimiento financiero de prueba",
+            "version": current["version"],
+        },
+    )
+    assert close_response.status_code == 200, close_response.text
+    closed = close_response.json()
+
+    after_close = client.get(
+        "/api/v1/finance/incomes",
+        headers=headers,
+        params={"pageSize": 200},
+    )
+    assert after_close.status_code == 200, after_close.text
+    recognized = next(item for item in after_close.json()["items"] if item["id"] == sale_id)
+    closed_at = datetime.fromisoformat(closed["closedAt"])
+    expected_income_date = closed_at.astimezone(ZoneInfo("America/Santo_Domingo")).date()
+    assert recognized["date"] == expected_income_date.isoformat()
+    assert Decimal(recognized["amount"]) == sale_total
+
+    summary_before_void = client.get(
+        "/api/v1/pos/sales/summary",
+        headers=headers,
+        params={"branchId": str(hq["id"])},
+    )
+    assert summary_before_void.status_code == 200, summary_before_void.text
+    sale_detail = client.get(f"/api/v1/pos/sales/{sale_id}", headers=headers)
+    assert sale_detail.status_code == 200, sale_detail.text
+    void_response = client.post(
+        f"/api/v1/pos/sales/{sale_id}/void",
+        headers={**headers, "Idempotency-Key": f"finance-void-{uuid7().hex}"},
+        json={"reason": "Factura duplicada de prueba", "version": sale_detail.json()["version"]},
+    )
+    assert void_response.status_code == 200, void_response.text
+    assert void_response.json()["status"] == "voided"
+
+    after_void = client.get(
+        "/api/v1/finance/incomes",
+        headers=headers,
+        params={"pageSize": 200},
+    )
+    assert after_void.status_code == 200, after_void.text
+    assert sale_id not in {item["id"] for item in after_void.json()["items"]}
+
+    persisted_invoice = client.get(f"/api/v1/pos/sales/{sale_id}", headers=headers)
+    assert persisted_invoice.status_code == 200, persisted_invoice.text
+    assert persisted_invoice.json()["status"] == "voided"
+    sales_history = client.get(
+        "/api/v1/pos/sales",
+        headers=headers,
+        params={"registerId": str(register.id), "pageSize": 200},
+    )
+    assert sales_history.status_code == 200, sales_history.text
+    historical = next(item for item in sales_history.json()["items"] if item["id"] == sale_id)
+    assert historical["status"] == "voided"
+
+    summary_after_void = client.get(
+        "/api/v1/pos/sales/summary",
+        headers=headers,
+        params={"branchId": str(hq["id"])},
+    )
+    assert summary_after_void.status_code == 200, summary_after_void.text
+    assert Decimal(summary_after_void.json()["netSales"]) == (
+        Decimal(summary_before_void.json()["netSales"]) - sale_total
+    )
+    assert summary_after_void.json()["salesCount"] == (summary_before_void.json()["salesCount"] - 1)
+    assert summary_after_void.json()["voidedCount"] == (
+        summary_before_void.json()["voidedCount"] + 1
+    )
+
+
+@pytest.mark.integration
 def test_finance_complete_http_contract_projections_scope_and_audit(
     finance_context: tuple[TestClient, Session],
 ) -> None:
@@ -150,8 +268,11 @@ def test_finance_complete_http_contract_projections_scope_and_audit(
         "POS",
         "Formulario",
     }
+    assert {item["origin"] for item in projected_incomes.json()["items"]} == {"manual", "pos"}
+    assert all(item["editable"] for item in projected_incomes.json()["items"])
+    assert all(item["version"] for item in projected_incomes.json()["items"])
     assert any(
-        item["reference"] for item in projected_incomes.json()["items"] if not item["editable"]
+        item["reference"] for item in projected_incomes.json()["items"] if item["origin"] == "pos"
     )
 
     overview_before = client.get(
@@ -421,14 +542,14 @@ def test_finance_complete_http_contract_projections_scope_and_audit(
     assert income_projection.status_code == 200, income_projection.text
     assert [item["id"] for item in income_projection.json()["items"]] == [income["id"]]
     income_update = client.patch(
-        f"/api/v1/finance/manual-incomes/{income['id']}",
+        f"/api/v1/finance/incomes/{income['id']}",
         headers=headers,
         json={"version": income["version"], "status": "pendiente", "amount": "9000.00"},
     )
     assert income_update.status_code == 200, income_update.text
     income = income_update.json()
     stale_income = client.patch(
-        f"/api/v1/finance/manual-incomes/{income['id']}",
+        f"/api/v1/finance/incomes/{income['id']}",
         headers=headers,
         json={"version": 1, "amount": "1.00"},
     )
@@ -451,7 +572,7 @@ def test_finance_complete_http_contract_projections_scope_and_audit(
 
     assert (
         client.delete(
-            f"/api/v1/finance/manual-incomes/{income['id']}",
+            f"/api/v1/finance/incomes/{income['id']}",
             headers=headers,
             params={"version": income["version"]},
         ).status_code
@@ -529,3 +650,148 @@ def test_finance_complete_http_contract_projections_scope_and_audit(
         )
     )
     assert audit_count is not None and audit_count >= 12
+
+
+@pytest.mark.integration
+def test_finance_pos_income_correction_and_exclusion_preserve_original_sale(
+    finance_context: tuple[TestClient, Session],
+) -> None:
+    client, database = finance_context
+    headers, _ = _login(client)
+    supervisor_headers, _ = _login(client, "demo.luz.supervisor@example.com")
+    projection = client.get(
+        "/api/v1/finance/incomes",
+        headers=headers,
+        params={"pageSize": 200},
+    )
+    assert projection.status_code == 200, projection.text
+    pos_income = next(item for item in projection.json()["items"] if item["origin"] == "pos")
+    income_id = pos_income["id"]
+    original_amount = Decimal(pos_income["amount"])
+    corrected_amount = original_amount + Decimal("321.09")
+    period = pos_income["date"][:7]
+    branch_id = pos_income["branchId"]
+
+    original_sale = client.get(f"/api/v1/pos/sales/{income_id}", headers=headers)
+    assert original_sale.status_code == 200, original_sale.text
+    original_sale_body = original_sale.json()
+    overview_before = client.get(
+        "/api/v1/finance/overview",
+        headers=headers,
+        params={"period": period, "branchId": branch_id},
+    )
+    assert overview_before.status_code == 200, overview_before.text
+
+    forbidden = client.patch(
+        f"/api/v1/finance/incomes/{income_id}",
+        headers=supervisor_headers,
+        json={"version": pos_income["version"], "amount": str(corrected_amount)},
+    )
+    assert forbidden.status_code == 403
+    correction = client.patch(
+        f"/api/v1/finance/incomes/{income_id}",
+        headers=headers,
+        json={
+            "version": pos_income["version"],
+            "amount": str(corrected_amount),
+            "customer": "Cliente POS corregido",
+            "category": pos_income["category"],
+            "branchId": branch_id,
+            "date": pos_income["date"],
+            "source": "POS",
+            "status": "pendiente",
+        },
+    )
+    assert correction.status_code == 200, correction.text
+    corrected = correction.json()
+    assert corrected["origin"] == "pos"
+    assert corrected["source"] == "POS"
+    assert corrected["adjusted"] is True
+    assert corrected["editable"] is True
+    assert corrected["version"] == pos_income["version"] + 1
+    assert Decimal(corrected["amount"]) == corrected_amount
+    assert corrected["customer"] == "Cliente POS corregido"
+
+    stale = client.patch(
+        f"/api/v1/finance/incomes/{income_id}",
+        headers=headers,
+        json={"version": pos_income["version"], "amount": "1.00"},
+    )
+    assert stale.status_code == 409
+    assert stale.json()["parameter"] == "version"
+    invalid_source = client.patch(
+        f"/api/v1/finance/incomes/{income_id}",
+        headers=headers,
+        json={"version": corrected["version"], "source": "Formulario"},
+    )
+    assert invalid_source.status_code == 400
+    assert invalid_source.json()["parameter"] == "source"
+    filtered = client.get(
+        "/api/v1/finance/incomes",
+        headers=headers,
+        params={"search": "Cliente POS corregido"},
+    )
+    assert filtered.status_code == 200, filtered.text
+    assert [item["id"] for item in filtered.json()["items"]] == [income_id]
+
+    overview_corrected = client.get(
+        "/api/v1/finance/overview",
+        headers=headers,
+        params={"period": period, "branchId": branch_id},
+    )
+    assert overview_corrected.status_code == 200, overview_corrected.text
+    assert (
+        Decimal(overview_corrected.json()["incomes"]) - Decimal(overview_before.json()["incomes"])
+        == corrected_amount - original_amount
+    )
+
+    sale_after_correction = client.get(f"/api/v1/pos/sales/{income_id}", headers=headers)
+    assert sale_after_correction.status_code == 200, sale_after_correction.text
+    assert sale_after_correction.json()["total"] == original_sale_body["total"]
+    assert sale_after_correction.json()["customer"] == original_sale_body["customer"]
+    assert sale_after_correction.json()["status"] == "completed"
+
+    exclusion = client.delete(
+        f"/api/v1/finance/incomes/{income_id}",
+        headers=headers,
+        params={"version": corrected["version"]},
+    )
+    assert exclusion.status_code == 204, exclusion.text
+    after_exclusion = client.get(
+        "/api/v1/finance/incomes",
+        headers=headers,
+        params={"pageSize": 200},
+    )
+    assert after_exclusion.status_code == 200, after_exclusion.text
+    assert income_id not in {item["id"] for item in after_exclusion.json()["items"]}
+    overview_excluded = client.get(
+        "/api/v1/finance/overview",
+        headers=headers,
+        params={"period": period, "branchId": branch_id},
+    )
+    assert overview_excluded.status_code == 200, overview_excluded.text
+    assert (
+        Decimal(overview_corrected.json()["incomes"]) - Decimal(overview_excluded.json()["incomes"])
+        == corrected_amount
+    )
+
+    sale_after_exclusion = client.get(f"/api/v1/pos/sales/{income_id}", headers=headers)
+    assert sale_after_exclusion.status_code == 200, sale_after_exclusion.text
+    assert sale_after_exclusion.json()["total"] == original_sale_body["total"]
+    assert sale_after_exclusion.json()["status"] == "completed"
+    repeated_exclusion = client.delete(
+        f"/api/v1/finance/incomes/{income_id}",
+        headers=headers,
+        params={"version": corrected["version"] + 1},
+    )
+    assert repeated_exclusion.status_code == 404
+
+    audit_actions = set(
+        database.scalars(
+            select(AuditEntry.action).where(
+                AuditEntry.target_id == income_id,
+                AuditEntry.action.in_({"finance.pos_income.correct", "finance.pos_income.exclude"}),
+            )
+        )
+    )
+    assert audit_actions == {"finance.pos_income.correct", "finance.pos_income.exclude"}

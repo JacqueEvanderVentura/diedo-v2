@@ -1,6 +1,6 @@
 {
   "seedVersion": "v1",
-  "schemaVersion": "20260903_0019",
+  "schemaVersion": "20260907_0020",
   "workspaceSlug": "local-erp",
   "modules": ["foundation", "dashboard", "iam", "configuration", "crm", "sales", "hr", "appointments", "inventory", "pos", "purchasing", "incidents", "finance", "reporting"],
   "files": [

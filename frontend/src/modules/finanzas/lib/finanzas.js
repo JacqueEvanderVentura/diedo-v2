@@ -24,6 +24,10 @@ export function isThisMonth(v) {
   return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
 }
 
+export function isRecognizedPosIncome(sale) {
+  return sale?.status !== 'voided' && Boolean(sale?.recognizedAt)
+}
+
 export function budgetUsagePct(spent, limit) {
   if (!limit || limit <= 0) return 0
   return Math.min(100, (spent / limit) * 100)

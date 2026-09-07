@@ -356,6 +356,8 @@ export function mapSaleFromApi(sale) {
     method: paymentMethodSemanticCode(method),
     reference: first(sale.reference, payment.reference, null),
     status: sale.status || 'posted',
+    voidedAt: first(sale.voidedAt, sale.cancelledAt, null),
+    voidReason: first(sale.voidReason, sale.cancellationReason, null),
     soldBy: first(
       sale.soldByName,
       sale.soldBy?.name,
@@ -558,7 +560,7 @@ export function mapPosStateFromApi(response, { branchId = null } = {}) {
     register,
     registerSummary: register.summary,
     cashSales,
-    shiftSales: activeShiftSales,
+    shiftSales,
     shiftIncomes,
     expenses,
     registerHistory: history,

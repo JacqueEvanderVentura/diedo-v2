@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   createExpense: vi.fn(),
   updateExpense: vi.fn(),
   deleteExpense: vi.fn(),
+  updateIncome: vi.fn(),
+  deleteIncome: vi.fn(),
 }))
 
 vi.mock('@/services/financeApi', () => ({ financeApi: mocks }))
@@ -62,8 +64,8 @@ function mockHydration() {
   mocks.getAccountStats.mockResolvedValue({ total: '0', bank: '0', investment: '0', shareholders: '0' })
   mocks.listAllIncomes.mockResolvedValue({
     items: [
-      { id: 'income-id', amount: '5000', source: 'Formulario', editable: true, version: 1 },
-      { id: 'sale-id', amount: '15000', source: 'POS', editable: false, version: null },
+      { id: 'income-id', amount: '5000', source: 'Formulario', origin: 'manual', editable: true, version: 1 },
+      { id: 'sale-id', amount: '15000', source: 'POS', origin: 'pos', editable: true, version: 1 },
     ],
   })
 }
@@ -108,7 +110,7 @@ describe('store de Finanzas conectado a la API', () => {
       manualIncomes: [expect.objectContaining({ id: 'income-id', amount: 5000 })],
       incomeEntries: [
         expect.objectContaining({ id: 'income-id' }),
-        expect.objectContaining({ id: 'sale-id', source: 'POS' }),
+        expect.objectContaining({ id: 'sale-id', source: 'POS', editable: true }),
       ],
       incomesProjected: true,
       apiContext: { hydrated: true },
@@ -135,5 +137,77 @@ describe('store de Finanzas conectado a la API', () => {
       useFinanzasStore.getState().updateExpense('cash-id', { amount: 1 })
     ).rejects.toThrow(/Caja/)
     expect(mocks.updateExpense).toHaveBeenCalledTimes(1)
+  })
+
+  it('edita y elimina ingresos manuales usando su versión vigente', async () => {
+    await useFinanzasStore.getState().hydrateFromApi()
+    mocks.updateIncome.mockResolvedValue({
+      id: 'income-id',
+      amount: '5750.00',
+      source: 'Formulario',
+      origin: 'manual',
+      editable: true,
+      version: 2,
+    })
+    mocks.deleteIncome.mockResolvedValue(null)
+    mocks.listAllIncomes.mockResolvedValueOnce({
+      items: [
+        { id: 'income-id', amount: '5750.00', source: 'Formulario', origin: 'manual', editable: true, version: 2 },
+        { id: 'sale-id', amount: '15000', source: 'POS', origin: 'pos', editable: true, version: 1 },
+      ],
+    })
+
+    await useFinanzasStore.getState().updateIncome('income-id', { amount: 5750 })
+
+    expect(mocks.updateIncome).toHaveBeenCalledWith(
+      'income-id',
+      expect.objectContaining({ version: 1, amount: 5750 })
+    )
+
+    mocks.listAllIncomes.mockResolvedValueOnce({
+      items: [{ id: 'sale-id', amount: '15000', source: 'POS', origin: 'pos', editable: true, version: 1 }],
+    })
+    await useFinanzasStore.getState().deleteIncome('income-id')
+
+    expect(mocks.deleteIncome).toHaveBeenCalledWith('income-id', 2)
+    expect(mocks.updateIncome).toHaveBeenCalledTimes(1)
+    expect(useFinanzasStore.getState().manualIncomes).toEqual([])
+  })
+
+  it('edita y elimina también ingresos proyectados desde POS', async () => {
+    await useFinanzasStore.getState().hydrateFromApi()
+    mocks.updateIncome.mockResolvedValue({
+      id: 'sale-id',
+      amount: '15500.00',
+      source: 'POS',
+      origin: 'pos',
+      adjusted: true,
+      editable: true,
+      version: 2,
+    })
+    mocks.deleteIncome.mockResolvedValue(null)
+    mocks.listAllIncomes.mockResolvedValueOnce({
+      items: [
+        { id: 'income-id', amount: '5000', source: 'Formulario', origin: 'manual', editable: true, version: 1 },
+        { id: 'sale-id', amount: '15500', source: 'POS', origin: 'pos', adjusted: true, editable: true, version: 2 },
+      ],
+    })
+
+    await useFinanzasStore.getState().updateIncome('sale-id', { amount: 15500 })
+
+    expect(mocks.updateIncome).toHaveBeenCalledWith(
+      'sale-id',
+      expect.objectContaining({ version: 1, amount: 15500, source: 'POS' })
+    )
+    mocks.listAllIncomes.mockResolvedValueOnce({
+      items: [
+        { id: 'income-id', amount: '5000', source: 'Formulario', origin: 'manual', editable: true, version: 1 },
+      ],
+    })
+
+    await useFinanzasStore.getState().deleteIncome('sale-id')
+
+    expect(mocks.deleteIncome).toHaveBeenCalledWith('sale-id', 2)
+    expect(useFinanzasStore.getState().incomeEntries).toHaveLength(1)
   })
 })

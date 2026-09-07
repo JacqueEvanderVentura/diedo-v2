@@ -67,6 +67,7 @@ from app.schemas.finance import (
     UpdateFinanceBudgetRequest,
     UpdateFinanceExpenseRequest,
     UpdateFinanceFixedExpenseRequest,
+    UpdateFinanceIncomeRequest,
     UpdateFinanceLiabilityRequest,
     UpdateFinanceManualIncomeRequest,
 )
@@ -230,6 +231,8 @@ def _income_view_response(record: IncomeViewRecord) -> FinanceIncomeResponse:
         amount=record.amount,
         source=record.source,
         reference=record.reference,
+        origin=cast(Any, record.origin),
+        adjusted=record.adjusted,
         editable=record.editable,
         version=record.version,
         created_at=record.created_at,
@@ -248,6 +251,8 @@ def _manual_income_response(income: FinanceManualIncome) -> FinanceIncomeRespons
         amount=income.amount,
         source=income.source,
         reference=None,
+        origin="manual",
+        adjusted=False,
         editable=True,
         version=income.version,
         created_at=income.created_at,
@@ -870,6 +875,46 @@ def list_incomes(
         total_items=result.total_items,
         total_pages=page_count(result.total_items, page_size),
     )
+
+
+@router.patch("/incomes/{income_id}", responses=_MUTATION_RESPONSES)
+def update_income(
+    income_id: UUID,
+    payload: UpdateFinanceIncomeRequest,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: FinanceManageGrant,
+) -> FinanceIncomeResponse:
+    return _income_view_response(
+        FinanceService(database).update_income(
+            principal=principal,
+            grant=grant,
+            income_id=income_id,
+            expected_version=payload.version,
+            changes=payload.model_dump(exclude_unset=True, exclude={"version"}, by_alias=False),
+        )
+    )
+
+
+@router.delete(
+    "/incomes/{income_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=_MUTATION_RESPONSES,
+)
+def void_income(
+    income_id: UUID,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: FinanceManageGrant,
+    version: Annotated[int, Query(ge=1)],
+) -> Response:
+    FinanceService(database).void_income(
+        principal=principal,
+        grant=grant,
+        income_id=income_id,
+        expected_version=version,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

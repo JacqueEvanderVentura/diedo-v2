@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react'
 import * as Icons from 'lucide-react'
-import { TrendingUp, Receipt, Hash, Plus } from 'lucide-react'
+import { TrendingUp, Receipt, Hash, Plus, Pencil, Trash2 } from 'lucide-react'
 import { usePosStore } from '@/stores/posStore'
 import { useFinanzasStore } from '@/stores/finanzasStore'
 import { useConfigStore } from '@/stores/configStore'
+import { useSessionStore } from '@/stores/sessionStore'
+import { toast } from 'sonner'
 import { formatDOP } from '@/lib/format'
-import { fmtWhen, isThisMonth, parseWhen } from '../lib/finanzas'
+import { fmtWhen, isRecognizedPosIncome, isThisMonth, parseWhen } from '../lib/finanzas'
 import { METHOD_LABELS, METHOD_ICON } from '@/modules/crm/lib/crm'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -18,8 +20,10 @@ import {
   MobileCard,
   MobileField,
   MobileCardHeader,
+  MobileCardFooter,
   MobileCardGrid,
 } from '@/components/ui/ResponsiveList'
+import { Modal } from '@/components/ui/Modal'
 import { ExportMenu } from '../components/ExportMenu'
 import { IncomeFormModal } from '../components/IncomeFormModal'
 import { DataFilterBar } from '@/components/ui/DataFilterBar'
@@ -56,27 +60,36 @@ export default function IngresosPage() {
   const manualIncomes = useFinanzasStore((s) => s.manualIncomes)
   const incomeEntries = useFinanzasStore((s) => s.incomeEntries)
   const incomesProjected = useFinanzasStore((s) => s.incomesProjected)
+  const deleteIncome = useFinanzasStore((s) => s.deleteIncome)
   const branches = useConfigStore((s) => s.branches)
+  const canManageIncome = useSessionStore((s) => s.hasPermission('finance.manage'))
 
   const [period, setPeriod] = useState('month')
   const [query, setQuery] = useState('')
   const [branchFilter, setBranchFilter] = useState('all')
   const [modalOpen, setModalOpen] = useState(false)
+  const [editingIncome, setEditingIncome] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   const inPeriod = (v) => period === 'all' || isThisMonth(v)
 
   const allIncomes = useMemo(() => {
-    const fromSales = incomesProjected ? [] : sales.map((s) => ({
+    const fromSales = incomesProjected ? [] : sales.filter(isRecognizedPosIncome).map((s) => ({
       id: s.id,
-      date: s.createdAt,
+      date: s.recognizedAt,
       customer: s.customer?.name || 'Cliente Mostrador',
       category: s.method,
       branchId: s.branchId,
       status: 'pagado',
       amount: s.total,
       source: 'POS',
+      editable: false,
+      version: null,
     }))
     const fromManual = (incomesProjected ? incomeEntries : manualIncomes).map((i) => ({
+      ...i,
       id: i.id,
       date: i.date,
       customer: i.customer || '—',
@@ -84,7 +97,8 @@ export default function IngresosPage() {
       branchId: i.branchId,
       status: i.status,
       amount: i.amount,
-      source: i.source,
+      source: i.source || 'Formulario',
+      editable: i.editable !== false,
     }))
     return [...fromSales, ...fromManual]
   }, [sales, manualIncomes, incomeEntries, incomesProjected])
@@ -139,11 +153,54 @@ export default function IngresosPage() {
     monto: formatDOP(i.amount),
   }))
 
+  const openNew = () => {
+    setEditingIncome(null)
+    setModalOpen(true)
+  }
+
+  const openEdit = (income) => {
+    setEditingIncome(income)
+    setModalOpen(true)
+  }
+
+  const closeForm = () => {
+    setModalOpen(false)
+    setEditingIncome(null)
+  }
+
+  const requestDelete = (income) => {
+    setDeleteTarget(income)
+    setDeleteError('')
+  }
+
+  const closeDelete = () => {
+    if (deleting) return
+    setDeleteTarget(null)
+    setDeleteError('')
+  }
+
+  const confirmDelete = async () => {
+    if (!deleteTarget || deleting) return
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await deleteIncome(deleteTarget.id)
+      toast.success('Ingreso eliminado')
+      setDeleteTarget(null)
+    } catch (error) {
+      const message = error.message || 'No se pudo eliminar el ingreso.'
+      setDeleteError(message)
+      toast.error(message)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="ingresos-page">
       <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-blue-700" data-testid="ingresos-banner">
         <TrendingUp className="h-4 w-4 shrink-0" />
-        Los ingresos se generan automáticamente desde las ventas del POS. También puedes registrar ingresos manuales.
+        Las ventas POS se reconocen como ingresos al cerrar su caja. Las correcciones financieras no alteran la venta ni el inventario registrados en Caja.
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -157,7 +214,9 @@ export default function IngresosPage() {
         </div>
         <div className="flex gap-2">
           <ExportMenu title="Ingresos" columns={exportCols} rows={exportRows} filename="ingresos" />
-          <Button onClick={() => setModalOpen(true)} data-testid="ingresos-new-btn"><Plus className="h-4 w-4" /> Registrar Ingreso</Button>
+          {canManageIncome && (
+            <Button onClick={openNew} data-testid="ingresos-new-btn"><Plus className="h-4 w-4" /> Registrar Ingreso</Button>
+          )}
         </div>
       </div>
 
@@ -200,10 +259,10 @@ export default function IngresosPage() {
         {displayRows.length === 0 ? (
           <EmptyState icon={Receipt} title="Sin ingresos" description="No hay ingresos en este período." className="py-12" />
         ) : (
-          <ResponsiveList minTableWidth={800} columnCount={6}>
+          <ResponsiveList minTableWidth={900} columnCount={7}>
             <ResponsiveTable testId="ingresos-table" wrapCard={false}>
               <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
-              <table className="w-full min-w-[800px] text-sm">
+              <table className="w-full min-w-[900px] text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
                     <SortableTh column="date" className="px-6 py-4">Fecha</SortableTh>
@@ -212,6 +271,7 @@ export default function IngresosPage() {
                     <SortableTh column="branch" className="px-6 py-4">Sucursal</SortableTh>
                     <SortableTh column="status" className="px-6 py-4">Estado</SortableTh>
                     <SortableTh column="amount" align="right" className="px-6 py-4">Monto</SortableTh>
+                    <SortableTh sortable={false} align="right" className="px-6 py-4">Acciones</SortableTh>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
@@ -225,6 +285,36 @@ export default function IngresosPage() {
                         <td className="whitespace-nowrap px-6 py-4 text-slate-500">{branchNameFor(i.branchId, i.source)}</td>
                         <td className="px-6 py-4"><Badge tone={i.status === 'pagado' ? 'success' : 'warning'}>{i.status === 'pagado' ? 'Pagado' : 'Pendiente'}</Badge></td>
                         <td className="whitespace-nowrap px-6 py-4 text-right font-heading font-bold text-emerald-600">+ {formatDOP(i.amount)}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex justify-end gap-1">
+                            {i.editable && canManageIncome ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => openEdit(i)}
+                                  aria-label={`Editar ingreso de ${i.customer}`}
+                                  title="Editar ingreso"
+                                  data-testid={`ingresos-edit-${i.id}`}
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => requestDelete(i)}
+                                  aria-label={`Eliminar ingreso de ${i.customer}`}
+                                  title="Eliminar ingreso"
+                                  data-testid={`ingresos-delete-${i.id}`}
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-xs text-slate-400">{i.editable ? 'Solo lectura' : 'Desde POS'}</span>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     )
                   })}
@@ -251,6 +341,35 @@ export default function IngresosPage() {
                         <span className="font-heading font-bold text-emerald-600">+ {formatDOP(i.amount)}</span>
                       </MobileField>
                     </MobileCardGrid>
+                    <MobileCardFooter>
+                      <span className="text-xs text-slate-400">Acciones</span>
+                      {i.editable && canManageIncome ? (
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openEdit(i)}
+                            aria-label={`Editar ingreso de ${i.customer}`}
+                            title="Editar ingreso"
+                            data-testid={`ingresos-card-edit-${i.id}`}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => requestDelete(i)}
+                            aria-label={`Eliminar ingreso de ${i.customer}`}
+                            title="Eliminar ingreso"
+                            data-testid={`ingresos-card-delete-${i.id}`}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400">{i.editable ? 'Solo lectura' : 'Desde POS'}</span>
+                      )}
+                    </MobileCardFooter>
                   </MobileCard>
                 )
               })}
@@ -264,7 +383,30 @@ export default function IngresosPage() {
         )}
       </Card>
 
-      <IncomeFormModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <IncomeFormModal open={modalOpen} onClose={closeForm} income={editingIncome} />
+
+      <Modal open={!!deleteTarget} onClose={closeDelete} title="Eliminar ingreso" testId="income-delete-modal">
+        {deleteTarget && (
+          <div className="space-y-4">
+            <div className="rounded-xl bg-red-50 p-4 text-sm text-red-900">
+              <p className="font-semibold">¿Eliminar el ingreso de {deleteTarget.customer || 'cliente no especificado'}?</p>
+              <p className="mt-1">Monto: {formatDOP(deleteTarget.amount)} · Fecha: {fmtWhen(deleteTarget.date)}</p>
+            </div>
+            <p className="text-sm text-slate-500">
+              {deleteTarget.origin === 'pos'
+                ? 'El ingreso dejará de mostrarse y de formar parte de los totales financieros. La venta original permanecerá disponible en Caja.'
+                : 'El ingreso dejará de mostrarse y de formar parte de los totales financieros.'}
+            </p>
+            {deleteError && <p className="text-sm font-medium text-red-600">{deleteError}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={closeDelete} disabled={deleting}>Cancelar</Button>
+              <Button variant="dangerSolid" onClick={confirmDelete} disabled={deleting} data-testid="income-confirm-delete">
+                <Trash2 className="h-4 w-4" /> {deleting ? 'Eliminando…' : 'Eliminar ingreso'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

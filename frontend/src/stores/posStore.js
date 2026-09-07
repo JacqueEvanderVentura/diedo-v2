@@ -91,7 +91,7 @@ const SEED_SHIFT_SALES = [
   { id: 'shift-s2', total: 3600, method: 'tarjeta', customer: { id: 'c7', name: 'Onna Pacheco' }, reference: 'APR-4408', items: [{ name: 'Paq. sesiones', qty: 1, price: 3600 }], createdAt: minsAgo(31) },
   { id: 'shift-s3', total: 3600, method: 'tarjeta', customer: { id: 'c8', name: 'Propina Celimar' }, reference: 'APR-4405', items: [{ name: 'Propina', qty: 1, price: 3600 }], createdAt: minsAgo(27) },
   { id: 'shift-s4', total: 3600, method: 'tarjeta', customer: { id: 'c8', name: 'Propina Celimar' }, reference: 'APR-4402', items: [{ name: 'Propina', qty: 1, price: 3600 }], createdAt: minsAgo(23) },
-]
+].map((sale) => ({ ...sale, status: sale.status || 'completed', recognizedAt: null }))
 
 const SEED_SHIFT_EXPENSES = [
   { id: 'exp-shift-1', concept: 'Gift Card', amount: 250, createdAt: minsAgo(7) },
@@ -165,7 +165,11 @@ const SEED_SALES = [
   { id: 'sale-h5', branchId: 'charm-santiago', total: 1200, method: 'tarjeta', soldBy: 'María Recepción', customer: { id: 'c4', name: 'Luis Alberto Peña' }, reference: 'APR-9910', items: [{ name: '1 sesión piernas completas', qty: 1, price: 1200, listPrice: 1200 }], createdAt: daysAgo(5) },
   { id: 'sale-h6', branchId: 'charm-dn', total: 2500, method: 'efectivo', soldBy: 'Leonedis Hamburgo', customer: { id: 'c3', name: 'Ana Cristina Vargas' }, reference: null, items: [{ name: 'Facial hidratante', qty: 1, price: 2000, listPrice: 2500 }], createdAt: daysAgo(6) },
   { id: 'sale-h7', branchId: 'charm-este', total: 900, method: 'efectivo', soldBy: 'Carlos Cajero', customer: { id: 'c1', name: 'María Fernández' }, reference: null, items: [{ name: '1 sesión axilas', qty: 1, price: 900, listPrice: 900 }], createdAt: daysAgo(9) },
-]
+].map((sale) => ({
+  ...sale,
+  status: sale.status || 'completed',
+  recognizedAt: sale.createdAt,
+}))
 
 const EMPTY_ONLINE_REGISTER = Object.freeze({
   id: null,
@@ -1286,7 +1290,12 @@ export const usePosStore = create(
           })
         }
         set((s) => {
+          const closedAt = now()
           const activeSales = s.shiftSales.filter((sale) => sale.status !== 'voided')
+          const recognizedShiftSales = s.shiftSales.map((sale) => ({
+            ...sale,
+            recognizedAt: sale.recognizedAt || closedAt,
+          }))
           const cashExpenses = s.expenses.reduce((a, e) => a + e.amount, 0)
           const cashIncomes = s.shiftIncomes.reduce((a, i) => a + i.amount, 0)
           const expected = s.register.openingCash + s.cashSales + cashIncomes - cashExpenses
@@ -1302,10 +1311,15 @@ export const usePosStore = create(
             expected,
             actual: countedCash,
             difference: countedCash - expected,
-            closedAt: now(),
+            closedAt,
           }
           return {
-            register: { ...s.register, open: false, closedAt: now() },
+            register: { ...s.register, open: false, closedAt },
+            shiftSales: recognizedShiftSales,
+            sales: recognizedShiftSales.reduce(
+              (items, sale) => replaceById(items, sale),
+              s.sales
+            ),
             lastCloseSummary: summary,
             registerHistory: [
               {
@@ -1434,6 +1448,8 @@ export const usePosStore = create(
           taxAmt: taxAmt ?? 0,
           soldBy: currentSessionActor().name,
           createdAt: now(),
+          status: 'completed',
+          recognizedAt: null,
         }
         set((s) => {
           const patch = { sales: [sale, ...s.sales] }
@@ -1469,9 +1485,14 @@ export const usePosStore = create(
           || get().shiftSales.find((item) => item.id === id)
         if (!sale) return false
         if (!isOnlineMode() || !sale.apiSynced) {
+          const voidedAt = now()
           set((state) => ({
-            sales: state.sales.map((item) => item.id === id ? { ...item, status: 'voided' } : item),
-            shiftSales: state.shiftSales.map((item) => item.id === id ? { ...item, status: 'voided' } : item),
+            sales: state.sales.map((item) => item.id === id
+              ? { ...item, status: 'voided', voidedAt, voidReason: reason || null }
+              : item),
+            shiftSales: state.shiftSales.map((item) => item.id === id
+              ? { ...item, status: 'voided', voidedAt, voidReason: reason || null }
+              : item),
             cashSales: sale.status !== 'voided' && sale.method === 'efectivo'
               ? Math.max(0, state.cashSales - sale.total)
               : state.cashSales,
@@ -1485,11 +1506,17 @@ export const usePosStore = create(
           operation: `sale:void:${id}`,
           payload,
           request: (idempotencyKey) => posApi.voidSale(id, payload, { idempotencyKey }),
-          apply: () => set((state) => {
+          apply: (response) => set((state) => {
             const cashDelta = sale.status !== 'voided' && sale.method === 'efectivo' ? sale.total : 0
+            const voidPatch = {
+              status: 'voided',
+              voidedAt: response?.voidedAt || now(),
+              voidReason: response?.voidReason || reason || null,
+              version: response?.version ?? sale.version,
+            }
             return {
-              sales: state.sales.map((item) => item.id === id ? { ...item, status: 'voided' } : item),
-              shiftSales: state.shiftSales.map((item) => item.id === id ? { ...item, status: 'voided' } : item),
+              sales: state.sales.map((item) => item.id === id ? { ...item, ...voidPatch } : item),
+              shiftSales: state.shiftSales.map((item) => item.id === id ? { ...item, ...voidPatch } : item),
               cashSales: Math.max(0, state.cashSales - cashDelta),
               register: cashDelta && state.register.expectedCash != null
                 ? { ...state.register, expectedCash: state.register.expectedCash - cashDelta }
@@ -1837,7 +1864,7 @@ export const usePosStore = create(
       getShiftMovements: () => {
         const { shiftSales, shiftIncomes, expenses } = get()
         return buildShiftMovements({
-          shiftSales: shiftSales.filter((sale) => sale.status !== 'voided'),
+          shiftSales,
           shiftIncomes,
           expenses,
         })

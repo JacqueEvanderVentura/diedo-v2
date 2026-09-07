@@ -475,8 +475,15 @@ export default function CajaPage() {
                     const meta = TYPE_META[m.type]
                     const Icon = meta.Icon
                     const isOut = m.type === 'egreso'
+                    const isVoided = m.type === 'venta' && m.status === 'voided'
                     return (
-                      <div key={`${m.type}-${m.id}`} className="group flex items-center gap-3 rounded-xl bg-slate-50 p-3 transition-colors hover:bg-slate-100">
+                      <div
+                        key={`${m.type}-${m.id}`}
+                        className={cn(
+                          'group flex items-center gap-3 rounded-xl bg-slate-50 p-3 transition-colors hover:bg-slate-100',
+                          isVoided && 'opacity-70'
+                        )}
+                      >
                         <div className={cn(
                           'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
                           m.type === 'venta' ? 'bg-blue-50 text-blue-600' : m.type === 'ingreso' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
@@ -485,8 +492,10 @@ export default function CajaPage() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <p className="truncate text-sm font-semibold text-slate-800">{m.label}</p>
-                            <Badge tone={meta.tone} className="shrink-0 text-[9px] uppercase">{meta.label}</Badge>
+                            <p className={cn('truncate text-sm font-semibold text-slate-800', isVoided && 'line-through')}>{m.label}</p>
+                            <Badge tone={isVoided ? 'danger' : meta.tone} className="shrink-0 text-[9px] uppercase">
+                              {isVoided ? 'Anulada' : meta.label}
+                            </Badge>
                           </div>
                           <div className="mt-0.5 flex items-center gap-2">
                             <p className="text-[10px] text-slate-400">{fmtTime(m.createdAt)}</p>
@@ -496,10 +505,14 @@ export default function CajaPage() {
                           </div>
                         </div>
                         <div className="flex shrink-0 items-center gap-1.5">
-                          <span className={cn('text-sm font-bold', isOut ? 'text-red-600' : 'text-slate-900')}>
-                            {isOut ? '−' : '+'}{formatDOP(m.amount)}
+                          <span className={cn(
+                            'text-sm font-bold',
+                            isOut ? 'text-red-600' : 'text-slate-900',
+                            isVoided && 'text-slate-400 line-through'
+                          )}>
+                            {isVoided ? '' : isOut ? '−' : '+'}{formatDOP(m.amount)}
                           </span>
-                          {m.type === 'venta' && canVoidSales && (
+                          {m.type === 'venta' && !isVoided && canVoidSales && (
                             <button
                               type="button"
                               title="Anular venta"

@@ -8,15 +8,20 @@ import { Select } from '@/components/ui/Select'
 import { useCrmStore } from '@/stores/crmStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useCustomersStore } from '@/stores/customersStore'
+import { useSessionStore } from '@/stores/sessionStore'
 import { ACTIVITY_TYPES, ACTIVITY_TYPE_META } from '@/data/crm'
 import { currentSessionActor } from '@/lib/sessionActor'
 
-const empty = () => ({
+const empty = (opportunity = null) => ({
   type: 'tarea',
   title: '',
   description: '',
-  customerName: '',
-  assignedUserId: currentSessionActor().id,
+  opportunityId: opportunity?.id || '',
+  leadId: opportunity?.leadId || null,
+  customerId: opportunity?.customerId || '',
+  customerName: opportunity?.customerName || '',
+  branchId: opportunity?.branchId || '',
+  assignedUserId: useSessionStore.getState().user?.membershipId || currentSessionActor().id,
   dueAt: '',
 })
 
@@ -27,35 +32,70 @@ function toLocalInput(iso) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-export function ActivityFormModal({ open, onClose, activity }) {
+export function ActivityFormModal({ open, onClose, activity, defaultOpportunityId = '' }) {
   const addActivity = useCrmStore((s) => s.addActivity)
   const updateActivity = useCrmStore((s) => s.updateActivity)
+  const opportunities = useCrmStore((s) => s.opportunities)
   const users = useConfigStore((s) => s.users)
   const customers = useCustomersStore((s) => s.customers)
+  const sessionStatus = useSessionStore((s) => s.status)
+  const sessionUser = useSessionStore((s) => s.user)
 
   const [form, setForm] = useState(empty())
+  const [saving, setSaving] = useState(false)
   const editing = !!activity
 
   useEffect(() => {
     if (open) {
+      const defaultOpportunity = opportunities.find((item) => item.id === defaultOpportunityId)
       setForm(
         activity
           ? {
               type: activity.type || 'tarea',
               title: activity.title || '',
               description: activity.description || '',
+              opportunityId: activity.opportunityId || '',
+              leadId: activity.leadId || null,
+              customerId: activity.customerId || '',
               customerName: activity.customerName || '',
-              assignedUserId: activity.assignedUserId || currentSessionActor().id,
+              branchId: activity.branchId || '',
+              assignedUserId: activity.assignedUserId
+                || useSessionStore.getState().user?.membershipId
+                || currentSessionActor().id,
               dueAt: toLocalInput(activity.dueAt),
             }
-          : empty()
+          : empty(defaultOpportunity)
       )
     }
-  }, [open, activity])
+  }, [open, activity, defaultOpportunityId, opportunities])
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
-  const submit = () => {
+  const selectOpportunity = (opportunityId) => {
+    const opportunity = opportunities.find((item) => item.id === opportunityId)
+    setForm((current) => ({
+      ...current,
+      opportunityId,
+      leadId: opportunity?.leadId || null,
+      customerId: opportunity?.customerId || '',
+      customerName: opportunity?.customerName || current.customerName,
+      branchId: opportunity?.branchId || current.branchId,
+    }))
+  }
+
+  const selectCustomer = (customerId) => {
+    const customer = customers.find((item) => item.id === customerId)
+    setForm((current) => ({
+      ...current,
+      customerId,
+      customerName: customer?.name || '',
+      branchId: current.opportunityId
+        ? current.branchId
+        : customer?.branchId || customer?.branchIds?.[0] || current.branchId,
+    }))
+  }
+
+  const submit = async () => {
     if (!form.title.trim()) return toast.error('Escribe un título')
     if (!form.dueAt) return toast.error('Selecciona fecha y hora de vencimiento')
 
@@ -64,24 +104,42 @@ export function ActivityFormModal({ open, onClose, activity }) {
       title: form.title.trim(),
       description: form.description.trim(),
       customerName: form.customerName.trim(),
+      opportunityId: form.opportunityId || null,
+      leadId: form.leadId || null,
+      customerId: form.customerId || null,
+      branchId: form.branchId || null,
       assignedUserId: form.assignedUserId,
       dueAt: new Date(form.dueAt).toISOString(),
     }
 
-    if (editing) {
-      updateActivity(activity.id, payload)
-      toast.success('Tarea actualizada')
-    } else {
-      addActivity(payload)
-      toast.success('Tarea creada')
+    setSaving(true)
+    try {
+      if (editing) {
+        await updateActivity(activity.id, payload)
+        toast.success('Tarea actualizada')
+      } else {
+        await addActivity(payload)
+        toast.success('Tarea creada y vinculada')
+      }
+      onClose()
+    } catch (error) {
+      toast.error(error.message || 'No se pudo guardar la tarea')
+    } finally {
+      setSaving(false)
     }
-    onClose()
   }
 
+  const opportunityOptions = [
+    { value: '', label: 'Sin oportunidad' },
+    ...opportunities.map((item) => ({ value: item.id, label: item.title })),
+  ]
   const customerOptions = [
     { value: '', label: 'Sin cliente' },
-    ...customers.filter((c) => !c.isDefault).map((c) => ({ value: c.name, label: c.name })),
+    ...customers.filter((c) => !c.isDefault).map((c) => ({ value: c.id, label: c.name })),
   ]
+  const assigneeOptions = sessionStatus === 'online' && sessionUser?.membershipId
+    ? [{ value: sessionUser.membershipId, label: sessionUser.name }]
+    : users.filter((user) => user.active).map((user) => ({ value: user.id, label: user.name }))
 
   return (
     <Modal open={open} onClose={onClose} title={editing ? 'Editar tarea' : 'Nueva tarea'} testId="activity-form-modal">
@@ -99,12 +157,23 @@ export function ActivityFormModal({ open, onClose, activity }) {
           <Input value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="Ej. Llamar al cliente" data-testid="activity-title" />
         </div>
         <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-600">Oportunidad (opcional)</label>
+          <Select
+            value={form.opportunityId}
+            onChange={selectOpportunity}
+            options={opportunityOptions}
+            disabled={editing}
+            data-testid="activity-opportunity"
+          />
+        </div>
+        <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Cliente (opcional)</label>
           <Select
-            value={form.customerName}
-            onChange={(v) => set('customerName', v)}
+            value={form.customerId}
+            onChange={selectCustomer}
             placeholder="Seleccionar cliente"
             options={customerOptions}
+            disabled={editing || Boolean(form.opportunityId && form.customerId)}
           />
         </div>
         <div>
@@ -112,7 +181,8 @@ export function ActivityFormModal({ open, onClose, activity }) {
           <Select
             value={form.assignedUserId}
             onChange={(v) => set('assignedUserId', v)}
-            options={users.filter((u) => u.active).map((u) => ({ value: u.id, label: u.name }))}
+            options={assigneeOptions}
+            disabled={sessionStatus === 'online'}
           />
         </div>
         <div>
@@ -127,8 +197,8 @@ export function ActivityFormModal({ open, onClose, activity }) {
           <Button variant="secondary" className="flex-1" onClick={onClose}>
             <X className="h-4 w-4" /> Cancelar
           </Button>
-          <Button className="flex-1" onClick={submit} data-testid="activity-save">
-            <Save className="h-4 w-4" /> Guardar
+          <Button className="flex-1" onClick={submit} disabled={saving} data-testid="activity-save">
+            <Save className="h-4 w-4" /> {saving ? 'Guardando...' : 'Guardar'}
           </Button>
         </div>
       </div>

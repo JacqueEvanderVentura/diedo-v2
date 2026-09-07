@@ -21,7 +21,12 @@ describe('adaptadores de CRM', () => {
           total: '12500.50',
           customer: { id: 'customer-id', name: 'Ada' },
           branch: { id: 'branch-id' },
-          lines: [{ id: 'line-id', itemId: 'item-id', quantity: '2', unitPrice: '6250.25' }],
+          lines: [{
+            id: 'line-id',
+            item: { id: 'item-id', name: 'Implementación CRM' },
+            quantity: '2',
+            unitPrice: '6250.25',
+          }],
         },
       }],
       settings: { version: 4, weights: { website: 8 } },
@@ -39,7 +44,12 @@ describe('adaptadores de CRM', () => {
       total: 12500.5,
       version: 7,
     })
-    expect(state.quotes[0].items[0]).toMatchObject({ qty: 2, price: 6250.25 })
+    expect(state.quotes[0].items[0]).toMatchObject({
+      itemId: 'item-id',
+      name: 'Implementación CRM',
+      qty: 2,
+      price: 6250.25,
+    })
     expect(state.scoringVersion).toBe(4)
   })
 

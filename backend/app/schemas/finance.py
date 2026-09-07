@@ -369,6 +369,8 @@ class FinanceIncomeResponse(ApiModel):
     amount: Decimal
     source: str
     reference: str | None
+    origin: Literal["manual", "pos"]
+    adjusted: bool
     editable: bool
     version: int | None
     created_at: datetime | None = None
@@ -409,6 +411,27 @@ class UpdateFinanceManualIncomeRequest(ApiModel):
 
     @model_validator(mode="after")
     def require_change(self) -> UpdateFinanceManualIncomeRequest:
+        if not (set(self.model_fields_set) - {"version"}):
+            raise ValueError("Indica al menos un campo para actualizar.")
+        return self
+
+
+class UpdateFinanceIncomeRequest(ApiModel):
+    version: int = Field(ge=1)
+    category: RequiredText | None = Field(default=None, max_length=48)
+    branch_id: UUID | None = None
+    amount: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=2)
+    date: DateValue | None = None
+    customer: str | None = Field(default=None, max_length=200)
+    source: RequiredText | None = Field(default=None, max_length=48)
+    status: PaymentStatus | None = None
+
+    _normalize_customer = field_validator("customer", mode="before")(
+        lambda value: None if value is None else str(value).strip()
+    )
+
+    @model_validator(mode="after")
+    def require_change(self) -> UpdateFinanceIncomeRequest:
         if not (set(self.model_fields_set) - {"version"}):
             raise ValueError("Indica al menos un campo para actualizar.")
         return self

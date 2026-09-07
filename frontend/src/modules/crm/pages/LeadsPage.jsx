@@ -61,6 +61,16 @@ function LeadsListaTab() {
     toast.success('Score manual guardado')
   }
 
+  const sendToPipeline = async (leadId) => {
+    try {
+      const opportunity = await addToPipeline(leadId)
+      if (!opportunity) return toast.error('No se encontró el lead')
+      toast.success('Oportunidad creada en el pipeline')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo enviar el lead al pipeline')
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row">
@@ -128,9 +138,15 @@ function LeadsListaTab() {
                       <Button size="sm" variant="secondary" onClick={() => { setEditingScore(lead.id); setManualVal(lead.scoreManual ?? ''); setManualNotes(lead.scoreNotes || '') }}>
                         Score
                       </Button>
-                      <Button size="sm" variant="secondary" onClick={() => { addToPipeline(lead.id); toast.success('Enviado al pipeline') }}>
-                        <Briefcase className="h-3.5 w-3.5" /> Pipeline
-                      </Button>
+                      {lead.opportunityId ? (
+                        <Button size="sm" variant="secondary" disabled>
+                          <Briefcase className="h-3.5 w-3.5" /> En pipeline
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="secondary" onClick={() => sendToPipeline(lead.id)}>
+                          <Briefcase className="h-3.5 w-3.5" /> Pipeline
+                        </Button>
+                      )}
                       <Button size="sm" onClick={async () => {
                         try {
                           await convertToCustomer(lead.id)

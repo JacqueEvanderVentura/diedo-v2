@@ -5,10 +5,11 @@ import { useCrmStore } from '@/stores/crmStore'
 import { useConfigStore } from '@/stores/configStore'
 import { formatDOP } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
+import { Badge } from '@/components/ui/Badge'
 import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SaleDetailModal } from '../components/SaleDetailModal'
-import { fmtDateTime, METHOD_LABELS, METHOD_ICON } from '../lib/crm'
+import { fmtDateTime, METHOD_LABELS, METHOD_ICON, summarizeActiveSales } from '../lib/crm'
 import {
   ResponsiveList,
   ResponsiveTable,
@@ -68,22 +69,20 @@ export default function VentasPage() {
       branch: (s) => branchMap[s.branchId] || '',
       items: (s) => s.items?.length || 0,
       method: (s) => s.method || '',
+      status: (s) => s.status || '',
       total: (s) => s.total || 0,
     },
   })
 
-  const stats = useMemo(() => {
-    const total = filtered.reduce((a, s) => a + (s.total || 0), 0)
-    return { count: filtered.length, total }
-  }, [filtered])
+  const stats = useMemo(() => summarizeActiveSales(filtered), [filtered])
 
   const branchOptions = [{ value: 'all', label: 'Todas las sucursales' }, ...branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))]
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8">
       <div className="grid grid-cols-2 gap-4">
-        <Chip label="Ventas (filtro actual)" value={stats.count} tone="slate" />
-        <Chip label="Monto total" value={formatDOP(stats.total)} tone="brand" />
+        <Chip label="Ventas válidas (filtro actual)" value={stats.count} tone="slate" />
+        <Chip label="Monto válido" value={formatDOP(stats.total)} tone="brand" />
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -120,10 +119,10 @@ export default function VentasPage() {
           <EmptyState icon={ShoppingBag} title="Sin ventas" description="No hay ventas con esos filtros." className="py-14" />
         </Card>
       ) : (
-        <ResponsiveList minTableWidth={920} columnCount={7}>
+        <ResponsiveList minTableWidth={1020} columnCount={8}>
           <ResponsiveTable testId="ventas-table">
             <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
-            <table className="w-full min-w-[920px] text-sm">
+            <table className="w-full min-w-[1020px] text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
                   <SortableTh column="date" className="px-6 py-4">Fecha</SortableTh>
@@ -132,28 +131,36 @@ export default function VentasPage() {
                   <SortableTh column="items" className="px-6 py-4">Artículos</SortableTh>
                   <SortableTh column="method" className="px-6 py-4">Método</SortableTh>
                   <SortableTh column="reference" sortable={false} className="px-6 py-4">Referencia</SortableTh>
+                  <SortableTh column="status" className="px-6 py-4">Estado</SortableTh>
                   <SortableTh column="total" align="right" className="px-6 py-4">Total</SortableTh>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {displayRows.map((s) => {
                   const Icon = Icons[METHOD_ICON[s.method]] || Icons.Circle
+                  const isVoided = s.status === 'voided'
                   return (
                     <tr
                       key={s.id}
                       onClick={() => setSelected(s)}
-                      className="cursor-pointer transition-colors hover:bg-blue-50/50"
+                      className={cn(
+                        'cursor-pointer transition-colors hover:bg-blue-50/50',
+                        isVoided && 'bg-slate-50/70 text-slate-400'
+                      )}
                       data-testid={`ventas-row-${s.id}`}
                     >
                       <td className="whitespace-nowrap px-6 py-4 text-slate-500">{fmtDateTime(s.createdAt)}</td>
-                      <td className="whitespace-nowrap px-6 py-4 font-semibold text-slate-800">{s.customer?.name || 'Cliente Mostrador'}</td>
+                      <td className={cn('whitespace-nowrap px-6 py-4 font-semibold text-slate-800', isVoided && 'text-slate-500 line-through')}>{s.customer?.name || 'Cliente Mostrador'}</td>
                       <td className="whitespace-nowrap px-6 py-4 text-slate-500">{branchMap[s.branchId] || '—'}</td>
                       <td className="max-w-[200px] truncate px-6 py-4 text-slate-500">{s.items?.map((i) => `${i.qty}× ${i.name}`).join(', ')}</td>
                       <td className="px-6 py-4">
                         <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-slate-600"><Icon className="h-4 w-4 text-slate-400" /> {METHOD_LABELS[s.method] || s.method}</span>
                       </td>
                       <td className="px-6 py-4 text-slate-500">{s.reference || '—'}</td>
-                      <td className="whitespace-nowrap px-6 py-4 text-right font-heading font-bold text-blue-600">{formatDOP(s.total)}</td>
+                      <td className="px-6 py-4">
+                        <Badge tone={isVoided ? 'danger' : 'success'}>{isVoided ? 'Anulada' : 'Completada'}</Badge>
+                      </td>
+                      <td className={cn('whitespace-nowrap px-6 py-4 text-right font-heading font-bold text-blue-600', isVoided && 'text-slate-400 line-through')}>{formatDOP(s.total)}</td>
                     </tr>
                   )
                 })}
@@ -164,11 +171,13 @@ export default function VentasPage() {
           <ResponsiveCards testId="ventas-cards">
             {displayRows.map((s) => {
               const Icon = Icons[METHOD_ICON[s.method]] || Icons.Circle
+              const isVoided = s.status === 'voided'
               return (
                 <MobileCard key={s.id} onClick={() => setSelected(s)} testId={`ventas-card-${s.id}`}>
                   <MobileCardHeader
                     title={s.customer?.name || 'Cliente Mostrador'}
                     subtitle={fmtDateTime(s.createdAt)}
+                    badge={<Badge tone={isVoided ? 'danger' : 'success'}>{isVoided ? 'Anulada' : 'Completada'}</Badge>}
                   />
                   <MobileCardGrid>
                     <MobileField label="Sucursal">{branchMap[s.branchId] || '—'}</MobileField>
@@ -185,7 +194,7 @@ export default function VentasPage() {
                   </MobileCardGrid>
                   <MobileCardFooter>
                     <span />
-                    <span className="font-heading text-sm font-bold text-blue-600">{formatDOP(s.total)}</span>
+                    <span className={cn('font-heading text-sm font-bold text-blue-600', isVoided && 'text-slate-400 line-through')}>{formatDOP(s.total)}</span>
                   </MobileCardFooter>
                 </MobileCard>
               )

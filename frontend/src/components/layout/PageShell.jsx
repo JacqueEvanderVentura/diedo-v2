@@ -23,7 +23,7 @@ const CRM_SECTION_BY_PATH = Object.freeze({
   '/crm/ventas': 'sales',
 })
 
-const CRM_SECTIONS_REQUIRING_CUSTOMERS = new Set(['customers', 'quotes', 'purchases'])
+const CRM_SECTIONS_REQUIRING_CUSTOMERS = new Set(['customers', 'pipeline', 'quotes', 'purchases'])
 
 // Persistent chrome: sidebar stays mounted across module/submodule changes.
 export function AppFrame() {

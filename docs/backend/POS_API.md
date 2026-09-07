@@ -190,7 +190,9 @@ dejar stock negativo.
 
 Anular una venta no borra registros: crea el movimiento de inventario inverso, agrega un reverso de
 caja cuando aplica, cancela su CxC sin cobros y marca la venta `voided`. Una venta con cobros de CxC
-aplicados exige revertirlos primero. Las operaciones financieras conservan snapshots y auditoría.
+aplicados exige revertirlos primero. La factura continúa visible en el historial de Ventas, pero se
+excluye de cantidades, montos comerciales e ingresos financieros. Las operaciones financieras
+conservan snapshots y auditoría.
 
 PostgreSQL garantiza como máximo una caja abierta por sucursal. El libro de caja es append-only; los
 reversos apuntan al movimiento original. El efectivo esperado se reconcilia como:
@@ -201,6 +203,8 @@ openingCash + cashSales + cashReceivablePayments + manualIncome - cashExpenses
 
 Cerrar guarda efectivo esperado, efectivo contado y diferencia. Los cierres, anulaciones,
 actualizaciones y reversos usan versión optimista para detectar una vista desactualizada.
+El cierre también es el evento que reconoce en Finanzas las ventas completadas de esa caja; mientras
+permanezca abierta no se muestran como ingresos.
 
 Los estados de CxC se derivan de `amount` y `paidAmount`: cero pagado es `pending`, un abono es
 `partial` y saldo cero es `paid`. Pagar o revertir bloquea la cuenta, actualiza su saldo, sincroniza

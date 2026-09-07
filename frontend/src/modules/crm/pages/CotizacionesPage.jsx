@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Plus, Trash2 } from 'lucide-react'
 import { useCrmStore } from '@/stores/crmStore'
@@ -18,7 +19,14 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { ExportMenu } from '@/modules/finanzas/components/ExportMenu'
 
+function belongsToBranch(customer, branchId) {
+  if (!branchId) return true
+  const branchIds = customer.branchIds?.length ? customer.branchIds : [customer.branchId].filter(Boolean)
+  return branchIds.includes(branchId)
+}
+
 export default function CotizacionesPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const quotes = useCrmStore((s) => s.quotes)
   const branches = useConfigStore((s) => s.branches)
   const customers = useCustomersStore((s) => s.customers)
@@ -32,6 +40,30 @@ export default function CotizacionesPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [branchFilter, setBranchFilter] = useState('all')
   const [form, setForm] = useState({ customerId: '', opportunityId: '', itemId: '', itemPrice: '', branchId: '' })
+  const [saving, setSaving] = useState(false)
+
+  const requestedOpportunityId = searchParams.get('opportunityId') || ''
+
+  useEffect(() => {
+    if (!requestedOpportunityId) return
+    const opportunity = opportunities.find((item) => item.id === requestedOpportunityId)
+    if (!opportunity) return
+    if (!opportunity.customerId) {
+      toast.error('Convierte el lead o vincula un cliente antes de cotizar')
+    } else {
+      setForm({
+        customerId: opportunity.customerId,
+        opportunityId: opportunity.id,
+        itemId: '',
+        itemPrice: '',
+        branchId: opportunity.branchId,
+      })
+      setModalOpen(true)
+    }
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('opportunityId')
+    setSearchParams(nextParams, { replace: true })
+  }, [opportunities, requestedOpportunityId, searchParams, setSearchParams])
 
   const visibleQuotes = useMemo(() => {
     if (branchFilter === 'all') return quotes
@@ -56,14 +88,28 @@ export default function CotizacionesPage() {
     [visibleQuotes]
   )
 
-  const oppOptions = [{ value: '', label: 'Sin oportunidad' }, ...opportunities.map((o) => ({ value: o.id, label: o.title }))]
-  const customerOptions = [
-    { value: '', label: 'Seleccionar cliente' },
-    ...customers.filter((customer) => !customer.isDefault).map((customer) => ({
-      value: customer.id,
-      label: customer.name,
+  const selectedOpportunity = opportunities.find((item) => item.id === form.opportunityId)
+  const selectedCustomer = customers.find((item) => item.id === form.customerId)
+  const oppOptions = [
+    { value: '', label: 'Sin oportunidad' },
+    ...opportunities.map((opportunity) => ({
+      value: opportunity.id,
+      label: opportunity.customerId ? opportunity.title : `${opportunity.title} — requiere cliente`,
+      disabled: !opportunity.customerId,
     })),
   ]
+  const customerOptions = [
+    { value: '', label: 'Seleccionar cliente' },
+    ...customers
+      .filter((customer) => (
+        !customer.isDefault
+        && (!selectedOpportunity || belongsToBranch(customer, selectedOpportunity.branchId))
+      ))
+      .map((customer) => ({ value: customer.id, label: customer.name })),
+  ]
+  const branchOptions = branches
+    .filter((branch) => branch.active && (!selectedCustomer || belongsToBranch(selectedCustomer, branch.id)))
+    .map((branch) => ({ value: branch.id, label: branch.name }))
   const sellableProducts = products.filter((product) => (
     isPosSellable(product) && (!isOnline || product.apiSynced)
   ))
@@ -72,7 +118,12 @@ export default function CotizacionesPage() {
     ...sellableProducts.map((product) => ({ value: product.id, label: product.name })),
   ]
 
-  const submit = () => {
+  const openCreate = () => {
+    setForm({ customerId: '', opportunityId: '', itemId: '', itemPrice: '', branchId: '' })
+    setModalOpen(true)
+  }
+
+  const submit = async () => {
     const customer = customers.find((item) => item.id === form.customerId)
     const product = sellableProducts.find((item) => item.id === form.itemId)
     if (!customer) return toast.error('Selecciona un cliente')
@@ -80,18 +131,42 @@ export default function CotizacionesPage() {
     const branchId = form.branchId || customer.branchId || branches.find((branch) => branch.active)?.id
     if (!branchId) return toast.error('Selecciona una sucursal')
     const price = Number(form.itemPrice) || Number(product.price) || 0
-    addQuote({
-      customerId: customer.id,
-      customerName: customer.name,
-      opportunityId: form.opportunityId || null,
-      items: [{ id: product.id, itemId: product.id, name: product.name, qty: 1, price }],
-      total: price,
-      branchId,
-      validUntil: new Date(Date.now() + 15 * 86400000).toISOString(),
-    })
-    setModalOpen(false)
-    setForm({ customerId: '', opportunityId: '', itemId: '', itemPrice: '', branchId: '' })
-    toast.success('Cotización creada')
+    setSaving(true)
+    try {
+      await addQuote({
+        customerId: customer.id,
+        customerName: customer.name,
+        opportunityId: form.opportunityId || null,
+        items: [{ id: product.id, itemId: product.id, name: product.name, qty: 1, price }],
+        total: price,
+        branchId,
+        validUntil: new Date(Date.now() + 15 * 86400000).toISOString(),
+      })
+      setModalOpen(false)
+      setForm({ customerId: '', opportunityId: '', itemId: '', itemPrice: '', branchId: '' })
+      toast.success('Cotización creada y vinculada')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo crear la cotización')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const changeStatus = async (quoteId, status) => {
+    try {
+      await updateQuote(quoteId, { status })
+    } catch (error) {
+      toast.error(error.message || 'No se pudo cambiar el estado')
+    }
+  }
+
+  const cancelQuote = async (quoteId) => {
+    try {
+      await deleteQuote(quoteId)
+      toast.success('Cotización cancelada')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo cancelar la cotización')
+    }
   }
 
   return (
@@ -115,7 +190,7 @@ export default function CotizacionesPage() {
             rows={exportRows}
             filename="cotizaciones_crm"
           />
-          <Button onClick={() => setModalOpen(true)}>
+          <Button onClick={openCreate}>
             <Plus className="h-4 w-4" /> Nueva cotización
           </Button>
         </div>
@@ -158,11 +233,11 @@ export default function CotizacionesPage() {
                 <p className="font-heading text-lg font-bold text-emerald-600">{formatDOP(q.total)}</p>
                 <Select
                   value={q.status}
-                  onChange={(v) => updateQuote(q.id, { status: v })}
+                  onChange={(status) => changeStatus(q.id, status)}
                   options={QUOTE_STATUSES.map((s) => ({ value: s, label: QUOTE_STATUS_META[s].label }))}
                   className="w-36"
                 />
-                <button type="button" onClick={() => { deleteQuote(q.id); toast.success('Eliminada') }} className="rounded-lg p-2 text-red-500 hover:bg-red-50">
+                <button type="button" onClick={() => cancelQuote(q.id)} aria-label={`Cancelar ${q.number}`} className="rounded-lg p-2 text-red-500 hover:bg-red-50">
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
@@ -186,6 +261,7 @@ export default function CotizacionesPage() {
                 }))
               }}
               options={customerOptions}
+              disabled={Boolean(selectedOpportunity)}
             />
           </div>
           <div>
@@ -220,12 +296,22 @@ export default function CotizacionesPage() {
             />
           </div>
           <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Sucursal</label>
+            <Select
+              value={form.branchId}
+              onChange={(branchId) => setForm((current) => ({ ...current, branchId }))}
+              options={branchOptions}
+              disabled={Boolean(selectedOpportunity)}
+              data-testid="quote-branch"
+            />
+          </div>
+          <div>
             <label className="mb-1 block text-xs font-medium text-slate-500">Precio (DOP)</label>
             <Input type="number" value={form.itemPrice} onChange={(e) => setForm((f) => ({ ...f, itemPrice: e.target.value }))} />
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
-            <Button onClick={submit}>Crear</Button>
+            <Button onClick={submit} disabled={saving}>{saving ? 'Creando...' : 'Crear'}</Button>
           </div>
         </div>
       </Modal>

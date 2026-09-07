@@ -1,7 +1,10 @@
-import { useMemo, useState } from 'react'
-import { Phone, Mail, Users, StickyNote, CheckSquare, Calendar, Plus, Pencil } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
+import { Phone, Mail, Users, StickyNote, CheckSquare, Calendar, Plus, Pencil, CalendarPlus } from 'lucide-react'
 import { useCrmStore } from '@/stores/crmStore'
 import { useConfigStore } from '@/stores/configStore'
+import { useSessionStore } from '@/stores/sessionStore'
 import { buildBranchFilterOptions } from '@/lib/branches'
 import { ACTIVITY_TYPE_META } from '@/data/crm'
 import { fmtDateTime } from '../lib/crm'
@@ -71,15 +74,41 @@ function ActivityCard({ act, users, onToggle, onEdit }) {
 }
 
 export default function SeguimientoPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const activities = useCrmStore((s) => s.activities)
   const opportunities = useCrmStore((s) => s.opportunities)
   const toggleActivityComplete = useCrmStore((s) => s.toggleActivityComplete)
   const users = useConfigStore((s) => s.users)
+  const sessionUser = useSessionStore((s) => s.user)
   const branches = useConfigStore((s) => s.branches)
   const [view, setView] = useState('actividades')
   const [branchFilter, setBranchFilter] = useState('all')
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [defaultOpportunityId, setDefaultOpportunityId] = useState('')
+
+  const visibleUsers = useMemo(() => (
+    sessionUser?.membershipId
+      ? [
+          { id: sessionUser.membershipId, name: sessionUser.name },
+          ...users.filter((user) => user.id !== sessionUser.membershipId),
+        ]
+      : users
+  ), [sessionUser?.membershipId, sessionUser?.name, users])
+
+  const requestedOpportunityId = searchParams.get('opportunityId') || ''
+
+  useEffect(() => {
+    if (!requestedOpportunityId) return
+    if (!opportunities.some((opportunity) => opportunity.id === requestedOpportunityId)) return
+    setDefaultOpportunityId(requestedOpportunityId)
+    setEditing(null)
+    setView('actividades')
+    setFormOpen(true)
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('opportunityId')
+    setSearchParams(nextParams, { replace: true })
+  }, [opportunities, requestedOpportunityId, searchParams, setSearchParams])
 
   const oppBranchMap = useMemo(
     () => Object.fromEntries(opportunities.map((o) => [o.id, o.branchId])),
@@ -89,8 +118,7 @@ export default function SeguimientoPage() {
   const grouped = useMemo(() => {
     const branchMatch = (act) => {
       if (branchFilter === 'all') return true
-      if (!act.opportunityId) return false
-      return oppBranchMap[act.opportunityId] === branchFilter
+      return (act.branchId || oppBranchMap[act.opportunityId]) === branchFilter
     }
     const pending = activities.filter((a) => !a.completedAt && branchMatch(a))
     const completed = activities.filter((a) => a.completedAt && branchMatch(a))
@@ -120,12 +148,35 @@ export default function SeguimientoPage() {
 
   const openNew = () => {
     setEditing(null)
+    setDefaultOpportunityId('')
+    setFormOpen(true)
+  }
+
+  const openForOpportunity = (opportunityId) => {
+    setEditing(null)
+    setDefaultOpportunityId(opportunityId)
+    setView('actividades')
     setFormOpen(true)
   }
 
   const openEdit = (act) => {
     setEditing(act)
+    setDefaultOpportunityId(act.opportunityId || '')
     setFormOpen(true)
+  }
+
+  const toggleComplete = async (activityId) => {
+    try {
+      await toggleActivityComplete(activityId)
+    } catch (error) {
+      toast.error(error.message || 'No se pudo actualizar la tarea')
+    }
+  }
+
+  const closeForm = () => {
+    setFormOpen(false)
+    setEditing(null)
+    setDefaultOpportunityId('')
   }
 
   return (
@@ -171,7 +222,7 @@ export default function SeguimientoPage() {
               <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-red-500">Retrasadas</h3>
               <div className="space-y-3">
                 {grouped.overdue.map((act) => (
-                  <ActivityCard key={act.id} act={act} users={users} onToggle={toggleActivityComplete} onEdit={openEdit} />
+                  <ActivityCard key={act.id} act={act} users={visibleUsers} onToggle={toggleComplete} onEdit={openEdit} />
                 ))}
               </div>
             </section>
@@ -184,7 +235,7 @@ export default function SeguimientoPage() {
                 <p className="text-sm text-slate-400">No hay tareas pendientes.</p>
               ) : (
                 grouped.upcoming.map((act) => (
-                  <ActivityCard key={act.id} act={act} users={users} onToggle={toggleActivityComplete} onEdit={openEdit} />
+                  <ActivityCard key={act.id} act={act} users={visibleUsers} onToggle={toggleComplete} onEdit={openEdit} />
                 ))
               )}
             </div>
@@ -195,7 +246,7 @@ export default function SeguimientoPage() {
               <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-400">Completadas</h3>
               <div className="space-y-3 opacity-80">
                 {grouped.completed.map((act) => (
-                  <ActivityCard key={act.id} act={act} users={users} onToggle={toggleActivityComplete} onEdit={openEdit} />
+                  <ActivityCard key={act.id} act={act} users={visibleUsers} onToggle={toggleComplete} onEdit={openEdit} />
                 ))}
               </div>
             </section>
@@ -215,9 +266,14 @@ export default function SeguimientoPage() {
                       <p className="font-semibold text-slate-900">{o.title}</p>
                       <p className="text-sm text-slate-500">{o.customerName}</p>
                     </div>
-                    <div className="text-right">
+                    <div className="flex items-center gap-3">
+                      <Button size="sm" variant="secondary" onClick={() => openForOpportunity(o.id)}>
+                        <CalendarPlus className="h-3.5 w-3.5" /> Nueva tarea
+                      </Button>
+                      <div className="text-right">
                       <p className="font-heading font-bold text-emerald-600">{formatDOP(o.value)}</p>
                       <Badge tone="brand">{o.stage}</Badge>
+                      </div>
                     </div>
                   </Card>
                 ))}
@@ -228,7 +284,12 @@ export default function SeguimientoPage() {
       )}
       </AnimatedTabPanel>
 
-      <ActivityFormModal open={formOpen} onClose={() => setFormOpen(false)} activity={editing} />
+      <ActivityFormModal
+        open={formOpen}
+        onClose={closeForm}
+        activity={editing}
+        defaultOpportunityId={defaultOpportunityId}
+      />
     </div>
   )
 }

@@ -12,6 +12,7 @@ from sqlalchemy import (
     Date,
     Integer,
     Uuid,
+    and_,
     case,
     cast,
     exists,
@@ -26,6 +27,7 @@ from sqlalchemy.orm import Session, aliased
 from app.db.models import (
     Branch,
     CashMovement,
+    CashRegister,
     FinanceAccount,
     FinanceBudget,
     FinanceExpense,
@@ -33,6 +35,7 @@ from app.db.models import (
     FinanceFixedExpensePayment,
     FinanceLiability,
     FinanceManualIncome,
+    FinancePosIncomeCorrection,
     Sale,
     Workspace,
 )
@@ -87,6 +90,8 @@ class IncomeViewRecord:
     amount: Decimal
     source: str
     reference: str | None
+    origin: str
+    adjusted: bool
     editable: bool
     version: int | None
     created_at: datetime | None
@@ -539,9 +544,25 @@ class FinanceRepository:
             FinanceManualIncome.workspace_id == workspace_id,
             FinanceManualIncome.record_status == "active",
         ]
+        correction_join = and_(
+            FinancePosIncomeCorrection.workspace_id == Sale.workspace_id,
+            FinancePosIncomeCorrection.sale_id == Sale.id,
+        )
+        register_join = and_(
+            CashRegister.workspace_id == Sale.workspace_id,
+            CashRegister.branch_id == Sale.branch_id,
+            CashRegister.id == Sale.cash_register_id,
+        )
+        effective_sale_branch = func.coalesce(FinancePosIncomeCorrection.branch_id, Sale.branch_id)
         sale_conditions: list[Any] = [
             Sale.workspace_id == workspace_id,
             Sale.status == "completed",
+            CashRegister.status == "closed",
+            CashRegister.closed_at.is_not(None),
+            or_(
+                FinancePosIncomeCorrection.id.is_(None),
+                FinancePosIncomeCorrection.record_status == "active",
+            ),
         ]
         manual_branch = self._branch_predicate(
             FinanceManualIncome.branch_id,
@@ -549,13 +570,15 @@ class FinanceRepository:
             visible_branch_ids=visible_branch_ids,
         )
         sale_branch = self._branch_predicate(
-            Sale.branch_id, branch_id=branch_id, visible_branch_ids=visible_branch_ids
+            effective_sale_branch,
+            branch_id=branch_id,
+            visible_branch_ids=visible_branch_ids,
         )
         if manual_branch is not None:
             manual_conditions.append(manual_branch)
         if sale_branch is not None:
             sale_conditions.append(sale_branch)
-        local_sale_date = cast(func.timezone(timezone, Sale.completed_at), Date)
+        local_close_date = cast(func.timezone(timezone, CashRegister.closed_at), Date)
         manual = select(
             FinanceManualIncome.id.label("id"),
             FinanceManualIncome.income_date.label("date"),
@@ -566,28 +589,51 @@ class FinanceRepository:
             FinanceManualIncome.amount.label("amount"),
             FinanceManualIncome.source.label("source"),
             cast(literal(None), FinanceManualIncome.source.type).label("reference"),
+            literal("manual").label("origin"),
+            literal(False).label("adjusted"),
             literal(True).label("editable"),
             FinanceManualIncome.version.label("version"),
             FinanceManualIncome.created_at.label("created_at"),
             FinanceManualIncome.updated_at.label("updated_at"),
         ).where(*manual_conditions)
-        sales = select(
-            Sale.id.label("id"),
-            local_sale_date.label("date"),
-            func.coalesce(Sale.customer_name, "Cliente Mostrador").label("customer"),
-            Sale.payment_method_code.label("category"),
-            Sale.branch_id.label("branch_id"),
-            case((Sale.settlement_policy == "immediate", "pagado"), else_="pendiente").label(
-                "status"
-            ),
-            Sale.total.label("amount"),
-            literal("POS").label("source"),
-            Sale.sale_number.label("reference"),
-            literal(False).label("editable"),
-            cast(literal(None), Integer).label("version"),
-            Sale.completed_at.label("created_at"),
-            Sale.completed_at.label("updated_at"),
-        ).where(*sale_conditions)
+        sales = (
+            select(
+                Sale.id.label("id"),
+                func.coalesce(FinancePosIncomeCorrection.income_date, local_close_date).label(
+                    "date"
+                ),
+                func.coalesce(
+                    FinancePosIncomeCorrection.customer,
+                    Sale.customer_name,
+                    "Cliente Mostrador",
+                ).label("customer"),
+                func.coalesce(FinancePosIncomeCorrection.category, Sale.payment_method_code).label(
+                    "category"
+                ),
+                effective_sale_branch.label("branch_id"),
+                func.coalesce(
+                    FinancePosIncomeCorrection.payment_status,
+                    case(
+                        (Sale.settlement_policy == "immediate", "pagado"),
+                        else_="pendiente",
+                    ),
+                ).label("status"),
+                func.coalesce(FinancePosIncomeCorrection.amount, Sale.total).label("amount"),
+                literal("POS").label("source"),
+                Sale.sale_number.label("reference"),
+                literal("pos").label("origin"),
+                FinancePosIncomeCorrection.id.is_not(None).label("adjusted"),
+                literal(True).label("editable"),
+                func.coalesce(FinancePosIncomeCorrection.version, Sale.version).label("version"),
+                CashRegister.closed_at.label("created_at"),
+                func.coalesce(FinancePosIncomeCorrection.updated_at, CashRegister.closed_at).label(
+                    "updated_at"
+                ),
+            )
+            .join(CashRegister, register_join)
+            .outerjoin(FinancePosIncomeCorrection, correction_join)
+            .where(*sale_conditions)
+        )
         rows = union_all(manual, sales).subquery("finance_income_rows")
         predicates: list[Any] = []
         if search:
@@ -756,16 +802,47 @@ class FinanceRepository:
         sale_predicates: list[Any] = [
             Sale.workspace_id == workspace_id,
             Sale.status == "completed",
-            Sale.completed_at >= starts_at,
-            Sale.completed_at < ends_at,
+            CashRegister.status == "closed",
+            CashRegister.closed_at.is_not(None),
         ]
+        register_join = and_(
+            CashRegister.workspace_id == Sale.workspace_id,
+            CashRegister.branch_id == Sale.branch_id,
+            CashRegister.id == Sale.cash_register_id,
+        )
+        correction_join = and_(
+            FinancePosIncomeCorrection.workspace_id == Sale.workspace_id,
+            FinancePosIncomeCorrection.sale_id == Sale.id,
+        )
+        sale_predicates.extend(
+            [
+                or_(
+                    FinancePosIncomeCorrection.id.is_(None),
+                    FinancePosIncomeCorrection.record_status == "active",
+                ),
+                or_(
+                    and_(
+                        FinancePosIncomeCorrection.id.is_(None),
+                        CashRegister.closed_at >= starts_at,
+                        CashRegister.closed_at < ends_at,
+                    ),
+                    and_(
+                        FinancePosIncomeCorrection.id.is_not(None),
+                        FinancePosIncomeCorrection.income_date >= date_start,
+                        FinancePosIncomeCorrection.income_date < date_end,
+                    ),
+                ),
+            ]
+        )
         manual_branch = self._branch_predicate(
             FinanceManualIncome.branch_id,
             branch_id=branch_id,
             visible_branch_ids=visible_branch_ids,
         )
         sale_branch = self._branch_predicate(
-            Sale.branch_id, branch_id=branch_id, visible_branch_ids=visible_branch_ids
+            func.coalesce(FinancePosIncomeCorrection.branch_id, Sale.branch_id),
+            branch_id=branch_id,
+            visible_branch_ids=visible_branch_ids,
         )
         if manual_branch is not None:
             manual_predicates.append(manual_branch)
@@ -775,7 +852,15 @@ class FinanceRepository:
             select(func.coalesce(func.sum(FinanceManualIncome.amount), 0)).where(*manual_predicates)
         ) or Decimal("0")
         sales = self._session.scalar(
-            select(func.coalesce(func.sum(Sale.total), 0)).where(*sale_predicates)
+            select(
+                func.coalesce(
+                    func.sum(func.coalesce(FinancePosIncomeCorrection.amount, Sale.total)), 0
+                )
+            )
+            .select_from(Sale)
+            .join(CashRegister, register_join)
+            .outerjoin(FinancePosIncomeCorrection, correction_join)
+            .where(*sale_predicates)
         ) or Decimal("0")
         return Decimal(manual) + Decimal(sales)
 
@@ -988,6 +1073,49 @@ class FinanceRepository:
             FinanceManualIncome.record_status == "active",
             for_update,
         )
+
+    def get_pos_income(
+        self,
+        workspace_id: UUID,
+        sale_id: UUID,
+        visible_branch_ids: frozenset[UUID] | None,
+        *,
+        for_update: bool = False,
+    ) -> tuple[Sale, FinancePosIncomeCorrection | None, CashRegister] | None:
+        correction_join = and_(
+            FinancePosIncomeCorrection.workspace_id == Sale.workspace_id,
+            FinancePosIncomeCorrection.sale_id == Sale.id,
+        )
+        register_join = and_(
+            CashRegister.workspace_id == Sale.workspace_id,
+            CashRegister.branch_id == Sale.branch_id,
+            CashRegister.id == Sale.cash_register_id,
+        )
+        predicates: list[Any] = [
+            Sale.workspace_id == workspace_id,
+            Sale.id == sale_id,
+            Sale.status == "completed",
+            CashRegister.status == "closed",
+            CashRegister.closed_at.is_not(None),
+        ]
+        if visible_branch_ids is not None:
+            predicates.append(
+                func.coalesce(FinancePosIncomeCorrection.branch_id, Sale.branch_id).in_(
+                    visible_branch_ids
+                )
+            )
+        statement = (
+            select(Sale, FinancePosIncomeCorrection, CashRegister)
+            .join(CashRegister, register_join)
+            .outerjoin(FinancePosIncomeCorrection, correction_join)
+            .where(*predicates)
+        )
+        if for_update:
+            statement = statement.with_for_update(of=Sale)
+        row = self._session.execute(statement).one_or_none()
+        if row is None:
+            return None
+        return row[0], row[1], row[2]
 
     def find_by_idempotency(
         self, model: type[EntityT], workspace_id: UUID, key: str

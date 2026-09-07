@@ -11,9 +11,10 @@ export function methodLabel(id) {
 }
 
 export function buildShiftMovements({ shiftSales = [], shiftIncomes = [], expenses = [] }) {
-  const sales = shiftSales.filter((sale) => sale.status !== 'voided').map((s) => ({
+  const sales = shiftSales.map((s) => ({
     id: s.id,
     type: 'venta',
+    status: s.status || 'completed',
     label: s.customer?.name || s.items?.[0]?.name || 'Venta',
     amount: s.total,
     method: s.method,

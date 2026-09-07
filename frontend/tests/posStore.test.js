@@ -485,7 +485,7 @@ describe('store online de Terminal POS', () => {
     expect(usePosStore.getState()).toMatchObject({ items: [], activeQuoteId: null })
   })
 
-  it('anula una venta online y la excluye de los totales del turno', async () => {
+  it('anula una venta online, la conserva en el historial y la excluye de los totales', async () => {
     const sale = {
       id: 'sale-id',
       apiSynced: true,
@@ -515,6 +515,40 @@ describe('store online de Terminal POS', () => {
     expect(usePosStore.getState().shiftSales[0].status).toBe('voided')
     expect(usePosStore.getState().cashSales).toBe(0)
     expect(usePosStore.getState().getShiftSalesTotal()).toBe(0)
-    expect(usePosStore.getState().getShiftMovements()).toHaveLength(0)
+    expect(usePosStore.getState().getShiftMovements()).toEqual([
+      expect.objectContaining({ id: 'sale-id', status: 'voided' }),
+    ])
+  })
+
+  it('marca las ventas demo como ingresos reconocidos al cerrar la caja', async () => {
+    useSessionStore.setState({ status: 'demo', accessToken: null, user: null })
+    const sale = {
+      id: 'demo-sale',
+      status: 'completed',
+      method: 'tarjeta',
+      total: 100,
+      createdAt: '2026-09-01T10:00:00Z',
+      recognizedAt: null,
+    }
+    usePosStore.setState({
+      register: { open: true, openedAt: '2026-09-01T09:00:00Z', openingCash: 500 },
+      sales: [sale],
+      shiftSales: [sale],
+      cashSales: 0,
+      shiftIncomes: [],
+      expenses: [],
+      registerHistory: [],
+    })
+
+    await usePosStore.getState().closeRegister(500)
+
+    expect(usePosStore.getState().sales[0]).toMatchObject({
+      id: 'demo-sale',
+      status: 'completed',
+      recognizedAt: expect.any(String),
+    })
+    expect(usePosStore.getState().sales[0].recognizedAt).toBe(
+      usePosStore.getState().lastCloseSummary.closedAt
+    )
   })
 })

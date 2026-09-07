@@ -487,3 +487,74 @@ class FinanceManualIncome(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Bas
     updated_by_platform_user_id: Mapped[UUID] = mapped_column(
         ForeignKey("platform_users.id", ondelete="RESTRICT"), nullable=False
     )
+
+
+class FinancePosIncomeCorrection(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
+    """Finance-only correction layered over an immutable posted POS sale."""
+
+    __tablename__ = "finance_pos_income_corrections"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id", "id", name="uq_finance_pos_income_corrections_workspace_id"
+        ),
+        UniqueConstraint(
+            "workspace_id",
+            "sale_id",
+            name="uq_finance_pos_income_corrections_workspace_sale",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "sale_id"],
+            ["sales.workspace_id", "sales.id"],
+            ondelete="RESTRICT",
+            name="fk_finance_pos_income_corrections_workspace_sale",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "branch_id"],
+            ["branches.workspace_id", "branches.id"],
+            ondelete="RESTRICT",
+            name="fk_finance_pos_income_corrections_workspace_branch",
+        ),
+        CheckConstraint("char_length(category) > 0", name="category_not_empty"),
+        CheckConstraint("amount > 0", name="amount_positive"),
+        CheckConstraint("payment_status IN ('pagado', 'pendiente')", name="payment_status_values"),
+        CheckConstraint("record_status IN ('active', 'voided')", name="record_status_values"),
+        CheckConstraint(
+            "(record_status = 'active' AND voided_at IS NULL AND "
+            "voided_by_platform_user_id IS NULL) OR "
+            "(record_status = 'voided' AND voided_at IS NOT NULL AND "
+            "voided_by_platform_user_id IS NOT NULL)",
+            name="void_state_consistent",
+        ),
+        Index(
+            "ix_finance_pos_income_corrections_workspace_branch_date",
+            "workspace_id",
+            "branch_id",
+            "income_date",
+        ),
+    )
+
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
+    )
+    sale_id: Mapped[UUID] = mapped_column(nullable=False)
+    branch_id: Mapped[UUID] = mapped_column(nullable=False)
+    category: Mapped[str] = mapped_column(String(48), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    income_date: Mapped[date] = mapped_column(Date, nullable=False)
+    customer: Mapped[str] = mapped_column(
+        String(200), nullable=False, default="", server_default=""
+    )
+    payment_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    record_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="active", server_default=text("'active'")
+    )
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    voided_by_platform_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("platform_users.id", ondelete="RESTRICT")
+    )
+    created_by_platform_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("platform_users.id", ondelete="RESTRICT"), nullable=False
+    )
+    updated_by_platform_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("platform_users.id", ondelete="RESTRICT"), nullable=False
+    )
