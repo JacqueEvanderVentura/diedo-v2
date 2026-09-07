@@ -342,7 +342,17 @@ describe('adaptadores de Terminal POS', () => {
     })
 
     const receivablesPage = mapReceivablesPageFromApi({
-      items: [{ id: 'receivable-id', originalAmount: '100', paidTotal: '25', balance: '75' }],
+      items: [{
+        id: 'receivable-id',
+        originalAmount: '100',
+        paidTotal: '25',
+        balance: '75',
+        proofs: [{
+          id: 'proof-id',
+          filename: 'voucher.png',
+          contentUrl: '/api/v1/pos/proofs/proof-id/content',
+        }],
+      }],
       page: 1,
       pageSize: 50,
       totalItems: 1,
@@ -356,6 +366,11 @@ describe('adaptadores de Terminal POS', () => {
       totalPages: 1,
     })
     expect(receivablesPage.items[0].detailLoaded).toBe(false)
+    expect(receivablesPage.items[0].proof).toMatchObject({
+      id: 'proof-id',
+      name: 'voucher.png',
+      downloadUrl: '/api/v1/pos/proofs/proof-id/content',
+    })
     expect(quotesPage.items[0].detailLoaded).toBe(false)
     expect(mapReceivableSummaryFromApi({ pendingTotal: '75', pendingCount: 1, partialCount: 1 }))
       .toMatchObject({ pendingTotal: 75, pendingCount: 1, partialCount: 1 })

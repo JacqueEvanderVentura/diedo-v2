@@ -625,6 +625,7 @@ class ReceivableListItemResponse(ApiModel):
     paid_total: Money
     balance: Money
     reference: str | None
+    proofs: list[PaymentProofResponse]
     due_date: date | None
     created_at: datetime
     updated_at: datetime
@@ -635,7 +636,6 @@ class ReceivableDetailResponse(ReceivableListItemResponse):
     notes: str | None
     lines: list[ReceivableLineResponse]
     payments: list[ReceivablePaymentResponse]
-    proofs: list[PaymentProofResponse]
 
 
 class PaginatedReceivablesResponse(ApiModel):

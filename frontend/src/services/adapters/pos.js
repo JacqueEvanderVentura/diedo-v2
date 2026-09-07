@@ -279,8 +279,7 @@ export function mapReceivableFromApi(receivable) {
     version: receivable.version ?? null,
     detailLoaded: receivable.lines !== undefined
       || receivable.items !== undefined
-      || receivable.payments !== undefined
-      || receivable.proofs !== undefined,
+      || receivable.payments !== undefined,
     apiSynced: true,
   }
 }

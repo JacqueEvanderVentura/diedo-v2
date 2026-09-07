@@ -601,9 +601,16 @@ export default function CxcPage() {
                         <div className="flex items-center gap-1.5">
                           <span className="font-semibold text-slate-800">{r.customer?.name || 'Cliente'}</span>
                           {r.proof && (
-                            <span title={`Comprobante: ${r.proof.name}`} className="text-emerald-600">
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadProof(r.proof)}
+                              title={`Descargar comprobante: ${r.proof.name}`}
+                              className="inline-flex max-w-44 items-center gap-1 truncate rounded-md px-1.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
+                              data-testid={`cxc-proof-download-${r.id}`}
+                            >
                               <Paperclip className="h-3.5 w-3.5" />
-                            </span>
+                              <span className="truncate">{r.proof.name}</span>
+                            </button>
                           )}
                         </div>
                       </td>
@@ -650,6 +657,19 @@ export default function CxcPage() {
                     <MobileField label="Pagado"><span className="text-emerald-600">{formatDOP(r.paid)}</span></MobileField>
                     <MobileField label="Pendiente"><span className="font-semibold">{formatDOP(r.balance)}</span></MobileField>
                     <MobileField label="Vencimiento">{fmtDateShort(r.dueDate)}</MobileField>
+                    {r.proof ? (
+                      <MobileField label="Comprobante" fullWidth>
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadProof(r.proof)}
+                          className="inline-flex max-w-full items-center gap-1.5 text-left font-medium text-emerald-700"
+                          data-testid={`cxc-card-proof-download-${r.id}`}
+                        >
+                          <Paperclip className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{r.proof.name}</span>
+                        </button>
+                      </MobileField>
+                    ) : null}
                   </MobileCardGrid>
                   <MobileCardFooter>{renderRowActions(r)}</MobileCardFooter>
                 </MobileCard>

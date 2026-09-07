@@ -1708,7 +1708,9 @@ export const usePosStore = create(
         if (isOnlineMode()) {
           const receivable = get().receivables.find((item) => item.id === id)
           const file = payload?.proof
-          if (!receivable?.apiSynced) return Promise.reject(new Error('La cuenta no está sincronizada.'))
+          if (receivable && !receivable.apiSynced) {
+            return Promise.reject(new Error('La cuenta no está sincronizada.'))
+          }
           if (!(typeof File !== 'undefined' && file instanceof File)) {
             return Promise.reject(new Error('Selecciona un comprobante para subir.'))
           }

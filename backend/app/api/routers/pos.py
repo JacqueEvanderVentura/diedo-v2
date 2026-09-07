@@ -620,6 +620,7 @@ def _receivable_list_response(record: ReceivableRecord) -> ReceivableListItemRes
         paid_total=receivable.paid_amount,
         balance=receivable.amount - receivable.paid_amount,
         reference=receivable.reference,
+        proofs=[_proof_response(proof) for proof in record.proofs],
         due_date=receivable.due_date,
         created_at=receivable.created_at,
         updated_at=receivable.updated_at,

@@ -1323,6 +1323,16 @@ class PosRepository:
         payments_by_receivable: dict[UUID, list[CustomerPayment]] = defaultdict(list)
         proofs_by_receivable: dict[UUID, list[PaymentProof]] = defaultdict(list)
         proofs_by_payment: dict[UUID, list[PaymentProof]] = defaultdict(list)
+        for proof in self._session.scalars(
+            select(PaymentProof)
+            .where(
+                PaymentProof.workspace_id == workspace_id,
+                PaymentProof.receivable_id.in_(receivable_ids),
+            )
+            .order_by(PaymentProof.created_at, PaymentProof.id)
+        ):
+            if proof.receivable_id is not None:
+                proofs_by_receivable[proof.receivable_id].append(proof)
         if include_details:
             for line in self._session.scalars(
                 select(CustomerReceivableLine)
@@ -1352,21 +1362,17 @@ class PosRepository:
             method_ids.update(payment.payment_method_id for payment in payments)
             for payment in payments:
                 payments_by_receivable[payment.receivable_id].append(payment)
-            for proof in self._session.scalars(
-                select(PaymentProof)
-                .where(
-                    PaymentProof.workspace_id == workspace_id,
-                    or_(
-                        PaymentProof.receivable_id.in_(receivable_ids),
+            if payment_ids:
+                for proof in self._session.scalars(
+                    select(PaymentProof)
+                    .where(
+                        PaymentProof.workspace_id == workspace_id,
                         PaymentProof.customer_payment_id.in_(payment_ids),
-                    ),
-                )
-                .order_by(PaymentProof.created_at, PaymentProof.id)
-            ):
-                if proof.receivable_id is not None:
-                    proofs_by_receivable[proof.receivable_id].append(proof)
-                elif proof.customer_payment_id is not None:
-                    proofs_by_payment[proof.customer_payment_id].append(proof)
+                    )
+                    .order_by(PaymentProof.created_at, PaymentProof.id)
+                ):
+                    if proof.customer_payment_id is not None:
+                        proofs_by_payment[proof.customer_payment_id].append(proof)
         methods = {
             method.id: method
             for method in self._session.scalars(

@@ -408,6 +408,30 @@ describe('store online de Terminal POS', () => {
     })
   })
 
+  it('sube el comprobante de una CxC recién creada aunque la recarga aún no la liste', async () => {
+    const proofFile = new File(['proof'], 'voucher.png', { type: 'image/png' })
+    usePosStore.setState({
+      receivables: [],
+      apiContext: { hydrated: true, mode: 'online', branchId: 'branch-id', lastSyncedAt: null },
+    })
+    mocks.uploadReceivableProof.mockResolvedValue({
+      id: 'proof-id',
+      originalFilename: 'voucher.png',
+      contentUrl: '/api/v1/pos/proofs/proof-id/content',
+    })
+    mocks.state.mockRejectedValueOnce(new Error('recarga todavía sin la CxC nueva'))
+
+    await usePosStore.getState().attachReceivableProof('new-receivable-id', {
+      proof: proofFile,
+    })
+
+    expect(mocks.uploadReceivableProof).toHaveBeenCalledWith(
+      'new-receivable-id',
+      { file: proofFile },
+      { idempotencyKey: 'attempt-key-1' }
+    )
+  })
+
   it('elimina semillas demo al entrar en sesión online', () => {
     useSessionStore.setState({ status: 'demo', accessToken: null, user: null })
     expect(usePosStore.getState().sales.length).toBeGreaterThan(0)

@@ -793,6 +793,19 @@ def test_terminal_pos_complete_http_flow(client: TestClient, tmp_path: Path) -> 
         assert proof_content.headers["content-type"].startswith("image/png")
         assert proof_content.headers["cache-control"] == "private, no-store"
         assert proof_content.headers["etag"] == f'"{proof["checksum"]}"'
+        listed_receivables_response = client.get(
+            "/api/v1/pos/receivables",
+            headers=headers,
+            params={"branchId": str(branch_id), "pageSize": 200},
+        )
+        assert listed_receivables_response.status_code == 200, listed_receivables_response.text
+        listed_receivable = next(
+            item
+            for item in listed_receivables_response.json()["items"]
+            if item["id"] == receivable_id
+        )
+        assert [item["id"] for item in listed_receivable["proofs"]] == [proof["id"]]
+        assert listed_receivable["proofs"][0]["contentUrl"] == proof["contentUrl"]
         duplicate_proof_response = client.post(
             f"/api/v1/pos/receivables/{receivable_id}/proofs",
             headers=_idempotent(headers, f"pos-proof-duplicate-{suffix}"),

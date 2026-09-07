@@ -145,7 +145,8 @@ rechaza para que la confirmación ocurra mediante el flujo de CxC. La respuesta 
 
 - `GET /api/v1/pos/receivables/summary?branchId=` — `pos.receivables.read`.
 - `GET /api/v1/pos/receivables` — `pos.receivables.read`; filtra por `branchId`, `customerId`,
-  `status`, `overdue` y paginación.
+  `status`, `overdue` y paginación. Cada fila incluye los metadatos de sus comprobantes directos
+  para mostrarlos y descargarlos sin cargar primero el detalle de la cuenta.
 - `GET /api/v1/pos/receivables/{receivableId}` — `pos.receivables.read`.
 - `PATCH /api/v1/pos/receivables/{receivableId}` — `pos.receivables.manage`; actualiza
   `dueDate` o `notes` con `version`.
@@ -170,6 +171,8 @@ cancelarse después de revertirlos.
 Las respuestas de CxC incluyen `paymentMethod` cuando la deuda nació de una venta con método
 diferido. Código, nombre, canal, política de liquidación y banderas se leen del snapshot durable de
 la CxC; sólo el icono se completa desde el registro histórico del método o con el fallback de UI.
+Los comprobantes adjuntos directamente a la cuenta se exponen en `proofs`; el contenido continúa
+protegido por el endpoint autenticado y no se incrusta en el JSON.
 Las CxC originadas en Agenda no asignan método y responden `paymentMethod: null`. `overdue` es una
 bandera derivada: vale `true` sólo para estados `pending|partial` cuando `dueDate` es anterior a la
 fecha actual en la zona horaria de la sucursal; el estado financiero no cambia. El resumen incluye
