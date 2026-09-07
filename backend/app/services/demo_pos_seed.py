@@ -106,6 +106,7 @@ class _SeedContext:
         self.customers = self._load_customers()
         self.catalog = self._load_catalog()
         self.registers: dict[str, CashRegister] = {}
+        self.preserved_register_ids: set[UUID] = set()
         self.quotes: dict[str, SalesQuote] = {}
         self.cash_movement_count = 0
         self.inventory_movement_count = 0
@@ -247,6 +248,12 @@ def _seed_registers(context: _SeedContext) -> None:
             if registry is not None
             else adopted
         )
+        preserve_closed_register = (
+            registry is not None
+            and register is not None
+            and fixture.status == "open"
+            and register.status == "closed"
+        )
         interim_expected = money(fixture.opening_cash) if fixture.status == "closed" else None
         interim_difference = (
             money(fixture.closing_difference or Decimal("0"))
@@ -292,6 +299,11 @@ def _seed_registers(context: _SeedContext) -> None:
             register = CashRegister(id=entity_id, **values)
             context.session.add(register)
             context.session.flush()
+        elif preserve_closed_register:
+            # A demo register is an operational session after the initial seed. Once a
+            # user closes it, later deploys must not reopen it: another live register
+            # may already hold the branch's unique open-session slot.
+            context.preserved_register_ids.add(register.id)
         else:
             _assign(register, values)
         if registry is None:
@@ -1217,6 +1229,8 @@ def _upsert_cash_movement(
 def _finalize_registers(context: _SeedContext) -> None:
     fixture_by_key = {fixture.seed_key: fixture for fixture in context.bundle.pos.registers}
     for seed_key, register in context.registers.items():
+        if register.id in context.preserved_register_ids:
+            continue
         fixture = fixture_by_key[seed_key]
         movements = context.session.scalars(
             select(CashMovement).where(
