@@ -14,7 +14,14 @@ describe('config facade tenant branch synchronization', () => {
       status: 'online',
       workspaceId: 'workspace-a',
       visibleBranches: [
-        { id: 'branch-a', legalEntityId: 'entity-a', code: 'A', name: 'Sucursal API A' },
+        {
+          id: 'branch-a',
+          legalEntityId: 'entity-a',
+          legalEntityName: 'Empresa Legal A, SRL',
+          legalEntityDisplayName: 'Empresa A',
+          code: 'A',
+          name: 'Sucursal API A',
+        },
       ],
     })
 
@@ -23,6 +30,8 @@ describe('config facade tenant branch synchronization', () => {
         id: 'branch-a',
         legalEntityId: 'entity-a',
         name: 'Sucursal API A',
+        legalName: 'Empresa Legal A, SRL',
+        legalDisplayName: 'Empresa A',
         active: true,
         source: 'api',
       }),

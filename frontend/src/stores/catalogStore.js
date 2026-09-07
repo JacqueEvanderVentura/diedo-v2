@@ -116,27 +116,37 @@ export const useCatalogStore = create(
         const { units, apiBranches } = context
         const categoryId = resolveCategoryId(form.category, syncedCategories)
         const unitOfMeasureId = defaultUnitId(units, form.unit || 'ud')
-        const branchIds = resolveApiBranchIds(form.branchId, configBranches, apiBranches)
+        const requestedBranchIds = form.type === 'service'
+          ? form.branchIds || []
+          : form.branchId
+        const branchIds = resolveApiBranchIds(requestedBranchIds, configBranches, apiBranches)
         const branchId = branchIds[0]
+        const requestedBranchCount = new Set(
+          Array.isArray(requestedBranchIds) ? requestedBranchIds : [requestedBranchIds].filter(Boolean)
+        ).size
 
         if (!categoryId) throw new Error('Selecciona una categoría sincronizada con la API.')
         if (!unitOfMeasureId) throw new Error('No hay unidades de medida en el catálogo API.')
         if (!branchIds.length) throw new Error('No hay sucursales API asignables.')
+        if (form.type === 'service' && branchIds.length !== requestedBranchCount) {
+          throw new Error('Una o más sucursales seleccionadas no están sincronizadas con la API.')
+        }
 
         const commonPayload = {
           name: form.name.trim(),
           sku: form.sku || null,
           categoryId,
           unitOfMeasureId,
-          branchId,
           status: 'active',
         }
+        const assignmentPayload = form.type === 'service' ? { branchIds } : { branchId }
 
         let apiProduct
         if (existing?.apiSynced && existing.version) {
           const updatePayload = {
             version: existing.version,
             ...commonPayload,
+            ...assignmentPayload,
             minimumStock: form.type === 'service' ? undefined : Number(form.minStock) || 0,
           }
           if (form.type === 'supply') {
@@ -155,18 +165,21 @@ export const useCatalogStore = create(
           if (form.type === 'supply') {
             apiProduct = await inventoryApi.createSupply({
               ...commonPayload,
+              ...assignmentPayload,
               unitCost: Number(form.cost) || 0,
               ...stockPayload,
             })
           } else if (form.type === 'service') {
             apiProduct = await inventoryApi.createService({
               ...commonPayload,
+              ...assignmentPayload,
               salePrice: Number(form.price) || 0,
               taxRate: Number(form.taxPct) || 0,
             })
           } else {
             apiProduct = await inventoryApi.createProduct({
               ...commonPayload,
+              ...assignmentPayload,
               salePrice: Number(form.price) || 0,
               unitCost: Number(form.cost) || 0,
               taxRate: Number(form.taxPct) || 0,

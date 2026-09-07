@@ -3,6 +3,7 @@ import {
   defaultUnitId,
   mergeApiProduct,
   projectProductToBranch,
+  resolveApiBranchIds,
   resolveCategoryId,
 } from '@/lib/catalogSync'
 
@@ -119,5 +120,24 @@ describe('sincronización del catálogo de inventario', () => {
       minStock: 8,
     })
     expect(projectProductToBranch(product, 'north')).toBeNull()
+  })
+
+  it('resuelve varias sucursales del formulario sin duplicarlas', () => {
+    const apiBranches = [
+      { id: 'api-main', name: 'Principal' },
+      { id: 'api-east', name: 'Este' },
+    ]
+    const configBranches = [
+      { id: 'local-main', name: 'Principal' },
+      { id: 'api-east', name: 'Este' },
+    ]
+
+    expect(
+      resolveApiBranchIds(
+        ['local-main', 'api-east', 'api-east'],
+        configBranches,
+        apiBranches
+      )
+    ).toEqual(['api-main', 'api-east'])
   })
 })

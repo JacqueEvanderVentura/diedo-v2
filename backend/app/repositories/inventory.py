@@ -509,6 +509,17 @@ class InventoryRepository:
             )
         )
 
+    def get_active_branch_ids(self, workspace_id: UUID, branch_ids: set[UUID]) -> set[UUID]:
+        return set(
+            self._session.scalars(
+                select(Branch.id).where(
+                    Branch.workspace_id == workspace_id,
+                    Branch.id.in_(branch_ids),
+                    Branch.status == "active",
+                )
+            )
+        )
+
     def create_item(
         self,
         *,
@@ -520,8 +531,8 @@ class InventoryRepository:
         sku: str | None,
         category_id: UUID,
         unit_of_measure_id: UUID,
-        branch_id: UUID,
-        warehouse: InventoryWarehouse,
+        branch_ids: set[UUID],
+        warehouse: InventoryWarehouse | None,
         sale_price: Decimal | None,
         unit_cost: Decimal | None,
         tax_rate: Decimal,
@@ -544,14 +555,15 @@ class InventoryRepository:
         )
         self._session.add(item)
         self._session.flush()
-        self._session.add(
-            ItemBranchAssignment(
-                workspace_id=workspace_id,
-                item_id=item.id,
-                branch_id=branch_id,
-                status="active",
+        for branch_id in sorted(branch_ids, key=str):
+            self._session.add(
+                ItemBranchAssignment(
+                    workspace_id=workspace_id,
+                    item_id=item.id,
+                    branch_id=branch_id,
+                    status="active",
+                )
             )
-        )
         profile = InventoryItemProfile(
             workspace_id=workspace_id,
             item_id=item.id,
@@ -564,9 +576,12 @@ class InventoryRepository:
         self._session.add(profile)
         self._session.flush()
         if item_type in _TRACKED_TYPES:
+            if len(branch_ids) != 1 or warehouse is None:
+                raise ValueError("Los ítems con stock requieren una sucursal y un almacén.")
+            stock_branch_id = next(iter(branch_ids))
             balance = InventoryStockBalance(
                 workspace_id=workspace_id,
-                branch_id=branch_id,
+                branch_id=stock_branch_id,
                 warehouse_id=warehouse.id,
                 item_id=item.id,
                 quantity=stock or Decimal("0"),
@@ -577,7 +592,7 @@ class InventoryRepository:
             if balance.quantity > 0:
                 movement = InventoryMovement(
                     workspace_id=workspace_id,
-                    branch_id=branch_id,
+                    branch_id=stock_branch_id,
                     warehouse_id=warehouse.id,
                     movement_type="opening",
                     employee_id=None,
@@ -614,8 +629,8 @@ class InventoryRepository:
             target_id=item.id,
             request_id=request_id,
             details={
-                "branchId": str(branch_id),
-                "warehouseId": str(warehouse.id),
+                "branchIds": [str(branch_id) for branch_id in sorted(branch_ids, key=str)],
+                "warehouseId": str(warehouse.id) if warehouse is not None else None,
                 "stock": str(stock) if stock is not None else None,
             },
         )
@@ -719,6 +734,7 @@ class InventoryRepository:
         profile: InventoryItemProfile,
         balance: InventoryStockBalance | None,
         changes: dict[str, object],
+        branch_ids: set[UUID] | None,
         actor_platform_user_id: UUID,
         request_id: str,
     ) -> None:
@@ -731,7 +747,31 @@ class InventoryRepository:
         if "minimum_stock" in changes and balance is not None:
             balance.minimum_quantity = cast(Decimal, changes["minimum_stock"])
             balance.version += 1
+        if branch_ids is not None:
+            assignments = tuple(
+                self._session.scalars(
+                    select(ItemBranchAssignment).where(
+                        ItemBranchAssignment.workspace_id == item.workspace_id,
+                        ItemBranchAssignment.item_id == item.id,
+                    )
+                )
+            )
+            assignments_by_branch = {assignment.branch_id: assignment for assignment in assignments}
+            for assignment in assignments:
+                assignment.status = "active" if assignment.branch_id in branch_ids else "inactive"
+            for branch_id in branch_ids - assignments_by_branch.keys():
+                self._session.add(
+                    ItemBranchAssignment(
+                        workspace_id=item.workspace_id,
+                        item_id=item.id,
+                        branch_id=branch_id,
+                        status="active",
+                    )
+                )
         item.version += 1
+        changed_fields = set(changes)
+        if branch_ids is not None:
+            changed_fields.add("branch_ids")
         self.add_audit(
             workspace_id=item.workspace_id,
             actor_platform_user_id=actor_platform_user_id,
@@ -739,7 +779,15 @@ class InventoryRepository:
             target_type="item",
             target_id=item.id,
             request_id=request_id,
-            details={"changedFields": sorted(changes), "version": item.version},
+            details={
+                "changedFields": sorted(changed_fields),
+                "branchIds": (
+                    [str(branch_id) for branch_id in sorted(branch_ids, key=str)]
+                    if branch_ids is not None
+                    else None
+                ),
+                "version": item.version,
+            },
         )
         self._session.flush()
 

@@ -5,7 +5,7 @@ let activeWorkspaceId = null
 let apiOwned = false
 
 function mapSessionBranch(branch, current) {
-  return {
+  const merged = {
     address: '',
     phone: '',
     email: '',
@@ -23,6 +23,11 @@ function mapSessionBranch(branch, current) {
     active: current?.active ?? true,
     status: current?.status || 'active',
     source: 'api',
+  }
+  return {
+    ...merged,
+    legalName: branch.legalEntityName || merged.legalName,
+    legalDisplayName: branch.legalEntityDisplayName || merged.legalDisplayName,
   }
 }
 

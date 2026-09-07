@@ -42,7 +42,7 @@ only for legacy rows without a cost. Asset value excludes assets whose status is
 - `GET /api/v1/inventory/items/{itemId}?branchId=` returns one item and its stock locations.
 - `POST /api/v1/inventory/products` creates a stock-tracked product.
 - `POST /api/v1/inventory/supplies` creates a stock-tracked supply.
-- `POST /api/v1/inventory/services` creates a service without stock.
+- `POST /api/v1/inventory/services` creates a service without stock and assigns it to one or more branches.
 - `PATCH /api/v1/inventory/items/{itemId}` updates commercial or stock-minimum data.
 
 The item list accepts `branchId`, `search`, `itemType=product|supply|service`, `categoryId`,
@@ -50,15 +50,22 @@ The item list accepts `branchId`, `search`, `itemType=product|supply|service`, `
 `sortDirection`. Services report `stockStatus=not_tracked` and null stock quantities.
 
 Common create fields are `name`, optional `description` and `sku`, `categoryId`,
-`unitOfMeasureId`, `branchId`, optional `warehouseId`, and `status`. Product fields add
+`unitOfMeasureId`, and `status`. Products and supplies require `branchId` and accept an optional
+`warehouseId`. Product fields add
 `salePrice`, `unitCost`, `taxRate`, `stock`, and `minimumStock`. Supplies require `unitCost` and
 accept `stock` and `minimumStock`; they have no sale price or tax. Services require `salePrice`,
-accept `taxRate`, and never create a stock balance.
+accept `taxRate`, require one to 100 unique `branchIds`, and never create a stock balance. A service
+is one workspace-scoped catalog item shared by its assigned branches; those branches may belong to
+different legal entities in that workspace. Sharing never crosses workspace boundaries.
 
 An initial quantity greater than zero creates an `opening` ledger movement. Item PATCH requires
 the current `version`. Changing `minimumStock` also requires `branchId`; `warehouseId` always
 requires `branchId`. Quantity cannot be changed by PATCH: use an adjustment so every change remains
 auditable.
+
+For services, item PATCH accepts `branchIds` and synchronizes the active assignments: newly selected
+branches are activated and removed branches are made inactive so existing operational history keeps
+its references. `branchIds` is rejected for stock-tracked products and supplies.
 
 ## Assets
 

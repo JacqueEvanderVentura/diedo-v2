@@ -11,6 +11,7 @@ from app.db.models import (
     AccessScope,
     AuthSession,
     Branch,
+    LegalEntity,
     PlatformUser,
     Role,
     RoleAssignment,
@@ -85,6 +86,8 @@ class AssignmentContextRecord:
 class BranchContextRecord:
     id: UUID
     legal_entity_id: UUID
+    legal_entity_name: str
+    legal_entity_display_name: str | None
     code: str
     name: str
 
@@ -365,9 +368,24 @@ class AuthRepository:
         legal_entity_ids: frozenset[UUID],
         branch_ids: frozenset[UUID],
     ) -> list[BranchContextRecord]:
-        statement = select(Branch.id, Branch.legal_entity_id, Branch.code, Branch.name).where(
-            Branch.workspace_id == workspace_id,
-            Branch.status != "archived",
+        statement = (
+            select(
+                Branch.id,
+                Branch.legal_entity_id,
+                LegalEntity.legal_name,
+                LegalEntity.display_name,
+                Branch.code,
+                Branch.name,
+            )
+            .join(
+                LegalEntity,
+                (LegalEntity.workspace_id == Branch.workspace_id)
+                & (LegalEntity.id == Branch.legal_entity_id),
+            )
+            .where(
+                Branch.workspace_id == workspace_id,
+                Branch.status != "archived",
+            )
         )
         if not workspace_wide:
             statement = statement.where(

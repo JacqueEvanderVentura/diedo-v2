@@ -88,14 +88,30 @@ export function mergeProductLists(apiProducts, localProducts, categoryIdToLocal)
   return [...merged, ...localOnly]
 }
 
-export function resolveApiBranchIds(localBranchId, configBranches, apiBranches) {
-  const local = configBranches.find((b) => b.id === localBranchId)
-  if (!local) return apiBranches[0]?.id ? [apiBranches[0].id] : []
-  const match = apiBranches.find(
-    (b) => b.name?.toLowerCase() === local.name?.toLowerCase() || b.id === local.id
-  )
-  if (match) return [match.id]
-  return apiBranches[0]?.id ? [apiBranches[0].id] : []
+export function resolveApiBranchIds(localBranchIds, configBranches, apiBranches) {
+  const requested = Array.isArray(localBranchIds)
+    ? localBranchIds
+    : localBranchIds
+      ? [localBranchIds]
+      : []
+  if (!requested.length) return []
+
+  const resolved = requested.flatMap((localBranchId) => {
+    const direct = apiBranches.find((branch) => branch.id === localBranchId)
+    if (direct) return [direct.id]
+
+    const local = configBranches.find((branch) => branch.id === localBranchId)
+    if (!local) return []
+    const match = apiBranches.find(
+      (branch) => branch.name?.toLowerCase() === local.name?.toLowerCase()
+    )
+    return match ? [match.id] : []
+  })
+  const unique = [...new Set(resolved)]
+  if (unique.length) return unique
+
+  // Compatibilidad con los ids de la data demo mientras termina la primera hidratación API.
+  return requested.length === 1 && apiBranches[0]?.id ? [apiBranches[0].id] : []
 }
 
 export function resolveCategoryId(localCategoryId, categories) {

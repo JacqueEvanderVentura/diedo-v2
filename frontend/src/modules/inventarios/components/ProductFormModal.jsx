@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import { ClipboardCheck } from 'lucide-react'
+import { Building2, Check, ClipboardCheck } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -31,7 +31,30 @@ const EMPTY = {
   category: 'otros',
   type: 'product',
   branchId: 'charm-dn',
+  branchIds: ['charm-dn'],
   unit: 'ud',
+}
+
+export function groupServiceBranches(branches) {
+  const groups = new Map()
+  branches.forEach((branch) => {
+    const key = branch.legalEntityId || branch.legalName || branch.legalDisplayName || 'workspace'
+    if (!groups.has(key)) {
+      const fallback = key === 'workspace' ? 'Empresa actual' : `Empresa ${groups.size + 1}`
+      groups.set(key, {
+        id: key,
+        label:
+          branch.legalDisplayName
+          || branch.legalName
+          || branch.legalEntity?.displayName
+          || branch.legalEntity?.legalName
+          || fallback,
+        branches: [],
+      })
+    }
+    groups.get(key).branches.push(branch)
+  })
+  return [...groups.values()]
 }
 
 export function ProductFormModal({ open, onClose, product, defaultType = 'product' }) {
@@ -53,13 +76,33 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
   const supplyCategoryId = resolveCategoryId('insumos', FORM_CATEGORIES)
   const stockChanged = editing && !isService && Number(form.stock) !== Number(stockBaseline)
   const requiresAdjustment = stockChanged && (!isOnline || product?.apiSynced)
+  const serviceBranchGroups = groupServiceBranches(BRANCHES)
 
   useEffect(() => {
     if (open) {
       setForm(
         product
-          ? { ...product, sku: product.sku || '', stock: product.stock ?? '', cost: product.cost ?? '', minStock: product.minStock ?? 0, unit: product.unit || 'ud' }
-          : { ...EMPTY, type: defaultType, taxPct: taxDefault ?? 18, category: defaultType === 'supply' ? 'insumos' : 'otros' }
+          ? {
+              ...product,
+              sku: product.sku || '',
+              stock: product.stock ?? '',
+              cost: product.cost ?? '',
+              minStock: product.minStock ?? 0,
+              unit: product.unit || 'ud',
+              branchIds: product.branchIds?.length
+                ? [...product.branchIds]
+                : product.branchId
+                  ? [product.branchId]
+                  : [],
+            }
+          : {
+              ...EMPTY,
+              type: defaultType,
+              taxPct: taxDefault ?? 18,
+              category: defaultType === 'supply' ? 'insumos' : 'otros',
+              branchId: BRANCHES[0]?.id || EMPTY.branchId,
+              branchIds: BRANCHES[0]?.id ? [BRANCHES[0].id] : [],
+            }
       )
       setStockBaseline(product?.stock ?? null)
       setAdjustmentReason('')
@@ -76,7 +119,22 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
       category: type === 'supply' ? 'insumos' : f.category === 'insumos' ? 'otros' : f.category,
       price: type === 'supply' ? '' : f.price,
       taxPct: type === 'supply' ? 0 : f.taxPct || taxDefault || 18,
+      branchId: f.branchId || f.branchIds?.[0] || BRANCHES[0]?.id || '',
+      branchIds: f.branchIds?.length
+        ? f.branchIds
+        : [f.branchId || BRANCHES[0]?.id].filter(Boolean),
     }))
+  }
+
+  const toggleServiceBranch = (branchId) => {
+    setForm((current) => {
+      const selected = current.branchIds || []
+      const branchIds = selected.includes(branchId)
+        ? selected.filter((id) => id !== branchId)
+        : [...selected, branchId]
+      return { ...current, branchIds, branchId: branchIds[0] || '' }
+    })
+    setErr('')
   }
 
   const submit = async () => {
@@ -84,6 +142,7 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
     if (!isSupply && (form.price === '' || Number(form.price) < 0)) return setErr('Ingresa un precio válido.')
     if (isSupply && (form.cost === '' || Number(form.cost) < 0)) return setErr('Ingresa el costo de adquisición.')
     if (!isService && (form.stock === '' || Number(form.stock) < 0)) return setErr('Ingresa el stock.')
+    if (isService && !form.branchIds?.length) return setErr('Selecciona al menos una sucursal para el servicio.')
     if (requiresAdjustment && adjustmentReason.trim().length < 2) {
       return setErr('Indica el motivo de la corrección de stock.')
     }
@@ -260,19 +319,61 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
         )}
 
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-slate-600">Sucursal</label>
-          <div className="flex flex-wrap gap-2">
-            {BRANCHES.map((b) => (
-              <button
-                key={b.id}
-                onClick={() => set('branchId', b.id)}
-                data-testid={`inventory-branch-${b.id}`}
-                className={cn('rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors', form.branchId === b.id ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-blue-200')}
-              >
-                {b.name}
-              </button>
-            ))}
-          </div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-600">
+            {isService ? 'Sucursales donde se ofrece' : 'Sucursal'}
+          </label>
+          {isService ? (
+            <div className="space-y-2.5 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+              <p className="text-xs leading-relaxed text-slate-500">
+                El servicio se crea una sola vez y queda disponible en todas las sucursales seleccionadas.
+              </p>
+              {serviceBranchGroups.map((group) => (
+                <div key={group.id}>
+                  <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+                    <Building2 className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+                    {group.label}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {group.branches.map((branch) => {
+                      const selected = form.branchIds?.includes(branch.id)
+                      return (
+                        <button
+                          type="button"
+                          key={branch.id}
+                          onClick={() => toggleServiceBranch(branch.id)}
+                          aria-pressed={selected}
+                          data-testid={`inventory-branch-${branch.id}`}
+                          className={cn(
+                            'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
+                            selected
+                              ? 'border-blue-600 bg-blue-50 text-blue-700'
+                              : 'border-slate-200 bg-white text-slate-500 hover:border-blue-200'
+                          )}
+                        >
+                          {selected && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
+                          {branch.name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {BRANCHES.map((branch) => (
+                <button
+                  type="button"
+                  key={branch.id}
+                  onClick={() => set('branchId', branch.id)}
+                  data-testid={`inventory-branch-${branch.id}`}
+                  className={cn('rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors', form.branchId === branch.id ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-blue-200')}
+                >
+                  {branch.name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {err && <p className="text-sm font-medium text-red-500" data-testid="inventory-form-error">{err}</p>}

@@ -43,6 +43,11 @@ const branch = {
   name: 'Secondary',
   code: 'SEC',
 }
+const secondBranch = {
+  id: '01a03144-dff3-70d8-aedc-70a77395c0a2',
+  name: 'Sucursal Este',
+  code: 'EST',
+}
 const unit = {
   id: '966962b2-3b91-4dcc-b188-e62e21e66ad4',
   code: 'unit',
@@ -140,6 +145,72 @@ describe('store de catálogo conectado al inventario', () => {
       stock: 20,
       price: 100,
       apiSynced: true,
+    })
+  })
+
+  it('crea un único servicio compartido entre varias sucursales', async () => {
+    const apiCategory = { ...category, api: true }
+    useCatalogStore.setState({
+      products: [],
+      apiContext: {
+        units: [unit],
+        apiBranches: [branch, secondBranch],
+        categories: [apiCategory],
+        hydrated: true,
+      },
+    })
+    mocks.createService.mockImplementation(async (payload) => ({
+      id: '4e10aecc-7885-4d0c-a308-f8a62e9ef999',
+      itemType: 'service',
+      category: { id: category.id, name: category.name },
+      unitOfMeasure: unit,
+      branches: [branch, secondBranch],
+      stockLocations: [],
+      stockQuantity: null,
+      minimumStock: null,
+      salePrice: String(payload.salePrice),
+      unitCost: null,
+      taxRate: String(payload.taxRate),
+      name: payload.name,
+      sku: payload.sku,
+      status: 'active',
+      version: 1,
+    }))
+
+    await useCatalogStore.getState().saveProduct(
+      {
+        name: 'Sesión láser',
+        sku: 'LASER-1',
+        type: 'service',
+        category: category.id,
+        branchId: branch.id,
+        branchIds: [branch.id, secondBranch.id],
+        unit: 'ud',
+        price: '900',
+        taxPct: '18',
+      },
+      null,
+      {
+        categories: [apiCategory],
+        configBranches: [branch, secondBranch],
+        isOnline: true,
+      }
+    )
+
+    expect(mocks.createService).toHaveBeenCalledWith({
+      name: 'Sesión láser',
+      sku: 'LASER-1',
+      categoryId: category.id,
+      unitOfMeasureId: unit.id,
+      branchIds: [branch.id, secondBranch.id],
+      status: 'active',
+      salePrice: 900,
+      taxRate: 18,
+    })
+    expect(useCatalogStore.getState().products[0]).toMatchObject({
+      type: 'service',
+      branchIds: [branch.id, secondBranch.id],
+      stock: null,
     })
   })
 })

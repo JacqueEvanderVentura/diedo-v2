@@ -121,8 +121,6 @@ class _CreateInventoryItemBase(ApiModel):
     sku: str | None = Field(default=None, max_length=64)
     category_id: UUID
     unit_of_measure_id: UUID
-    branch_id: UUID
-    warehouse_id: UUID | None = None
     status: CreateInventoryStatus = "active"
 
     @field_validator("name")
@@ -145,6 +143,8 @@ class _CreateInventoryItemBase(ApiModel):
 
 
 class CreateInventoryProductRequest(_CreateInventoryItemBase):
+    branch_id: UUID
+    warehouse_id: UUID | None = None
     sale_price: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
     unit_cost: Decimal = Field(default=Decimal("0"), ge=0, max_digits=14, decimal_places=2)
     tax_rate: Decimal = Field(default=Decimal("18"), ge=0, le=100, decimal_places=2)
@@ -153,14 +153,24 @@ class CreateInventoryProductRequest(_CreateInventoryItemBase):
 
 
 class CreateInventorySupplyRequest(_CreateInventoryItemBase):
+    branch_id: UUID
+    warehouse_id: UUID | None = None
     unit_cost: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
     stock: Decimal = Field(default=Decimal("0"), ge=0, max_digits=14, decimal_places=3)
     minimum_stock: Decimal = Field(default=Decimal("0"), ge=0, max_digits=14, decimal_places=3)
 
 
 class CreateInventoryServiceRequest(_CreateInventoryItemBase):
+    branch_ids: list[UUID] = Field(min_length=1, max_length=100)
     sale_price: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
     tax_rate: Decimal = Field(default=Decimal("18"), ge=0, le=100, decimal_places=2)
+
+    @field_validator("branch_ids")
+    @classmethod
+    def unique_branch_ids(cls, value: list[UUID]) -> list[UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("No repitas sucursales.")
+        return value
 
 
 class UpdateInventoryItemRequest(ApiModel):
@@ -174,6 +184,7 @@ class UpdateInventoryItemRequest(ApiModel):
     unit_cost: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
     tax_rate: Decimal | None = Field(default=None, ge=0, le=100, decimal_places=2)
     branch_id: UUID | None = None
+    branch_ids: list[UUID] | None = Field(default=None, min_length=1, max_length=100)
     warehouse_id: UUID | None = None
     minimum_stock: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=3)
     status: InventoryItemStatus | None = None
@@ -193,6 +204,13 @@ class UpdateInventoryItemRequest(ApiModel):
     def normalize_sku(cls, value: str | None) -> str | None:
         return _normalize_code(value)
 
+    @field_validator("branch_ids")
+    @classmethod
+    def unique_branch_ids(cls, value: list[UUID] | None) -> list[UUID] | None:
+        if value is not None and len(value) != len(set(value)):
+            raise ValueError("No repitas sucursales.")
+        return value
+
     @model_validator(mode="after")
     def validate_changes(self) -> Self:
         changed = self.model_fields_set - {"version"}
@@ -203,6 +221,7 @@ class UpdateInventoryItemRequest(ApiModel):
             "category_id",
             "unit_of_measure_id",
             "tax_rate",
+            "branch_ids",
             "minimum_stock",
             "status",
         }

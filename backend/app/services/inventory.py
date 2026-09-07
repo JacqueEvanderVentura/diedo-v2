@@ -115,6 +115,16 @@ class InventoryService:
         values: dict[str, Any],
         idempotency_key: str,
     ) -> InventoryItemRecord:
+        if item_type == "service":
+            branch_ids = set(cast(list[UUID], values["branch_ids"]))
+            values = {
+                **values,
+                "branch_ids": sorted(branch_ids, key=str),
+            }
+            branch_id = None
+        else:
+            branch_id = cast(UUID, values["branch_id"])
+            branch_ids = {branch_id}
         fingerprint = self._fingerprint({"itemType": item_type, **values})
         existing = self._repository.item_by_creation_key(grant.workspace_id, idempotency_key)
         if existing is not None:
@@ -125,25 +135,27 @@ class InventoryService:
                 )
             return self.get_item(grant, existing[0])
 
-        branch_id = cast(UUID, values["branch_id"])
         warehouse_id = cast(UUID | None, values.get("warehouse_id"))
-        self._require_managed_branch(grant, branch_id)
+        self._require_managed_branches(grant, branch_ids)
         self._validate_item_references(
             workspace_id=grant.workspace_id,
             category_id=cast(UUID, values["category_id"]),
             unit_id=cast(UUID, values["unit_of_measure_id"]),
-            branch_id=branch_id,
+            branch_ids=branch_ids,
+            branch_parameter="branchIds" if item_type == "service" else "branchId",
         )
-        warehouse = self._repository.get_warehouse(
-            workspace_id=grant.workspace_id,
-            branch_id=branch_id,
-            warehouse_id=warehouse_id,
-        )
-        if warehouse is None:
-            raise ResourceNotFoundError(
-                "El almacén no existe, no está activo o no pertenece a la sucursal.",
-                "warehouseId",
+        warehouse = None
+        if branch_id is not None:
+            warehouse = self._repository.get_warehouse(
+                workspace_id=grant.workspace_id,
+                branch_id=branch_id,
+                warehouse_id=warehouse_id,
             )
+            if warehouse is None:
+                raise ResourceNotFoundError(
+                    "El almacén no existe, no está activo o no pertenece a la sucursal.",
+                    "warehouseId",
+                )
         sku = cast(str | None, values.get("sku"))
         if sku is not None and self._repository.item_sku_exists(grant.workspace_id, sku):
             raise ConflictError("Ya existe un ítem con este SKU.", "sku")
@@ -171,7 +183,7 @@ class InventoryService:
                 sku=sku,
                 category_id=cast(UUID, values["category_id"]),
                 unit_of_measure_id=cast(UUID, values["unit_of_measure_id"]),
-                branch_id=branch_id,
+                branch_ids=branch_ids,
                 warehouse=warehouse,
                 sale_price=sale_price,
                 unit_cost=unit_cost,
@@ -237,6 +249,23 @@ class InventoryService:
             raise ResourceNotFoundError(
                 "La unidad de medida no existe o no está activa.", "unitOfMeasureId"
             )
+        requested_branch_ids_value = changes.pop("branch_ids", None)
+        requested_branch_ids = (
+            set(cast(list[UUID], requested_branch_ids_value))
+            if requested_branch_ids_value is not None
+            else None
+        )
+        if requested_branch_ids is not None:
+            if item.item_type != "service":
+                raise InvalidOperationError(
+                    "branchIds solo puede usarse para asignar servicios.", "branchIds"
+                )
+            self._require_managed_branches(grant, requested_branch_ids)
+            self._validate_active_branches(
+                workspace_id=grant.workspace_id,
+                branch_ids=requested_branch_ids,
+                parameter="branchIds",
+            )
         self._validate_update_kind_fields(item.item_type, changes)
         profile = self._repository.ensure_profile(grant.workspace_id, item.id)
         balance = None
@@ -269,6 +298,7 @@ class InventoryService:
                 profile=profile,
                 balance=balance,
                 changes=changes,
+                branch_ids=requested_branch_ids,
                 actor_platform_user_id=principal.platform_user_id,
                 request_id=get_request_id(),
             )
@@ -694,7 +724,8 @@ class InventoryService:
         workspace_id: UUID,
         category_id: UUID,
         unit_id: UUID,
-        branch_id: UUID,
+        branch_ids: set[UUID],
+        branch_parameter: str,
     ) -> None:
         if self._repository.get_active_category(workspace_id, category_id) is None:
             raise ResourceNotFoundError("La categoría no existe o no está activa.", "categoryId")
@@ -702,8 +733,24 @@ class InventoryService:
             raise ResourceNotFoundError(
                 "La unidad de medida no existe o no está activa.", "unitOfMeasureId"
             )
-        if self._repository.get_active_branch(workspace_id, branch_id) is None:
-            raise ResourceNotFoundError("La sucursal no existe o no está activa.", "branchId")
+        self._validate_active_branches(
+            workspace_id=workspace_id,
+            branch_ids=branch_ids,
+            parameter=branch_parameter,
+        )
+
+    def _validate_active_branches(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_ids: set[UUID],
+        parameter: str,
+    ) -> None:
+        active_branch_ids = self._repository.get_active_branch_ids(workspace_id, branch_ids)
+        if active_branch_ids != branch_ids:
+            raise ResourceNotFoundError(
+                "Una o más sucursales no existen o no están activas.", parameter
+            )
 
     @staticmethod
     def _validate_item_kind_fields(

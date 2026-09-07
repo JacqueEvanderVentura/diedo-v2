@@ -163,6 +163,8 @@ def current_session(
             SessionBranchReference(
                 id=branch.id,
                 legal_entity_id=branch.legal_entity_id,
+                legal_entity_name=branch.legal_entity_name,
+                legal_entity_display_name=branch.legal_entity_display_name,
                 code=branch.code,
                 name=branch.name,
             )

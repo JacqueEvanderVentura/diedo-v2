@@ -55,6 +55,8 @@ class SessionRoleAssignment(ApiModel):
 class SessionBranchReference(ApiModel):
     id: UUID
     legal_entity_id: UUID
+    legal_entity_name: str
+    legal_entity_display_name: str | None
     code: str
     name: str
 

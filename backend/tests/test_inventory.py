@@ -9,6 +9,7 @@ from app.core.security import hash_password
 from app.db.session import get_session_factory, session_scope
 from app.schemas.inventory import (
     CreateAdjustmentMovementRequest,
+    CreateInventoryServiceRequest,
     CreateOutboundMovementRequest,
     UpdateInventoryItemRequest,
 )
@@ -81,6 +82,18 @@ def test_inventory_schemas_reject_ambiguous_or_unsafe_mutations() -> None:
     with pytest.raises(ValidationError, match="branchId"):
         UpdateInventoryItemRequest(version=1, minimumStock="2")
     with pytest.raises(ValidationError, match="No repitas"):
+        CreateInventoryServiceRequest(
+            name="Sesión láser",
+            categoryId=uuid7(),
+            unitOfMeasureId=uuid7(),
+            branchIds=[item_id, item_id],
+            salePrice="900",
+        )
+    with pytest.raises(ValidationError, match="No repitas"):
+        UpdateInventoryItemRequest(version=1, branchIds=[item_id, item_id])
+    with pytest.raises(ValidationError, match="no puede ser nulo"):
+        UpdateInventoryItemRequest(version=1, branchIds=None)
+    with pytest.raises(ValidationError, match="No repitas"):
         CreateOutboundMovementRequest(
             branchId=uuid7(),
             employeeId=uuid7(),
@@ -103,8 +116,33 @@ def test_inventory_schemas_reject_ambiguous_or_unsafe_mutations() -> None:
 @pytest.mark.integration
 def test_inventory_complete_http_contract_and_idempotent_ledger(client: TestClient) -> None:
     headers, session_context, _summary = _bootstrap_and_login(client)
-    branch_id = str(session_context["visibleBranches"][0]["id"])
+    visible_branch_ids = [str(branch["id"]) for branch in session_context["visibleBranches"]]
+    assert visible_branch_ids
+    branch_id = visible_branch_ids[0]
     suffix = uuid7().hex[-10:]
+    second_branch_response = client.post(
+        "/api/v1/branches",
+        headers=headers,
+        json={
+            "legalEntityAssignment": {
+                "type": "new",
+                "fiscalProfile": {
+                    "legalName": f"Empresa independiente {suffix}, SRL",
+                    "displayName": f"Empresa {suffix}",
+                    "taxIdentity": {
+                        "jurisdictionCode": "DO",
+                        "identifierType": "RNC",
+                        "identifierValue": f"{uuid7().int % 1_000_000_000:09d}",
+                    },
+                },
+            },
+            "code": f"INV{suffix}",
+            "name": f"Sucursal independiente {suffix}",
+            "timezone": "America/Santo_Domingo",
+        },
+    )
+    assert second_branch_response.status_code == 201, second_branch_response.text
+    second_branch_id = second_branch_response.json()["id"]
     category = _create_category(client, headers, suffix)
     unit_id = _unit_id(client, headers)
 
@@ -185,7 +223,7 @@ def test_inventory_complete_http_contract_and_idempotent_ledger(client: TestClie
             "sku": f"SRV-{suffix}",
             "categoryId": category["id"],
             "unitOfMeasureId": unit_id,
-            "branchId": branch_id,
+            "branchIds": [branch_id, second_branch_id],
             "salePrice": "900.00",
             "taxRate": "18.00",
         },
@@ -193,6 +231,25 @@ def test_inventory_complete_http_contract_and_idempotent_ledger(client: TestClie
     assert service_response.status_code == 201, service_response.text
     service = service_response.json()
     assert service["stockStatus"] == "not_tracked"
+    assert {branch["id"] for branch in service["branches"]} == {
+        branch_id,
+        second_branch_id,
+    }
+    repeated_service = client.post(
+        "/api/v1/inventory/services",
+        headers={**headers, "Idempotency-Key": f"inventory-service-{suffix}"},
+        json={
+            "name": f"Servicio {suffix}",
+            "sku": f"SRV-{suffix}",
+            "categoryId": category["id"],
+            "unitOfMeasureId": unit_id,
+            "branchIds": [second_branch_id, branch_id],
+            "salePrice": "900.00",
+            "taxRate": "18.00",
+        },
+    )
+    assert repeated_service.status_code == 201, repeated_service.text
+    assert repeated_service.json()["id"] == service["id"]
 
     inventory_list = client.get(
         "/api/v1/inventory/items",
@@ -205,6 +262,39 @@ def test_inventory_complete_http_contract_and_idempotent_ledger(client: TestClie
         "service",
         "supply",
     }
+
+    second_branch_services = client.get(
+        "/api/v1/inventory/items",
+        headers=headers,
+        params={
+            "branchId": second_branch_id,
+            "search": f"Servicio {suffix}",
+            "itemType": "service",
+        },
+    )
+    assert second_branch_services.status_code == 200, second_branch_services.text
+    assert [item["id"] for item in second_branch_services.json()["items"]] == [service["id"]]
+
+    service_assignment_update = client.patch(
+        f"/api/v1/inventory/items/{service['id']}",
+        headers=headers,
+        json={"version": service["version"], "branchIds": [second_branch_id]},
+    )
+    assert service_assignment_update.status_code == 200, service_assignment_update.text
+    service = service_assignment_update.json()
+    assert [branch["id"] for branch in service["branches"]] == [second_branch_id]
+    hidden_in_removed_branch = client.get(
+        f"/api/v1/inventory/items/{service['id']}",
+        headers=headers,
+        params={"branchId": branch_id},
+    )
+    assert hidden_in_removed_branch.status_code == 404
+    visible_in_selected_branch = client.get(
+        f"/api/v1/inventory/items/{service['id']}",
+        headers=headers,
+        params={"branchId": second_branch_id},
+    )
+    assert visible_in_selected_branch.status_code == 200
 
     updated_product_response = client.patch(
         f"/api/v1/inventory/items/{product['id']}",
@@ -244,6 +334,14 @@ def test_inventory_complete_http_contract_and_idempotent_ledger(client: TestClie
         json={"version": service["version"], "unitCost": "10.00"},
     )
     assert invalid_service_update.status_code == 400
+
+    invalid_product_assignment = client.patch(
+        f"/api/v1/inventory/items/{product['id']}",
+        headers=headers,
+        json={"version": updated_product["version"], "branchIds": [second_branch_id]},
+    )
+    assert invalid_product_assignment.status_code == 400
+    assert invalid_product_assignment.json()["parameter"] == "branchIds"
 
     duplicate_sku = client.patch(
         f"/api/v1/inventory/items/{supply['id']}",
