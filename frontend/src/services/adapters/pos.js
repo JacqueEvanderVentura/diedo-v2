@@ -178,12 +178,19 @@ function mapProof(proof) {
   if (typeof proof === 'string') {
     return { id: null, name: proof.split('/').pop() || 'Comprobante', downloadUrl: proof }
   }
+  const id = proof.id || proof.attachmentId || null
   return {
-    id: proof.id || proof.attachmentId || null,
-    name: proof.name || proof.originalFilename || proof.filename || 'Comprobante',
-    contentType: proof.contentType || proof.mimeType || null,
+    id,
+    name: proof.name || proof.originalFilename || proof.filename || proof.original_filename || 'Comprobante',
+    contentType: proof.contentType || proof.mimeType || proof.content_type || null,
     sizeBytes: numberValue(first(proof.sizeBytes, proof.size), null),
-    downloadUrl: proof.downloadUrl || proof.contentUrl || proof.previewUrl || null,
+    downloadUrl:
+      proof.downloadUrl
+      || proof.contentUrl
+      || proof.previewUrl
+      || proof.content_url
+      || (id ? `/api/v1/pos/proofs/${id}/content` : null),
+    paymentId: proof.paymentId || proof.customerPaymentId || null,
   }
 }
 

@@ -50,6 +50,7 @@ async function postWithLegacyFallback(primaryPath, fallbackPath, payload, option
 function proofUrl(proofOrUrl) {
   if (typeof proofOrUrl === 'string' && proofOrUrl.startsWith('/')) return proofOrUrl
   if (proofOrUrl?.downloadUrl) return proofOrUrl.downloadUrl
+  if (proofOrUrl?.id) return `${POS_BASE}/proofs/${proofOrUrl.id}/content`
   const paymentId = typeof proofOrUrl === 'string' ? proofOrUrl : proofOrUrl?.paymentId
   if (!paymentId) throw new Error('El comprobante no tiene una URL de descarga válida.')
   return `${POS_BASE}/payments/${paymentId}/proof`

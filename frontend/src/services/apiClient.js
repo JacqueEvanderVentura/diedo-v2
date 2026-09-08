@@ -88,7 +88,10 @@ async function request(path, {
   retry = true,
   responseType = 'json',
 } = {}) {
-  const headers = { Accept: 'application/json', ...extraHeaders }
+  const headers = {
+    Accept: responseType === 'blob' ? '*/*' : 'application/json',
+    ...extraHeaders,
+  }
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
   if (body !== undefined && !isFormData) headers['Content-Type'] = 'application/json'
 

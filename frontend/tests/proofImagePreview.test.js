@@ -110,8 +110,9 @@ describe('ProofImagePreview', () => {
       })
     )
 
-    await waitFor(() => expect(screen.getByText(/Comprobante adjunto:/)).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(/Archivo adjunto \(sin vista previa\):/)).toBeTruthy())
     expect(screen.queryByTestId('proof-image-preview')).toBeNull()
+    expect(screen.getByTestId('proof-preview-file')).toBeTruthy()
 
     fireEvent.click(screen.getByTitle('Descargar comprobante'))
     await waitFor(() => expect(onDownload).toHaveBeenCalled())
@@ -129,8 +130,9 @@ describe('ProofImagePreview', () => {
       })
     )
 
-    await waitFor(() => expect(screen.getByText('red caída')).toBeTruthy())
-    fireEvent.click(screen.getByTitle('Descargar comprobante'))
+    await waitFor(() => expect(screen.getByTestId('proof-preview-error')).toBeTruthy())
+    expect(screen.getByText('red caída')).toBeTruthy()
+    fireEvent.click(screen.getByText(/Descargar/))
     await waitFor(() => expect(onDownload).toHaveBeenCalled())
   })
 })

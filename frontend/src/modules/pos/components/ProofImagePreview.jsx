@@ -119,6 +119,13 @@ export function ProofImagePreview({ proof, loadProof, onDownload, className }) {
   const [error, setError] = useState('')
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [busy, setBusy] = useState(null)
+  const proofKey = [
+    proof?.id,
+    proof?.downloadUrl,
+    proof?.name,
+    proof?.contentType,
+    proof instanceof Blob ? proof.size : null,
+  ].join('|')
 
   useEffect(() => {
     let cancelled = false
@@ -132,7 +139,9 @@ export function ProofImagePreview({ proof, loadProof, onDownload, className }) {
       try {
         const nextBlob = proof instanceof Blob ? proof : await loadProof(proof)
         if (cancelled) return
-        if (!isImageProof(proof, nextBlob)) {
+        // POS proofs are almost always images; prefer preview even if MIME is missing/octet-stream.
+        const canPreview = isImageProof(proof, nextBlob) || IMAGE_EXT.test(proof?.name || '')
+        if (!canPreview) {
           setBlob(nextBlob)
           setLoading(false)
           return
@@ -152,7 +161,9 @@ export function ProofImagePreview({ proof, loadProof, onDownload, className }) {
       cancelled = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [proof, loadProof])
+    // proofKey captures the stable identity of the proof payload.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proofKey, loadProof])
 
   const handleCopy = async () => {
     if (!blob) return
@@ -179,43 +190,41 @@ export function ProofImagePreview({ proof, loadProof, onDownload, className }) {
   if (loading) {
     return (
       <div
-        className={cn('flex h-40 items-center justify-center rounded-xl border border-slate-100 bg-slate-50 text-sm text-slate-400', className)}
+        className={cn('flex h-48 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-400', className)}
         data-testid="proof-preview-loading"
       >
-        Cargando comprobante…
+        Cargando vista previa del comprobante…
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className={cn('flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900', className)}>
-        <Paperclip className="h-4 w-4 shrink-0" />
-        <span className="min-w-0 flex-1">{error}</span>
-        <button
-          type="button"
-          onClick={handleDownload}
-          className="shrink-0 rounded-lg p-2 hover:bg-amber-100"
-          title="Descargar comprobante"
-        >
-          <Download className="h-4 w-4" />
-        </button>
+      <div className={cn('space-y-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900', className)} data-testid="proof-preview-error">
+        <p className="font-medium">No se pudo mostrar la vista previa</p>
+        <p className="text-amber-800/80">{error}</p>
+        <div className="flex flex-wrap gap-2 pt-1">
+          <Button type="button" variant="secondary" size="sm" onClick={handleDownload}>
+            <Download className="h-3.5 w-3.5" />
+            Descargar {proof?.name || 'comprobante'}
+          </Button>
+        </div>
       </div>
     )
   }
 
   if (!previewUrl) {
     return (
-      <div className={cn('flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800', className)}>
+      <div className={cn('flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-700', className)} data-testid="proof-preview-file">
         <Paperclip className="h-4 w-4 shrink-0" />
         <span className="min-w-0 flex-1 truncate">
-          Comprobante adjunto: <span className="font-semibold">{proof?.name || 'archivo'}</span>
+          Archivo adjunto (sin vista previa): <span className="font-semibold">{proof?.name || 'archivo'}</span>
         </span>
         <button
           type="button"
           onClick={handleDownload}
           disabled={Boolean(busy)}
-          className="shrink-0 rounded-lg p-2 hover:bg-emerald-100 disabled:opacity-50"
+          className="shrink-0 rounded-lg p-2 hover:bg-slate-200 disabled:opacity-50"
           title="Descargar comprobante"
         >
           <Download className="h-4 w-4" />
@@ -226,7 +235,7 @@ export function ProofImagePreview({ proof, loadProof, onDownload, className }) {
 
   return (
     <div className={cn('space-y-3', className)} data-testid="proof-image-preview">
-      <div className="relative overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
+      <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
         <button
           type="button"
           onClick={() => setLightboxOpen(true)}
@@ -237,7 +246,11 @@ export function ProofImagePreview({ proof, loadProof, onDownload, className }) {
           <img
             src={previewUrl}
             alt={proof?.name || 'Comprobante adjunto'}
-            className="mx-auto max-h-64 w-full object-contain p-3 transition-opacity group-hover:opacity-95"
+            className="mx-auto max-h-72 min-h-40 w-full object-contain p-3 transition-opacity group-hover:opacity-95"
+            onError={() => {
+              setPreviewUrl(null)
+              setError('El archivo no se pudo renderizar como imagen.')
+            }}
           />
         </button>
         <button
