@@ -35,6 +35,7 @@ import { ReceivableEditModal } from '../components/ReceivableEditModal'
 import { ReceivablePaymentModal } from '../components/ReceivablePaymentModal'
 import { ReceivableProofModal } from '../components/ReceivableProofModal'
 import { ReceivableCollectMenu } from '../components/ReceivableCollectMenu'
+import { ProofImagePreview } from '../components/ProofImagePreview'
 import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
 import {
   ResponsiveList,
@@ -731,20 +732,11 @@ export default function CxcPage() {
             </dl>
 
             {detail.proof && (
-              <div className="flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                <Paperclip className="h-4 w-4 shrink-0" />
-                <span className="min-w-0 flex-1">
-                  Comprobante adjunto: <span className="font-semibold">{detail.proof.name}</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleDownloadProof(detail.proof)}
-                  className="shrink-0 rounded-lg p-2 hover:bg-emerald-100"
-                  title="Descargar comprobante"
-                >
-                  <Download className="h-4 w-4" />
-                </button>
-              </div>
+              <ProofImagePreview
+                proof={detail.proof}
+                loadProof={downloadPaymentProof}
+                onDownload={handleDownloadProof}
+              />
             )}
 
             {detail.notes && (
