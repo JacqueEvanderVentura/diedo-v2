@@ -44,7 +44,7 @@ def _token_response(pair: TokenPair, response: Response) -> TokenResponse:
         max_age=pair.refresh_expires_in,
         httponly=True,
         secure=settings.secure_cookies,
-        samesite="lax",
+        samesite=settings.refresh_cookie_samesite,
         # Keep the credential on authentication routes only. Development
         # proxies rewrite this path to their public prefix in Set-Cookie.
         path=settings.refresh_cookie_path,
@@ -53,6 +53,16 @@ def _token_response(pair: TokenPair, response: Response) -> TokenResponse:
         access_token=pair.access_token,
         expires_in=pair.expires_in,
         refresh_expires_in=pair.refresh_expires_in,
+    )
+
+
+def _delete_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=settings.refresh_cookie_name,
+        path=settings.refresh_cookie_path,
+        secure=settings.secure_cookies,
+        httponly=True,
+        samesite=settings.refresh_cookie_samesite,
     )
 
 
@@ -101,10 +111,7 @@ def refresh(
 def logout(principal: CurrentPrincipal, database: DatabaseSession) -> Response:
     AuthService(database).logout(principal)
     response = Response(status_code=status.HTTP_204_NO_CONTENT)
-    response.delete_cookie(
-        key=settings.refresh_cookie_name,
-        path=settings.refresh_cookie_path,
-    )
+    _delete_refresh_cookie(response)
     return response
 
 

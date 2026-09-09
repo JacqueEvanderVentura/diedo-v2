@@ -105,6 +105,11 @@ class Settings(BaseSettings):
         return self.app_env in {"staging", "production"}
 
     @property
+    def refresh_cookie_samesite(self) -> Literal["lax", "none"]:
+        """Allow the refresh cookie to cross origins only in HTTPS deployments."""
+        return "none" if self.secure_cookies else "lax"
+
+    @property
     def expose_demo_invitation_tokens(self) -> bool:
         """Expose one-use invitation tokens only in an explicit local demo/test mode."""
         return self.demo_seed_enabled and self.app_env in {"development", "test"}

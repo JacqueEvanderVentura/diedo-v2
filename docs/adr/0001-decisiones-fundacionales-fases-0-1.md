@@ -18,9 +18,10 @@ propiedad de futuros aggregates.
 2. El login selecciona la única membership activa o la marcada como primaria. El cambio posterior
    usa `POST /api/v1/auth/switch-workspace`, rota/revoca la sesión anterior y el frontend limpia los
    cachés de gateways antes de hidratar el nuevo workspace.
-3. El refresh token es opaco, rotatorio y se entrega solo en cookie `HttpOnly`, `SameSite=Lax`, con
-   path de auth. `Secure` es obligatorio en staging/producción. JavaScript conserva el access token
-   únicamente en memoria.
+3. El refresh token es opaco, rotatorio y se entrega solo en cookie `HttpOnly` con path de auth.
+   Usa `SameSite=Lax` en desarrollo/test y `SameSite=None; Secure` en staging/producción para
+   admitir el frontend y la API desplegados en orígenes Railway separados. JavaScript conserva el
+   access token únicamente en memoria.
 4. No se activa RLS en este corte. El aislamiento se impone mediante scope obligatorio en
    repositorios, IDs de workspace, FKs compuestas, autorización efectiva y pruebas de aislamiento.
    RLS puede añadirse como defensa adicional sin sustituir estas reglas.
