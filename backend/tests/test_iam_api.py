@@ -30,7 +30,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 _OWNER_EMAIL = "owner@erp.dev"
-_OWNER_PASSWORD = "local-test-password-not-a-secret"
+_OWNER_PASSWORD = "Local-test!password-not-a-secret"
 
 
 def _bootstrap_owner() -> tuple[UUID, UUID]:

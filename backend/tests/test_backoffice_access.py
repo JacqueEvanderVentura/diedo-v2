@@ -14,7 +14,7 @@ from pydantic import SecretStr
 from sqlalchemy import select
 
 _BACKOFFICE_KEY = "test-backoffice-key-with-at-least-32-characters"
-_OPERATOR_PASSWORD = "local-test-password-not-a-secret"
+_OPERATOR_PASSWORD = "Local-test!password-not-a-secret"
 _OWNER_EMAIL = "owner@erp.dev"
 
 
