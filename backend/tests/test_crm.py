@@ -1025,11 +1025,12 @@ def test_crm_quote_accepted_does_not_auto_invoice_and_crm_invoice_works_without_
     cash_method = next(
         method for method in pos_state.json()["paymentMethods"] if method["channel"] == "cash"
     )
+    methods = pos_state.json()["paymentMethods"]
     receivable_method = next(
-        method
-        for method in pos_state.json()["paymentMethods"]
-        if method["settlementPolicy"] == "receivable"
+        (method for method in methods if method.get("settlementPolicy") == "receivable"),
+        None,
     )
+    assert receivable_method is not None, methods
 
     paid_invoice = client.post(
         f"/api/v1/crm/quotes/{quote_id}/invoice",
