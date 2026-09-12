@@ -26,14 +26,15 @@ _OLD_CHECK = (
 
 
 def _replace_acquisition_check(table: str, expression: str) -> None:
-    op.execute(
-        f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS ck_{table}_acquisition_source_values"
-    )
-    op.execute(f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS acquisition_source_values")
-    op.create_check_constraint(
+    for name in (
         f"ck_{table}_acquisition_source_values",
-        table,
-        expression,
+        f"ck_{table}_ck_{table}_acquisition_source_values",
+        "acquisition_source_values",
+    ):
+        op.execute(f'ALTER TABLE {table} DROP CONSTRAINT IF EXISTS "{name}"')
+    op.execute(
+        f"ALTER TABLE {table} ADD CONSTRAINT ck_{table}_acquisition_source_values "
+        f"CHECK ({expression})"
     )
 
 
