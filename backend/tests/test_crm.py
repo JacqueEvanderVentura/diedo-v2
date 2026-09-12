@@ -1088,7 +1088,7 @@ def test_crm_quote_accepted_does_not_auto_invoice_and_crm_invoice_works_without_
         },
     )
     assert receivable_invoice.status_code == 201, receivable_invoice.text
-    assert receivable_invoice.json()["settlementPolicy"] == "receivable"
+    assert receivable_invoice.json()["paymentMethod"]["settlementPolicy"] == "receivable"
 
 
 def session_scalar_count(model: type[object]) -> int:

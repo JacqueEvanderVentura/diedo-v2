@@ -24,7 +24,7 @@ from app.db.models import (
 )
 from app.db.session import dispose_engine, session_scope
 from app.services.local_bootstrap import bootstrap_local_foundation
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 _OWNER_PASSWORD = "pos-migration-password-not-a-secret"
 
@@ -214,6 +214,11 @@ def test_0013_backfills_only_attributable_appointment_receivables() -> None:
         catalog_workspace_id = catalog_workspace.id
         custom_card_id = custom_card.id
         existing_entitlement_id = existing_entitlement.id
+
+    with session_scope() as session:
+        session.execute(
+            text("TRUNCATE TABLE appointment_events, appointments RESTART IDENTITY CASCADE")
+        )
 
     dispose_engine()
     migration_config = _migration_config()
