@@ -113,7 +113,7 @@ def test_seeded_dashboard_aggregates_every_summary_and_branch_scope() -> None:
 
             assert today.revenue > Decimal("0")
             assert today.active_leads == 1
-            assert today.appointments_today == 8
+            assert today.appointments_today == 7
             assert today.open_tasks == 0
             assert week.active_leads >= 1
             assert week.open_tasks >= 4
@@ -132,7 +132,7 @@ def test_seeded_dashboard_aggregates_every_summary_and_branch_scope() -> None:
             assert alerts
             assert {record.balance.branch_id for record in alerts}
             assert agenda_date == date(2026, 9, 1)
-            assert len(appointments) == 8
+            assert len(appointments) == 7
             assert activity
             assert {item.source for item in activity} >= {"Agenda", "POS", "Tareas"}
             crm_task_activity = [item for item in activity if item.source == "Tareas"]

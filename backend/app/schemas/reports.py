@@ -16,6 +16,7 @@ AppointmentStatus = Literal[
     "confirmed",
     "completed",
     "attended",
+    "fulfilled",
     "no_show",
     "cancelled",
     "delayed",

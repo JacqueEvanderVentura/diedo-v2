@@ -959,7 +959,7 @@ def test_crm_quote_accepted_does_not_auto_invoice_and_crm_invoice_works_without_
         json={
             "branchId": branch_id_text,
             "company": f"Factura CRM {suffix}",
-            "contactName": "Cliente Factura",
+            "name": "Cliente Factura",
             "phone": "8095551212",
             "source": "manual",
         },

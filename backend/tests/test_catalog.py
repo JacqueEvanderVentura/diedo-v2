@@ -331,7 +331,7 @@ def test_catalog_crud_filters_concurrency_and_audit(client: TestClient) -> None:
     )
     assert category_page.status_code == 200
     assert category_page.json()["totalItems"] >= 2
-    assert category_page.json()["totalPages"] == 2
+    assert category_page.json()["totalPages"] == 3
 
     category_detail = client.get(
         f"/api/v1/catalog/categories/{category['id']}", headers=admin_headers

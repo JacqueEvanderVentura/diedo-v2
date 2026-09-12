@@ -59,15 +59,13 @@ def downgrade() -> None:
         server_default=sa.text("''::character varying"),
     )
     op.drop_index("ix_item_categories_workspace_kind", table_name="item_categories")
-    op.drop_constraint(
-        "ck_item_categories_category_kind_values",
-        "item_categories",
-        type_="check",
+    op.execute(
+        'ALTER TABLE item_categories DROP CONSTRAINT IF EXISTS '
+        '"ck_item_categories_category_kind_values"'
     )
-    op.create_check_constraint(
-        "ck_item_categories_category_kind_values",
-        "item_categories",
-        _KIND_CHECK,
+    op.execute(
+        f"ALTER TABLE item_categories ADD CONSTRAINT ck_item_categories_category_kind_values "
+        f"CHECK ({_KIND_CHECK})"
     )
     for table in (
         "workspace_subscriptions",

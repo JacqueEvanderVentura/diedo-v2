@@ -22,7 +22,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 _OWNER_EMAIL = "owner@erp.dev"
-_OWNER_PASSWORD = "inventory-owner-password-not-a-secret"
+_OWNER_PASSWORD = "Inventory!owner-password-not-a-secret"
 
 
 def _bootstrap_and_login(
@@ -55,7 +55,9 @@ def _create_category(client: TestClient, headers: dict[str, str], suffix: str) -
 def _unit_id(client: TestClient, headers: dict[str, str]) -> str:
     response = client.get("/api/v1/catalog/units-of-measure", headers=headers)
     assert response.status_code == 200, response.text
-    return response.json()[0]["id"]
+    payload = response.json()
+    assert payload, "Expected seeded units of measure from local bootstrap"
+    return payload[0]["id"]
 
 
 def _create_employee(

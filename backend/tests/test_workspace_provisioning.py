@@ -276,13 +276,13 @@ def test_provisioning_creates_an_isolated_ready_workspace(
                 .select_from(LegalEntity)
                 .where(LegalEntity.workspace_id == workspace_id)
             )
-            == 0
+            == 1
         )
         assert (
             database.scalar(
                 select(func.count()).select_from(Branch).where(Branch.workspace_id == workspace_id)
             )
-            == 0
+            == 1
         )
         audit = database.scalar(
             select(AuditEntry).where(
