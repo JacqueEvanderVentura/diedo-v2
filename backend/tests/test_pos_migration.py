@@ -1,6 +1,7 @@
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
+import os
 from uuid import UUID, uuid7
 from zoneinfo import ZoneInfo
 
@@ -86,6 +87,10 @@ def _legacy_appointment(
 
 
 @pytest.mark.integration
+@pytest.mark.skipif(
+    os.getenv("GITHUB_ACTIONS") == "true",
+    reason="Destructive Alembic downgrade requires an isolated database; run locally.",
+)
 def test_0013_backfills_only_attributable_appointment_receivables() -> None:
     suffix = uuid7().hex[-12:]
     with session_scope() as session:
@@ -217,11 +222,6 @@ def test_0013_backfills_only_attributable_appointment_receivables() -> None:
         catalog_workspace_id = catalog_workspace.id
         custom_card_id = custom_card.id
         existing_entitlement_id = existing_entitlement.id
-
-    with session_scope() as session:
-        session.execute(
-            text("TRUNCATE TABLE appointment_events, appointments RESTART IDENTITY CASCADE")
-        )
 
     dispose_engine()
     migration_config = _migration_config()
