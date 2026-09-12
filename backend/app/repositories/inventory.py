@@ -960,23 +960,27 @@ class InventoryRepository:
             )
             .where(*predicates)
         )
-        total_items = self._session.scalar(
-            select(func.count()).select_from(
-                select(Asset.id)
-                .join(
-                    AssetCategory,
-                    (AssetCategory.workspace_id == Asset.workspace_id)
-                    & (AssetCategory.id == Asset.category_id),
+        total_items = (
+            self._session.scalar(
+                select(func.count()).select_from(
+                    select(Asset.id)
+                    .join(
+                        AssetCategory,
+                        (AssetCategory.workspace_id == Asset.workspace_id)
+                        & (AssetCategory.id == Asset.category_id),
+                    )
+                    .join(
+                        Branch,
+                        (Branch.workspace_id == Asset.workspace_id)
+                        & (Branch.id == Asset.branch_id),
+                    )
+                    .where(*predicates)
+                    .distinct()
+                    .subquery()
                 )
-                .join(
-                    Branch,
-                    (Branch.workspace_id == Asset.workspace_id) & (Branch.id == Asset.branch_id),
-                )
-                .where(*predicates)
-                .distinct()
-                .subquery()
             )
-        ) or 0
+            or 0
+        )
         order_fields: dict[str, Any] = {
             "name": func.lower(Asset.name),
             "code": Asset.code,
