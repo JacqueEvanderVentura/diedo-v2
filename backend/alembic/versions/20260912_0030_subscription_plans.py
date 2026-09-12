@@ -75,10 +75,10 @@ _SEED_PLANS = (
 def upgrade() -> None:
     op.create_table(
         "subscription_plans",
-        sa.Column("id", sa.Uuid(), nullable=False),
+        sa.Column("id", sa.Uuid(), server_default=sa.text("uuidv7()"), nullable=False),
         sa.Column("code", sa.String(length=48), nullable=False),
         sa.Column("name", sa.String(length=120), nullable=False),
-        sa.Column("description", sa.String(length=400), nullable=False, server_default=""),
+        sa.Column("description", sa.String(length=400), nullable=False),
         sa.Column("status", sa.String(length=16), nullable=False, server_default="active"),
         sa.Column("module_codes", JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
         sa.Column("sort_order", sa.Integer(), nullable=False, server_default="0"),
@@ -103,7 +103,7 @@ def upgrade() -> None:
 
     op.create_table(
         "workspace_subscriptions",
-        sa.Column("id", sa.Uuid(), nullable=False),
+        sa.Column("id", sa.Uuid(), server_default=sa.text("uuidv7()"), nullable=False),
         sa.Column("workspace_id", sa.Uuid(), nullable=False),
         sa.Column("plan_id", sa.Uuid(), nullable=False),
         sa.Column("status", sa.String(length=16), nullable=False, server_default="active"),
