@@ -1048,6 +1048,15 @@ def get_sale(
     return _sale_detail_response(PosService(database).get_sale(grant, sale_id))
 
 
+@router.get("/sales/{sale_id}/receivable", responses=_RESPONSES)
+def get_receivable_for_sale(
+    sale_id: UUID,
+    database: DatabaseSession,
+    grant: PosReceivablesReadGrant,
+) -> ReceivableDetailResponse:
+    return _receivable_detail_response(PosService(database).get_receivable_for_sale(grant, sale_id))
+
+
 @router.post("/sales/{sale_id}/void", responses=_RESPONSES)
 def void_sale(
     sale_id: UUID,

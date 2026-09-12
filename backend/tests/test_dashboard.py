@@ -20,6 +20,15 @@ _OWNER_PASSWORD = "dashboard-owner-password-not-a-secret"
 _FIXED_NOW = datetime(2026, 9, 1, 16, 0, tzinfo=UTC)
 
 
+def test_dashboard_custom_range_period_granularity() -> None:
+    assert DashboardService._period_for_custom_range(date(2026, 9, 1), date(2026, 9, 1)) == "today"
+    assert DashboardService._period_for_custom_range(date(2026, 9, 1), date(2026, 9, 5)) == "week"
+    assert DashboardService._period_for_custom_range(date(2026, 9, 1), date(2026, 9, 20)) == "month"
+    assert (
+        DashboardService._period_for_custom_range(date(2026, 7, 1), date(2026, 10, 1)) == "quarter"
+    )
+
+
 def test_dashboard_calendar_periods_are_not_rolling_windows() -> None:
     assert DashboardService._period_dates("today", date(2026, 9, 1)) == (
         date(2026, 9, 1),
@@ -136,7 +145,14 @@ def test_seeded_dashboard_aggregates_every_summary_and_branch_scope() -> None:
                     Branch.code == "HQ",
                 )
             )
+            north = session.scalar(
+                select(Branch).where(
+                    Branch.workspace_id == seeded.workspace_id,
+                    Branch.code == "NORTH",
+                )
+            )
             assert hq is not None
+            assert north is not None
             hq_today = service.summary(
                 grant,
                 period="today",
@@ -146,6 +162,16 @@ def test_seeded_dashboard_aggregates_every_summary_and_branch_scope() -> None:
             assert hq_today.appointments_today == 2
             assert hq_today.active_leads == 0
             assert hq_today.open_tasks == 0
+            multi_branch_today = service.summary(
+                grant,
+                period="today",
+                branch_ids=[hq.id, north.id],
+                now=_FIXED_NOW,
+            )
+            assert multi_branch_today.appointments_today > hq_today.appointments_today
+            assert multi_branch_today.appointments_today < today.appointments_today
+            assert multi_branch_today.revenue >= hq_today.revenue
+            assert multi_branch_today.revenue <= today.revenue
             hq_week = service.summary(
                 grant,
                 period="week",

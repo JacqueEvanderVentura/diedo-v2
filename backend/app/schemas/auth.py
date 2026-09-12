@@ -67,6 +67,11 @@ class EffectiveScopeResponse(ApiModel):
     branch_ids: list[UUID]
 
 
+class SessionElevationResponse(ApiModel):
+    granted_by_name: str
+    expires_at: datetime
+
+
 class CurrentSessionResponse(ApiModel):
     user_id: UUID
     membership_id: UUID
@@ -81,6 +86,14 @@ class CurrentSessionResponse(ApiModel):
     effective_permission_codes: list[str]
     workspace_permission_codes: list[str]
     enabled_modules: list[str]
+    is_platform_operator: bool = False
+    elevation: SessionElevationResponse | None = None
+
+
+class ElevateSessionRequest(ApiModel):
+    email: EmailStr
+    password: SecretStr = Field(min_length=1, max_length=128)
+    permission_code: str | None = Field(default=None, alias="permissionCode", max_length=120)
 
 
 class WorkspaceOptionResponse(ApiModel):

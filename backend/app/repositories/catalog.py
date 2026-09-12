@@ -25,6 +25,7 @@ class CategoryRecord:
     id: UUID
     name: str
     description: str | None
+    category_kind: str
     status: str
     version: int
     created_at: datetime
@@ -90,6 +91,7 @@ class CatalogRepository:
         workspace_id: UUID,
         search: str | None,
         status: str | None,
+        category_kind: str | None,
         page: int,
         page_size: int,
         sort_by: str,
@@ -98,6 +100,8 @@ class CatalogRepository:
         predicates: list[ColumnElement[bool]] = [ItemCategory.workspace_id == workspace_id]
         if search:
             predicates.append(ItemCategory.normalized_name.contains(search.casefold()))
+        if category_kind is not None:
+            predicates.append(ItemCategory.category_kind == category_kind)
         if status is not None:
             predicates.append(ItemCategory.status == status)
         else:
@@ -186,6 +190,7 @@ class CatalogRepository:
         name: str,
         normalized_name: str,
         description: str | None,
+        category_kind: str,
         status: str,
         request_id: str,
     ) -> CategoryRecord:
@@ -194,6 +199,7 @@ class CatalogRepository:
             name=name,
             normalized_name=normalized_name,
             description=description,
+            category_kind=category_kind,
             status=status,
         )
         self._session.add(category)
@@ -205,7 +211,7 @@ class CatalogRepository:
             target_type="item_category",
             target_id=category.id,
             request_id=request_id,
-            details={"status": status},
+            details={"status": status, "categoryKind": category_kind},
         )
         self._session.flush()
         return self._category_record(category)
@@ -223,6 +229,8 @@ class CatalogRepository:
             category.normalized_name = cast(str, changes["normalized_name"])
         if "description" in changes:
             category.description = cast(str | None, changes["description"])
+        if "category_kind" in changes:
+            category.category_kind = cast(str, changes["category_kind"])
         if "status" in changes:
             category.status = cast(str, changes["status"])
         category.version += 1
@@ -622,6 +630,7 @@ class CatalogRepository:
             id=category.id,
             name=category.name,
             description=category.description,
+            category_kind=category.category_kind,
             status=category.status,
             version=category.version,
             created_at=category.created_at,

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import json
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from hashlib import sha256
@@ -13,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.request_context import get_request_id
 from app.repositories.inventory import (
+    AssetAttachmentContentRecord,
     AssetPage,
     AssetRecord,
     AssetSummaryRecord,
@@ -22,6 +25,7 @@ from app.repositories.inventory import (
     InventorySummaryRecord,
     MovementPage,
     MovementRecord,
+    NewAssetImage,
     SupplyUsageRecord,
     WarehouseRecord,
 )
@@ -33,6 +37,19 @@ from app.services.errors import (
     InvalidOperationError,
     ResourceNotFoundError,
 )
+
+_IMAGE_SIGNATURES: dict[str, tuple[bytes, ...]] = {
+    "image/jpeg": (b"\xff\xd8\xff",),
+    "image/png": (b"\x89PNG\r\n\x1a\n",),
+    "image/gif": (b"GIF87a", b"GIF89a"),
+}
+
+
+@dataclass(frozen=True)
+class AssetImageInput:
+    filename: str
+    content_type: str
+    content: bytes
 
 
 class InventoryService:
@@ -817,6 +834,107 @@ class InventoryService:
     def _fingerprint(values: dict[str, Any]) -> str:
         encoded = json.dumps(values, sort_keys=True, default=str, separators=(",", ":"))
         return sha256(encoded.encode("utf-8")).hexdigest()
+
+    def add_asset_images(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        asset_id: UUID,
+        expected_version: int,
+        inputs: tuple[AssetImageInput, ...],
+        max_files: int,
+        max_bytes: int,
+    ) -> AssetRecord:
+        if not inputs:
+            raise InvalidOperationError("Adjunta al menos una imagen.", "files")
+        if len(inputs) > max_files:
+            raise InvalidOperationError(
+                f"Puedes adjuntar un máximo de {max_files} imágenes por solicitud.",
+                "files",
+            )
+        images = tuple(self._validate_asset_image(item, max_bytes) for item in inputs)
+        asset = self._locked_visible_asset(grant, asset_id)
+        self._require_version(asset.version, expected_version)
+        try:
+            self._repository.add_asset_attachments(
+                asset=asset,
+                images=images,
+                actor_membership_id=principal.membership_id,
+                actor_platform_user_id=principal.platform_user_id,
+                request_id=get_request_id(),
+            )
+            self._session.commit()
+            return self.get_asset(grant, asset.id)
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise ConflictError("No se pudieron guardar las imágenes.") from exc
+
+    def get_asset_attachment_content(
+        self,
+        *,
+        grant: PermissionGrant,
+        asset_id: UUID,
+        attachment_id: UUID,
+    ) -> AssetAttachmentContentRecord:
+        record = self._repository.get_asset_attachment_content(
+            workspace_id=grant.workspace_id,
+            asset_id=asset_id,
+            attachment_id=attachment_id,
+            visible_branch_ids=grant.allowed_branch_ids,
+        )
+        if record is None:
+            raise ResourceNotFoundError("La imagen adjunta no existe.", "attachmentId")
+        return record
+
+    def _locked_visible_asset(self, grant: PermissionGrant, asset_id: UUID) -> Any:
+        record = self._repository.get_asset(
+            workspace_id=grant.workspace_id,
+            asset_id=asset_id,
+            visible_branch_ids=grant.allowed_branch_ids,
+        )
+        if record is None:
+            raise ResourceNotFoundError("El activo no existe.", "assetId")
+        asset = self._repository.get_asset_for_update(grant.workspace_id, asset_id)
+        if asset is None:
+            raise ResourceNotFoundError("El activo no existe.", "assetId")
+        return asset
+
+    @staticmethod
+    def _validate_asset_image(item: AssetImageInput, max_bytes: int) -> NewAssetImage:
+        content_type = item.content_type.casefold().split(";", 1)[0].strip()
+        if content_type not in {*_IMAGE_SIGNATURES, "image/webp"}:
+            raise InvalidOperationError("Formato no permitido. Usa JPG, PNG, WEBP o GIF.", "files")
+        if not item.content:
+            raise InvalidOperationError("La imagen está vacía.", "files")
+        if len(item.content) > max_bytes:
+            raise InvalidOperationError(
+                f"Cada imagen debe pesar como máximo {max_bytes // (1024 * 1024)} MB.",
+                "files",
+            )
+        valid_signature = (
+            item.content.startswith(_IMAGE_SIGNATURES[content_type])
+            if content_type in _IMAGE_SIGNATURES
+            else item.content.startswith(b"RIFF")
+        )
+        if not valid_signature:
+            raise InvalidOperationError("El archivo no parece ser una imagen válida.", "files")
+        checksum = hashlib.sha256(item.content).hexdigest()
+        filename = item.filename.strip() or "imagen"
+        return NewAssetImage(
+            original_filename=filename[:255],
+            content_type=content_type,
+            content=item.content,
+            checksum_sha256=checksum,
+        )
+
+    @staticmethod
+    def _require_version(current: int, expected: int) -> None:
+        if current != expected:
+            raise ConflictError(
+                "El activo cambió mientras editabas. Recarga e intenta de nuevo.",
+                "version",
+            )
 
 
 def page_count(total_items: int, page_size: int) -> int:

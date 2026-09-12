@@ -1,9 +1,10 @@
 from datetime import date
 from decimal import Decimal
 from typing import Annotated, Any, cast
+from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Header, Query, Response, status
+from fastapi import APIRouter, File, Form, Header, Query, Response, UploadFile, status
 
 from app.api.deps import (
     CurrentPrincipal,
@@ -12,6 +13,7 @@ from app.api.deps import (
     InventoryMoveGrant,
     InventoryReadGrant,
 )
+from app.config import settings
 from app.db.models import AssetCategory
 from app.repositories.inventory import (
     AssetRecord,
@@ -22,6 +24,7 @@ from app.repositories.inventory import (
 )
 from app.schemas.common import ErrorResponse
 from app.schemas.inventory import (
+    AssetAttachmentResponse,
     AssetCategoryResponse,
     AssetResponse,
     AssetSortField,
@@ -59,7 +62,7 @@ from app.schemas.inventory import (
     UpdateAssetRequest,
     UpdateInventoryItemRequest,
 )
-from app.services.inventory import InventoryService, page_count
+from app.services.inventory import AssetImageInput, InventoryService, page_count
 
 router = APIRouter(prefix="/api/v1/inventory", tags=["inventory"])
 
@@ -158,6 +161,20 @@ def _asset_category_response(category: AssetCategory) -> AssetCategoryResponse:
 
 def _asset_response(record: AssetRecord) -> AssetResponse:
     asset = record.asset
+    attachments = [
+        AssetAttachmentResponse(
+            id=attachment.id,
+            original_filename=attachment.original_filename,
+            content_type=attachment.content_type,
+            size_bytes=attachment.size_bytes,
+            checksum_sha256=attachment.checksum_sha256,
+            preview_url=(
+                f"/api/v1/inventory/assets/{asset.id}/attachments/{attachment.id}/content"
+            ),
+            created_at=attachment.created_at,
+        )
+        for attachment in record.attachments
+    ]
     return AssetResponse(
         id=asset.id,
         name=asset.name,
@@ -169,6 +186,8 @@ def _asset_response(record: AssetRecord) -> AssetResponse:
         location=asset.location,
         purchase_date=asset.purchase_date,
         notes=asset.notes,
+        attachments=attachments,
+        images=[attachment.preview_url for attachment in attachments],
         version=asset.version,
         created_at=asset.created_at,
         updated_at=asset.updated_at,
@@ -508,6 +527,78 @@ def get_asset(
     grant: InventoryReadGrant,
 ) -> AssetResponse:
     return _asset_response(InventoryService(database).get_asset(grant, asset_id))
+
+
+@router.post(
+    "/assets/{asset_id}/attachments",
+    responses={
+        **_SECURITY_RESPONSES,
+        400: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
+)
+def add_asset_images(
+    asset_id: UUID,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: InventoryManageGrant,
+    version: Annotated[int, Form(ge=1)],
+    files: Annotated[list[UploadFile], File()],
+) -> AssetResponse:
+    inputs: list[AssetImageInput] = []
+    try:
+        for uploaded in files:
+            content = uploaded.file.read(settings.incident_image_max_bytes + 1)
+            inputs.append(
+                AssetImageInput(
+                    filename=uploaded.filename or "imagen",
+                    content_type=uploaded.content_type or "application/octet-stream",
+                    content=content,
+                )
+            )
+    finally:
+        for uploaded in files:
+            uploaded.file.close()
+    return _asset_response(
+        InventoryService(database).add_asset_images(
+            principal=principal,
+            grant=grant,
+            asset_id=asset_id,
+            expected_version=version,
+            inputs=tuple(inputs),
+            max_files=settings.incident_image_max_files,
+            max_bytes=settings.incident_image_max_bytes,
+        )
+    )
+
+
+@router.get(
+    "/assets/{asset_id}/attachments/{attachment_id}/content",
+    responses={**_SECURITY_RESPONSES, 404: {"model": ErrorResponse}},
+)
+def preview_asset_image(
+    asset_id: UUID,
+    attachment_id: UUID,
+    database: DatabaseSession,
+    grant: InventoryReadGrant,
+) -> Response:
+    image = InventoryService(database).get_asset_attachment_content(
+        grant=grant,
+        asset_id=asset_id,
+        attachment_id=attachment_id,
+    )
+    encoded_name = quote(image.original_filename, safe="")
+    return Response(
+        content=image.content,
+        media_type=image.content_type,
+        headers={
+            "Cache-Control": "private, max-age=300",
+            "Content-Disposition": f"inline; filename*=UTF-8''{encoded_name}",
+            "Content-Length": str(image.size_bytes),
+            "ETag": f'"{image.checksum_sha256}"',
+        },
+    )
 
 
 @router.patch(

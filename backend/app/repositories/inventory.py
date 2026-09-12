@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, cast
 from uuid import UUID
@@ -12,6 +13,7 @@ from sqlalchemy.orm import Session, aliased
 from app.db.models import (
     Appointment,
     Asset,
+    AssetAttachment,
     AssetCategory,
     AuditEntry,
     Branch,
@@ -81,10 +83,34 @@ class InventoryItemPage:
 
 
 @dataclass(frozen=True)
+class AssetAttachmentRecord:
+    id: UUID
+    original_filename: str
+    content_type: str
+    size_bytes: int
+    checksum_sha256: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class AssetAttachmentContentRecord(AssetAttachmentRecord):
+    content: bytes
+
+
+@dataclass(frozen=True)
+class NewAssetImage:
+    original_filename: str
+    content_type: str
+    content: bytes
+    checksum_sha256: str
+
+
+@dataclass(frozen=True)
 class AssetRecord:
     asset: Asset
     category: AssetCategory
     branch: BranchRecord
+    attachments: tuple[AssetAttachmentRecord, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -959,12 +985,15 @@ class InventoryRepository:
         rows = self._session.execute(
             base.order_by(order, Asset.id).offset((page - 1) * page_size).limit(page_size)
         )
+        asset_ids = [row[0].id for row in rows]
+        attachments_by_asset = self._attachments_by_asset_ids(workspace_id, asset_ids)
         return AssetPage(
             items=tuple(
                 AssetRecord(
                     asset=row[0],
                     category=row[1],
                     branch=BranchRecord(id=row[2], code=row[3], name=row[4]),
+                    attachments=attachments_by_asset.get(row[0].id, ()),
                 )
                 for row in rows
             ),
@@ -999,10 +1028,13 @@ class InventoryRepository:
         ).one_or_none()
         if row is None:
             return None
+        asset_id = row[0].id
+        attachments_by_asset = self._attachments_by_asset_ids(workspace_id, [asset_id])
         return AssetRecord(
             asset=row[0],
             category=row[1],
             branch=BranchRecord(id=row[2], code=row[3], name=row[4]),
+            attachments=attachments_by_asset.get(asset_id, ()),
         )
 
     def asset_by_creation_key(
@@ -1087,6 +1119,120 @@ class InventoryRepository:
             details={"changedFields": sorted(changes), "version": asset.version},
         )
         self._session.flush()
+
+    def _attachments_by_asset_ids(
+        self, workspace_id: UUID, asset_ids: list[UUID]
+    ) -> dict[UUID, tuple[AssetAttachmentRecord, ...]]:
+        if not asset_ids:
+            return {}
+        rows = self._session.execute(
+            select(
+                AssetAttachment.asset_id,
+                AssetAttachment.id,
+                AssetAttachment.original_filename,
+                AssetAttachment.content_type,
+                AssetAttachment.size_bytes,
+                AssetAttachment.checksum_sha256,
+                AssetAttachment.created_at,
+            )
+            .where(
+                AssetAttachment.workspace_id == workspace_id,
+                AssetAttachment.asset_id.in_(asset_ids),
+            )
+            .order_by(AssetAttachment.created_at.asc(), AssetAttachment.id.asc())
+        ).all()
+        grouped: defaultdict[UUID, list[AssetAttachmentRecord]] = defaultdict(list)
+        for row in rows:
+            grouped[row.asset_id].append(
+                AssetAttachmentRecord(
+                    id=row.id,
+                    original_filename=row.original_filename,
+                    content_type=row.content_type,
+                    size_bytes=row.size_bytes,
+                    checksum_sha256=row.checksum_sha256,
+                    created_at=row.created_at,
+                )
+            )
+        return {asset_id: tuple(records) for asset_id, records in grouped.items()}
+
+    def add_asset_attachments(
+        self,
+        *,
+        asset: Asset,
+        images: tuple[NewAssetImage, ...],
+        actor_membership_id: UUID,
+        actor_platform_user_id: UUID,
+        request_id: str,
+    ) -> None:
+        for image in images:
+            self._session.add(
+                AssetAttachment(
+                    workspace_id=asset.workspace_id,
+                    asset_id=asset.id,
+                    uploaded_by_membership_id=actor_membership_id,
+                    original_filename=image.original_filename,
+                    content_type=image.content_type,
+                    size_bytes=len(image.content),
+                    checksum_sha256=image.checksum_sha256,
+                    content=image.content,
+                )
+            )
+        asset.updated_by_platform_user_id = actor_platform_user_id
+        asset.version += 1
+        self.add_audit(
+            workspace_id=asset.workspace_id,
+            actor_platform_user_id=actor_platform_user_id,
+            action="inventory.asset.attachment.create",
+            target_type="asset",
+            target_id=asset.id,
+            request_id=request_id,
+            details={"count": len(images), "version": asset.version},
+        )
+        self._session.flush()
+
+    def get_asset_attachment_content(
+        self,
+        *,
+        workspace_id: UUID,
+        asset_id: UUID,
+        attachment_id: UUID,
+        visible_branch_ids: frozenset[UUID] | None,
+    ) -> AssetAttachmentContentRecord | None:
+        statement = (
+            select(
+                AssetAttachment.id,
+                AssetAttachment.original_filename,
+                AssetAttachment.content_type,
+                AssetAttachment.size_bytes,
+                AssetAttachment.checksum_sha256,
+                AssetAttachment.created_at,
+                AssetAttachment.content,
+            )
+            .join(
+                Asset,
+                (Asset.workspace_id == AssetAttachment.workspace_id)
+                & (Asset.id == AssetAttachment.asset_id),
+            )
+            .where(
+                AssetAttachment.workspace_id == workspace_id,
+                AssetAttachment.asset_id == asset_id,
+                AssetAttachment.id == attachment_id,
+            )
+        )
+        if visible_branch_ids is not None:
+            statement = statement.where(Asset.branch_id.in_(visible_branch_ids))
+        row = self._session.execute(statement).one_or_none()
+        if row is None:
+            return None
+        return AssetAttachmentContentRecord(
+            id=row.id,
+            original_filename=row.original_filename,
+            content_type=row.content_type,
+            size_bytes=row.size_bytes,
+            checksum_sha256=row.checksum_sha256,
+            created_at=row.created_at,
+            content=row.content,
+        )
 
     def movement_by_idempotency_key(
         self, workspace_id: UUID, idempotency_key: str
@@ -1473,7 +1619,7 @@ class InventoryRepository:
             Appointment.workspace_id == workspace_id,
             Appointment.employee_id.is_not(None),
             Appointment.record_status == "active",
-            Appointment.status.in_(("completed", "attended")),
+            Appointment.status == "fulfilled",
         ]
         if visible_branch_ids is not None:
             predicates.append(InventoryMovement.branch_id.in_(visible_branch_ids))

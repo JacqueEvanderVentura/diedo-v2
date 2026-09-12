@@ -17,6 +17,7 @@ from app.api.routers import (
     master_data,
     permissions,
     pos,
+    public_booking,
     purchasing,
     reports,
     users,
@@ -28,6 +29,7 @@ api_router.include_router(auth.router)
 api_router.include_router(backoffice.router)
 api_router.include_router(administration.router)
 api_router.include_router(agenda.router)
+api_router.include_router(public_booking.router)
 api_router.include_router(catalog.router)
 api_router.include_router(crm.router)
 api_router.include_router(dashboard.router)

@@ -12,6 +12,7 @@ from app.api.deps import (
 from app.repositories.catalog import CategoryRecord, ProductRecord, UnitOfMeasureRecord
 from app.schemas.catalog import (
     CatalogStatus,
+    CategoryKind,
     CategoryResponse,
     CategorySortField,
     CreateCategoryRequest,
@@ -43,6 +44,7 @@ def _category_response(category: CategoryRecord) -> CategoryResponse:
         id=category.id,
         name=category.name,
         description=category.description,
+        category_kind=category.category_kind,  # type: ignore[arg-type]
         status=category.status,  # type: ignore[arg-type]
         version=category.version,
         created_at=category.created_at,
@@ -92,6 +94,7 @@ def list_categories(
     grant: CatalogReadGrant,
     search: Annotated[str | None, Query(max_length=100)] = None,
     status_filter: Annotated[CatalogStatus | None, Query(alias="status")] = None,
+    category_kind: Annotated[CategoryKind | None, Query(alias="categoryKind")] = None,
     page: Annotated[int, Query(ge=1, le=1_000_000)] = 1,
     page_size: Annotated[int, Query(alias="pageSize", ge=1, le=100)] = 20,
     sort_by: Annotated[CategorySortField, Query(alias="sortBy")] = "name",
@@ -101,6 +104,7 @@ def list_categories(
         grant=grant,
         search=search,
         status=status_filter,
+        category_kind=category_kind,
         page=page,
         page_size=page_size,
         sort_by=sort_by,
@@ -132,6 +136,7 @@ def create_category(
         grant=grant,
         name=payload.name,
         description=payload.description,
+        category_kind=payload.category_kind,
         status=payload.status,
     )
     return _category_response(category)

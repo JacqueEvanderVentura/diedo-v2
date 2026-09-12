@@ -6,6 +6,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.repositories.auth import AuthRepository
 from app.repositories.authorization import AuthorizationRepository
 from app.services.errors import AuthorizationError
 from app.services.modules import ModuleAccessService
@@ -38,7 +39,35 @@ class AuthorizationService:
     def __init__(self, session: Session) -> None:
         self._session = session
         self._repository = AuthorizationRepository(session)
+        self._auth_repository = AuthRepository(session)
         self._module_access = ModuleAccessService(session)
+
+    def _membership_permission_codes(self, principal: AuthPrincipal) -> set[str]:
+        enabled_modules = self._module_access.enabled_modules(principal.workspace_id)
+        return {
+            record.permission_code
+            for record in self._repository.effective_permission_records(
+                workspace_id=principal.workspace_id,
+                membership_id=principal.membership_id,
+            )
+            if record.module_code in enabled_modules
+        }
+
+    def _active_elevation_codes(self, principal: AuthPrincipal) -> set[str]:
+        from datetime import UTC, datetime
+
+        elevation = self._auth_repository.get_active_elevation(
+            principal.session_id,
+            datetime.now(UTC),
+        )
+        if elevation is None:
+            return set()
+        enabled_modules = self._module_access.enabled_modules(principal.workspace_id)
+        return {
+            code
+            for code in elevation.granted_permission_codes
+            if self._module_access.module_for_permission(code) in enabled_modules
+        }
 
     def require_permission(
         self,
@@ -55,7 +84,16 @@ class AuthorizationService:
             permission_code=permission_code,
         )
         if not scopes:
-            raise AuthorizationError("No tienes permiso para realizar esta acción.")
+            elevated_codes = self._active_elevation_codes(principal)
+            if permission_code not in elevated_codes:
+                raise AuthorizationError("No tienes permiso para realizar esta acción.")
+            return PermissionGrant(
+                permission_code=permission_code,
+                workspace_id=principal.workspace_id,
+                membership_id=principal.membership_id,
+                allowed_legal_entity_ids=None,
+                allowed_branch_ids=None,
+            )
         if any(scope.scope_type == "workspace" for scope in scopes):
             allowed_legal_entity_ids: frozenset[UUID] | None = None
             allowed_branch_ids: frozenset[UUID] | None = None
@@ -142,15 +180,9 @@ class AuthorizationService:
         )
 
     def all_permission_codes(self, principal: AuthPrincipal) -> set[str]:
-        enabled_modules = self._module_access.enabled_modules(principal.workspace_id)
-        return {
-            record.permission_code
-            for record in self._repository.effective_permission_records(
-                workspace_id=principal.workspace_id,
-                membership_id=principal.membership_id,
-            )
-            if record.module_code in enabled_modules
-        }
+        return self._membership_permission_codes(principal) | self._active_elevation_codes(
+            principal
+        )
 
     def workspace_permission_codes(self, principal: AuthPrincipal) -> set[str]:
         """Return permissions effective specifically at workspace scope.

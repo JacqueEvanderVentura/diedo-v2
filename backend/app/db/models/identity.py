@@ -12,6 +12,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -30,6 +31,9 @@ class PlatformUser(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="active", server_default=text("'active'")
+    )
+    is_platform_operator: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
     )
 
 
@@ -275,4 +279,28 @@ class AuthSession(UuidPrimaryKeyMixin, TimestampMixin, Base):
     refresh_token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AuthSessionElevation(UuidPrimaryKeyMixin, TimestampMixin, Base):
+    """Short-lived permission union approved by a second user for the active session."""
+
+    __tablename__ = "auth_session_elevations"
+    __table_args__ = (
+        Index(
+            "ix_auth_session_elevations_session_active",
+            "session_id",
+            unique=True,
+            postgresql_where=text("revoked_at IS NULL"),
+        ),
+    )
+
+    session_id: Mapped[UUID] = mapped_column(
+        ForeignKey("auth_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    granted_by_membership_id: Mapped[UUID] = mapped_column(nullable=False)
+    granted_by_display_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    granted_permission_codes: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

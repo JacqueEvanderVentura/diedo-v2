@@ -47,7 +47,7 @@ from app.services.errors import (
     ResourceNotFoundError,
 )
 from app.services.master_data import normalize_email, normalize_name, normalize_phone
-from app.services.pos import PosService
+from app.services.pos import CheckoutResult, PosService
 
 
 @dataclass(frozen=True)
@@ -761,6 +761,8 @@ class CrmService:
             "normalized_phone": normalize_phone(
                 self._optional_text(cast(str | None, values.get("phone"))) or lead.phone
             ),
+            "acquisition_source": cast(str | None, values.get("acquisition_source"))
+            or lead.acquisition_source,
             "status": "active",
         }
         try:
@@ -934,6 +936,7 @@ class CrmService:
             crm_status=crm_status,
             page=page,
             page_size=page_size,
+            include_details=True,
         )
 
     def get_quote(
@@ -1110,6 +1113,73 @@ class CrmService:
             reason=reason,
         )
 
+    def invoice_quote(
+        self,
+        *,
+        principal: AuthPrincipal,
+        crm_grant: PermissionGrant,
+        sales_grant: PermissionGrant,
+        sell_grant: PermissionGrant,
+        quote_id: UUID,
+        expected_version: int,
+        payment_method_id: UUID,
+        collection_mode: str,
+        register_id: UUID | None,
+        payment_reference: str | None,
+        idempotency_key: str,
+    ) -> CheckoutResult:
+        quote_grant = self._intersect_grants(crm_grant, sales_grant)
+        record = PosService(self._session).get_quote(quote_grant, quote_id)
+        if record.quote.origin != "crm":
+            raise ResourceNotFoundError("La cotización CRM no existe.", "quoteId")
+        if record.quote.crm_status != "aceptada":
+            raise InvalidOperationError("Solo puedes facturar cotizaciones aceptadas.", "status")
+        if record.converted_sale_id is not None:
+            raise ConflictError("La cotización ya fue facturada.", "quoteId")
+        if record.quote.status != "open":
+            raise ConflictError("La cotización ya fue procesada.", "quoteId")
+        if not record.lines:
+            raise InvalidOperationError("La cotización debe incluir al menos un ítem.", "lines")
+        self._require_version(record.quote.version, expected_version)
+        method = PosService(self._session)._require_payment_method(
+            sell_grant.workspace_id, payment_method_id
+        )
+        effective_collection = "now" if method.settlement_policy == "immediate" else "receivable"
+        if collection_mode not in ("now", "receivable"):
+            raise InvalidOperationError("Modo de cobro inválido.", "collectionMode")
+        if collection_mode != effective_collection:
+            collection_mode = effective_collection
+        if record.quote.customer_id is None:
+            raise InvalidOperationError(
+                "La cotización debe tener un cliente antes de facturar.", "customerId"
+            )
+        lines = [
+            {
+                "item_id": line.item_id,
+                "quantity": line.quantity,
+                "unit_price": line.unit_price,
+            }
+            for line in record.lines
+        ]
+        checkout_values: dict[str, Any] = {
+            "branch_id": record.quote.branch_id,
+            "customer_id": record.quote.customer_id,
+            "payment_method_id": payment_method_id,
+            "quote_id": quote_id,
+            "quote_version": expected_version,
+            "reference": payment_reference,
+            "lines": lines,
+            "crm_relaxed_register": True,
+        }
+        if register_id is not None:
+            checkout_values["register_id"] = register_id
+        return PosService(self._session).checkout(
+            principal=principal,
+            grant=sell_grant,
+            values=checkout_values,
+            idempotency_key=idempotency_key,
+        )
+
     def overview(
         self,
         grant: PermissionGrant,
@@ -1175,6 +1245,7 @@ class CrmService:
             website=str(values["website"]) if values.get("website") else None,
             location=self._optional_text(cast(str | None, values.get("location"))),
             source=cast(str, values.get("source", "manual")),
+            acquisition_source=cast(str | None, values.get("acquisition_source")),
             source_url=str(values["source_url"]) if values.get("source_url") else None,
             scraped_at=cast(datetime | None, values.get("scraped_at")),
             raw_snippet=self._optional_text(cast(str | None, values.get("raw_snippet"))),

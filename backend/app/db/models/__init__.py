@@ -43,6 +43,7 @@ from app.db.models.hr import (
 from app.db.models.identity import (
     AccessScope,
     AuthSession,
+    AuthSessionElevation,
     Permission,
     PlatformUser,
     Role,
@@ -59,6 +60,7 @@ from app.db.models.incidents import (
 )
 from app.db.models.inventory import (
     Asset,
+    AssetAttachment,
     AssetCategory,
     InventoryItemProfile,
     InventoryMovement,
@@ -94,6 +96,7 @@ from app.db.models.sales import (
     SalesQuote,
     SalesQuoteLine,
 )
+from app.db.models.subscription import SubscriptionPlan, WorkspaceSubscription
 
 __all__ = [
     "AccessScope",
@@ -102,8 +105,10 @@ __all__ = [
     "AppointmentEvent",
     "AppointmentResource",
     "AuthSession",
+    "AuthSessionElevation",
     "AuditEntry",
     "Asset",
+    "AssetAttachment",
     "AssetCategory",
     "Branch",
     "CashMovement",
@@ -172,11 +177,13 @@ __all__ = [
     "SalesDocumentCounter",
     "SalesQuote",
     "SalesQuoteLine",
+    "SubscriptionPlan",
     "Supplier",
     "SupplierBranchAssignment",
     "Task",
     "Workspace",
     "WorkspaceMembership",
+    "WorkspaceSubscription",
     "UnitOfMeasure",
     "UserInvitation",
 ]

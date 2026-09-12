@@ -20,6 +20,12 @@ _MONTH_NAMES = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "
 
 
 @dataclass(frozen=True)
+class BranchScope:
+    branch_id: UUID | None
+    allowed_branch_ids: frozenset[UUID] | None
+
+
+@dataclass(frozen=True)
 class DashboardContext:
     period: DashboardPeriod
     branch_id: UUID | None
@@ -75,36 +81,47 @@ class DashboardService:
         grant: PermissionGrant,
         *,
         period: DashboardPeriod,
-        branch_id: UUID | None,
+        branch_id: UUID | None = None,
+        branch_ids: list[UUID] | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
         now: datetime | None = None,
     ) -> DashboardSummary:
-        context = self._context(grant, period=period, branch_id=branch_id, now=now)
+        scope = self._resolve_branch_scope(grant, branch_id=branch_id, branch_ids=branch_ids)
+        context = self._context(
+            grant,
+            period=period,
+            branch_id=scope.branch_id,
+            date_from=date_from,
+            date_to=date_to,
+            now=now,
+        )
         return DashboardSummary(
             context=context,
             revenue=self._repository.revenue_total(
                 workspace_id=grant.workspace_id,
-                branch_id=branch_id,
-                allowed_branch_ids=grant.allowed_branch_ids,
+                branch_id=scope.branch_id,
+                allowed_branch_ids=scope.allowed_branch_ids,
                 starts_at=context.starts_at,
                 ends_at=context.ends_at,
             ),
             active_leads=self._repository.active_lead_count(
                 workspace_id=grant.workspace_id,
-                branch_id=branch_id,
-                allowed_branch_ids=grant.allowed_branch_ids,
+                branch_id=scope.branch_id,
+                allowed_branch_ids=scope.allowed_branch_ids,
                 starts_at=context.starts_at,
                 ends_at=context.ends_at,
             ),
             appointments_today=self._repository.appointment_count_today(
                 workspace_id=grant.workspace_id,
-                branch_id=branch_id,
-                allowed_branch_ids=grant.allowed_branch_ids,
+                branch_id=scope.branch_id,
+                allowed_branch_ids=scope.allowed_branch_ids,
                 scheduled_date=context.local_today,
             ),
             open_tasks=self._repository.open_task_count(
                 workspace_id=grant.workspace_id,
-                branch_id=branch_id,
-                allowed_branch_ids=grant.allowed_branch_ids,
+                branch_id=scope.branch_id,
+                allowed_branch_ids=scope.allowed_branch_ids,
                 starts_at=context.starts_at,
                 ends_at=context.ends_at,
             ),
@@ -115,16 +132,27 @@ class DashboardService:
         grant: PermissionGrant,
         *,
         period: DashboardPeriod,
-        branch_id: UUID | None,
+        branch_id: UUID | None = None,
+        branch_ids: list[UUID] | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
         now: datetime | None = None,
     ) -> DashboardSalesTrend:
-        context = self._context(grant, period=period, branch_id=branch_id, now=now)
-        if period == "today":
+        scope = self._resolve_branch_scope(grant, branch_id=branch_id, branch_ids=branch_ids)
+        context = self._context(
+            grant,
+            period=period,
+            branch_id=scope.branch_id,
+            date_from=date_from,
+            date_to=date_to,
+            now=now,
+        )
+        if context.period == "today":
             values = dict(
                 self._repository.sales_by_local_hour(
                     workspace_id=grant.workspace_id,
-                    branch_id=branch_id,
-                    allowed_branch_ids=grant.allowed_branch_ids,
+                    branch_id=scope.branch_id,
+                    allowed_branch_ids=scope.allowed_branch_ids,
                     starts_at=context.starts_at,
                     ends_at=context.ends_at,
                     timezone=context.timezone,
@@ -141,14 +169,29 @@ class DashboardService:
             values_by_date = dict(
                 self._repository.sales_by_local_date(
                     workspace_id=grant.workspace_id,
-                    branch_id=branch_id,
-                    allowed_branch_ids=grant.allowed_branch_ids,
+                    branch_id=scope.branch_id,
+                    allowed_branch_ids=scope.allowed_branch_ids,
                     starts_at=context.starts_at,
                     ends_at=context.ends_at,
                     timezone=context.timezone,
                 )
             )
-            points = self._date_points(context, values_by_date)
+            if date_from is not None:
+                span_days = (context.ends_on - context.starts_on).days
+                points = tuple(
+                    SalesTrendPoint(
+                        label=(
+                            f"{_DAY_NAMES[(context.starts_on + timedelta(days=offset)).weekday()]} "
+                            f"{(context.starts_on + timedelta(days=offset)).day}"
+                        ),
+                        value=values_by_date.get(
+                            context.starts_on + timedelta(days=offset), Decimal("0")
+                        ),
+                    )
+                    for offset in range(span_days)
+                )
+            else:
+                points = self._date_points(context, values_by_date)
         return DashboardSalesTrend(
             context=context,
             total=sum((point.value for point in points), start=Decimal("0")),
@@ -159,14 +202,15 @@ class DashboardService:
         self,
         grant: PermissionGrant,
         *,
-        branch_id: UUID | None,
+        branch_id: UUID | None = None,
+        branch_ids: list[UUID] | None = None,
         limit: int,
     ) -> tuple[StockAlertRecord, ...]:
-        self._validate_branch(grant, branch_id)
+        scope = self._resolve_branch_scope(grant, branch_id=branch_id, branch_ids=branch_ids)
         return self._repository.stock_alerts(
             workspace_id=grant.workspace_id,
-            branch_id=branch_id,
-            allowed_branch_ids=grant.allowed_branch_ids,
+            branch_id=scope.branch_id,
+            allowed_branch_ids=scope.allowed_branch_ids,
             limit=limit,
         )
 
@@ -174,17 +218,19 @@ class DashboardService:
         self,
         grant: PermissionGrant,
         *,
-        branch_id: UUID | None,
+        branch_id: UUID | None = None,
+        branch_ids: list[UUID] | None = None,
         limit: int,
         now: datetime | None = None,
     ) -> tuple[date, tuple[Appointment, ...]]:
-        context = self._context(grant, period="today", branch_id=branch_id, now=now)
+        scope = self._resolve_branch_scope(grant, branch_id=branch_id, branch_ids=branch_ids)
+        context = self._context(grant, period="today", branch_id=scope.branch_id, now=now)
         return (
             context.local_today,
             self._repository.appointments_today(
                 workspace_id=grant.workspace_id,
-                branch_id=branch_id,
-                allowed_branch_ids=grant.allowed_branch_ids,
+                branch_id=scope.branch_id,
+                allowed_branch_ids=scope.allowed_branch_ids,
                 scheduled_date=context.local_today,
                 limit=limit,
             ),
@@ -195,16 +241,27 @@ class DashboardService:
         grant: PermissionGrant,
         *,
         period: DashboardPeriod,
-        branch_id: UUID | None,
+        branch_id: UUID | None = None,
+        branch_ids: list[UUID] | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
         limit: int,
         now: datetime | None = None,
     ) -> tuple[ActivityItem, ...]:
-        context = self._context(grant, period=period, branch_id=branch_id, now=now)
+        scope = self._resolve_branch_scope(grant, branch_id=branch_id, branch_ids=branch_ids)
+        context = self._context(
+            grant,
+            period=period,
+            branch_id=scope.branch_id,
+            date_from=date_from,
+            date_to=date_to,
+            now=now,
+        )
         activity: list[ActivityItem] = []
         for sale in self._repository.recent_sales(
             workspace_id=grant.workspace_id,
-            branch_id=branch_id,
-            allowed_branch_ids=grant.allowed_branch_ids,
+            branch_id=scope.branch_id,
+            allowed_branch_ids=scope.allowed_branch_ids,
             starts_at=context.starts_at,
             ends_at=context.ends_at,
             limit=limit,
@@ -228,8 +285,8 @@ class DashboardService:
             )
         for register_record in self._repository.recent_registers(
             workspace_id=grant.workspace_id,
-            branch_id=branch_id,
-            allowed_branch_ids=grant.allowed_branch_ids,
+            branch_id=scope.branch_id,
+            allowed_branch_ids=scope.allowed_branch_ids,
             starts_at=context.starts_at,
             ends_at=context.ends_at,
             limit=limit,
@@ -253,8 +310,8 @@ class DashboardService:
         }
         for inventory_record in self._repository.recent_inventory_movements(
             workspace_id=grant.workspace_id,
-            branch_id=branch_id,
-            allowed_branch_ids=grant.allowed_branch_ids,
+            branch_id=scope.branch_id,
+            allowed_branch_ids=scope.allowed_branch_ids,
             starts_at=context.starts_at,
             ends_at=context.ends_at,
             limit=limit,
@@ -275,8 +332,8 @@ class DashboardService:
             )
         for appointment in self._repository.recent_appointments(
             workspace_id=grant.workspace_id,
-            branch_id=branch_id,
-            allowed_branch_ids=grant.allowed_branch_ids,
+            branch_id=scope.branch_id,
+            allowed_branch_ids=scope.allowed_branch_ids,
             starts_at=context.starts_at,
             ends_at=context.ends_at,
             limit=limit,
@@ -294,8 +351,8 @@ class DashboardService:
             )
         for task in self._repository.recent_tasks(
             workspace_id=grant.workspace_id,
-            branch_id=branch_id,
-            allowed_branch_ids=grant.allowed_branch_ids,
+            branch_id=scope.branch_id,
+            allowed_branch_ids=scope.allowed_branch_ids,
             starts_at=context.starts_at,
             ends_at=context.ends_at,
             limit=limit,
@@ -320,6 +377,8 @@ class DashboardService:
         *,
         period: DashboardPeriod,
         branch_id: UUID | None,
+        date_from: date | None = None,
+        date_to: date | None = None,
         now: datetime | None,
     ) -> DashboardContext:
         branch = self._validate_branch(grant, branch_id)
@@ -336,11 +395,20 @@ class DashboardService:
             instant = instant.replace(tzinfo=UTC)
         instant = instant.astimezone(UTC)
         local_now = instant.astimezone(zone)
-        starts_on, ends_on = self._period_dates(period, local_now.date())
+        if date_from is not None:
+            ends_on_inclusive = date_to or date_from
+            if ends_on_inclusive < date_from:
+                ends_on_inclusive = date_from
+            starts_on = date_from
+            ends_on = ends_on_inclusive + timedelta(days=1)
+            effective_period = self._period_for_custom_range(date_from, ends_on_inclusive)
+        else:
+            starts_on, ends_on = self._period_dates(period, local_now.date())
+            effective_period = period
         starts_at = datetime.combine(starts_on, time.min, tzinfo=zone).astimezone(UTC)
         ends_at = datetime.combine(ends_on, time.min, tzinfo=zone).astimezone(UTC)
         return DashboardContext(
-            period=period,
+            period=effective_period,
             branch_id=branch_id,
             timezone=timezone,
             local_today=local_now.date(),
@@ -351,6 +419,32 @@ class DashboardService:
             currency_code=workspace.default_currency,
             generated_at=instant,
         )
+
+    def _resolve_branch_scope(
+        self,
+        grant: PermissionGrant,
+        *,
+        branch_id: UUID | None,
+        branch_ids: list[UUID] | None = None,
+    ) -> BranchScope:
+        if branch_id is not None:
+            self._validate_branch(grant, branch_id)
+            return BranchScope(branch_id=branch_id, allowed_branch_ids=None)
+        if branch_ids:
+            selected = frozenset(branch_ids)
+            if grant.allowed_branch_ids is not None:
+                selected &= grant.allowed_branch_ids
+            if not selected:
+                raise ResourceNotFoundError(
+                    "La sucursal no existe o está fuera de tu alcance.", "branchId"
+                )
+            for item_id in selected:
+                if self._repository.branch(grant.workspace_id, item_id) is None:
+                    raise ResourceNotFoundError(
+                        "La sucursal no existe o está fuera de tu alcance.", "branchId"
+                    )
+            return BranchScope(branch_id=None, allowed_branch_ids=selected)
+        return BranchScope(branch_id=None, allowed_branch_ids=grant.allowed_branch_ids)
 
     def _validate_branch(self, grant: PermissionGrant, branch_id: UUID | None) -> Branch | None:
         if branch_id is None:
@@ -365,6 +459,17 @@ class DashboardService:
                 "La sucursal no existe o está fuera de tu alcance.", "branchId"
             )
         return branch
+
+    @staticmethod
+    def _period_for_custom_range(starts_on: date, ends_on_inclusive: date) -> DashboardPeriod:
+        span_days = (ends_on_inclusive - starts_on).days + 1
+        if span_days <= 1:
+            return "today"
+        if span_days <= 7:
+            return "week"
+        if span_days <= 31:
+            return "month"
+        return "quarter"
 
     @staticmethod
     def _period_dates(period: DashboardPeriod, today: date) -> tuple[date, date]:

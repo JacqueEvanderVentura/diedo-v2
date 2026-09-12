@@ -264,6 +264,16 @@ class AssetSummaryResponse(ApiModel):
     retired: int
 
 
+class AssetAttachmentResponse(ApiModel):
+    id: UUID
+    original_filename: str
+    content_type: str
+    size_bytes: int
+    checksum_sha256: str
+    preview_url: str
+    created_at: datetime
+
+
 class AssetResponse(ApiModel):
     id: UUID
     name: str
@@ -275,6 +285,8 @@ class AssetResponse(ApiModel):
     location: str | None
     purchase_date: date | None
     notes: str | None
+    attachments: list[AssetAttachmentResponse] = []
+    images: list[str] = []
     version: int
     created_at: datetime
     updated_at: datetime

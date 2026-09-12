@@ -25,7 +25,12 @@ class ItemCategory(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             name="uq_item_categories_workspace_normalized_name",
         ),
         CheckConstraint("status IN ('active', 'inactive', 'archived')", name="status_values"),
+        CheckConstraint(
+            "category_kind IN ('product', 'service', 'supply', 'income', 'expense')",
+            name="category_kind_values",
+        ),
         Index("ix_item_categories_workspace_status", "workspace_id", "status"),
+        Index("ix_item_categories_workspace_kind", "workspace_id", "category_kind"),
     )
 
     workspace_id: Mapped[UUID] = mapped_column(
@@ -34,6 +39,9 @@ class ItemCategory(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     normalized_name: Mapped[str] = mapped_column(String(320), nullable=False)
     description: Mapped[str | None] = mapped_column(String(500))
+    category_kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="product", server_default=text("'product'")
+    )
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="active", server_default=text("'active'")
     )

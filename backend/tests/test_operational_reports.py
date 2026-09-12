@@ -123,6 +123,9 @@ def test_seeded_reports_cover_every_submodule() -> None:
                 search=None,
                 now=_FIXED_NOW,
             )
+            consolidated = reports.consolidated(
+                grant, period="month", branch_id=None, now=_FIXED_NOW
+            )
 
             assert general.totals.income > 0
             assert general.series
@@ -149,6 +152,9 @@ def test_seeded_reports_cover_every_submodule() -> None:
             assert personal.totals.team_average_attended == Decimal("1.000")
             assert personal.by_user
             assert personal.by_employee
+            assert {row.id for row in consolidated.sales_by_channel} == {"crm", "pos"}
+            assert consolidated.total_sales >= 0
+            assert all(row.customers >= 0 for row in consolidated.sales_by_channel)
             assert max(row.attendance_vs_team_pct for row in personal.by_employee) == Decimal(
                 "200.00"
             )
@@ -316,6 +322,7 @@ def test_report_endpoints_require_auth_and_return_live_contracts(client: TestCli
     headers = {"Authorization": f"Bearer {login.json()['accessToken']}"}
     requests = (
         ("/api/v1/reports/general/summary", {"period": "month"}),
+        ("/api/v1/reports/general/consolidated", {"period": "month"}),
         ("/api/v1/reports/general/transactions", {"period": "month"}),
         ("/api/v1/reports/general/expense-categories", {"period": "month"}),
         ("/api/v1/reports/memberships", {}),
@@ -334,19 +341,20 @@ def test_report_endpoints_require_auth_and_return_live_contracts(client: TestCli
         responses.append(response.json())
 
     assert responses[0]["totals"]["income"] != "0.00"
-    assert responses[3]["summary"]["activeCount"] == 1
-    assert responses[4]["totalAppointments"] == 9
-    assert responses[6]["productsWithStock"] > 0
-    assert responses[8]["summary"]["partners"] == 7
-    assert responses[9]["byEmployee"]
-    assert responses[9]["totals"]["appointmentsAttended"] == 4
-    assert responses[9]["totals"]["employeeIncidents"] >= 4
-    assert responses[9]["totals"]["vacationDays"] == 5
-    assert Decimal(responses[9]["totals"]["suppliesUsed"]) >= Decimal("10.000")
-    assert responses[9]["totals"]["teamAverageAttended"] == "1.000"
-    assert responses[9]["incidentMetrics"]
-    assert responses[9]["incidentDistribution"]
-    assert responses[9]["supplyUsage"]
+    assert {row["id"] for row in responses[1]["salesByChannel"]} == {"crm", "pos"}
+    assert responses[4]["summary"]["activeCount"] == 1
+    assert responses[5]["totalAppointments"] == 9
+    assert responses[7]["productsWithStock"] > 0
+    assert responses[9]["summary"]["partners"] == 7
+    assert responses[10]["byEmployee"]
+    assert responses[10]["totals"]["appointmentsAttended"] == 4
+    assert responses[10]["totals"]["employeeIncidents"] >= 4
+    assert responses[10]["totals"]["vacationDays"] == 5
+    assert Decimal(responses[10]["totals"]["suppliesUsed"]) >= Decimal("10.000")
+    assert responses[10]["totals"]["teamAverageAttended"] == "1.000"
+    assert responses[10]["incidentMetrics"]
+    assert responses[10]["incidentDistribution"]
+    assert responses[10]["supplyUsage"]
 
     personal_incidents = client.get(
         "/api/v1/incidents",

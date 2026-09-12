@@ -27,6 +27,7 @@ from app.services.attachment_storage import (
 )
 from app.services.auth import AuthPrincipal
 from app.services.authorization import PermissionGrant
+from app.services.customer_documents import prepare_customer_document_fields
 from app.services.errors import (
     AuthorizationError,
     ConflictError,
@@ -91,6 +92,8 @@ class MasterDataService:
         name: str | None,
         phone: str | None,
         email: str | None,
+        document_id: str | None,
+        document_type: str | None,
         customer_type: str | None,
         status: str | None,
         branch_id: UUID | None,
@@ -100,6 +103,11 @@ class MasterDataService:
         sort_direction: str,
     ) -> CustomerListResult:
         self._require_filter_branch(grant, branch_id)
+        normalized_document = None
+        if document_id:
+            from app.services.customer_documents import normalize_document_id
+
+            normalized_document = normalize_document_id(document_type or "cedula", document_id)
         result = self._repository.list_customers(
             workspace_id=grant.workspace_id,
             allowed_branch_ids=grant.allowed_branch_ids,
@@ -107,6 +115,7 @@ class MasterDataService:
             name=normalize_name(name) if name else None,
             phone=normalize_phone(phone),
             email=normalize_email(email),
+            document_id=normalized_document,
             customer_type=customer_type,
             status=status,
             branch_id=branch_id,
@@ -153,7 +162,10 @@ class MasterDataService:
             return record
         except IntegrityError as exc:
             self._session.rollback()
-            raise ConflictError("No fue posible crear el cliente.") from exc
+            raise ConflictError(
+                "Ya existe un cliente con ese documento en el workspace.",
+                "documentId",
+            ) from exc
 
     def update_customer(
         self,
@@ -190,7 +202,10 @@ class MasterDataService:
             return record
         except IntegrityError as exc:
             self._session.rollback()
-            raise ConflictError("No fue posible actualizar el cliente.") from exc
+            raise ConflictError(
+                "Ya existe un cliente con ese documento en el workspace.",
+                "documentId",
+            ) from exc
 
     def customer_timeline(
         self, grant: PermissionGrant, customer_id: UUID
@@ -548,6 +563,23 @@ class MasterDataService:
             prepared["normalized_email"] = normalize_email(cast_optional_str(prepared["email"]))
         if "phone" in prepared:
             prepared["normalized_phone"] = normalize_phone(cast_optional_str(prepared["phone"]))
+        if "document_type" in prepared or "document_id" in prepared:
+            doc_type = cast_optional_str(prepared.get("document_type"))
+            doc_id = cast_optional_str(prepared.get("document_id"))
+            if doc_type is None and doc_id is None:
+                prepared["document_type"] = None
+                prepared["document_id"] = None
+                prepared["normalized_document_id"] = None
+            else:
+                try:
+                    normalized_type, display_id, normalized_id = prepare_customer_document_fields(
+                        doc_type, doc_id
+                    )
+                except ValueError as exc:
+                    raise InvalidOperationError(str(exc), "documentId") from exc
+                prepared["document_type"] = normalized_type
+                prepared["document_id"] = display_id
+                prepared["normalized_document_id"] = normalized_id
         return prepared
 
     @staticmethod

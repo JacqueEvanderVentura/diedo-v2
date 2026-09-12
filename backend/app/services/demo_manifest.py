@@ -60,16 +60,7 @@ class DemoAppointmentFixture(ApiModel):
     date: date
     time: time
     duration_minutes: int = Field(ge=5, le=480)
-    status: Literal[
-        "pending",
-        "confirmed",
-        "completed",
-        "attended",
-        "no_show",
-        "cancelled",
-        "delayed",
-        "rescheduled",
-    ]
+    status: Literal["confirmed", "fulfilled", "no_show", "cancelled"]
     created_at: datetime
 
 

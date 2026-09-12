@@ -310,7 +310,7 @@ def test_register_manager_mutations_do_not_disclose_cash_movements(client: TestC
     email = _create_branch_scoped_pos_user(
         summary.workspace_id,
         branch_id,
-        permission_codes={"pos.register.manage"},
+        permission_codes={"pos.read", "pos.register.manage"},
         password=_REGISTER_MANAGER_PASSWORD,
         user_prefix="register-manager",
     )
@@ -328,6 +328,16 @@ def test_register_manager_mutations_do_not_disclose_cash_movements(client: TestC
     opened = opened_response.json()
     assert opened["summary"]["expectedCash"] == "25.00"
     assert "movements" not in opened
+
+    state_response = client.get(
+        "/api/v1/pos/state",
+        headers=headers,
+        params={"branchId": str(branch_id)},
+    )
+    assert state_response.status_code == 200, state_response.text
+    assert state_response.json()["register"] is not None
+    assert state_response.json()["register"]["id"] == opened["id"]
+    assert state_response.json()["register"]["status"] == "open"
 
     current_response = client.get(
         "/api/v1/pos/registers/current",

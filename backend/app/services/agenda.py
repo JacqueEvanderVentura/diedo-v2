@@ -42,6 +42,10 @@ _FIELD_META = {
     "branch_id": ("branchId", "Sucursal"),
     "resource_id": ("cabinaId", "Cabina"),
     "status": ("status", "Estado"),
+    "completed_at": ("completedAt", "Cumplida a las"),
+    "completion_punctuality": ("completionPunctuality", "Puntualidad"),
+    "delay_responsibility": ("delayResponsibility", "Responsable del retraso"),
+    "completion_note": ("completionNote", "Nota de cumplimiento"),
     "price": ("price", "Precio"),
     "notes": ("notes", "Notas"),
     "pending_payment": ("pendingPayment", "Pendiente de pago"),
@@ -346,6 +350,11 @@ class AgendaService:
             timezone=branch.timezone,
         )
         status = cast(str, changes.get("status", appointment.status))
+        completion_fields = self._resolve_completion_fields(
+            appointment=appointment,
+            status=status,
+            changes=changes,
+        )
         if status in ACTIVE_APPOINTMENT_STATUSES:
             self._validate_employee_availability(
                 workspace_id=grant.workspace_id,
@@ -414,6 +423,10 @@ class AgendaService:
             "service_name": changes.get("service_name", appointment.service_name),
             "price": final_money["price"],
             "status": status,
+            "completed_at": completion_fields["completed_at"],
+            "completion_punctuality": completion_fields["completion_punctuality"],
+            "delay_responsibility": completion_fields["delay_responsibility"],
+            "completion_note": completion_fields["completion_note"],
             "notes": changes.get("notes", appointment.notes),
             "pending_payment": final_money["pending_payment"],
             "pending_amount": final_money["pending_amount"],
@@ -670,6 +683,40 @@ class AgendaService:
             )
 
     @staticmethod
+    def _resolve_completion_fields(
+        *,
+        appointment: Appointment,
+        status: str,
+        changes: dict[str, Any],
+    ) -> dict[str, Any]:
+        if status != "fulfilled":
+            return {
+                "completed_at": None,
+                "completion_punctuality": None,
+                "delay_responsibility": None,
+                "completion_note": None,
+            }
+        punctuality = changes.get("completion_punctuality", appointment.completion_punctuality)
+        if punctuality is None:
+            punctuality = "on_time"
+        delay_responsibility = changes.get("delay_responsibility", appointment.delay_responsibility)
+        if punctuality == "delayed" and delay_responsibility is None:
+            raise InvalidOperationError(
+                "Indica si el retraso fue del centro o del cliente.",
+                "delayResponsibility",
+            )
+        completed_at = changes.get("completed_at", appointment.completed_at)
+        if completed_at is None:
+            completed_at = datetime.now(UTC)
+        completion_note = changes.get("completion_note", appointment.completion_note)
+        return {
+            "completed_at": completed_at,
+            "completion_punctuality": punctuality,
+            "delay_responsibility": delay_responsibility if punctuality == "delayed" else None,
+            "completion_note": completion_note if punctuality == "delayed" else None,
+        }
+
+    @staticmethod
     def _has_pending_balance(
         *,
         status: str,
@@ -708,6 +755,14 @@ class AgendaService:
             "branch_id": str(appointment.branch_id),
             "resource_id": str(appointment.resource_id),
             "status": appointment.status,
+            "completed_at": (
+                appointment.completed_at.isoformat()
+                if appointment.completed_at is not None
+                else None
+            ),
+            "completion_punctuality": appointment.completion_punctuality,
+            "delay_responsibility": appointment.delay_responsibility,
+            "completion_note": appointment.completion_note,
             "price": str(appointment.price),
             "notes": appointment.notes,
             "pending_payment": appointment.pending_payment,

@@ -31,9 +31,18 @@ from app.db.models import (
     RoleAssignment,
     Sale,
     SaleLine,
+    SalesQuote,
     Workspace,
     WorkspaceMembership,
 )
+
+
+@dataclass(frozen=True)
+class ConsolidatedSaleRecord:
+    total: Decimal
+    quote_origin: str | None
+    customer_id: UUID | None
+    acquisition_source: str | None
 
 
 @dataclass(frozen=True)
@@ -485,6 +494,51 @@ class ReportsRepository:
             .order_by(PlatformUser.display_name, Role.name)
         )
         return tuple(UserRoleRecord(row[0], row[1], row[2] or "Sin rol") for row in rows)
+
+    def consolidated_sales(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID | None,
+        allowed_branch_ids: frozenset[UUID] | None,
+        starts_at: datetime,
+        ends_at: datetime,
+    ) -> tuple[ConsolidatedSaleRecord, ...]:
+        filters = [
+            Sale.workspace_id == workspace_id,
+            Sale.status == "completed",
+            Sale.completed_at >= starts_at,
+            Sale.completed_at < ends_at,
+        ]
+        visible = self._visible_branch_ids(branch_id, allowed_branch_ids)
+        if visible is not None:
+            filters.append(Sale.branch_id.in_(visible))
+        rows = self._session.execute(
+            select(
+                Sale.total,
+                SalesQuote.origin,
+                Sale.customer_id,
+                Customer.acquisition_source,
+            )
+            .outerjoin(
+                SalesQuote,
+                (SalesQuote.workspace_id == Sale.workspace_id) & (SalesQuote.id == Sale.quote_id),
+            )
+            .outerjoin(
+                Customer,
+                (Customer.workspace_id == Sale.workspace_id) & (Customer.id == Sale.customer_id),
+            )
+            .where(*filters)
+        )
+        return tuple(
+            ConsolidatedSaleRecord(
+                total=cast(Decimal, row[0]),
+                quote_origin=row[1],
+                customer_id=row[2],
+                acquisition_source=row[3],
+            )
+            for row in rows
+        )
 
     def sales(
         self,

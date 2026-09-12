@@ -20,3 +20,4 @@ psycopg[binary]==3.3.4
 
 # Private object storage (Railway Bucket uses the S3 protocol).
 boto3==1.43.88
+resend>=2.34.0

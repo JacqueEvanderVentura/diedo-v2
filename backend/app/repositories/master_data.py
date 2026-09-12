@@ -51,6 +51,9 @@ class CustomerRecord:
     business_name: str | None
     email: str | None
     phone: str | None
+    acquisition_source: str | None
+    document_type: str | None
+    document_id: str | None
     branches: tuple[BranchRecord, ...]
     status: str
     version: int
@@ -75,6 +78,7 @@ class EmployeeRecord:
     branches: tuple[BranchRecord, ...]
     supervisor_ids: tuple[UUID, ...]
     schedule: ScheduleRecord
+    online_booking_selectable: bool
     status: str
     version: int
     attachment_count: int
@@ -127,6 +131,7 @@ class MasterDataRepository:
         name: str | None,
         phone: str | None,
         email: str | None,
+        document_id: str | None,
         customer_type: str | None,
         status: str | None,
         branch_id: UUID | None,
@@ -173,6 +178,8 @@ class MasterDataRepository:
             query = query.where(Customer.normalized_phone.ilike(f"%{phone}%"))
         if email:
             query = query.where(Customer.normalized_email.ilike(f"%{email}%"))
+        if document_id:
+            query = query.where(Customer.normalized_document_id == document_id)
 
         count_query = select(func.count()).select_from(query.order_by(None).subquery())
         total_items = int(self._session.scalar(count_query) or 0)
@@ -211,6 +218,19 @@ class MasterDataRepository:
         if allowed_branch_ids is not None:
             query = query.where(CustomerBranchAssignment.branch_id.in_(allowed_branch_ids))
         return self._session.scalar(query.limit(1))
+
+    def customer_by_document(
+        self,
+        workspace_id: UUID,
+        normalized_document_id: str,
+    ) -> Customer | None:
+        return self._session.scalar(
+            select(Customer).where(
+                Customer.workspace_id == workspace_id,
+                Customer.normalized_document_id == normalized_document_id,
+                Customer.status != "archived",
+            )
+        )
 
     def customer_record(self, customer: Customer) -> CustomerRecord:
         return self._customer_records([customer])[0]
@@ -286,6 +306,9 @@ class MasterDataRepository:
             "normalized_email",
             "phone",
             "normalized_phone",
+            "document_type",
+            "document_id",
+            "normalized_document_id",
             "status",
         ):
             if field in changes:
@@ -507,6 +530,7 @@ class MasterDataRepository:
             "contract_type",
             "hire_date",
             "platform_user_id",
+            "online_booking_selectable",
             "status",
         ):
             if field in changes:
@@ -774,6 +798,9 @@ class MasterDataRepository:
                 business_name=customer.business_name,
                 email=customer.email,
                 phone=customer.phone,
+                acquisition_source=customer.acquisition_source,
+                document_type=customer.document_type,
+                document_id=customer.document_id,
                 branches=branches.get(customer.id, ()),
                 status=customer.status,
                 version=customer.version,
@@ -811,6 +838,7 @@ class MasterDataRepository:
                 branches=branches.get(employee.id, ()),
                 supervisor_ids=supervisors.get(employee.id, ()),
                 schedule=schedules[employee.id],
+                online_booking_selectable=employee.online_booking_selectable,
                 status=employee.status,
                 version=employee.version,
                 attachment_count=counts.get(employee.id, 0),

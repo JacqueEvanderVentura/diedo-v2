@@ -885,6 +885,203 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
     assert session_scalar_count(CrmActivity) >= 1
 
 
+@pytest.mark.integration
+def test_crm_quote_accepted_does_not_auto_invoice_and_crm_invoice_works_without_register(
+    client: TestClient,
+) -> None:
+    with session_scope() as session:
+        seeded = bootstrap_local_foundation(session, hash_password(_PASSWORD))
+        branch_id = session.scalar(
+            select(Branch.id).where(
+                Branch.workspace_id == seeded.workspace_id,
+                Branch.status == "active",
+            )
+        )
+        unit_id = session.scalar(
+            select(UnitOfMeasure.id).where(
+                UnitOfMeasure.workspace_id == seeded.workspace_id,
+                UnitOfMeasure.code == "unit",
+            )
+        )
+        assert branch_id is not None
+        assert unit_id is not None
+        suffix = uuid7().hex[-12:]
+        category = ItemCategory(
+            workspace_id=seeded.workspace_id,
+            name=f"CRM Invoice {suffix}",
+            normalized_name=f"crm invoice {suffix}",
+            status="active",
+        )
+        session.add(category)
+        session.flush()
+        item = Item(
+            workspace_id=seeded.workspace_id,
+            category_id=category.id,
+            unit_of_measure_id=unit_id,
+            item_type="service",
+            name="Servicio facturable",
+            sku=f"INV-{suffix}",
+            status="active",
+        )
+        session.add(item)
+        session.flush()
+        session.add_all(
+            [
+                ItemBranchAssignment(
+                    workspace_id=seeded.workspace_id,
+                    item_id=item.id,
+                    branch_id=branch_id,
+                    status="active",
+                ),
+                InventoryItemProfile(
+                    workspace_id=seeded.workspace_id,
+                    item_id=item.id,
+                    sale_price=Decimal("1500.00"),
+                    unit_cost=Decimal("500.00"),
+                    tax_rate=Decimal("18.00"),
+                ),
+            ]
+        )
+        session.flush()
+        item_id = item.id
+        branch_id_text = str(branch_id)
+
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@erp.dev", "password": _PASSWORD},
+    )
+    assert login.status_code == 200, login.text
+    headers = {"Authorization": f"Bearer {login.json()['accessToken']}"}
+
+    lead = client.post(
+        "/api/v1/crm/leads",
+        headers={**headers, "Idempotency-Key": f"crm-inv-lead-{suffix}"},
+        json={
+            "branchId": branch_id_text,
+            "company": f"Factura CRM {suffix}",
+            "contactName": "Cliente Factura",
+            "phone": "8095551212",
+            "source": "manual",
+        },
+    )
+    assert lead.status_code == 201, lead.text
+    converted = client.post(
+        f"/api/v1/crm/leads/{lead.json()['id']}/convert",
+        headers={**headers, "Idempotency-Key": f"crm-inv-convert-{suffix}"},
+        json={"version": lead.json()["version"]},
+    )
+    assert converted.status_code == 200, converted.text
+    opportunity = client.post(
+        f"/api/v1/crm/leads/{lead.json()['id']}/opportunity",
+        headers={**headers, "Idempotency-Key": f"crm-inv-opp-{suffix}"},
+        json={
+            "branchId": branch_id_text,
+            "title": "Oportunidad factura",
+            "customerName": converted.json()["displayName"],
+            "value": "1500.00",
+        },
+    )
+    assert opportunity.status_code == 201, opportunity.text
+
+    quote = client.post(
+        "/api/v1/crm/quotes",
+        headers={**headers, "Idempotency-Key": f"crm-inv-quote-{suffix}"},
+        json={
+            "opportunityId": opportunity.json()["id"],
+            "customerId": converted.json()["id"],
+            "branchId": branch_id_text,
+            "lines": [{"itemId": str(item_id), "quantity": "1"}],
+            "status": "enviada",
+        },
+    )
+    assert quote.status_code == 201, quote.text
+    quote_id = quote.json()["quote"]["id"]
+    accepted = client.patch(
+        f"/api/v1/crm/quotes/{quote_id}",
+        headers=headers,
+        json={
+            "version": quote.json()["quote"]["version"],
+            "status": "aceptada",
+        },
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["crmStatus"] == "aceptada"
+    with session_scope() as session:
+        sales_before = session.scalar(select(func.count()).select_from(Sale)) or 0
+    assert sales_before == 0
+
+    pos_state = client.get(
+        "/api/v1/pos/state", headers=headers, params={"branchId": branch_id_text}
+    )
+    assert pos_state.status_code == 200, pos_state.text
+    cash_method = next(
+        method for method in pos_state.json()["paymentMethods"] if method["channel"] == "cash"
+    )
+    receivable_method = next(
+        method
+        for method in pos_state.json()["paymentMethods"]
+        if method["settlementPolicy"] == "receivable"
+    )
+
+    paid_invoice = client.post(
+        f"/api/v1/crm/quotes/{quote_id}/invoice",
+        headers={**headers, "Idempotency-Key": f"crm-inv-paid-{suffix}"},
+        json={
+            "version": accepted.json()["quote"]["version"],
+            "paymentMethodId": cash_method["id"],
+            "collectionMode": "now",
+        },
+    )
+    assert paid_invoice.status_code == 201, paid_invoice.text
+    assert paid_invoice.json()["status"] == "completed"
+
+    quote_list = client.get(
+        "/api/v1/crm/quotes",
+        headers=headers,
+        params={"branchId": branch_id_text},
+    )
+    assert quote_list.status_code == 200, quote_list.text
+    listed = next(item for item in quote_list.json()["items"] if item["quote"]["id"] == quote_id)
+    assert listed["convertedSaleId"] == paid_invoice.json()["id"]
+    assert listed["invoiceNumber"] == paid_invoice.json()["number"]
+
+    duplicate = client.post(
+        f"/api/v1/crm/quotes/{quote_id}/invoice",
+        headers={**headers, "Idempotency-Key": f"crm-inv-dup-{suffix}"},
+        json={
+            "version": accepted.json()["quote"]["version"],
+            "paymentMethodId": cash_method["id"],
+            "collectionMode": "now",
+        },
+    )
+    assert duplicate.status_code == 409, duplicate.text
+
+    quote_receivable = client.post(
+        "/api/v1/crm/quotes",
+        headers={**headers, "Idempotency-Key": f"crm-inv-quote-cxc-{suffix}"},
+        json={
+            "opportunityId": opportunity.json()["id"],
+            "customerId": converted.json()["id"],
+            "branchId": branch_id_text,
+            "lines": [{"itemId": str(item_id), "quantity": "1"}],
+            "status": "aceptada",
+        },
+    )
+    assert quote_receivable.status_code == 201, quote_receivable.text
+    receivable_quote_id = quote_receivable.json()["quote"]["id"]
+    receivable_invoice = client.post(
+        f"/api/v1/crm/quotes/{receivable_quote_id}/invoice",
+        headers={**headers, "Idempotency-Key": f"crm-inv-cxc-{suffix}"},
+        json={
+            "version": quote_receivable.json()["quote"]["version"],
+            "paymentMethodId": receivable_method["id"],
+            "collectionMode": "receivable",
+        },
+    )
+    assert receivable_invoice.status_code == 201, receivable_invoice.text
+    assert receivable_invoice.json()["settlementPolicy"] == "receivable"
+
+
 def session_scalar_count(model: type[object]) -> int:
     with session_scope() as session:
         return int(session.scalar(select(func.count()).select_from(model)) or 0)

@@ -176,7 +176,7 @@ PosReceivablesManageGrant = Annotated[
 ]
 PosVoidGrant = Annotated[
     PermissionGrant,
-    Depends(require_permission("pos.void")),
+    Depends(require_permission("sales.invoice.void")),
 ]
 PurchasingReadGrant = Annotated[
     PermissionGrant,

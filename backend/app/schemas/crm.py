@@ -8,11 +8,12 @@ from uuid import UUID
 from pydantic import EmailStr, Field, HttpUrl, PlainSerializer, field_validator, model_validator
 
 from app.schemas.common import ApiModel
-from app.schemas.pos import QuoteDetailResponse, QuoteListItemResponse
+from app.schemas.pos import QuoteDetailResponse
 
 LeadStatus = Literal["nuevo", "contactado", "calificado", "descartado", "convertido"]
 EditableLeadStatus = Literal["nuevo", "contactado", "calificado", "descartado"]
 LeadSource = Literal["manual", "serp", "serper", "referral", "import"]
+AcquisitionSource = Literal["whatsapp", "instagram", "referral", "otros", "pos_walk_in", "app"]
 
 
 class LeadDiscoveryCapabilitiesResponse(ApiModel):
@@ -92,6 +93,7 @@ class LeadInput(ApiModel):
     website: HttpUrl | None = Field(default=None, max_length=500)
     location: str | None = Field(default=None, max_length=240)
     source: LeadSource = "manual"
+    acquisition_source: AcquisitionSource | None = None
     source_url: HttpUrl | None = Field(default=None, max_length=1000)
     scraped_at: datetime | None = None
     raw_snippet: str | None = Field(default=None, max_length=4000)
@@ -136,6 +138,7 @@ class UpdateLeadRequest(ApiModel):
     phone: str | None = Field(default=None, max_length=40)
     website: HttpUrl | None = Field(default=None, max_length=500)
     location: str | None = Field(default=None, max_length=240)
+    acquisition_source: AcquisitionSource | None = None
     status: EditableLeadStatus | None = None
     score_manual: int | None = Field(default=None, ge=0, le=100)
     score_notes: str | None = Field(default=None, max_length=2000)
@@ -168,6 +171,7 @@ class ConvertLeadRequest(ApiModel):
     email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=40)
     branch_ids: list[UUID] | None = Field(default=None, min_length=1, max_length=100)
+    acquisition_source: AcquisitionSource | None = None
     lifecycle_status: CustomerLifecycleStatus = "prospecto"
     notes: str | None = Field(default=None, max_length=2000)
 
@@ -195,6 +199,7 @@ class LeadResponse(ApiModel):
     website: str | None
     location: str | None
     source: LeadSource
+    acquisition_source: AcquisitionSource | None = None
     source_url: str | None
     scraped_at: datetime | None
     raw_snippet: str | None
@@ -544,10 +549,22 @@ class CrmQuoteResponse(ApiModel):
     crm_status: CrmQuoteStatus
 
 
+class InvoiceCrmQuoteRequest(ApiModel):
+    version: int = Field(ge=1)
+    payment_method_id: UUID
+    collection_mode: Literal["now", "receivable"]
+    register_id: UUID | None = None
+    reference: str | None = Field(default=None, max_length=160)
+
+
 class CrmQuoteListResponse(ApiModel):
-    quote: QuoteListItemResponse
+    quote: QuoteDetailResponse
     opportunity_id: UUID | None
     crm_status: CrmQuoteStatus
+    converted_sale_id: UUID | None = None
+    invoice_number: str | None = None
+    receivable_id: UUID | None = None
+    invoice_collection: Literal["collected", "receivable", "pending_validation"] | None = None
 
 
 class PaginatedCrmQuotesResponse(ApiModel):

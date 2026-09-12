@@ -106,6 +106,11 @@ class CrmLead(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             name="source_values",
         ),
         CheckConstraint(
+            "acquisition_source IS NULL OR acquisition_source IN "
+            "('whatsapp', 'instagram', 'referral', 'otros', 'pos_walk_in', 'app')",
+            name="acquisition_source_values",
+        ),
+        CheckConstraint(
             "char_length(name) > 0 OR char_length(company) > 0", name="identity_required"
         ),
         CheckConstraint("score_auto BETWEEN 0 AND 100", name="score_auto_range"),
@@ -181,6 +186,7 @@ class CrmLead(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     source: Mapped[str] = mapped_column(
         String(16), nullable=False, default="manual", server_default=text("'manual'")
     )
+    acquisition_source: Mapped[str | None] = mapped_column(String(24))
     source_url: Mapped[str | None] = mapped_column(String(1000))
     scraped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     raw_snippet: Mapped[str | None] = mapped_column(String(4000))

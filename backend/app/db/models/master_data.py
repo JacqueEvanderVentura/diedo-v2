@@ -3,6 +3,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     ForeignKey,
@@ -26,8 +27,29 @@ class Customer(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
         UniqueConstraint("workspace_id", "id", name="uq_customers_workspace_id"),
         CheckConstraint("customer_type IN ('person', 'business')", name="type_values"),
         CheckConstraint("status IN ('active', 'inactive', 'archived')", name="status_values"),
+        CheckConstraint(
+            "acquisition_source IS NULL OR acquisition_source IN "
+            "('whatsapp', 'instagram', 'referral', 'otros', 'pos_walk_in', 'app')",
+            name="acquisition_source_values",
+        ),
         Index("ix_customers_workspace_name", "workspace_id", "normalized_name"),
         Index("ix_customers_workspace_status_type", "workspace_id", "status", "customer_type"),
+        Index(
+            "ix_customers_workspace_normalized_document",
+            "workspace_id",
+            "normalized_document_id",
+        ),
+        Index(
+            "uq_customers_workspace_document_active",
+            "workspace_id",
+            "normalized_document_id",
+            unique=True,
+            postgresql_where=text("normalized_document_id IS NOT NULL AND status <> 'archived'"),
+        ),
+        CheckConstraint(
+            "document_type IS NULL OR document_type IN ('cedula', 'pasaporte')",
+            name="document_type_values",
+        ),
     )
 
     workspace_id: Mapped[UUID] = mapped_column(
@@ -46,6 +68,10 @@ class Customer(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="active", server_default=text("'active'")
     )
+    acquisition_source: Mapped[str | None] = mapped_column(String(24))
+    document_type: Mapped[str | None] = mapped_column(String(16))
+    document_id: Mapped[str | None] = mapped_column(String(64))
+    normalized_document_id: Mapped[str | None] = mapped_column(String(64))
     created_by_platform_user_id: Mapped[UUID] = mapped_column(
         ForeignKey("platform_users.id", ondelete="RESTRICT"), nullable=False
     )
@@ -126,6 +152,9 @@ class Employee(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     platform_user_id: Mapped[UUID | None] = mapped_column(nullable=True)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="active", server_default=text("'active'")
+    )
+    online_booking_selectable: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
     )
     created_by_platform_user_id: Mapped[UUID] = mapped_column(
         ForeignKey("platform_users.id", ondelete="RESTRICT"), nullable=False

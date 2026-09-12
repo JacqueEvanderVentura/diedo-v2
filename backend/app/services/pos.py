@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, BinaryIO, cast
 from uuid import UUID, uuid7
@@ -149,7 +149,7 @@ class PosService:
         )[branch_id]
         register = (
             self._repository.current_register(grant.workspace_id, branch_id)
-            if "pos.cash.read" in permissions
+            if {"pos.cash.read", "pos.register.manage"} & permissions
             else None
         )
         expired_quote_ids: tuple[UUID, ...] = ()
@@ -602,6 +602,7 @@ class PosService:
         crm_status: str | None = None,
         page: int,
         page_size: int,
+        include_details: bool = False,
     ) -> Page:
         self._require_optional_branch(grant, branch_id)
         expired_quote_ids = self._repository.expire_due_quotes(
@@ -620,6 +621,7 @@ class PosService:
             crm_status=crm_status,
             page=page,
             page_size=page_size,
+            include_details=include_details,
         )
         if expired_quote_ids:
             self._session.commit()
@@ -786,16 +788,34 @@ class PosService:
         )
         if quote is None:
             raise ResourceNotFoundError("La cotización no existe.", "quoteId")
+        crm_status_only = quote.origin == "crm" and set(changes) == {"crm_status"}
+        expired_in_request = False
         if self._repository.expire_due_quotes(
             workspace_id=grant.workspace_id,
             allowed_branch_ids=grant.allowed_branch_ids,
             quote_id=quote.id,
         ):
+            expired_in_request = True
             self._session.commit()
-            raise ConflictError("La cotización expiró y ya no puede editarse.", "status")
+            quote = self._repository.get_quote(
+                grant.workspace_id,
+                quote_id,
+                grant.allowed_branch_ids,
+                lock=True,
+            )
+            if quote is None:
+                raise ResourceNotFoundError("La cotización no existe.", "quoteId")
+            if not crm_status_only:
+                raise ConflictError("La cotización expiró y ya no puede editarse.", "status")
         if quote.status != "open":
-            raise ConflictError("Solo una cotización abierta puede editarse.", "status")
-        self._require_version(quote.version, expected_version)
+            if not crm_status_only:
+                raise ConflictError("Solo una cotización abierta puede editarse.", "status")
+            if quote.status in ("converted", "cancelled"):
+                raise ConflictError("La cotización ya fue cerrada y no admite cambios.", "status")
+        if crm_status_only and expired_in_request and quote.version == expected_version + 1:
+            pass
+        else:
+            self._require_version(quote.version, expected_version)
         if "due_at" in changes:
             self._require_future_quote_deadline(cast(datetime | None, changes["due_at"]))
         payment_snapshot: dict[str, Any] | None = None
@@ -866,7 +886,17 @@ class PosService:
         if "opportunity_id" in changes:
             quote.opportunity_id = cast(UUID | None, changes["opportunity_id"])
         if "crm_status" in changes:
-            quote.crm_status = cast(str | None, changes["crm_status"])
+            new_crm_status = cast(str | None, changes["crm_status"])
+            quote.crm_status = new_crm_status
+            if (
+                quote.origin == "crm"
+                and quote.status == "expired"
+                and new_crm_status in {"borrador", "enviada", "aceptada"}
+            ):
+                quote.status = "open"
+                quote.closed_at = None
+                if self._repository.quote_deadline_has_elapsed(quote.expires_at):
+                    quote.expires_at = datetime.now(UTC) + timedelta(days=15)
         if reprice:
             for key, value in self._document_values(
                 priced,
@@ -1057,13 +1087,25 @@ class PosService:
                 replay_receivable.id if replay_receivable is not None else None,
             )
 
-        register_id = cast(UUID, values["register_id"])
-        register = self._locked_open_register(grant, register_id)
-        if register.branch_id != branch_id:
-            raise InvalidOperationError("La caja abierta pertenece a otra sucursal.", "registerId")
         method = self._require_payment_method(
             grant.workspace_id, cast(UUID, values["payment_method_id"])
         )
+        crm_relaxed_register = bool(values.get("crm_relaxed_register"))
+        register_id = cast(UUID | None, values.get("register_id"))
+        if register_id is not None:
+            register = self._locked_open_register(grant, register_id)
+        elif crm_relaxed_register:
+            register = self._resolve_crm_checkout_register(
+                principal=principal,
+                grant=grant,
+                branch_id=branch_id,
+                method=method,
+                idempotency_key=idempotency_key,
+            )
+        else:
+            raise InvalidOperationError("Debes indicar la caja de cobro.", "registerId")
+        if register.branch_id != branch_id:
+            raise InvalidOperationError("La caja abierta pertenece a otra sucursal.", "registerId")
         if method.requires_evidence and method.settlement_policy == "immediate":
             raise InvalidOperationError(
                 "Este método requiere comprobante y debe confirmarse mediante CxC.",
@@ -1210,10 +1252,30 @@ class PosService:
 
             if method.settlement_policy == "immediate" and method.affects_cash_drawer:
                 if priced.total > 0:
+                    cash_register: CashRegister | None = register
+                    if cash_register is None or cash_register.status != "open":
+                        cash_register = self._repository.current_register(
+                            grant.workspace_id, branch_id, lock=True
+                        )
+                        if cash_register is None:
+                            cash_register = self._resolve_crm_checkout_register(
+                                principal=principal,
+                                grant=grant,
+                                branch_id=branch_id,
+                                method=method,
+                                idempotency_key=self._derived_key(
+                                    "crm-cash-register", idempotency_key
+                                ),
+                            )
+                    if cash_register is None:
+                        raise InvalidOperationError(
+                            "No hay caja abierta para registrar el cobro.",
+                            "registerId",
+                        )
                     movement = CashMovement(
                         workspace_id=grant.workspace_id,
                         branch_id=branch_id,
-                        cash_register_id=register.id,
+                        cash_register_id=cash_register.id,
                         movement_type="sale",
                         currency_code=sale.currency_code,
                         amount=priced.total,
@@ -1230,7 +1292,7 @@ class PosService:
                         request_fingerprint=fingerprint,
                     )
                     self._repository.add_movement(movement)
-                    self._apply_cash_effect(register, "sale", priced.total)
+                    self._apply_cash_effect(cash_register, "sale", priced.total)
 
             if quote is not None:
                 quote.status = "converted"
@@ -1309,6 +1371,13 @@ class PosService:
         if receivable is None:
             raise ResourceNotFoundError("La cuenta por cobrar no existe.", "receivableId")
         return self._repository.receivable_record(receivable)
+
+    def get_receivable_for_sale(self, grant: PermissionGrant, sale_id: UUID) -> ReceivableRecord:
+        self.get_sale(grant, sale_id)
+        receivable = self._repository.receivable_for_sale(grant.workspace_id, sale_id)
+        if receivable is None:
+            raise ResourceNotFoundError("No hay cuenta por cobrar para esta venta.", "saleId")
+        return self.get_receivable(grant, receivable.id)
 
     def receivables_summary(
         self, grant: PermissionGrant, branch_id: UUID | None
@@ -2435,6 +2504,30 @@ class PosService:
         if locked is None:
             raise ResourceNotFoundError("La cuenta por cobrar no existe.", "receivableId")
         return locked
+
+    def _resolve_crm_checkout_register(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        branch_id: UUID,
+        method: PaymentMethod,
+        idempotency_key: str,
+    ) -> CashRegister:
+        current = self._repository.current_register(grant.workspace_id, branch_id, lock=True)
+        if current is not None:
+            return current
+        if method.settlement_policy != "immediate" or not method.affects_cash_drawer:
+            latest = self._repository.latest_register(grant.workspace_id, branch_id)
+            if latest is not None:
+                return latest
+        opened = self.open_register(
+            principal=principal,
+            grant=grant,
+            values={"branch_id": branch_id, "opening_cash": Decimal("0")},
+            idempotency_key=self._derived_key("crm-auto-register", idempotency_key),
+        )
+        return self._locked_open_register(grant, opened.register.id)
 
     def _locked_open_register(self, grant: PermissionGrant, register_id: UUID) -> CashRegister:
         register = self._repository.get_register(

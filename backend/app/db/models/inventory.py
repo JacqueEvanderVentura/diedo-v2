@@ -10,6 +10,8 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
+    LargeBinary,
     Numeric,
     String,
     UniqueConstraint,
@@ -389,4 +391,46 @@ class Asset(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     )
     updated_by_platform_user_id: Mapped[UUID] = mapped_column(
         ForeignKey("platform_users.id", ondelete="RESTRICT"), nullable=False
+    )
+
+
+class AssetAttachment(UuidPrimaryKeyMixin, Base):
+    __tablename__ = "asset_attachments"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "asset_id"],
+            ["assets.workspace_id", "assets.id"],
+            ondelete="CASCADE",
+            name="fk_asset_attachments_workspace_asset",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "uploaded_by_membership_id"],
+            ["workspace_memberships.workspace_id", "workspace_memberships.id"],
+            ondelete="RESTRICT",
+            name="fk_asset_attachments_workspace_uploader",
+        ),
+        CheckConstraint("size_bytes > 0", name="size_positive"),
+        CheckConstraint("char_length(checksum_sha256) = 64", name="checksum_length"),
+        CheckConstraint(
+            "content_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/gif')",
+            name="content_type_values",
+        ),
+        Index(
+            "ix_asset_attachments_workspace_asset_created",
+            "workspace_id",
+            "asset_id",
+            "created_at",
+        ),
+    )
+
+    workspace_id: Mapped[UUID] = mapped_column(nullable=False)
+    asset_id: Mapped[UUID] = mapped_column(nullable=False)
+    uploaded_by_membership_id: Mapped[UUID] = mapped_column(nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, deferred=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
     )

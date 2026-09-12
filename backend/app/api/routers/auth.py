@@ -10,8 +10,10 @@ from app.schemas.auth import (
     ChangePasswordRequest,
     CurrentSessionResponse,
     EffectiveScopeResponse,
+    ElevateSessionRequest,
     LoginRequest,
     SessionBranchReference,
+    SessionElevationResponse,
     SessionRoleAssignment,
     SessionRoleReference,
     SessionScopeReference,
@@ -22,7 +24,7 @@ from app.schemas.auth import (
     WorkspaceSessionReference,
 )
 from app.schemas.common import ErrorResponse
-from app.services.auth import AuthService, TokenPair
+from app.services.auth import AuthPrincipal, AuthService, CurrentSessionContext, TokenPair
 from app.services.errors import AuthenticationError
 
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
@@ -53,6 +55,82 @@ def _token_response(pair: TokenPair, response: Response) -> TokenResponse:
         access_token=pair.access_token,
         expires_in=pair.expires_in,
         refresh_expires_in=pair.refresh_expires_in,
+    )
+
+
+def _current_session_response(
+    principal: AuthPrincipal,
+    context: CurrentSessionContext,
+) -> CurrentSessionResponse:
+    primary = context.assignments[0] if context.assignments else None
+    return CurrentSessionResponse(
+        user_id=principal.platform_user_id,
+        membership_id=principal.membership_id,
+        workspace_id=principal.workspace_id,
+        display_name=principal.display_name,
+        email=principal.email,
+        workspace=WorkspaceSessionReference(
+            id=context.workspace.id,
+            slug=context.workspace.slug,
+            name=context.workspace.name,
+            default_currency=context.workspace.default_currency,
+            timezone=context.workspace.timezone,
+            locale=context.workspace.locale,
+            version=context.workspace.version,
+        ),
+        role_assignments=[
+            SessionRoleAssignment(
+                id=assignment.id,
+                role=SessionRoleReference(
+                    id=assignment.role_id,
+                    code=assignment.role_code,
+                    name=assignment.role_name,
+                ),
+                scope=SessionScopeReference(
+                    type=assignment.scope_type,  # type: ignore[arg-type]
+                    legal_entity_id=assignment.legal_entity_id,
+                    branch_id=assignment.branch_id,
+                ),
+            )
+            for assignment in context.assignments
+        ],
+        primary_role=(
+            SessionRoleReference(
+                id=primary.role_id,
+                code=primary.role_code,
+                name=primary.role_name,
+            )
+            if primary is not None
+            else None
+        ),
+        visible_branches=[
+            SessionBranchReference(
+                id=branch.id,
+                legal_entity_id=branch.legal_entity_id,
+                legal_entity_name=branch.legal_entity_name,
+                legal_entity_display_name=branch.legal_entity_display_name,
+                code=branch.code,
+                name=branch.name,
+            )
+            for branch in context.visible_branches
+        ],
+        effective_scope=EffectiveScopeResponse(
+            workspace_wide=context.effective_scope.workspace_wide,
+            legal_entity_ids=sorted(context.effective_scope.legal_entity_ids),
+            branch_ids=sorted(branch.id for branch in context.visible_branches),
+        ),
+        effective_permission_codes=list(context.permission_codes),
+        workspace_permission_codes=list(context.workspace_permission_codes),
+        enabled_modules=list(context.enabled_modules),
+        is_platform_operator=principal.is_platform_operator,
+        elevation=(
+            SessionElevationResponse(
+                granted_by_name=context.elevation.granted_by_name,
+                expires_at=context.elevation.expires_at,
+            )
+            if context.elevation is not None
+            else None
+        ),
     )
 
 
@@ -125,67 +203,39 @@ def current_session(
     database: DatabaseSession,
 ) -> CurrentSessionResponse:
     context = AuthService(database).current_session_context(principal)
-    primary = context.assignments[0] if context.assignments else None
-    return CurrentSessionResponse(
-        user_id=principal.platform_user_id,
-        membership_id=principal.membership_id,
-        workspace_id=principal.workspace_id,
-        display_name=principal.display_name,
-        email=principal.email,
-        workspace=WorkspaceSessionReference(
-            id=context.workspace.id,
-            slug=context.workspace.slug,
-            name=context.workspace.name,
-            default_currency=context.workspace.default_currency,
-            timezone=context.workspace.timezone,
-            locale=context.workspace.locale,
-            version=context.workspace.version,
-        ),
-        role_assignments=[
-            SessionRoleAssignment(
-                id=assignment.id,
-                role=SessionRoleReference(
-                    id=assignment.role_id,
-                    code=assignment.role_code,
-                    name=assignment.role_name,
-                ),
-                scope=SessionScopeReference(
-                    type=assignment.scope_type,  # type: ignore[arg-type]
-                    legal_entity_id=assignment.legal_entity_id,
-                    branch_id=assignment.branch_id,
-                ),
-            )
-            for assignment in context.assignments
-        ],
-        primary_role=(
-            SessionRoleReference(
-                id=primary.role_id,
-                code=primary.role_code,
-                name=primary.role_name,
-            )
-            if primary is not None
-            else None
-        ),
-        visible_branches=[
-            SessionBranchReference(
-                id=branch.id,
-                legal_entity_id=branch.legal_entity_id,
-                legal_entity_name=branch.legal_entity_name,
-                legal_entity_display_name=branch.legal_entity_display_name,
-                code=branch.code,
-                name=branch.name,
-            )
-            for branch in context.visible_branches
-        ],
-        effective_scope=EffectiveScopeResponse(
-            workspace_wide=context.effective_scope.workspace_wide,
-            legal_entity_ids=sorted(context.effective_scope.legal_entity_ids),
-            branch_ids=sorted(branch.id for branch in context.visible_branches),
-        ),
-        effective_permission_codes=list(context.permission_codes),
-        workspace_permission_codes=list(context.workspace_permission_codes),
-        enabled_modules=list(context.enabled_modules),
+    return _current_session_response(principal, context)
+
+
+@router.post(
+    "/elevate",
+    summary="Elevar permisos de la sesión actual con credenciales de un supervisor",
+    responses=_AUTH_RESPONSES,
+)
+def elevate_session(
+    payload: ElevateSessionRequest,
+    principal: CurrentPrincipal,
+    database: DatabaseSession,
+) -> CurrentSessionResponse:
+    context = AuthService(database).elevate_session(
+        principal,
+        email=str(payload.email),
+        password=payload.password.get_secret_value(),
+        permission_code=payload.permission_code,
     )
+    return _current_session_response(principal, context)
+
+
+@router.post(
+    "/elevate/revoke",
+    summary="Cerrar la elevación temporal de permisos",
+    responses=_AUTH_RESPONSES,
+)
+def revoke_session_elevation(
+    principal: CurrentPrincipal,
+    database: DatabaseSession,
+) -> CurrentSessionResponse:
+    context = AuthService(database).revoke_session_elevation(principal)
+    return _current_session_response(principal, context)
 
 
 @router.get(

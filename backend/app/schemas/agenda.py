@@ -9,17 +9,10 @@ from pydantic import Field, field_validator, model_validator
 
 from app.schemas.common import ApiModel
 
-AppointmentStatus = Literal[
-    "pending",
-    "confirmed",
-    "completed",
-    "attended",
-    "no_show",
-    "cancelled",
-    "delayed",
-    "rescheduled",
-]
-CreateAppointmentStatus = Literal["pending", "confirmed"]
+AppointmentStatus = Literal["confirmed", "fulfilled", "no_show", "cancelled"]
+CreateAppointmentStatus = Literal["confirmed"]
+CompletionPunctuality = Literal["on_time", "delayed"]
+DelayResponsibility = Literal["center", "customer"]
 AppointmentSource = Literal["staff", "self"]
 AppointmentRecurrence = Literal["none", "weekly", "monthly"]
 AppointmentSortField = Literal["date", "customerName", "serviceName", "status", "createdAt"]
@@ -91,6 +84,10 @@ class AppointmentResponse(ApiModel):
     service_name: str
     price: Decimal
     status: AppointmentStatus
+    completed_at: datetime | None
+    completion_punctuality: CompletionPunctuality | None
+    delay_responsibility: DelayResponsibility | None
+    completion_note: str | None
     notes: str | None
     pending_payment: bool
     pending_amount: Decimal
@@ -186,6 +183,10 @@ class UpdateAppointmentRequest(ApiModel):
     service_name: str | None = Field(default=None, max_length=200)
     price: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
     status: AppointmentStatus | None = None
+    completed_at: datetime | None = None
+    completion_punctuality: CompletionPunctuality | None = None
+    delay_responsibility: DelayResponsibility | None = None
+    completion_note: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=2000)
     pending_payment: bool | None = None
     pending_amount: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
@@ -198,10 +199,20 @@ class UpdateAppointmentRequest(ApiModel):
     def normalize_required_text(cls, value: str | None) -> str | None:
         return _normalize_required_text(value) if value is not None else None
 
-    @field_validator("customer_phone", "notes")
+    @field_validator("customer_phone", "notes", "completion_note")
     @classmethod
     def normalize_optional_text(cls, value: str | None) -> str | None:
         return _normalize_optional_text(value)
+
+    @model_validator(mode="after")
+    def validate_completion(self) -> Self:
+        if self.status == "fulfilled":
+            punctuality = self.completion_punctuality
+            if punctuality is None and "completion_punctuality" not in self.model_fields_set:
+                return self
+            if punctuality == "delayed" and self.delay_responsibility is None:
+                raise ValueError("Indica si el retraso fue del centro o del cliente.")
+        return self
 
     @model_validator(mode="after")
     def validate_changes(self) -> Self:

@@ -30,6 +30,10 @@ from app.db.models import (
 )
 from app.db.models.agenda import DEFAULT_APPOINTMENT_RESOURCES
 from app.db.models.inventory import DEFAULT_ASSET_CATEGORIES
+from app.services.platform_workspace import (
+    LOCAL_BACKOFFICE_OPERATOR_EMAIL,
+    PLATFORM_WORKSPACE_SLUG,
+)
 
 _PERMISSIONS = (
     (
@@ -492,6 +496,14 @@ _PERMISSIONS = (
         "Void posted sales and record their compensating movements.",
         100,
     ),
+    (
+        "sales.invoice.void",
+        "sales",
+        "invoice.void",
+        "Anular facturas",
+        "Void posted invoices and record compensating movements.",
+        110,
+    ),
 )
 
 _TERMINAL_POS_PERMISSION_CODES = tuple(
@@ -542,6 +554,7 @@ _ROLE_PERMISSION_TEMPLATES = {
         "pos.receivables.read",
         "pos.receivables.collect",
         "pos.void",
+        "sales.invoice.void",
     ),
     "seller": (
         "dashboard.read",
@@ -551,6 +564,8 @@ _ROLE_PERMISSION_TEMPLATES = {
         "sales.quote.manage",
         "pos.read",
         "pos.sell",
+        "pos.receivables.read",
+        "pos.receivables.collect",
     ),
 }
 
@@ -628,6 +643,160 @@ class BootstrapSummary:
     platform_user_id: UUID
     membership_id: UUID
     enabled_modules: tuple[str, ...]
+
+
+_PLATFORM_OPERATOR_MODULES = ("foundation", "iam", "dashboard")
+
+
+def _bootstrap_platform_operator(
+    session: Session,
+    *,
+    now: datetime,
+    operator_password_hash: str | None,
+) -> None:
+    _insert_do_nothing(
+        session,
+        Workspace,
+        {
+            "slug": PLATFORM_WORKSPACE_SLUG,
+            "name": "Helios Platform",
+            "status": "active",
+            "default_currency": "DOP",
+            "timezone": "America/Santo_Domingo",
+            "locale": "es-DO",
+        },
+    )
+    platform_workspace = session.scalar(
+        select(Workspace).where(Workspace.slug == PLATFORM_WORKSPACE_SLUG)
+    )
+    if platform_workspace is None:
+        raise RuntimeError("Platform workspace could not be loaded after bootstrap.")
+
+    _insert_do_nothing(
+        session,
+        PlatformUser,
+        {
+            "external_subject": "local:backoffice-operator",
+            "email": LOCAL_BACKOFFICE_OPERATOR_EMAIL,
+            "normalized_email": LOCAL_BACKOFFICE_OPERATOR_EMAIL,
+            "display_name": "Helios Backoffice",
+            "password_hash": operator_password_hash,
+            "password_changed_at": now if operator_password_hash is not None else None,
+            "status": "active",
+            "is_platform_operator": True,
+        },
+    )
+    operator = session.scalar(
+        select(PlatformUser).where(PlatformUser.external_subject == "local:backoffice-operator")
+    )
+    if operator is None:
+        raise RuntimeError("Platform operator user could not be loaded after bootstrap.")
+    operator.is_platform_operator = True
+    operator.status = "active"
+    if operator_password_hash is not None:
+        operator.password_hash = operator_password_hash
+        operator.password_changed_at = now
+
+    _insert_do_nothing(
+        session,
+        WorkspaceMembership,
+        {
+            "workspace_id": platform_workspace.id,
+            "platform_user_id": operator.id,
+            "status": "active",
+            "activated_at": now,
+            "is_default": True,
+        },
+    )
+    membership = session.scalar(
+        select(WorkspaceMembership).where(
+            WorkspaceMembership.workspace_id == platform_workspace.id,
+            WorkspaceMembership.platform_user_id == operator.id,
+        )
+    )
+    if membership is None:
+        raise RuntimeError("Platform operator membership could not be loaded after bootstrap.")
+    membership.status = "active"
+    membership.is_default = True
+    membership.activated_at = membership.activated_at or now
+
+    for role_code, role_name, is_system in _ROLE_TEMPLATES:
+        _insert_do_nothing(
+            session,
+            Role,
+            {
+                "workspace_id": platform_workspace.id,
+                "code": role_code,
+                "name": role_name,
+                "status": "active",
+                "is_system": is_system,
+            },
+        )
+    _grant_role_template_permissions(session, platform_workspace.id)
+
+    _insert_do_nothing(
+        session,
+        AccessScope,
+        {"workspace_id": platform_workspace.id, "scope_type": "workspace"},
+    )
+    scope = session.scalar(
+        select(AccessScope).where(
+            AccessScope.workspace_id == platform_workspace.id,
+            AccessScope.scope_type == "workspace",
+        )
+    )
+    admin_role = session.scalar(
+        select(Role).where(
+            Role.workspace_id == platform_workspace.id,
+            Role.code == "workspace_admin",
+        )
+    )
+    if scope is None or admin_role is None:
+        raise RuntimeError("Platform workspace access model could not be loaded after bootstrap.")
+
+    permission_ids = session.scalars(
+        select(Permission.id).where(Permission.is_platform_only.is_(False))
+    ).all()
+    for permission_id in permission_ids:
+        _insert_do_nothing(
+            session,
+            RolePermission,
+            {
+                "workspace_id": platform_workspace.id,
+                "role_id": admin_role.id,
+                "permission_id": permission_id,
+            },
+        )
+
+    _insert_do_nothing(
+        session,
+        RoleAssignment,
+        {
+            "workspace_id": platform_workspace.id,
+            "membership_id": membership.id,
+            "role_id": admin_role.id,
+            "access_scope_id": scope.id,
+            "status": "active",
+            "valid_from": now,
+        },
+    )
+
+    for module_code in _PLATFORM_OPERATOR_MODULES:
+        module_id = session.scalar(
+            select(ModuleDefinition.id).where(ModuleDefinition.code == module_code)
+        )
+        if module_id is None:
+            raise RuntimeError(f"Module {module_code!r} was not installed.")
+        _insert_do_nothing(
+            session,
+            ModuleEntitlement,
+            {
+                "workspace_id": platform_workspace.id,
+                "module_definition_id": module_id,
+                "status": "enabled",
+                "effective_from": now,
+            },
+        )
 
 
 def bootstrap_local_foundation(
@@ -872,6 +1041,21 @@ def bootstrap_local_foundation(
             },
             "updated_by_platform_user_id": user.id,
         },
+    )
+
+    from app.config import settings
+    from app.core.security import hash_password
+
+    backoffice_secret = (
+        settings.local_bootstrap_backoffice_password or settings.local_bootstrap_admin_password
+    )
+    operator_password_hash = owner_password_hash
+    if backoffice_secret is not None:
+        operator_password_hash = hash_password(backoffice_secret.get_secret_value())
+    _bootstrap_platform_operator(
+        session,
+        now=now,
+        operator_password_hash=operator_password_hash,
     )
 
     return BootstrapSummary(

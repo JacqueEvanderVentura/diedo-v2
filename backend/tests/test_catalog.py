@@ -215,9 +215,14 @@ def _create_product(
 
 def test_catalog_schema_and_normalization_rules() -> None:
     branch_id = uuid7()
-    category = CreateCategoryRequest(name="  Cuidado   Personal  ", description="  Texto  ")
+    category = CreateCategoryRequest(
+        name="  Cuidado   Personal  ",
+        description="  Texto  ",
+        category_kind="service",
+    )
     assert category.name == "Cuidado Personal"
     assert category.description == "Texto"
+    assert category.category_kind == "service"
 
     product = CreateProductRequest(
         name="  Jabón líquido ",
@@ -294,6 +299,15 @@ def test_catalog_crud_filters_concurrency_and_audit(client: TestClient) -> None:
     secondary_category = _create_category(client, admin_headers, f"Secundaria {unique}")
     assert category["name"] == f"Categoría {unique}"
     assert category["version"] == 1
+    assert category["categoryKind"] == "product"
+
+    service_category = client.post(
+        "/api/v1/catalog/categories",
+        headers=admin_headers,
+        json={"name": f"Servicios {unique}", "categoryKind": "service"},
+    )
+    assert service_category.status_code == 201, service_category.text
+    assert service_category.json()["categoryKind"] == "service"
 
     duplicate_category = client.post(
         "/api/v1/catalog/categories",

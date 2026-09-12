@@ -150,7 +150,7 @@ def test_backoffice_route_does_not_echo_secrets(
             enabled_modules=("foundation", "iam"),
         )
 
-    monkeypatch.setattr(backoffice.WorkspaceProvisioningService, "provision", fake_provision)
+    monkeypatch.setattr(backoffice.BackofficeService, "provision_workspace", fake_provision)
     response = client.post(
         "/api/v1/backoffice/workspaces",
         headers={"X-Backoffice-Key": _BACKOFFICE_KEY},
@@ -168,7 +168,8 @@ def test_openapi_marks_provisioning_route_with_its_own_api_key(client: TestClien
     schema = client.get("/swagger.json").json()
 
     operation = schema["paths"]["/api/v1/backoffice/workspaces"]["post"]
-    assert operation["security"] == [{"BackofficeKey": []}]
+    assert {"BackofficeKey": []} in operation["security"]
+    assert {"BearerAuth": []} in operation["security"]
     scheme = schema["components"]["securitySchemes"]["BackofficeKey"]
     assert scheme["type"] == "apiKey"
     assert scheme["in"] == "header"

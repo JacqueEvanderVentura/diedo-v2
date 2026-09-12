@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     AccessScope,
     AuthSession,
+    AuthSessionElevation,
     Branch,
     LegalEntity,
     PlatformUser,
@@ -46,6 +47,7 @@ class PrincipalRecord:
     email: str
     display_name: str
     user_status: str
+    is_platform_operator: bool
     workspace_id: UUID
     workspace_status: str
     membership_id: UUID
@@ -98,6 +100,17 @@ class AuthSessionRecord:
     workspace_id: UUID
     created_at: datetime
     last_used_at: datetime | None
+    expires_at: datetime
+    revoked_at: datetime | None
+
+
+@dataclass(frozen=True)
+class SessionElevationRecord:
+    id: UUID
+    session_id: UUID
+    granted_by_membership_id: UUID
+    granted_by_display_name: str
+    granted_permission_codes: tuple[str, ...]
     expires_at: datetime
     revoked_at: datetime | None
 
@@ -193,6 +206,7 @@ class AuthRepository:
                 PlatformUser.email,
                 PlatformUser.display_name,
                 PlatformUser.status,
+                PlatformUser.is_platform_operator,
                 Workspace.id,
                 Workspace.status,
                 WorkspaceMembership.id,
@@ -304,6 +318,12 @@ class AuthRepository:
             user.version += 1
             self._session.flush()
 
+    def is_platform_operator(self, platform_user_id: UUID) -> bool:
+        value = self._session.scalar(
+            select(PlatformUser.is_platform_operator).where(PlatformUser.id == platform_user_id)
+        )
+        return bool(value)
+
     def workspace_context(self, workspace_id: UUID) -> WorkspaceContextRecord | None:
         row = self._session.execute(
             select(
@@ -404,6 +424,7 @@ class AuthRepository:
                 PlatformUser.email,
                 PlatformUser.display_name,
                 PlatformUser.status,
+                PlatformUser.is_platform_operator,
                 Workspace.id,
                 Workspace.status,
                 WorkspaceMembership.id,
@@ -424,3 +445,78 @@ class AuthRepository:
         if row is None:
             return None
         return PrincipalRecord(*row)
+
+    def get_active_elevation(
+        self,
+        session_id: UUID,
+        now: datetime,
+    ) -> SessionElevationRecord | None:
+        row = self._session.execute(
+            select(
+                AuthSessionElevation.id,
+                AuthSessionElevation.session_id,
+                AuthSessionElevation.granted_by_membership_id,
+                AuthSessionElevation.granted_by_display_name,
+                AuthSessionElevation.granted_permission_codes,
+                AuthSessionElevation.expires_at,
+                AuthSessionElevation.revoked_at,
+            )
+            .where(
+                AuthSessionElevation.session_id == session_id,
+                AuthSessionElevation.revoked_at.is_(None),
+                AuthSessionElevation.expires_at > now,
+            )
+            .order_by(AuthSessionElevation.created_at.desc(), AuthSessionElevation.id.desc())
+            .limit(1)
+        ).one_or_none()
+        if row is None:
+            return None
+        return SessionElevationRecord(
+            id=row.id,
+            session_id=row.session_id,
+            granted_by_membership_id=row.granted_by_membership_id,
+            granted_by_display_name=row.granted_by_display_name,
+            granted_permission_codes=tuple(row.granted_permission_codes or []),
+            expires_at=row.expires_at,
+            revoked_at=row.revoked_at,
+        )
+
+    def revoke_active_elevations(self, session_id: UUID, now: datetime) -> None:
+        self._session.execute(
+            update(AuthSessionElevation)
+            .where(
+                AuthSessionElevation.session_id == session_id,
+                AuthSessionElevation.revoked_at.is_(None),
+            )
+            .values(revoked_at=now)
+        )
+
+    def create_elevation(
+        self,
+        *,
+        session_id: UUID,
+        granted_by_membership_id: UUID,
+        granted_by_display_name: str,
+        granted_permission_codes: list[str],
+        expires_at: datetime,
+        now: datetime,
+    ) -> SessionElevationRecord:
+        self.revoke_active_elevations(session_id, now)
+        elevation = AuthSessionElevation(
+            session_id=session_id,
+            granted_by_membership_id=granted_by_membership_id,
+            granted_by_display_name=granted_by_display_name,
+            granted_permission_codes=granted_permission_codes,
+            expires_at=expires_at,
+        )
+        self._session.add(elevation)
+        self._session.flush()
+        return SessionElevationRecord(
+            id=elevation.id,
+            session_id=elevation.session_id,
+            granted_by_membership_id=elevation.granted_by_membership_id,
+            granted_by_display_name=elevation.granted_by_display_name,
+            granted_permission_codes=tuple(granted_permission_codes),
+            expires_at=elevation.expires_at,
+            revoked_at=None,
+        )

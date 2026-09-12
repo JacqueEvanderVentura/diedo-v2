@@ -89,6 +89,9 @@ class QuoteRecord:
     payment_method: PaymentMethod | None
     lines: tuple[SalesQuoteLine, ...]
     converted_sale_id: UUID | None
+    converted_sale_number: str | None = None
+    converted_receivable_id: UUID | None = None
+    converted_sale_settlement_policy: str | None = None
 
 
 @dataclass(frozen=True)
@@ -328,6 +331,17 @@ class PosRepository:
         if lock:
             statement = statement.with_for_update(of=CashRegister)
         return self._session.scalar(statement)
+
+    def latest_register(self, workspace_id: UUID, branch_id: UUID) -> CashRegister | None:
+        return self._session.scalar(
+            select(CashRegister)
+            .where(
+                CashRegister.workspace_id == workspace_id,
+                CashRegister.branch_id == branch_id,
+            )
+            .order_by(CashRegister.opened_at.desc(), CashRegister.id.desc())
+            .limit(1)
+        )
 
     def get_register(
         self,
@@ -1168,7 +1182,42 @@ class PosRepository:
             )
         }
         lines: dict[UUID, list[SalesQuoteLine]] = defaultdict(list)
-        converted_sales: dict[UUID, UUID] = {}
+        converted_sales: dict[UUID, tuple[UUID, str]] = {}
+        if quote_ids:
+            converted_sales = {
+                quote_id: (sale_id, sale_number)
+                for quote_id, sale_id, sale_number in self._session.execute(
+                    select(Sale.quote_id, Sale.id, Sale.sale_number).where(
+                        Sale.workspace_id == workspace_id,
+                        Sale.quote_id.in_(quote_ids),
+                    )
+                )
+                if quote_id is not None
+            }
+        receivable_by_sale_id: dict[UUID, UUID] = {}
+        sale_settlement_by_id: dict[UUID, str] = {}
+        sale_ids = [sale_id for sale_id, _ in converted_sales.values() if sale_id is not None]
+        if sale_ids:
+            receivable_by_sale_id = {
+                sale_id: receivable_id
+                for sale_id, receivable_id in self._session.execute(
+                    select(CustomerReceivable.sale_id, CustomerReceivable.id).where(
+                        CustomerReceivable.workspace_id == workspace_id,
+                        CustomerReceivable.sale_id.in_(sale_ids),
+                    )
+                )
+                if sale_id is not None and receivable_id is not None
+            }
+            sale_settlement_by_id = {
+                sale_id: settlement_policy
+                for sale_id, settlement_policy in self._session.execute(
+                    select(Sale.id, Sale.settlement_policy).where(
+                        Sale.workspace_id == workspace_id,
+                        Sale.id.in_(sale_ids),
+                    )
+                )
+                if sale_id is not None and settlement_policy is not None
+            }
         if include_details:
             for line in self._session.scalars(
                 select(SalesQuoteLine)
@@ -1179,21 +1228,16 @@ class PosRepository:
                 .order_by(SalesQuoteLine.quote_id, SalesQuoteLine.position)
             ):
                 lines[line.quote_id].append(line)
-            converted_sales = {
-                quote_id: sale_id
-                for quote_id, sale_id in self._session.execute(
-                    select(Sale.quote_id, Sale.id).where(
-                        Sale.workspace_id == workspace_id,
-                        Sale.quote_id.in_(quote_ids),
-                    )
-                )
-                if quote_id is not None
-            }
         records: list[QuoteRecord] = []
         for quote in quotes:
             branch = branches.get(quote.branch_id)
             if branch is None:
                 raise RuntimeError("Quote branch disappeared.")
+            converted_sale_id = (
+                converted_sales.get(quote.id, (None, None))[0]
+                if quote.id in converted_sales
+                else None
+            )
             records.append(
                 QuoteRecord(
                     quote=quote,
@@ -1207,7 +1251,22 @@ class PosRepository:
                         else None
                     ),
                     lines=tuple(lines.get(quote.id, ())),
-                    converted_sale_id=converted_sales.get(quote.id),
+                    converted_sale_id=converted_sale_id,
+                    converted_sale_number=(
+                        converted_sales.get(quote.id, (None, None))[1]
+                        if quote.id in converted_sales
+                        else None
+                    ),
+                    converted_receivable_id=(
+                        receivable_by_sale_id.get(converted_sale_id)
+                        if converted_sale_id is not None
+                        else None
+                    ),
+                    converted_sale_settlement_policy=(
+                        sale_settlement_by_id.get(converted_sale_id)
+                        if converted_sale_id is not None
+                        else None
+                    ),
                 )
             )
         return tuple(records)

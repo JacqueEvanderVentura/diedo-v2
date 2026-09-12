@@ -12,6 +12,7 @@ CatalogItemType = Literal["product", "service", "supply", "membership", "other"]
 CreateCatalogItemType = Literal["product", "service", "membership", "other"]
 SortDirection = Literal["asc", "desc"]
 CategorySortField = Literal["name", "status", "createdAt", "updatedAt"]
+CategoryKind = Literal["product", "service", "supply", "income", "expense"]
 ProductSortField = Literal["name", "sku", "status", "createdAt", "updatedAt"]
 
 
@@ -35,6 +36,7 @@ class CategoryResponse(ApiModel):
     id: UUID
     name: str
     description: str | None
+    category_kind: CategoryKind
     status: CatalogStatus
     version: int
     created_at: datetime
@@ -52,6 +54,7 @@ class PaginatedCategoriesResponse(ApiModel):
 class CreateCategoryRequest(ApiModel):
     name: str = Field(min_length=2, max_length=160)
     description: str | None = Field(default=None, max_length=500)
+    category_kind: CategoryKind = "product"
     status: CreateCatalogStatus = "active"
 
     @field_validator("name")
@@ -72,6 +75,7 @@ class UpdateCategoryRequest(ApiModel):
     version: int = Field(ge=1)
     name: str | None = Field(default=None, min_length=2, max_length=160)
     description: str | None = Field(default=None, max_length=500)
+    category_kind: CategoryKind | None = None
     status: CatalogStatus | None = None
 
     @field_validator("name")

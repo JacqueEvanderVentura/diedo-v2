@@ -73,6 +73,35 @@ class GeneralTransactionResponse(ApiModel):
     amount: DecimalString
 
 
+class ConsolidatedChannelPoint(ApiModel):
+    id: Literal["crm", "pos"]
+    label: str
+    amount: DecimalString
+    count: int = Field(ge=0)
+    customers: int = Field(ge=0)
+
+
+class ConsolidatedAcquisitionPoint(ApiModel):
+    id: str
+    label: str
+    amount: DecimalString
+    count: int = Field(ge=0)
+    customers: int = Field(ge=0)
+
+
+class ConsolidatedReportResponse(ApiModel):
+    period: ReportPeriod
+    branch_id: UUID | None
+    starts_at: datetime
+    ends_at: datetime
+    currency_code: str
+    total_amount: DecimalString
+    total_sales: int = Field(ge=0)
+    sales_by_channel: list[ConsolidatedChannelPoint]
+    sales_by_acquisition: list[ConsolidatedAcquisitionPoint]
+    generated_at: datetime
+
+
 class PaginatedGeneralTransactionsResponse(ApiModel):
     items: list[GeneralTransactionResponse]
     page: int
@@ -247,11 +276,45 @@ class PaginatedInventoryReportResponse(ApiModel):
     total_pages: int
 
 
+class DividendPartnerBranchShare(ApiModel):
+    branch_id: UUID
+    branch_name: str
+    share: DecimalString
+    dividend: DecimalString
+
+
+class DividendBranchPartnerRow(ApiModel):
+    partner_name: str
+    document: str | None
+    share: DecimalString
+    dividend: DecimalString
+
+
+class DividendBranchDetail(ApiModel):
+    branch_id: UUID
+    branch_name: str
+    gross_income: DecimalString
+    expenses: DecimalString
+    net_profit: DecimalString
+    partners: list[DividendBranchPartnerRow]
+
+
+class DividendPartnerAggregate(ApiModel):
+    id: str
+    partner_name: str
+    document: str | None
+    total_dividend: DecimalString
+    branches: list[DividendPartnerBranchShare]
+
+
 class DividendSummaryResponse(ApiModel):
     partners: int = Field(ge=0)
     branches: int = Field(ge=0)
     total_dividends: DecimalString
+    total_net_profit: DecimalString
     undistributed_profit: DecimalString
+    by_branch: list[DividendBranchDetail] = Field(default_factory=list)
+    by_partner: list[DividendPartnerAggregate] = Field(default_factory=list)
 
 
 class DividendReportItemResponse(ApiModel):

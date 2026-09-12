@@ -25,8 +25,15 @@ from app.schemas.reports import (
     AgendaReportPeriod,
     AgendaReportSummaryResponse,
     AgendaWeeklyPoint,
+    ConsolidatedAcquisitionPoint,
+    ConsolidatedChannelPoint,
+    ConsolidatedReportResponse,
     CountPoint,
     DistributionPoint,
+    DividendBranchDetail,
+    DividendBranchPartnerRow,
+    DividendPartnerAggregate,
+    DividendPartnerBranchShare,
     DividendReportItemResponse,
     DividendSummaryResponse,
     ExpenseCategoryResponse,
@@ -63,7 +70,7 @@ from app.services.errors import ResourceNotFoundError
 
 _T = TypeVar("_T")
 _MONTHS = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic")
-_ATTENDED_STATUSES = {"completed", "attended"}
+_ATTENDED_STATUSES = {"fulfilled"}
 _EMPLOYEE_INCIDENT_NAMES = {
     "ausencia": "Ausencias",
     "vacaciones": "Vacaciones",
@@ -100,6 +107,108 @@ class _InventoryRow:
 class ReportsService:
     def __init__(self, session: Session) -> None:
         self._repository = ReportsRepository(session)
+
+    def consolidated(
+        self,
+        grant: PermissionGrant,
+        *,
+        period: ReportPeriod,
+        branch_id: UUID | None,
+        now: datetime | None = None,
+    ) -> ConsolidatedReportResponse:
+        context = self._context(grant, period=period, branch_id=branch_id, now=now)
+        sales = self._repository.consolidated_sales(
+            workspace_id=grant.workspace_id,
+            branch_id=branch_id,
+            allowed_branch_ids=grant.allowed_branch_ids,
+            starts_at=context.starts_at,
+            ends_at=context.ends_at,
+        )
+        channel_totals: dict[str, dict[str, Any]] = {
+            "crm": {"amount": Decimal("0"), "count": 0, "people": set()},
+            "pos": {"amount": Decimal("0"), "count": 0, "people": set()},
+        }
+        acquisition_totals: dict[str, dict[str, Any]] = {}
+        acquisition_labels = {
+            "pos_walk_in": "Comercio / mostrador",
+            "social": "Redes sociales",
+            "referral": "Referidos",
+            "app": "App Helios 360",
+            "otros": "Otros",
+            "unknown": "Sin origen",
+        }
+
+        def acquisition_bucket(source: str | None, channel: str) -> str:
+            if not source:
+                return "pos_walk_in" if channel == "pos" else "unknown"
+            if source == "pos_walk_in":
+                return "pos_walk_in"
+            if source in {"whatsapp", "instagram"}:
+                return "social"
+            if source == "referral":
+                return "referral"
+            if source in {"app", "self_booking"}:
+                return "app"
+            return "otros"
+
+        for index, sale in enumerate(sales):
+            channel = "crm" if sale.quote_origin == "crm" else "pos"
+            person_key = sale.customer_id or f"anon:{index}"
+            channel_totals[channel]["amount"] += sale.total
+            channel_totals[channel]["count"] += 1
+            channel_totals[channel]["people"].add(person_key)
+            bucket = acquisition_bucket(sale.acquisition_source, channel)
+            if bucket not in acquisition_totals:
+                acquisition_totals[bucket] = {
+                    "amount": Decimal("0"),
+                    "count": 0,
+                    "people": set(),
+                }
+            acquisition_totals[bucket]["amount"] += sale.total
+            acquisition_totals[bucket]["count"] += 1
+            acquisition_totals[bucket]["people"].add(person_key)
+
+        channel_labels = {
+            "crm": "Ventas (CRM)",
+            "pos": "Comercio (POS)",
+        }
+        sales_by_channel = [
+            ConsolidatedChannelPoint(
+                id=channel_id,
+                label=channel_labels[channel_id],
+                amount=self._money(channel_totals[channel_id]["amount"]),
+                count=int(channel_totals[channel_id]["count"]),
+                customers=len(channel_totals[channel_id]["people"]),
+            )
+            for channel_id in ("crm", "pos")
+        ]
+        sales_by_acquisition = [
+            ConsolidatedAcquisitionPoint(
+                id=bucket_id,
+                label=acquisition_labels[bucket_id],
+                amount=self._money(values["amount"]),
+                count=int(values["count"]),
+                customers=len(values["people"]),
+            )
+            for bucket_id, values in sorted(
+                acquisition_totals.items(),
+                key=lambda item: item[1]["amount"],
+                reverse=True,
+            )
+        ]
+        total_amount = sum((sale.total for sale in sales), Decimal("0"))
+        return ConsolidatedReportResponse(
+            period=period,
+            branch_id=branch_id,
+            starts_at=context.starts_at,
+            ends_at=context.ends_at,
+            currency_code=context.currency_code,
+            total_amount=self._money(total_amount),
+            total_sales=len(sales),
+            sales_by_channel=sales_by_channel,
+            sales_by_acquisition=sales_by_acquisition,
+            generated_at=context.generated_at,
+        )
 
     def general_summary(
         self,
@@ -306,14 +415,10 @@ class ReportsService:
         staff = sum(record.appointment.source != "self" for record in records)
         self_booked = len(records) - staff
         status_names = {
-            "completed": "Cumplidas",
-            "attended": "Asistió",
+            "fulfilled": "Cumplidas",
             "confirmed": "Confirmadas",
-            "pending": "Pendientes",
-            "no_show": "No-show",
+            "no_show": "NO SHOW",
             "cancelled": "Canceladas",
-            "delayed": "Retrasadas",
-            "rescheduled": "Reprogramadas",
         }
         return AgendaReportSummaryResponse(
             period=period,
@@ -501,10 +606,13 @@ class ReportsService:
     ) -> PaginatedDividendReportResponse:
         context = self._context(grant, period=period, branch_id=branch_id, now=now)
         transactions = self._financial_rows(grant, context)
-        profit_by_branch: dict[UUID, Decimal] = defaultdict(Decimal)
+        income_by_branch: dict[UUID, Decimal] = defaultdict(Decimal)
+        expenses_by_branch: dict[UUID, Decimal] = defaultdict(Decimal)
         for row in transactions:
-            sign = Decimal("1") if row.transaction_type == "ingreso" else Decimal("-1")
-            profit_by_branch[row.branch_id] += sign * row.amount
+            if row.transaction_type == "ingreso":
+                income_by_branch[row.branch_id] += row.amount
+            else:
+                expenses_by_branch[row.branch_id] += row.amount
         for payment in self._repository.fixed_expense_payments(
             workspace_id=grant.workspace_id,
             branch_id=branch_id,
@@ -512,20 +620,36 @@ class ReportsService:
             starts_on=context.starts_on,
             ends_on=context.ends_on,
         ):
-            profit_by_branch[payment.branch_id] -= payment.amount
+            expenses_by_branch[payment.branch_id] += payment.amount
 
         query = (search or "").casefold().strip()
         rows: list[DividendReportItemResponse] = []
+        branch_details: list[DividendBranchDetail] = []
+        partner_totals: dict[str, dict[str, Any]] = {}
         total_profit = Decimal("0")
         for branch in self._repository.branches(
             workspace_id=grant.workspace_id,
             branch_id=branch_id,
             allowed_branch_ids=grant.allowed_branch_ids,
         ):
-            profit = max(Decimal("0"), profit_by_branch[branch.id])
+            gross_income = income_by_branch[branch.id]
+            expenses = expenses_by_branch[branch.id]
+            profit = gross_income - expenses
             details = BranchDetails.model_validate(branch.configuration or {})
+            if not details.partners:
+                continue
             total_profit += profit
+            branch_partner_rows: list[DividendBranchPartnerRow] = []
             for index, partner in enumerate(details.partners):
+                dividend = profit * partner.share / Decimal("100")
+                branch_partner_rows.append(
+                    DividendBranchPartnerRow(
+                        partner_name=partner.name,
+                        document=partner.document,
+                        share=partner.share,
+                        dividend=self._money(dividend),
+                    )
+                )
                 if query and query not in f"{partner.name} {branch.name}".casefold():
                     continue
                 rows.append(
@@ -536,10 +660,37 @@ class ReportsService:
                         branch_id=branch.id,
                         branch_name=branch.name,
                         share=partner.share,
-                        dividend=self._money(profit * partner.share / Decimal("100")),
+                        dividend=self._money(dividend),
                         total_branch_profit=self._money(profit),
                     )
                 )
+                partner_key = f"{partner.name}::{partner.document or ''}"
+                if partner_key not in partner_totals:
+                    partner_totals[partner_key] = {
+                        "partner_name": partner.name,
+                        "document": partner.document,
+                        "total_dividend": Decimal("0"),
+                        "branches": [],
+                    }
+                partner_totals[partner_key]["total_dividend"] += dividend
+                partner_totals[partner_key]["branches"].append(
+                    DividendPartnerBranchShare(
+                        branch_id=branch.id,
+                        branch_name=branch.name,
+                        share=partner.share,
+                        dividend=self._money(dividend),
+                    )
+                )
+            branch_details.append(
+                DividendBranchDetail(
+                    branch_id=branch.id,
+                    branch_name=branch.name,
+                    gross_income=self._money(gross_income),
+                    expenses=self._money(expenses),
+                    net_profit=self._money(profit),
+                    partners=branch_partner_rows,
+                )
+            )
         accessors: dict[str, Callable[[DividendReportItemResponse], Any]] = {
             "partnerName": lambda row: row.partner_name.casefold(),
             "branchName": lambda row: row.branch_name.casefold(),
@@ -549,6 +700,20 @@ class ReportsService:
         rows = self._sort(rows, accessors[sort_key], sort_direction)
         distributed = sum((row.dividend for row in rows), Decimal("0"))
         selected, safe_page, total_pages = self._page(rows, page, page_size)
+        by_partner = [
+            DividendPartnerAggregate(
+                id=partner_key,
+                partner_name=values["partner_name"],
+                document=values["document"],
+                total_dividend=self._money(values["total_dividend"]),
+                branches=values["branches"],
+            )
+            for partner_key, values in sorted(
+                partner_totals.items(),
+                key=lambda item: item[1]["total_dividend"],
+                reverse=True,
+            )
+        ]
         return PaginatedDividendReportResponse(
             items=selected,
             page=safe_page,
@@ -556,10 +721,13 @@ class ReportsService:
             total_items=len(rows),
             total_pages=total_pages,
             summary=DividendSummaryResponse(
-                partners=len(rows),
-                branches=len({row.branch_id for row in rows}),
+                partners=len(by_partner),
+                branches=len(branch_details),
                 total_dividends=self._money(distributed),
-                undistributed_profit=self._money(max(Decimal("0"), total_profit - distributed)),
+                total_net_profit=self._money(total_profit),
+                undistributed_profit=self._money(total_profit - distributed),
+                by_branch=sorted(branch_details, key=lambda row: row.net_profit, reverse=True),
+                by_partner=by_partner,
             ),
         )
 
@@ -960,13 +1128,41 @@ class ReportsService:
             for index, start in enumerate(starts)
         ]
 
+    @staticmethod
+    def _normalize_income_category(name: str) -> str:
+        cleaned = (name or "").strip()
+        if not cleaned:
+            return "Otros"
+        labels = {
+            "efectivo": "Efectivo",
+            "cash": "Efectivo",
+            "tarjeta": "Tarjeta",
+            "card": "Tarjeta",
+            "transferencia": "Transferencia",
+            "bank_transfer": "Transferencia",
+            "link": "Link de pago",
+            "credito": "Crédito",
+            "credit": "Crédito",
+            "venta_pos": "Venta POS",
+            "venta pos": "Venta POS",
+            "servicios": "Servicios",
+        }
+        key = cleaned.lower().replace(" ", "_")
+        if key in labels:
+            return labels[key]
+        slug = cleaned.lower()
+        if slug in labels:
+            return labels[slug]
+        return cleaned
+
     def _income_distribution(
         self, rows: tuple[FinancialTransactionRecord, ...]
     ) -> list[DistributionPoint]:
         amounts: dict[str, Decimal] = defaultdict(Decimal)
         for row in rows:
             if row.transaction_type == "ingreso":
-                amounts[row.category] += row.amount
+                label = self._normalize_income_category(row.category)
+                amounts[label] += row.amount
         total = sum(amounts.values(), Decimal("0"))
         return [
             DistributionPoint(

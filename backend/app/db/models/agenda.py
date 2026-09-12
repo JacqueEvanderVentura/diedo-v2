@@ -25,7 +25,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 from app.db.models.mixins import TimestampMixin, UuidPrimaryKeyMixin, VersionMixin
 
-ACTIVE_APPOINTMENT_STATUSES = ("pending", "confirmed", "delayed", "rescheduled")
+ACTIVE_APPOINTMENT_STATUSES = ("confirmed",)
 DEFAULT_APPOINTMENT_RESOURCES = (
     ("cab1", "Cabina 1"),
     ("cab2", "Cabina 2"),
@@ -132,9 +132,32 @@ class Appointment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             "pending_payment OR pending_amount = 0", name="pending_amount_requires_flag"
         ),
         CheckConstraint(
-            "status IN ('pending', 'confirmed', 'completed', 'attended', 'no_show', "
-            "'cancelled', 'delayed', 'rescheduled')",
+            "status IN ('confirmed', 'fulfilled', 'no_show', 'cancelled')",
             name="status_values",
+        ),
+        CheckConstraint(
+            "completion_punctuality IS NULL OR completion_punctuality IN ('on_time', 'delayed')",
+            name="completion_punctuality_values",
+        ),
+        CheckConstraint(
+            "delay_responsibility IS NULL OR delay_responsibility IN ('center', 'customer')",
+            name="delay_responsibility_values",
+        ),
+        CheckConstraint(
+            (
+                "(status = 'fulfilled' AND completed_at IS NOT NULL "
+                "AND completion_punctuality IS NOT NULL) OR "
+            )
+            + (
+                "(status <> 'fulfilled' AND completed_at IS NULL "
+                "AND completion_punctuality IS NULL "
+                "AND delay_responsibility IS NULL AND completion_note IS NULL)"
+            ),
+            name="fulfilled_completion",
+        ),
+        CheckConstraint(
+            "completion_punctuality <> 'delayed' OR delay_responsibility IS NOT NULL",
+            name="delayed_responsibility",
         ),
         CheckConstraint(
             "record_status IN ('active', 'inactive')",
@@ -158,10 +181,7 @@ class Appointment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             ("branch_id", "="),
             ("resource_id", "="),
             ("scheduled_period", "&&"),
-            where=text(
-                "record_status = 'active' AND "
-                "status IN ('pending', 'confirmed', 'delayed', 'rescheduled')"
-            ),
+            where=text("record_status = 'active' AND status = 'confirmed'"),
             using="gist",
             name="excl_appointments_resource_period",
         ),
@@ -171,9 +191,7 @@ class Appointment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             ("employee_id", "="),
             ("scheduled_period", "&&"),
             where=text(
-                "employee_id IS NOT NULL AND "
-                "record_status = 'active' AND "
-                "status IN ('pending', 'confirmed', 'delayed', 'rescheduled')"
+                "employee_id IS NOT NULL AND record_status = 'active' AND status = 'confirmed'"
             ),
             using="gist",
             name="excl_appointments_employee_period",
@@ -226,6 +244,10 @@ class Appointment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="confirmed", server_default=text("'confirmed'")
     )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completion_punctuality: Mapped[str | None] = mapped_column(String(16))
+    delay_responsibility: Mapped[str | None] = mapped_column(String(16))
+    completion_note: Mapped[str | None] = mapped_column(String(500))
     record_status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="active", server_default=text("'active'")
     )

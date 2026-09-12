@@ -55,6 +55,13 @@ class AuthPrincipal:
     session_id: UUID
     email: str
     display_name: str
+    is_platform_operator: bool = False
+
+
+@dataclass(frozen=True)
+class SessionElevationContext:
+    granted_by_name: str
+    expires_at: datetime
 
 
 @dataclass(frozen=True)
@@ -66,6 +73,7 @@ class CurrentSessionContext:
     permission_codes: tuple[str, ...]
     workspace_permission_codes: tuple[str, ...]
     enabled_modules: tuple[str, ...]
+    elevation: SessionElevationContext | None = None
 
 
 class AuthService:
@@ -174,10 +182,13 @@ class AuthService:
             session_id=record.session_id,
             email=record.email,
             display_name=record.display_name,
+            is_platform_operator=record.is_platform_operator,
         )
 
     def logout(self, principal: AuthPrincipal) -> None:
-        self._repository.revoke_session(principal.session_id, datetime.now(UTC))
+        now = datetime.now(UTC)
+        self._repository.revoke_active_elevations(principal.session_id, now)
+        self._repository.revoke_session(principal.session_id, now)
         self._session.commit()
 
     def list_workspaces(self, principal: AuthPrincipal) -> tuple[LoginWorkspaceRecord, ...]:
@@ -283,6 +294,15 @@ class AuthService:
                 branch_ids=effective_scope.branch_ids,
             )
         )
+        elevation_record = self._repository.get_active_elevation(principal.session_id, now)
+        elevation = (
+            SessionElevationContext(
+                granted_by_name=elevation_record.granted_by_display_name,
+                expires_at=elevation_record.expires_at,
+            )
+            if elevation_record is not None
+            else None
+        )
         return CurrentSessionContext(
             workspace=workspace,
             assignments=assignments,
@@ -295,7 +315,75 @@ class AuthService:
             enabled_modules=tuple(
                 sorted(ModuleAccessService(self._session).enabled_modules(principal.workspace_id))
             ),
+            elevation=elevation,
         )
+
+    def elevate_session(
+        self,
+        principal: AuthPrincipal,
+        *,
+        email: str,
+        password: str,
+        permission_code: str | None = None,
+    ) -> CurrentSessionContext:
+        approver_user = self._repository.get_login_user(normalize_email(email))
+        if approver_user is None or not verify_password(password, approver_user.password_hash):
+            verify_password(password, None)
+            raise AuthenticationError("Credenciales del supervisor incorrectas.")
+        if approver_user.status != "active":
+            raise AuthenticationError("Credenciales del supervisor incorrectas.")
+        if approver_user.id == principal.platform_user_id:
+            raise InvalidOperationError(
+                "Debes usar las credenciales de otro usuario autorizado.",
+                "email",
+            )
+
+        approver_membership = self._repository.get_active_workspace_membership(
+            approver_user.id,
+            principal.workspace_id,
+        )
+        if approver_membership is None:
+            raise AuthenticationError("Credenciales del supervisor incorrectas.")
+
+        approver_principal = AuthPrincipal(
+            platform_user_id=approver_user.id,
+            membership_id=approver_membership.membership_id,
+            workspace_id=principal.workspace_id,
+            session_id=principal.session_id,
+            email=approver_user.email,
+            display_name=approver_user.display_name,
+        )
+        authorization = AuthorizationService(self._session)
+        approver_codes = authorization._membership_permission_codes(approver_principal)
+        if permission_code and permission_code not in approver_codes:
+            raise AuthorizationError(
+                "El supervisor no tiene permiso para autorizar esta acción.",
+                "permissionCode",
+            )
+        if not approver_codes:
+            raise AuthorizationError(
+                "El supervisor no tiene permisos suficientes para elevar la sesión.",
+                "permissionCode",
+            )
+
+        now = datetime.now(UTC)
+        expires_at = now + timedelta(minutes=3)
+        self._repository.create_elevation(
+            session_id=principal.session_id,
+            granted_by_membership_id=approver_membership.membership_id,
+            granted_by_display_name=approver_user.display_name,
+            granted_permission_codes=sorted(approver_codes),
+            expires_at=expires_at,
+            now=now,
+        )
+        self._session.commit()
+        return self.current_session_context(principal)
+
+    def revoke_session_elevation(self, principal: AuthPrincipal) -> CurrentSessionContext:
+        now = datetime.now(UTC)
+        self._repository.revoke_active_elevations(principal.session_id, now)
+        self._session.commit()
+        return self.current_session_context(principal)
 
     def _issue_session(
         self,

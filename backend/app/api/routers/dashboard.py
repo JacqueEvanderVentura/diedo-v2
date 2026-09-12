@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -43,8 +44,18 @@ def get_dashboard_summary(
     response: Response,
     period: Annotated[DashboardPeriod, Query()] = "week",
     branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
+    branch_ids: Annotated[list[UUID] | None, Query(alias="branchIds")] = None,
+    date_from: Annotated[date | None, Query(alias="dateFrom")] = None,
+    date_to: Annotated[date | None, Query(alias="dateTo")] = None,
 ) -> DashboardSummaryResponse:
-    result = DashboardService(database).summary(grant, period=period, branch_id=branch_id)
+    result = DashboardService(database).summary(
+        grant,
+        period=period,
+        branch_id=branch_id,
+        branch_ids=branch_ids,
+        date_from=date_from,
+        date_to=date_to,
+    )
     _no_store(response)
     return DashboardSummaryResponse(
         period=result.context.period,
@@ -71,8 +82,18 @@ def get_dashboard_sales_trend(
     response: Response,
     period: Annotated[DashboardPeriod, Query()] = "week",
     branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
+    branch_ids: Annotated[list[UUID] | None, Query(alias="branchIds")] = None,
+    date_from: Annotated[date | None, Query(alias="dateFrom")] = None,
+    date_to: Annotated[date | None, Query(alias="dateTo")] = None,
 ) -> DashboardSalesTrendResponse:
-    result = DashboardService(database).sales_trend(grant, period=period, branch_id=branch_id)
+    result = DashboardService(database).sales_trend(
+        grant,
+        period=period,
+        branch_id=branch_id,
+        branch_ids=branch_ids,
+        date_from=date_from,
+        date_to=date_to,
+    )
     _no_store(response)
     return DashboardSalesTrendResponse(
         period=result.context.period,
@@ -97,9 +118,12 @@ def get_dashboard_stock_alerts(
     grant: DashboardReadGrant,
     response: Response,
     branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
+    branch_ids: Annotated[list[UUID] | None, Query(alias="branchIds")] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> DashboardStockAlertsResponse:
-    records = DashboardService(database).stock_alerts(grant, branch_id=branch_id, limit=limit)
+    records = DashboardService(database).stock_alerts(
+        grant, branch_id=branch_id, branch_ids=branch_ids, limit=limit
+    )
     _no_store(response)
     return DashboardStockAlertsResponse(
         items=[
@@ -129,10 +153,11 @@ def get_dashboard_appointments(
     grant: DashboardReadGrant,
     response: Response,
     branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
+    branch_ids: Annotated[list[UUID] | None, Query(alias="branchIds")] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> DashboardAppointmentsResponse:
     scheduled_date, appointments = DashboardService(database).appointments_today(
-        grant, branch_id=branch_id, limit=limit
+        grant, branch_id=branch_id, branch_ids=branch_ids, limit=limit
     )
     _no_store(response)
     return DashboardAppointmentsResponse(
@@ -163,12 +188,18 @@ def get_dashboard_activity(
     response: Response,
     period: Annotated[DashboardPeriod, Query()] = "week",
     branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
+    branch_ids: Annotated[list[UUID] | None, Query(alias="branchIds")] = None,
+    date_from: Annotated[date | None, Query(alias="dateFrom")] = None,
+    date_to: Annotated[date | None, Query(alias="dateTo")] = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
 ) -> DashboardActivityListResponse:
     records = DashboardService(database).recent_activity(
         grant,
         period=period,
         branch_id=branch_id,
+        branch_ids=branch_ids,
+        date_from=date_from,
+        date_to=date_to,
         limit=limit,
     )
     _no_store(response)

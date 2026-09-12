@@ -9,6 +9,7 @@ from app.schemas.reports import (
     AgendaReportPeriod,
     AgendaReportSummaryResponse,
     AppointmentStatus,
+    ConsolidatedReportResponse,
     GeneralReportSummaryResponse,
     InventoryReportSummaryResponse,
     MembershipStatus,
@@ -50,6 +51,23 @@ def get_general_summary(
     branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
 ) -> GeneralReportSummaryResponse:
     result = ReportsService(database).general_summary(grant, period=period, branch_id=branch_id)
+    _no_store(response)
+    return result
+
+
+@router.get(
+    "/general/consolidated",
+    summary="Obtener ventas consolidadas por canal y origen de captación",
+    responses=_SECURITY_RESPONSES,
+)
+def get_consolidated_report(
+    database: DatabaseSession,
+    grant: ReportReadGrant,
+    response: Response,
+    period: Annotated[ReportPeriod, Query()] = "month",
+    branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
+) -> ConsolidatedReportResponse:
+    result = ReportsService(database).consolidated(grant, period=period, branch_id=branch_id)
     _no_store(response)
     return result
 

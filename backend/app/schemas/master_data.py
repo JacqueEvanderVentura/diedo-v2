@@ -11,6 +11,8 @@ CreateMasterDataStatus = Literal["active", "inactive"]
 CustomerType = Literal["person", "business"]
 SortDirection = Literal["asc", "desc"]
 CustomerSortField = Literal["name", "status", "createdAt", "updatedAt"]
+AcquisitionSource = Literal["whatsapp", "instagram", "referral", "otros", "pos_walk_in", "app"]
+CustomerDocumentType = Literal["cedula", "pasaporte"]
 EmployeeSortField = Literal["name", "employeeNumber", "status", "createdAt", "updatedAt"]
 AttachmentClassification = Literal["internal", "customer_document", "employee_document"]
 
@@ -84,6 +86,9 @@ class CustomerResponse(ApiModel):
     business_name: str | None
     email: EmailStr | None
     phone: str | None
+    acquisition_source: AcquisitionSource | None = None
+    document_type: CustomerDocumentType | None = None
+    document_id: str | None = None
     branches: list[BranchReference]
     status: MasterDataStatus
     version: int
@@ -108,6 +113,9 @@ class CreateCustomerRequest(ApiModel):
     business_name: str | None = Field(default=None, max_length=200)
     email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=40)
+    acquisition_source: AcquisitionSource | None = None
+    document_type: CustomerDocumentType | None = None
+    document_id: str | None = Field(default=None, max_length=64)
     branch_ids: list[UUID] = Field(min_length=1, max_length=100)
     status: CreateMasterDataStatus = "active"
 
@@ -128,6 +136,12 @@ class CreateCustomerRequest(ApiModel):
             raise ValueError("No repitas sucursales.")
         return value
 
+    @model_validator(mode="after")
+    def validate_document_pair(self) -> Self:
+        if (self.document_type is None) ^ (self.document_id is None):
+            raise ValueError("documentType y documentId deben enviarse juntos.")
+        return self
+
 
 class UpdateCustomerRequest(ApiModel):
     version: int = Field(ge=1)
@@ -138,6 +152,9 @@ class UpdateCustomerRequest(ApiModel):
     business_name: str | None = Field(default=None, max_length=200)
     email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=40)
+    acquisition_source: AcquisitionSource | None = None
+    document_type: CustomerDocumentType | None = None
+    document_id: str | None = Field(default=None, max_length=64)
     branch_ids: list[UUID] | None = Field(default=None, min_length=1, max_length=100)
     status: MasterDataStatus | None = None
 
@@ -166,6 +183,9 @@ class UpdateCustomerRequest(ApiModel):
         required = {"customer_type", "display_name", "branch_ids", "status"}
         if any(field in changed and getattr(self, field) is None for field in required):
             raise ValueError("Este campo no puede ser nulo.")
+        if "document_type" in changed or "document_id" in changed:
+            if (self.document_type is None) ^ (self.document_id is None):
+                raise ValueError("documentType y documentId deben enviarse juntos.")
         return self
 
 
@@ -197,6 +217,7 @@ class EmployeeResponse(ApiModel):
     branches: list[BranchReference]
     supervisor_ids: list[UUID]
     schedule: EmployeeScheduleResponse
+    online_booking_selectable: bool = False
     status: MasterDataStatus
     version: int
     attachment_count: int
@@ -227,6 +248,7 @@ class CreateEmployeeRequest(ApiModel):
     supervisor_ids: list[UUID] = Field(default_factory=list, max_length=20)
     timezone: str = Field(default="America/Santo_Domingo", min_length=3, max_length=64)
     schedule: WeeklySchedule = Field(default_factory=WeeklySchedule)
+    online_booking_selectable: bool = False
     status: CreateMasterDataStatus = "active"
 
     @field_validator("employee_number")
@@ -267,6 +289,7 @@ class UpdateEmployeeRequest(ApiModel):
     platform_user_id: UUID | None = None
     branch_ids: list[UUID] | None = Field(default=None, min_length=1, max_length=100)
     supervisor_ids: list[UUID] | None = Field(default=None, max_length=20)
+    online_booking_selectable: bool | None = None
     status: MasterDataStatus | None = None
 
     @field_validator("employee_number")
@@ -306,6 +329,7 @@ class UpdateEmployeeRequest(ApiModel):
             "branch_ids",
             "supervisor_ids",
             "status",
+            "online_booking_selectable",
         }
         if any(field in changed and getattr(self, field) is None for field in required):
             raise ValueError("Este campo no puede ser nulo.")

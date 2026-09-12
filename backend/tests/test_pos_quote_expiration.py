@@ -38,6 +38,41 @@ def test_quote_and_sale_line_subtotals_use_currency_rounding() -> None:
     assert _sale_line_response(line).subtotal == Decimal("0.01")
 
 
+def _add_crm_quote(
+    session: Session,
+    *,
+    summary: BootstrapSummary,
+    branch_id: UUID,
+    expires_at: datetime,
+    crm_status: str = "enviada",
+) -> SalesQuote:
+    suffix = uuid7().hex[:20]
+    quote = SalesQuote(
+        workspace_id=summary.workspace_id,
+        branch_id=branch_id,
+        document_number=f"CRM-EXP-{suffix}",
+        kind="quote",
+        origin="crm",
+        crm_status=crm_status,
+        status="open",
+        currency_code="DOP",
+        subtotal=Decimal("0.00"),
+        discount_mode="pct",
+        discount_value=Decimal("0.00"),
+        discount_amount=Decimal("0.00"),
+        tax_amount=Decimal("0.00"),
+        total=Decimal("0.00"),
+        expires_at=expires_at,
+        creation_idempotency_key=f"crm-quote-expiration-{suffix}",
+        request_fingerprint="e" * 64,
+        created_by_platform_user_id=summary.platform_user_id,
+        updated_by_platform_user_id=summary.platform_user_id,
+    )
+    session.add(quote)
+    session.flush()
+    return quote
+
+
 def _add_quote(
     session: Session,
     *,
@@ -190,6 +225,62 @@ def test_expired_quotes_are_materialized_and_rejected_transactionally() -> None:
         assert persisted_edit_quote.status == "expired"
         assert persisted_edit_quote.closed_at is not None
         assert persisted_edit_quote.version == 2
+
+        stale_open_crm = _add_crm_quote(
+            session,
+            summary=summary,
+            branch_id=branch_id,
+            expires_at=datetime.now(UTC) - timedelta(seconds=1),
+            crm_status="enviada",
+        )
+        stale_open_id = stale_open_crm.id
+        session.commit()
+        assert stale_open_crm.status == "open"
+        assert stale_open_crm.version == 1
+        reopened_stale = service.update_quote(
+            principal=principal,
+            grant=manage_grant,
+            quote_id=stale_open_id,
+            expected_version=1,
+            changes={"crm_status": "enviada"},
+        )
+        assert reopened_stale.quote.status == "open"
+        assert reopened_stale.quote.crm_status == "enviada"
+        assert reopened_stale.quote.expires_at is not None
+        assert reopened_stale.quote.expires_at > datetime.now(UTC)
+
+        crm_expired = _add_crm_quote(
+            session,
+            summary=summary,
+            branch_id=branch_id,
+            expires_at=datetime.now(UTC) - timedelta(seconds=1),
+            crm_status="enviada",
+        )
+        crm_expired_id = crm_expired.id
+        session.commit()
+        service.get_quote(sales_grant, crm_expired_id)
+        crm_record = service.get_quote(sales_grant, crm_expired_id)
+        assert crm_record.quote.status == "expired"
+        assert crm_record.quote.crm_status == "vencida"
+        updated_crm = service.update_quote(
+            principal=principal,
+            grant=manage_grant,
+            quote_id=crm_expired_id,
+            expected_version=crm_record.quote.version,
+            changes={"crm_status": "rechazada"},
+        )
+        assert updated_crm.quote.crm_status == "rechazada"
+        assert updated_crm.quote.status == "expired"
+        reopened_crm = service.update_quote(
+            principal=principal,
+            grant=manage_grant,
+            quote_id=crm_expired_id,
+            expected_version=updated_crm.quote.version,
+            changes={"crm_status": "enviada"},
+        )
+        assert reopened_crm.quote.crm_status == "enviada"
+        assert reopened_crm.quote.status == "open"
+        assert reopened_crm.quote.closed_at is None
 
         future_quote = _add_quote(
             session,

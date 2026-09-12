@@ -13,12 +13,13 @@ from app.api.deps import (
     CurrentPrincipal,
     CustomerManageGrant,
     DatabaseSession,
+    PosSellGrant,
     SalesQuoteManageGrant,
     SalesReadGrant,
 )
 from app.api.routers.pos import (
+    _checkout_response,
     _quote_detail_response,
-    _quote_list_response,
     _sale_detail_response,
     _sale_list_response,
 )
@@ -47,6 +48,7 @@ from app.schemas.crm import (
     CustomerPurchasesResponse,
     ImportedLeadsResponse,
     ImportLeadsRequest,
+    InvoiceCrmQuoteRequest,
     LeadDiscoveryCandidateResponse,
     LeadDiscoveryCapabilitiesResponse,
     LeadDiscoverySearchRequest,
@@ -70,6 +72,7 @@ from app.schemas.crm import (
     UpdateScoringSettingsRequest,
 )
 from app.schemas.pos import (
+    CheckoutResponse,
     PaginatedSalesResponse,
     SaleDetailResponse,
     SaleStatus,
@@ -154,6 +157,7 @@ def _lead_response(record: LeadRecord) -> LeadResponse:
         website=lead.website,
         location=lead.location,
         source=cast(Any, lead.source),
+        acquisition_source=cast(Any, lead.acquisition_source),
         source_url=lead.source_url,
         scraped_at=lead.scraped_at,
         raw_snippet=lead.raw_snippet,
@@ -254,11 +258,30 @@ def _customer_response(record: CustomerCrmRecord) -> CustomerCrmResponse:
     )
 
 
+def _invoice_collection_from_settlement(settlement_policy: str | None) -> str | None:
+    if settlement_policy is None:
+        return None
+    if settlement_policy == "immediate":
+        return "collected"
+    if settlement_policy == "pending_confirmation":
+        return "pending_validation"
+    if settlement_policy == "receivable":
+        return "receivable"
+    return None
+
+
 def _crm_quote_list_response(record: QuoteRecord) -> CrmQuoteListResponse:
     return CrmQuoteListResponse(
-        quote=_quote_list_response(record),
+        quote=_quote_detail_response(record),
         opportunity_id=record.quote.opportunity_id,
         crm_status=cast(Any, record.quote.crm_status),
+        converted_sale_id=record.converted_sale_id,
+        invoice_number=record.converted_sale_number,
+        receivable_id=record.converted_receivable_id,
+        invoice_collection=cast(
+            Any,
+            _invoice_collection_from_settlement(record.converted_sale_settlement_policy),
+        ),
     )
 
 
@@ -823,6 +846,38 @@ def cancel_quote(
             quote_id=quote_id,
             expected_version=payload.version,
             reason=payload.reason,
+        )
+    )
+
+
+@router.post(
+    "/quotes/{quote_id}/invoice",
+    status_code=status.HTTP_201_CREATED,
+    responses=_RESPONSES,
+)
+def invoice_quote(
+    quote_id: UUID,
+    payload: InvoiceCrmQuoteRequest,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    crm_grant: CrmManageGrant,
+    sales_grant: SalesQuoteManageGrant,
+    sell_grant: PosSellGrant,
+    idempotency_key: IdempotencyKey,
+) -> CheckoutResponse:
+    return _checkout_response(
+        CrmService(database).invoice_quote(
+            principal=principal,
+            crm_grant=crm_grant,
+            sales_grant=sales_grant,
+            sell_grant=sell_grant,
+            quote_id=quote_id,
+            expected_version=payload.version,
+            payment_method_id=payload.payment_method_id,
+            collection_mode=payload.collection_mode,
+            register_id=payload.register_id,
+            payment_reference=payload.reference,
+            idempotency_key=idempotency_key,
         )
     )
 

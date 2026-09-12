@@ -69,6 +69,7 @@ class CatalogService:
         grant: PermissionGrant,
         search: str | None,
         status: str | None,
+        category_kind: str | None,
         page: int,
         page_size: int,
         sort_by: str,
@@ -78,6 +79,7 @@ class CatalogService:
             workspace_id=grant.workspace_id,
             search=normalize_optional_text(search),
             status=status,
+            category_kind=category_kind,
             page=page,
             page_size=page_size,
             sort_by=sort_by,
@@ -95,15 +97,7 @@ class CatalogService:
         category = self._repository.get_category(grant.workspace_id, category_id)
         if category is None:
             raise ResourceNotFoundError("La categoría no existe.", "categoryId")
-        return CategoryRecord(
-            id=category.id,
-            name=category.name,
-            description=category.description,
-            status=category.status,
-            version=category.version,
-            created_at=category.created_at,
-            updated_at=category.updated_at,
-        )
+        return self._repository._category_record(category)
 
     def create_category(
         self,
@@ -112,6 +106,7 @@ class CatalogService:
         grant: PermissionGrant,
         name: str,
         description: str | None,
+        category_kind: str,
         status: str,
     ) -> CategoryRecord:
         self._require_workspace_wide(grant)
@@ -126,6 +121,7 @@ class CatalogService:
                 name=normalized_name,
                 normalized_name=category_key,
                 description=normalize_optional_text(description),
+                category_kind=category_kind,
                 status=status,
                 request_id=get_request_id(),
             )

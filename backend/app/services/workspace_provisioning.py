@@ -13,8 +13,9 @@ from app.core.security import hash_password, normalize_email
 from app.db.models import (
     AccessScope,
     AuditEntry,
+    Branch,
     CrmSettings,
-    ModuleEntitlement,
+    LegalEntity,
     PaymentMethod,
     PlatformUser,
     PurchasingSettings,
@@ -30,6 +31,10 @@ from app.services.errors import (
     ConflictError,
     InvalidOperationError,
     ServiceUnavailableError,
+)
+from app.services.subscription_plans import (
+    DEFAULT_PLAN_CODE,
+    WorkspaceEntitlementService,
 )
 
 _ROLE_TEMPLATES = (
@@ -79,6 +84,7 @@ _ROLE_PERMISSION_CODES = {
             "pos.receivables.read",
             "pos.receivables.collect",
             "pos.void",
+            "sales.invoice.void",
         }
     ),
     "seller": frozenset(
@@ -90,6 +96,8 @@ _ROLE_PERMISSION_CODES = {
             "sales.quote.manage",
             "pos.read",
             "pos.sell",
+            "pos.receivables.read",
+            "pos.receivables.collect",
         }
     ),
 }
@@ -184,6 +192,8 @@ class WorkspaceProvisioningService:
         owner_email: str,
         owner_display_name: str,
         owner_password: str | None,
+        plan_code: str = DEFAULT_PLAN_CODE,
+        enabled_module_codes: frozenset[str] | None = None,
     ) -> ProvisionedWorkspace:
         if self._repository.workspace_by_slug(slug) is not None:
             raise ConflictError("Ya existe un workspace con este slug.", "slug")
@@ -223,6 +233,7 @@ class WorkspaceProvisioningService:
             )
 
         now = datetime.now(UTC)
+        resolved_modules: frozenset[str] = frozenset()
         workspace = Workspace(
             slug=slug,
             name=name,
@@ -283,6 +294,41 @@ class WorkspaceProvisioningService:
             self._session.add(workspace_scope)
             self._session.flush()
 
+            legal_entity = LegalEntity(
+                workspace_id=workspace.id,
+                code="MAIN",
+                legal_name=name,
+                display_name=name,
+                status="active",
+            )
+            self._session.add(legal_entity)
+            self._session.flush()
+            self._session.add(
+                Branch(
+                    workspace_id=workspace.id,
+                    legal_entity_id=legal_entity.id,
+                    code="MAIN",
+                    name="Principal",
+                    status="active",
+                    timezone=timezone,
+                )
+            )
+
+            entitlement_service = WorkspaceEntitlementService(self._session)
+            plan = entitlement_service.require_plan_code(plan_code)
+            enabled_module_set = (
+                entitlement_service.resolve_enabled_modules(enabled_module_codes)
+                if enabled_module_codes is not None
+                else entitlement_service.plan_module_codes(plan)
+            )
+            entitlement_service.sync_entitlements(
+                workspace.id,
+                enabled_module_set,
+                now=now,
+            )
+            entitlement_service.assign_plan(workspace.id, plan, now=now)
+            resolved_modules = enabled_module_set
+
             self._session.add(
                 RoleAssignment(
                     workspace_id=workspace.id,
@@ -313,15 +359,6 @@ class WorkspaceProvisioningService:
                             )
                         )
 
-            self._session.add_all(
-                ModuleEntitlement(
-                    workspace_id=workspace.id,
-                    module_definition_id=module.id,
-                    status="enabled",
-                    effective_from=now,
-                )
-                for module in modules
-            )
             self._session.add_all(
                 PaymentMethod(
                     workspace_id=workspace.id,
@@ -355,7 +392,7 @@ class WorkspaceProvisioningService:
                 )
                 for code, unit_name, symbol in _UNITS_OF_MEASURE
             )
-            if "purchasing" in module_codes:
+            if "purchasing" in enabled_module_set:
                 self._session.add(
                     PurchasingSettings(
                         workspace_id=workspace.id,
@@ -364,7 +401,7 @@ class WorkspaceProvisioningService:
                         updated_by_platform_user_id=owner.id,
                     )
                 )
-            if "crm" in module_codes:
+            if "crm" in enabled_module_set:
                 self._session.add(
                     CrmSettings(
                         workspace_id=workspace.id,
@@ -384,7 +421,8 @@ class WorkspaceProvisioningService:
                     details={
                         "ownerPlatformUserId": str(owner.id),
                         "existingIdentity": existing_identity,
-                        "enabledModules": sorted(module_codes),
+                        "enabledModules": sorted(enabled_module_set),
+                        "planCode": plan.code,
                     },
                 )
             )
@@ -417,7 +455,7 @@ class WorkspaceProvisioningService:
                 is_default_workspace=is_default_workspace,
             ),
             administrator_role_id=roles["workspace_admin"].id,
-            enabled_modules=tuple(sorted(module_codes)),
+            enabled_modules=tuple(sorted(resolved_modules)),
         )
 
     @staticmethod

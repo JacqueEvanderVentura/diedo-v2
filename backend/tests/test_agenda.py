@@ -690,7 +690,11 @@ def test_appointment_delete_requires_permission_soft_deletes_and_frees_slot(
     missing_update = client.patch(
         f"/api/v1/appointments/{appointment['id']}",
         headers=owner_headers,
-        json={"version": appointment["version"] + 1, "status": "completed"},
+        json={
+            "version": appointment["version"] + 1,
+            "status": "fulfilled",
+            "completionPunctuality": "on_time",
+        },
     )
     assert missing_update.status_code == 404, missing_update.text
 

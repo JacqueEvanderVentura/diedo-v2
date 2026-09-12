@@ -636,6 +636,8 @@ def _seed_agenda(
             fixture.time,
             tzinfo=ZoneInfo(branch.timezone),
         ).astimezone(UTC)
+        ends_at = starts_at + timedelta(minutes=fixture.duration_minutes)
+        fulfilled = fixture.status == "fulfilled"
         values: dict[str, object] = {
             "workspace_id": workspace_id,
             "branch_id": branch.id,
@@ -647,13 +649,17 @@ def _seed_agenda(
             "scheduled_time": fixture.time,
             "timezone": branch.timezone,
             "starts_at": starts_at,
-            "ends_at": starts_at + timedelta(minutes=fixture.duration_minutes),
+            "ends_at": ends_at,
             "duration_minutes": fixture.duration_minutes,
             "customer_name": customer.display_name if customer else "Cliente Mostrador",
             "customer_phone": customer.phone if customer else None,
             "service_name": service.name if service else "Sin servicio",
             "price": Decimal("0"),
             "status": fixture.status,
+            "completed_at": ends_at if fulfilled else None,
+            "completion_punctuality": "on_time" if fulfilled else None,
+            "delay_responsibility": None,
+            "completion_note": None,
             "notes": "Cita de demostración para el dashboard.",
             "pending_payment": False,
             "pending_amount": Decimal("0"),

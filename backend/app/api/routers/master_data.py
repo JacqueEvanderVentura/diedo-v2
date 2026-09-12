@@ -83,6 +83,9 @@ def _customer_response(customer: CustomerRecord) -> CustomerResponse:
         business_name=customer.business_name,
         email=customer.email,
         phone=customer.phone,
+        acquisition_source=customer.acquisition_source,  # type: ignore[arg-type]
+        document_type=customer.document_type,  # type: ignore[arg-type]
+        document_id=customer.document_id,
         branches=[
             BranchReference(id=branch.id, code=branch.code, name=branch.name)
             for branch in customer.branches
@@ -115,6 +118,7 @@ def _employee_response(employee: EmployeeRecord) -> EmployeeResponse:
         ],
         supervisor_ids=list(employee.supervisor_ids),
         schedule=_schedule_response(employee.schedule),
+        online_booking_selectable=employee.online_booking_selectable,
         status=employee.status,  # type: ignore[arg-type]
         version=employee.version,
         attachment_count=employee.attachment_count,
@@ -144,6 +148,8 @@ def list_customers(
     name: Annotated[str | None, Query(max_length=200)] = None,
     phone: Annotated[str | None, Query(max_length=40)] = None,
     email: Annotated[str | None, Query(max_length=254)] = None,
+    document_id: Annotated[str | None, Query(alias="documentId", max_length=64)] = None,
+    document_type: Annotated[str | None, Query(alias="documentType")] = None,
     customer_type: Annotated[CustomerType | None, Query(alias="type")] = None,
     status_filter: Annotated[MasterDataStatus | None, Query(alias="status")] = None,
     branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
@@ -158,6 +164,8 @@ def list_customers(
         name=name,
         phone=phone,
         email=email,
+        document_id=document_id,
+        document_type=document_type,
         customer_type=customer_type,
         status=status_filter,
         branch_id=branch_id,
