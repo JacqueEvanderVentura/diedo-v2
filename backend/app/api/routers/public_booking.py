@@ -9,8 +9,8 @@ from app.api.routers.backoffice import BackofficeAccess
 from app.core.errors import raise_api_error
 from app.schemas.common import ErrorResponse
 from app.schemas.public_booking import (
-    PublicAppointmentSummary,
     PublicAppointmentsListResponse,
+    PublicAppointmentSummary,
     PublicBookAppointmentRequest,
     PublicBookAppointmentResponse,
     PublicBookingContextResponse,

@@ -79,7 +79,6 @@ def send_appointment_email(
         f"<p>{escape(text).replace(chr(10), '<br/>')}</p>"
         f'<p><a href="{escape(context["manage_url"])}">Gestionar cita</a></p>'
     )
-    idempotency_key = f"{event}/{appointment.id}"
     try:
         import resend
     except ModuleNotFoundError:
