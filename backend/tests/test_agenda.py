@@ -311,7 +311,6 @@ def test_agenda_calendar_management_conflicts_recurrence_and_fresh_reads(
             "time": "15:00",
             "duration": 90,
             "notes": "Cambio validado desde gestión de citas",
-            "status": "rescheduled",
         },
     )
     assert rescheduled.status_code == 200, rescheduled.text
