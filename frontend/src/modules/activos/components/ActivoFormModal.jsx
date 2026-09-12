@@ -4,13 +4,14 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
+import { AttachmentField } from '@/components/ui/AttachmentField'
 import { useActivosStore, ACTIVO_STATUSES } from '@/stores/activosStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { buildBranchFilterOptions } from '@/lib/branches'
 import { cn } from '@/lib/utils'
 
-const EMPTY = { name: '', code: '', category: 'mobiliario', value: '', status: 'activo', location: '', branchId: 'charm-dn', purchaseDate: '', notes: '' }
+const EMPTY = { name: '', code: '', category: 'mobiliario', value: '', status: 'activo', location: '', branchId: 'charm-dn', purchaseDate: '', notes: '', attachments: [] }
 
 export function ActivoFormModal({ open, onClose, activo }) {
   const saveActivo = useActivosStore((s) => s.saveActivo)
@@ -27,7 +28,7 @@ export function ActivoFormModal({ open, onClose, activo }) {
     if (open) {
       setForm(
         activo
-          ? { ...activo, code: activo.code || '', value: activo.value ?? '' }
+          ? { ...activo, code: activo.code || '', value: activo.value ?? '', attachments: activo.attachments || [] }
           : {
               ...EMPTY,
               category: categories[0]?.id || EMPTY.category,
@@ -47,7 +48,18 @@ export function ActivoFormModal({ open, onClose, activo }) {
     if (!form.branchId) return setErr('Selecciona una sucursal.')
     setSaving(true)
     try {
-      await saveActivo(form, activo, { isOnline })
+      const pendingFiles = (form.attachments || [])
+        .filter((attachment) => attachment.pendingFile)
+        .map((attachment) => attachment.pendingFile)
+      await saveActivo(
+        {
+          ...form,
+          imageFiles: pendingFiles,
+          attachments: (form.attachments || []).filter((attachment) => !attachment.pendingFile),
+        },
+        activo,
+        { isOnline }
+      )
       toast.success(`"${form.name}" ${editing ? 'actualizado' : 'registrado'}`)
       onClose()
     } catch (error) {
@@ -120,6 +132,12 @@ export function ActivoFormModal({ open, onClose, activo }) {
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Notas <span className="text-slate-400">(opcional)</span></label>
           <Input value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Detalles adicionales" data-testid="activo-field-notes" />
         </div>
+
+        <AttachmentField
+          value={form.attachments}
+          onChange={(attachments) => set('attachments', attachments)}
+          testId="activo-attachments"
+        />
 
         {err && <p role="alert" className="text-sm font-medium text-red-500" data-testid="activo-form-error">{err}</p>}
 

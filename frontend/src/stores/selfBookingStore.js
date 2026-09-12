@@ -3,7 +3,16 @@ import { persist } from 'zustand/middleware'
 import { ephemeralJsonStorage, ephemeralStorage } from '@/services/storagePolicy'
 import { useAgendaStore } from '@/stores/agendaStore'
 import { useCustomersStore } from '@/stores/customersStore'
-import { normalizeDocumentId, buildBookingUrl, buildProfileUrl, buildConfirmationEmail } from '@/modules/agenda/lib/selfBooking'
+import {
+  normalizeDocumentId,
+  buildBookingUrl,
+  buildProfileUrl,
+  buildConfirmationEmail,
+  isSlotAvailable,
+} from '@/modules/agenda/lib/selfBooking'
+import { useRrhhStore } from '@/stores/rrhhStore'
+import { useSessionStore } from '@/stores/sessionStore'
+import { publicBookingApi } from '@/services/publicBookingApi'
 
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const now = () => new Date().toISOString()
@@ -106,12 +115,50 @@ export const useSelfBookingStore = create(
         })),
 
       bookAppointment: async ({ profile, branchId, service, date, time, employeeId, duration }) => {
+        if (useSessionStore.getState().status !== 'demo') {
+          const response = await publicBookingApi.book(branchId, {
+            documentType: profile.docType || 'cedula',
+            documentId: profile.documentId,
+            displayName: profile.name,
+            email: profile.email || null,
+            phone: profile.phone || null,
+            address: profile.address || null,
+            wantsInvoice: profile.wantsInvoice,
+            wantsContact: profile.wantsContact,
+            serviceId: service.id,
+            employeeId,
+            date,
+            time,
+            duration: duration || 30,
+          })
+          return response.appointment
+        }
         const customer = await get().ensureCustomer(profile)
         const agenda = useAgendaStore.getState()
+        await agenda.hydrateAppointments({
+          force: true,
+          params: { dateFrom: date, dateTo: date, employeeId },
+        }).catch(() => {})
+        const refreshedAgenda = useAgendaStore.getState()
+        const rrhh = useRrhhStore.getState()
+        const employee = rrhh.employees.find((item) => item.id === employeeId)
+        const slotDuration = duration || 30
+        const available = isSlotAvailable({
+          date,
+          employeeId,
+          duration: slotDuration,
+          time,
+          appointments: refreshedAgenda.appointments,
+          employee,
+          vacationRequests: rrhh.vacationRequests,
+        })
+        if (!available) {
+          throw new Error('Ese horario ya no está disponible. Elige otro cupo.')
+        }
         const appointment = {
           date,
           time,
-          duration: duration || 30,
+          duration: slotDuration,
           employeeId,
           branchId,
           customerId: customer.id,
@@ -164,6 +211,38 @@ export const useSelfBookingStore = create(
         }
         set((s) => ({ emails: [email, ...s.emails] }))
         return email
+      },
+
+      identifyRemote: async (branchId, docType, documentId) => {
+        if (useSessionStore.getState().status === 'demo') {
+          return get().lookupByDocument(documentId)
+        }
+        const result = await publicBookingApi.identify(branchId, {
+          documentType: docType,
+          documentId,
+        })
+        if (!result.customerId && result.isNew) return null
+        return {
+          docType: result.documentType,
+          documentId: normalizeDocumentId(result.documentId),
+          name: result.displayName || '',
+          email: result.email || '',
+          phone: result.phone || '',
+          address: result.address || '',
+          wantsInvoice: result.wantsInvoice,
+          wantsContact: result.wantsContact,
+          customerId: result.customerId,
+        }
+      },
+
+      fetchRemoteSlots: async ({ branchId, date, employeeId, duration }) => {
+        if (useSessionStore.getState().status === 'demo') return null
+        const result = await publicBookingApi.listSlots(branchId, {
+          date,
+          employeeId,
+          duration,
+        })
+        return result.slots || []
       },
 
       sendBookingLinkEmail: ({ profile, branchId, branchName }) => {

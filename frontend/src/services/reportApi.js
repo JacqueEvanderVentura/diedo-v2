@@ -3,6 +3,11 @@ import { METHOD_LABELS } from '@/modules/crm/lib/crm'
 import { buildPersonalReport } from '@/modules/reportes/lib/personalReport'
 import { paginateSlice, matchesSearch } from '@/modules/reportes/lib/pagination'
 import {
+  buildConsolidatedReport,
+  mapConsolidatedFromApi,
+} from '@/modules/reportes/lib/consolidatedReport'
+import { mapDividendAnalyticsFromApi } from '@/modules/reportes/lib/dividendsReport'
+import {
   aggregateProductSales,
   buildIncomeExpenseSeries,
   expenseCategoryBreakdown,
@@ -11,27 +16,52 @@ import {
   inPeriod,
   incomeDistribution,
 } from '@/modules/reportes/lib/reportes'
+import { applyBranchFilter, branchIdFromSelection, matchesBranches } from '@/lib/branches'
 import apiClient from '@/services/apiClient'
 import { catName } from '@/stores/finanzasStore'
 import { useSessionStore } from '@/stores/sessionStore'
+
+function periodRange(params) {
+  return { dateFrom: params.dateFrom, dateTo: params.dateTo }
+}
+
+function branchFilter(params) {
+  return { branchId: params.branchId, branchIds: params.branchIds }
+}
+
+function apiReportParams(params) {
+  return {
+    ...params,
+    branchId: branchIdFromSelection(params.branchIds, params.branchId) || undefined,
+  }
+}
 
 const REPORTS_BASE = '/api/v1/reports'
 const delay = (ms = 80) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const FRONT_TO_API_STATUS = {
-  pendiente: 'pending',
   confirmada: 'confirmed',
-  completada: 'completed',
-  asistio: 'attended',
+  cumplida: 'fulfilled',
   noshow: 'no_show',
   cancelada: 'cancelled',
-  retrasada: 'delayed',
-  reprogramada: 'rescheduled',
+  completada: 'fulfilled',
+  asistio: 'fulfilled',
+  pendiente: 'confirmed',
+  retrasada: 'confirmed',
+  reprogramada: 'confirmed',
 }
 
-const API_TO_FRONT_STATUS = Object.fromEntries(
-  Object.entries(FRONT_TO_API_STATUS).map(([front, api]) => [api, front])
-)
+const API_TO_FRONT_STATUS = {
+  confirmed: 'confirmada',
+  fulfilled: 'cumplida',
+  no_show: 'noshow',
+  cancelled: 'cancelada',
+  completed: 'cumplida',
+  attended: 'cumplida',
+  pending: 'confirmada',
+  delayed: 'confirmada',
+  rescheduled: 'confirmada',
+}
 
 function isOnline() {
   return useSessionStore.getState().status === 'online'
@@ -65,13 +95,25 @@ function moneyPage(data, keys) {
 }
 
 function filterMemberships(all, filters) {
-  const { branchId, status, search, plan } = filters
+  const { branchId, branchIds, status, search, plan } = filters
   return all.filter((row) => {
-    if (branchId && row.branchId !== branchId) return false
+    if (branchIds?.length) {
+      if (!matchesBranches(row, branchIds)) return false
+    } else if (branchId && row.branchId !== branchId) return false
     if (status && row.status !== status) return false
     if (plan && row.plan !== plan) return false
     return matchesSearch(`${row.clientName} ${row.plan}`, search)
   })
+}
+
+export async function fetchConsolidatedReport(getData, params) {
+  if (isOnline()) {
+    const data = await apiClient.get(`${REPORTS_BASE}/general/consolidated`, apiReportParams(params))
+    return mapConsolidatedFromApi(data)
+  }
+  await delay()
+  const { sales = [], customers = [] } = getData()
+  return buildConsolidatedReport({ sales, customers }, params)
 }
 
 export async function fetchGeneralSummary(getData, params) {
@@ -98,20 +140,22 @@ export async function fetchGeneralSummary(getData, params) {
   await delay()
   const { sales = [], expenses = [], incomes = [] } = getData()
   return {
-    totals: financialTotals(sales, expenses, incomes, params.period, params.branchId),
+    totals: financialTotals(sales, expenses, incomes, params.period, branchFilter(params), periodRange(params)),
     incomeExpenseSeries: buildIncomeExpenseSeries(
       sales,
       expenses,
       incomes,
       params.period,
-      params.branchId
+      branchFilter(params),
+      periodRange(params)
     ),
     incomePie: incomeDistribution(
       sales,
       incomes,
       params.period,
-      params.branchId,
-      METHOD_LABELS
+      branchFilter(params),
+      METHOD_LABELS,
+      periodRange(params)
     ),
   }
 }
@@ -173,9 +217,10 @@ export async function fetchTransactionsReport(getData, params) {
     return moneyPage(data, ['amount'])
   }
   await delay()
-  const { branchId, type, search, period } = params
+  const { type, search, period } = params
+  const range = periodRange(params)
   const { sales = [], expenses = [], incomes = [] } = getData()
-  const rows = [
+  const rows = applyBranchFilter([
     ...sales.map((sale) => ({
       id: `sale-${sale.id}`,
       date: sale.createdAt,
@@ -200,10 +245,9 @@ export async function fetchTransactionsReport(getData, params) {
       branchId: income.branchId,
       amount: income.amount || 0,
     })),
-  ]
-    .filter((row) => !branchId || row.branchId === branchId)
+  ], branchFilter(params))
     .filter((row) => !type || row.type === type)
-    .filter((row) => !period || inPeriod(row.date, period))
+    .filter((row) => !period || inPeriod(row.date, period, range))
     .filter((row) => matchesSearch(`${row.category} ${row.branchId}`, search))
   return paginateSlice(rows, params, {
     date: (row) => new Date(row.date),
@@ -223,8 +267,9 @@ export async function fetchExpenseCategoryReport(getExpenses, params) {
   const rows = expenseCategoryBreakdown(
     getExpenses(),
     params.period,
-    params.branchId,
-    catName
+    branchFilter(params),
+    catName,
+    periodRange(params)
   ).filter((row) => matchesSearch(row.name, params.search))
   return paginateSlice(rows, params, {
     name: (row) => row.name,
@@ -238,9 +283,7 @@ function localInventoryRows(getProducts, getSales, params) {
   const products = getProducts().filter(
     (product) => product.type === 'product' && product.stock !== null
   )
-  const sales = (getSales?.() || []).filter(
-    (sale) => !branchId || sale.branchId === branchId
-  )
+  const sales = applyBranchFilter(getSales?.() || [], branchFilter(params))
   const soldMap = aggregateProductSales(sales, products)
   return products
     .filter((product) => !category || product.category === category)
@@ -357,11 +400,16 @@ export async function fetchInventoryReport(getProducts, getSales, params) {
 }
 
 function agendaRows(getAppointments, params) {
-  return getAppointments()
-    .map((appointment) => ({ ...appointment, branchId: appointment.branchId || 'charm-dn' }))
-    .filter((appointment) => !params.branchId || appointment.branchId === params.branchId)
+  const range = periodRange(params)
+  return applyBranchFilter(
+    getAppointments().map((appointment) => ({
+      ...appointment,
+      branchId: appointment.branchId || 'charm-dn',
+    })),
+    branchFilter(params)
+  )
     .filter((appointment) => !params.status || appointment.status === params.status)
-    .filter((appointment) => !params.period || inAppointmentPeriod(appointment.date, params.period))
+    .filter((appointment) => !params.period || inAppointmentPeriod(appointment.date, params.period, range))
     .filter((appointment) =>
       matchesSearch(
         `${appointment.customerName || appointment.clientName || ''} ${appointment.serviceName || appointment.service || ''}`,
@@ -404,7 +452,7 @@ export async function fetchAgendaSummary(getAppointments, getEmployees, params) 
       `${employee.firstName} ${employee.lastName}`.trim(),
     ])
   )
-  const attended = rows.filter((row) => ['completada', 'asistio'].includes(row.status))
+  const attended = rows.filter((row) => ['cumplida', 'completada', 'asistio'].includes(row.status))
   const noShow = rows.filter((row) => row.status === 'noshow').length
   const counts = {}
   const employeeCounts = {}
@@ -426,7 +474,7 @@ export async function fetchAgendaSummary(getAppointments, getEmployees, params) 
     const dayRows = getAppointments().filter((row) => row.date === key)
     return {
       label: current.toLocaleDateString('es-DO', { day: '2-digit', month: 'short' }),
-      Cumplidas: dayRows.filter((row) => row.status === 'completada').length,
+      Cumplidas: dayRows.filter((row) => ['cumplida', 'completada', 'asistio'].includes(row.status)).length,
       'No-show': dayRows.filter((row) => row.status === 'noshow').length,
     }
   })
@@ -475,25 +523,54 @@ export async function fetchAgendaReport(getAppointments, params) {
   })
 }
 
-export async function fetchDividendReport(getBranches, params) {
+export async function fetchDividendReport(getBranches, params, getFinancials) {
   if (isOnline()) {
-    const data = await apiClient.get(`${REPORTS_BASE}/dividends`, params)
+    const data = await apiClient.get(`${REPORTS_BASE}/dividends`, apiReportParams(params))
     const page = moneyPage(data, ['share', 'dividend', 'totalBranchProfit'])
+    const analytics = mapDividendAnalyticsFromApi({
+      ...data.summary,
+      totalDividends: data.summary?.totalDividends,
+      totalNetProfit: data.summary?.totalNetProfit ?? data.summary?.total_net_profit,
+      partners: data.summary?.partners,
+      branches: data.summary?.branches,
+      byBranch: data.summary?.byBranch ?? data.summary?.by_branch,
+      byPartner: data.summary?.byPartner ?? data.summary?.by_partner,
+    })
     return {
       ...page,
       items: page.items.map((item) => ({ ...item, cedula: item.document || '—' })),
       summary: {
         ...data.summary,
-        totalDividends: number(data.summary?.totalDividends),
-        undistributedProfit: number(data.summary?.undistributedProfit),
+        partners: analytics.totals.partners,
+        branches: analytics.totals.branches,
+        totalDividends: analytics.totals.totalDividends,
+        totalNetProfit: analytics.totals.netProfit,
+        undistributedProfit: number(data.summary?.undistributedProfit ?? data.summary?.undistributed_profit),
       },
+      analytics,
     }
   }
   await delay()
   const rows = []
+  const financials = getFinancials?.() || { sales: [], expenses: [], incomes: [] }
+  const branchFinancials = (branchId) => {
+    const scoped = { branchIds: [branchId], ...params }
+    const saleRows = applyBranchFilter(financials.sales || [], scoped)
+      .filter((sale) => sale?.status !== 'voided' && inPeriod(sale.createdAt || sale.completedAt, params.period, scoped))
+    const saleIncome = saleRows.reduce((sum, sale) => sum + (Number(sale.total) || 0), 0)
+    const manualIncome = applyBranchFilter(financials.incomes || [], scoped)
+      .filter((row) => inPeriod(row.date || row.createdAt, params.period, scoped))
+      .reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
+    const expenses = applyBranchFilter(financials.expenses || [], scoped)
+      .filter((row) => inPeriod(row.date || row.createdAt, params.period, scoped))
+      .reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
+    const grossIncome = saleIncome + manualIncome
+    return { grossIncome, expenses, netProfit: grossIncome - expenses }
+  }
   getBranches().forEach((branch) => {
-    if (params.branchId && branch.id !== params.branchId) return
-    const profit = 120000 + branch.id.length * 17000
+    if (params.branchIds?.length && !params.branchIds.includes(branch.id)) return
+    if (!params.branchIds?.length && params.branchId && branch.id !== params.branchId) return
+    const { netProfit: profit } = branchFinancials(branch.id)
     ;(branch.partners || []).forEach((partner, index) => {
       const share = Number(partner.share) || 0
       rows.push({
@@ -517,14 +594,58 @@ export async function fetchDividendReport(getBranches, params) {
     share: (row) => row.share,
     dividend: (row) => row.dividend,
   })
+  const branchNet = [...new Set(filtered.map((row) => row.branchId))].map((branchId) => {
+    const row = filtered.find((item) => item.branchId === branchId)
+    return Number(row?.totalBranchProfit) || 0
+  })
+  const analytics = mapDividendAnalyticsFromApi({
+    totalDividends: filtered.reduce((sum, row) => sum + row.dividend, 0),
+    totalNetProfit: branchNet.reduce((sum, value) => sum + value, 0),
+    partners: new Set(filtered.map((row) => row.partnerName)).size,
+    branches: new Set(filtered.map((row) => row.branchId)).size,
+    byBranch: [...new Set(filtered.map((row) => row.branchId))].map((branchId) => {
+      const branchRows = filtered.filter((row) => row.branchId === branchId)
+      const financial = branchFinancials(branchId)
+      return {
+        branchId,
+        branchName: branchRows[0]?.branchName,
+        grossIncome: financial.grossIncome,
+        expenses: financial.expenses,
+        netProfit: financial.netProfit,
+        partners: branchRows.map((row) => ({
+          partnerName: row.partnerName,
+          document: row.cedula,
+          share: row.share,
+          dividend: row.dividend,
+        })),
+      }
+    }),
+    byPartner: [...new Set(filtered.map((row) => `${row.partnerName}::${row.cedula}`))].map((key, index) => {
+      const partnerRows = filtered.filter((row) => `${row.partnerName}::${row.cedula}` === key)
+      return {
+        id: key,
+        partnerName: partnerRows[0].partnerName,
+        document: partnerRows[0].cedula,
+        totalDividend: partnerRows.reduce((sum, row) => sum + row.dividend, 0),
+        branches: partnerRows.map((row) => ({
+          branchId: row.branchId,
+          branchName: row.branchName,
+          share: row.share,
+          dividend: row.dividend,
+        })),
+      }
+    }),
+  })
   return {
     ...page,
     summary: {
-      partners: filtered.length,
-      branches: new Set(filtered.map((row) => row.branchId)).size,
-      totalDividends: filtered.reduce((sum, row) => sum + row.dividend, 0),
+      partners: analytics.totals.partners,
+      branches: analytics.totals.branches,
+      totalDividends: analytics.totals.totalDividends,
+      totalNetProfit: analytics.totals.netProfit,
       undistributedProfit: 0,
     },
+    analytics,
   }
 }
 
@@ -538,6 +659,10 @@ export async function fetchPersonalPerformanceReport(getData, params) {
         salesTotal: number(data.totals?.salesTotal),
         suppliesUsed: number(data.totals?.suppliesUsed),
         teamAverageAttended: number(data.totals?.teamAverageAttended),
+        onTimeAppointments: number(data.totals?.onTimeAppointments),
+        delayedAppointments: number(data.totals?.delayedAppointments),
+        punctualityRate: number(data.totals?.punctualityRate),
+        supplyVariance: number(data.totals?.supplyVariance),
       },
       byUser: (data.byUser || []).map((row) => ({
         ...row,
@@ -553,9 +678,21 @@ export async function fetchPersonalPerformanceReport(getData, params) {
       })),
       incidentMetrics: data.incidentMetrics || [],
       incidentDistribution: data.incidentDistribution || [],
+      employeeKpis: (data.employeeKpis || []).map((row) => ({
+        ...row,
+        score: number(row.score),
+        appointmentsAttended: number(row.appointmentsAttended),
+        punctualityRate: number(row.punctualityRate),
+        incidentCount: number(row.incidentCount),
+        supplyVariance: number(row.supplyVariance),
+        actualSupply: number(row.actualSupply),
+        expectedSupply: number(row.expectedSupply),
+      })),
       supplyUsage: (data.supplyUsage || []).map((row) => ({
         ...row,
         qty: number(row.qty),
+        expectedQty: number(row.expectedQty),
+        variance: row.variance == null ? null : number(row.variance),
         perAppointment: row.perAppointment == null ? null : number(row.perAppointment),
       })),
     }

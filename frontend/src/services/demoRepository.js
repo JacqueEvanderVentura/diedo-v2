@@ -19,14 +19,15 @@ const DEMO_BRANCH_NAMES = {
   EAST: 'Charm Este',
 }
 const STATUS_FROM_API = {
-  pending: 'pendiente',
   confirmed: 'confirmada',
-  completed: 'completada',
-  attended: 'asistio',
+  fulfilled: 'cumplida',
   no_show: 'noshow',
   cancelled: 'cancelada',
-  delayed: 'retrasada',
-  rescheduled: 'reprogramada',
+  completed: 'cumplida',
+  attended: 'cumplida',
+  pending: 'confirmada',
+  delayed: 'confirmada',
+  rescheduled: 'confirmada',
 }
 const DAY_NAMES = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom']
 const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
@@ -54,7 +55,14 @@ function periodBounds(period, now = new Date()) {
   return [start, new Date(start.getFullYear(), start.getMonth() + 3, 1)]
 }
 
-function selectedBranchCodes(branchId) {
+function selectedBranchCodes(branchId, branchIds = []) {
+  if (Array.isArray(branchIds) && branchIds.length) {
+    const codes = new Set()
+    branchIds.forEach((id) => {
+      ;(BRANCH_CODES_BY_DEMO_ID[id] || []).forEach((code) => codes.add(code))
+    })
+    return codes.size ? codes : null
+  }
   return branchId && branchId !== 'all'
     ? new Set(BRANCH_CODES_BY_DEMO_ID[branchId] || [])
     : null
@@ -117,19 +125,33 @@ function buildTrend(period, start, end, sales) {
   return { total: points.reduce((sum, point) => sum + point.value, 0), points }
 }
 
-function buildDemoDashboard(snapshot, { period = 'week', branchId = 'all' } = {}) {
-  const [start, end] = periodBounds(period)
-  const branchCodes = selectedBranchCodes(branchId)
+function buildDemoDashboard(snapshot, {
+  period = 'week',
+  branchId = 'all',
+  branchIds = [],
+  dateFrom = null,
+  dateTo = null,
+} = {}) {
+  const customRange = period === 'custom' && dateFrom
+  const resolvedDateTo = dateTo || dateFrom
+  const [presetStart, presetEnd] = periodBounds(period === 'custom' ? 'week' : period)
+  const start = customRange ? new Date(`${dateFrom}T00:00:00`) : presetStart
+  const end = customRange ? new Date(`${resolvedDateTo}T23:59:59.999`) : presetEnd
+  const trendPeriod = customRange
+    ? ((end - start) / 86400000 <= 1 ? 'today' : (end - start) / 86400000 <= 7 ? 'week' : 'month')
+    : period
+  const branchCodes = selectedBranchCodes(branchId, branchIds)
   const matchesBranch = (item) => !branchCodes || branchCodes.has(item.branchCode)
   const inPeriod = (value) => {
     const date = new Date(value)
+    if (customRange) return date >= start && date <= end
     return date >= start && date < end
   }
   const sales = snapshot.pos.sales
     .filter(matchesBranch)
     .filter((sale) => sale.status !== 'voided' && inPeriod(sale.completedAt))
     .map((sale) => ({ ...sale, total: demoSaleTotal(snapshot, sale) }))
-  const trend = buildTrend(period, start, end, sales)
+  const trend = buildTrend(trendPeriod, start, end, sales)
   const activeLeads = (snapshot.crm?.leads || [])
     .filter(matchesBranch)
     .filter((lead) => !['descartado', 'convertido'].includes(lead.status) && inPeriod(lead.createdAt))

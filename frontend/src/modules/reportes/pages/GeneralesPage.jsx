@@ -1,15 +1,19 @@
 import { useState, useCallback } from 'react'
+import { useReportFilters } from '../hooks/useReportFilters'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
-import { TrendingUp, TrendingDown, Wallet } from 'lucide-react'
+import { TrendingUp, TrendingDown, Wallet, Store, Users, ShoppingBag, Share2 } from 'lucide-react'
 import { usePosStore } from '@/stores/posStore'
 import { useFinanzasStore } from '@/stores/finanzasStore'
 import { useConfigStore } from '@/stores/configStore'
+import { useCustomersStore } from '@/stores/customersStore'
 import { formatDOP, formatCompact } from '@/lib/format'
+import { CHART_ANIMATION } from '@/lib/chartAnimation'
 import { Select } from '@/components/ui/Select'
 import { ReportFilterBar } from '../components/ReportFilterBar'
 import { Pagination } from '../components/Pagination'
 import { StatCard, ChartCard } from '../components/ReportPrimitives'
 import {
+  fetchConsolidatedReport,
   fetchExpenseCategoryReport,
   fetchGeneralSummary,
   fetchTransactionsReport,
@@ -44,26 +48,61 @@ function MoneyTip({ active, payload, label }) {
   )
 }
 
+function PeopleTip({ active, payload }) {
+  if (!active || !payload?.length) return null
+  const row = payload[0]?.payload
+  return (
+    <div className="rounded-xl border border-slate-100 bg-white px-3 py-2 shadow-md">
+      <p className="text-xs font-medium text-slate-400">{row?.label || payload[0]?.name}</p>
+      <p className="font-heading text-sm font-bold text-slate-800">
+        {Number(payload[0].value) || 0} personas
+      </p>
+      {row?.amount != null && (
+        <p className="text-xs text-slate-500">{formatDOP(row.amount)}</p>
+      )}
+    </div>
+  )
+}
+
+function channelRow(rows, id) {
+  return rows.find((row) => row.id === id) || { amount: 0, count: 0, customers: 0 }
+}
+
+function acquisitionRow(rows, id) {
+  return rows.find((row) => row.id === id) || { amount: 0, count: 0, customers: 0 }
+}
+
 export default function GeneralesPage() {
   const sales = usePosStore((s) => s.sales)
   const expenses = useFinanzasStore((s) => s.expenses)
   const manualIncomes = useFinanzasStore((s) => s.manualIncomes)
   const branches = useConfigStore((s) => s.branches)
+  const customers = useCustomersStore((s) => s.customers)
 
-  const [period, setPeriod] = useState('month')
-  const [branchId, setBranchId] = useState('')
+  const { period, dateFrom, dateTo, branchIds, branchId, setBranchIds, onPeriodChange, params } =
+    useReportFilters({ period: 'month' })
   const [txSearch, setTxSearch] = useState('')
   const [txType, setTxType] = useState('')
   const [catSearch, setCatSearch] = useState('')
 
   const getData = useCallback(
-    () => ({ sales, expenses, incomes: manualIncomes }),
-    [sales, expenses, manualIncomes]
+    () => ({ sales, expenses, incomes: manualIncomes, customers }),
+    [sales, expenses, manualIncomes, customers]
   )
+  const consolidatedFetcher = useCallback(
+    () => fetchConsolidatedReport(getData, params),
+    [getData, params]
+  )
+  const consolidated = useReportSummary(consolidatedFetcher, {
+    totalAmount: 0,
+    totalSales: 0,
+    salesByChannel: [],
+    salesByAcquisition: [],
+  })
   const getExpenses = useCallback(() => expenses, [expenses])
   const summaryFetcher = useCallback(
-    () => fetchGeneralSummary(getData, { branchId, period }),
-    [getData, branchId, period]
+    () => fetchGeneralSummary(getData, params),
+    [getData, params]
   )
   const summary = useReportSummary(summaryFetcher, {
     totals: { ingresos: 0, gastos: 0, balance: 0 },
@@ -73,12 +112,12 @@ export default function GeneralesPage() {
   const { totals, incomeExpenseSeries, incomePie } = summary.data
 
   const txFetcher = useCallback(
-    (params) => fetchTransactionsReport(getData, { ...params, branchId, period, type: txType, search: txSearch }),
-    [getData, branchId, period, txType, txSearch]
+    (pageParams) => fetchTransactionsReport(getData, { ...pageParams, ...params, type: txType, search: txSearch }),
+    [getData, params, txType, txSearch]
   )
   const catFetcher = useCallback(
-    (params) => fetchExpenseCategoryReport(getExpenses, { ...params, branchId, period, search: catSearch }),
-    [getExpenses, branchId, period, catSearch]
+    (pageParams) => fetchExpenseCategoryReport(getExpenses, { ...pageParams, ...params, search: catSearch }),
+    [getExpenses, params, catSearch]
   )
 
   const txReport = usePaginatedReport(txFetcher, {}, 10, { key: 'date', dir: 'desc' })
@@ -90,13 +129,15 @@ export default function GeneralesPage() {
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="reportes-generales-page">
       <ReportFilterBar
-        branchId={branchId}
-        onBranchChange={setBranchId}
+        branchIds={branchIds}
+        onBranchIdsChange={setBranchIds}
         period={period}
-        onPeriodChange={setPeriod}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onPeriodChange={onPeriodChange}
         showPeriod
         showSearch={false}
-        onRefresh={() => { summary.reload(); txReport.reload(); catReport.reload() }}
+        onRefresh={() => { summary.reload(); consolidated.reload(); txReport.reload(); catReport.reload() }}
       />
 
       <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
@@ -108,6 +149,119 @@ export default function GeneralesPage() {
         <StatCard label="Ingresos totales" value={formatDOP(totals.ingresos)} icon={TrendingUp} tone="emerald" testId="report-stat-ingresos" />
         <StatCard label="Gastos totales" value={formatDOP(totals.gastos)} icon={TrendingDown} tone="red" testId="report-stat-gastos" />
         <StatCard label="Balance" value={formatDOP(totals.balance)} icon={Wallet} tone="brand" testId="report-stat-balance" />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Ventas (CRM)"
+          value={formatDOP(channelRow(consolidated.data.salesByChannel, 'crm').amount)}
+          icon={ShoppingBag}
+          tone="violet"
+          sub={`${channelRow(consolidated.data.salesByChannel, 'crm').count} operaciones · ${channelRow(consolidated.data.salesByChannel, 'crm').customers} personas`}
+          testId="report-stat-ventas-crm"
+        />
+        <StatCard
+          label="Comercio (POS)"
+          value={formatDOP(channelRow(consolidated.data.salesByChannel, 'pos').amount)}
+          icon={Store}
+          tone="brand"
+          sub={`${channelRow(consolidated.data.salesByChannel, 'pos').count} operaciones · ${channelRow(consolidated.data.salesByChannel, 'pos').customers} personas`}
+          testId="report-stat-comercio-pos"
+        />
+        <StatCard
+          label="Pagan en comercio"
+          value={acquisitionRow(consolidated.data.salesByAcquisition, 'pos_walk_in').customers}
+          icon={Users}
+          tone="brand"
+          sub="Mostrador / POS"
+          testId="report-stat-personas-comercio"
+        />
+        <StatCard
+          label="Pagan por redes"
+          value={acquisitionRow(consolidated.data.salesByAcquisition, 'social').customers}
+          icon={Share2}
+          tone="emerald"
+          sub="WhatsApp e Instagram"
+          testId="report-stat-personas-redes"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <ChartCard title="Reporte consolidado" subtitle="Cuánto vende Ventas (CRM) vs Comercio (POS)" testId="report-consolidated-channel">
+          {consolidated.data.salesByChannel.every((row) => !row.amount) ? (
+            <p className="py-16 text-center text-sm text-slate-400">Sin ventas en el período</p>
+          ) : (
+            <>
+              <div className="h-[220px] w-full">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                  <BarChart data={consolidated.data.salesByChannel} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="4 4" stroke="#f1f5f9" vertical={false} />
+                    <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                    <YAxis tickFormatter={formatCompact} tickLine={false} axisLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} width={56} />
+                    <Tooltip content={<MoneyTip />} />
+                    <Bar dataKey="amount" name="Ventas" radius={[4, 4, 0, 0]} {...CHART_ANIMATION}>
+                      {consolidated.data.salesByChannel.map((row) => (
+                        <Cell key={row.id} fill={row.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <ul className="mt-3 space-y-1.5 text-sm">
+                {consolidated.data.salesByChannel.map((row) => (
+                  <li key={row.id} className="flex items-center justify-between text-slate-600">
+                    <span>{row.label}</span>
+                    <span className="font-semibold text-slate-800">{formatDOP(row.amount)} · {row.count} ventas</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </ChartCard>
+
+        <ChartCard title="Quién paga" subtitle="Personas en comercio, redes, app y referidos" testId="report-consolidated-acquisition">
+          {consolidated.data.salesByAcquisition.length === 0 ? (
+            <p className="py-16 text-center text-sm text-slate-400">Sin ventas en el período</p>
+          ) : (
+            <>
+              <div className="h-[220px] w-full">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                  <PieChart>
+                    <Pie
+                      data={consolidated.data.salesByAcquisition}
+                      dataKey="customers"
+                      nameKey="label"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={48}
+                      outerRadius={78}
+                      paddingAngle={2}
+                      {...CHART_ANIMATION}
+                    >
+                      {consolidated.data.salesByAcquisition.map((row) => (
+                        <Cell key={row.id} fill={row.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<PeopleTip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <ul className="mt-3 space-y-1.5 text-sm">
+                {consolidated.data.salesByAcquisition.map((row) => (
+                  <li key={row.id} className="flex items-center justify-between gap-3 text-slate-600">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: row.color }} />
+                      {row.label}
+                    </span>
+                    <span className="text-right font-semibold text-slate-800">
+                      {row.customers} personas · {formatDOP(row.amount)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </ChartCard>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -124,8 +278,8 @@ export default function GeneralesPage() {
                     <YAxis tickLine={false} axisLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} tickFormatter={formatCompact} width={56} />
                     <Tooltip content={<MoneyTip />} cursor={{ fill: '#f8fafc' }} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} isAnimationActive={false} />
-                    <Bar dataKey="Gastos" fill="#f87171" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                    <Bar dataKey="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} {...CHART_ANIMATION} />
+                    <Bar dataKey="Gastos" fill="#f87171" radius={[4, 4, 0, 0]} {...CHART_ANIMATION} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -141,7 +295,7 @@ export default function GeneralesPage() {
               <div className="h-[200px] w-full">
                 <ResponsiveContainer width="100%" height={200} minWidth={0}>
                   <PieChart>
-                    <Pie data={incomePie} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} isAnimationActive={false}>
+                    <Pie data={incomePie} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} {...CHART_ANIMATION}>
                       {incomePie.map((e, i) => <Cell key={e.name} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                     </Pie>
                     <Tooltip content={<MoneyTip />} />

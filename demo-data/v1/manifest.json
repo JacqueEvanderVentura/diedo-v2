@@ -4,9 +4,9 @@
   "workspaceSlug": "local-erp",
   "modules": ["foundation", "dashboard", "iam", "configuration", "crm", "sales", "hr", "appointments", "inventory", "pos", "purchasing", "incidents", "finance", "reporting"],
   "files": [
-    {"name": "agenda.json", "sha256": "f1dbb98d194f2c206837f7d584574acf573cdfd9125ce0e1118c383304804ce0", "count": 9},
+    {"name": "agenda.json", "sha256": "84dbe31d53fdaf790065b4565f36cf96b53000fcbc6fa3df5055f4a2d6ecc231", "count": 9},
     {"name": "catalog.json", "sha256": "50d124558bd1533ef9758e8e0b52fabbe1ed2c263edbe5a4144930e9be521db3", "count": 22},
-    {"name": "configuration.json", "sha256": "96104119ccfd259ffba9279769915bcaf7d81cc084c3f5b00e7a827d3756fac9", "count": 5},
+    {"name": "configuration.json", "sha256": "ff18be576e092f2a67fc71efba96ccf7f99070254945537774c82f1c5fd2442c", "count": 5},
     {"name": "crm.json", "sha256": "b0ae894dd89b9d7e10900195c846582e2aab0c5c652412c97a2280327bfe8fbb", "count": 27},
     {"name": "customers.json", "sha256": "f15a0b5d9c06aaa09d5da34526ea0f0c5d7992f52a236eeb3c2aa2aa08b6c63e", "count": 5},
     {"name": "dashboard.json", "sha256": "b6f697d591e2b1d38c232e7ade52a5f814f2e8099a2066923a4a4266b9aafab9", "count": 18},

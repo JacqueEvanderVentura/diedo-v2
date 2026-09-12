@@ -1,4 +1,5 @@
 import { CATEGORY_COLORS } from '@/stores/configStore'
+import { categoryKindFromUi, categoryKindToUi } from '@/lib/categories'
 
 export function mapCategoryFromApi(item, index = 0) {
   return {
@@ -8,7 +9,7 @@ export function mapCategoryFromApi(item, index = 0) {
     active: item.status === 'active',
     status: item.status,
     version: item.version,
-    type: 'producto',
+    type: categoryKindToUi(item.categoryKind),
     color: CATEGORY_COLORS[index % CATEGORY_COLORS.length].id,
     api: true,
   }
@@ -18,6 +19,7 @@ export function mapCategoryCreatePayload(data) {
   return {
     name: data.name,
     description: data.description || null,
+    categoryKind: categoryKindFromUi(data.type),
     status: data.active === false ? 'inactive' : 'active',
   }
 }
@@ -27,6 +29,7 @@ export function mapCategoryUpdatePayload(data, version) {
     version,
     name: data.name,
     description: data.description ?? null,
+    categoryKind: categoryKindFromUi(data.type),
     status: data.active === false ? 'inactive' : 'active',
   }
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   defaultUnitId,
   mergeApiProduct,
+  isProductAvailableAtBranch,
   projectProductToBranch,
   resolveApiBranchIds,
   resolveCategoryId,
@@ -139,5 +140,12 @@ describe('sincronización del catálogo de inventario', () => {
         apiBranches
       )
     ).toEqual(['api-main', 'api-east'])
+  })
+
+  it('indica si un artículo está activo en una sucursal', () => {
+    const product = { id: 'p1', status: 'active', branchIds: ['east'] }
+    expect(isProductAvailableAtBranch(product, 'east')).toBe(true)
+    expect(isProductAvailableAtBranch(product, 'west')).toBe(false)
+    expect(isProductAvailableAtBranch({ ...product, status: 'inactive' }, 'east')).toBe(false)
   })
 })

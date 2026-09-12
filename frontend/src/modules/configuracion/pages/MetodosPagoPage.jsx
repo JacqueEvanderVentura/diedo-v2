@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { cn } from '@/lib/utils'
+import { Switch } from '@/components/ui/Switch'
 import { administrationGateway } from '@/services/administrationApi'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
@@ -114,8 +115,8 @@ export default function MetodosPagoPage({ embedded = false }) {
   return (
     <div className={configPageClass(embedded, 'max-w-[1200px]')}>
       <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-blue-700">
-        <CreditCard className="h-4 w-4 shrink-0" /> Solo los métodos activos aparecen al cobrar en el POS.
-        {online && <span className="ml-auto text-xs">{gatewayState.status} · {gatewayState.source || 'sin fuente'}</span>}
+        <CreditCard className="h-4 w-4 shrink-0" />
+        <span>Solo los métodos activos aparecen al cobrar en el POS.</span>
       </div>
       {gatewayState.error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-600">{gatewayState.error.message}</p>}
 
@@ -128,11 +129,40 @@ export default function MetodosPagoPage({ embedded = false }) {
         {methods.map((method) => {
           const Icon = Icons[method.icon] || Icons.Wallet
           return (
-            <Card key={method.id} className="flex items-center gap-3 p-4" data-testid={`metodo-${method.id}`}>
-              <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', method.enabled ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-400')}><Icon className="h-5 w-5" /></div>
-              <div className="min-w-0 flex-1"><p className="font-semibold text-slate-800">{method.name}</p><p className="text-xs text-slate-400">{method.core ? 'Predefinido' : 'Personalizado'}</p></div>
-              <button onClick={() => toggle(method)} data-testid={`metodo-toggle-${method.id}`} className={cn('relative h-6 w-11 shrink-0 rounded-full transition-colors', method.enabled ? 'bg-blue-600' : 'bg-slate-300')}><span className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform', method.enabled ? 'translate-x-5' : 'translate-x-0.5')} /></button>
-              {!method.core && <button onClick={() => archive(method)} data-testid={`metodo-delete-${method.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>}
+            <Card key={method.id} className="p-4" data-testid={`metodo-${method.id}`}>
+              <div className="flex items-center gap-3">
+                <div
+                  className={cn(
+                    'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
+                    method.enabled ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-400'
+                  )}
+                >
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-slate-800">{method.name}</p>
+                  <p className="text-xs text-slate-400">{method.core ? 'Predefinido' : 'Personalizado'}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <Switch
+                    checked={method.enabled}
+                    onChange={() => toggle(method)}
+                    aria-label={method.enabled ? `Desactivar ${method.name}` : `Activar ${method.name}`}
+                    testId={`metodo-toggle-${method.id}`}
+                  />
+                  {!method.core && (
+                    <button
+                      type="button"
+                      onClick={() => archive(method)}
+                      data-testid={`metodo-delete-${method.id}`}
+                      aria-label={`Archivar ${method.name}`}
+                      className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
             </Card>
           )
         })}

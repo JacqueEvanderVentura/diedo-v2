@@ -2,11 +2,19 @@ import { useState, useMemo } from 'react'
 import * as Icons from 'lucide-react'
 import { Search, ShoppingBag } from 'lucide-react'
 import { useCrmStore } from '@/stores/crmStore'
+import { usePosStore } from '@/stores/posStore'
 import { useConfigStore } from '@/stores/configStore'
+import {
+  mergeCrmSalesLists,
+  saleDisplayReference,
+  saleOriginKey,
+  SALE_ORIGIN_FILTERS,
+} from '../lib/crmSales'
 import { formatDOP } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
-import { Select } from '@/components/ui/Select'
+import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
+import { CRM_BRANCH_FILTER_CLASS, matchesBranches } from '@/lib/branches'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SaleDetailModal } from '../components/SaleDetailModal'
 import { fmtDateTime, METHOD_LABELS, METHOD_ICON, summarizeActiveSales } from '../lib/crm'
@@ -44,11 +52,14 @@ function Chip({ label, value, tone }) {
 }
 
 export default function VentasPage() {
-  const sales = useCrmStore((s) => s.sales)
+  const crmSales = useCrmStore((s) => s.sales)
+  const posSales = usePosStore((s) => s.sales)
+  const sales = useMemo(() => mergeCrmSalesLists(posSales, crmSales), [posSales, crmSales])
   const branches = useConfigStore((s) => s.branches)
   const [query, setQuery] = useState('')
   const [method, setMethod] = useState('all')
-  const [branchId, setBranchId] = useState('all')
+  const [origin, setOrigin] = useState('all')
+  const [branchIds, setBranchIds] = useState([])
   const [selected, setSelected] = useState(null)
 
   const branchMap = useMemo(() => Object.fromEntries(branches.map((b) => [b.id, b.name])), [branches])
@@ -57,9 +68,14 @@ export default function VentasPage() {
     const q = query.trim().toLowerCase()
     return sales
       .filter((s) => method === 'all' || s.method === method)
-      .filter((s) => branchId === 'all' || s.branchId === branchId)
-      .filter((s) => !q || (s.customer?.name || '').toLowerCase().includes(q) || (s.reference || '').toLowerCase().includes(q))
-  }, [sales, query, method, branchId])
+      .filter((s) => origin === 'all' || saleOriginKey(s) === origin)
+      .filter((s) => matchesBranches(s, branchIds, (row) => (row.branchId ? [row.branchId] : [])))
+      .filter((s) => {
+        if (!q) return true
+        const ref = saleDisplayReference(s).toLowerCase()
+        return (s.customer?.name || '').toLowerCase().includes(q) || ref.includes(q)
+      })
+  }, [sales, query, method, origin, branchIds])
 
   const { rows: displayRows, sortKey, sortDir, toggleSort } = useSortedRows(filtered, {
     defaultSort: { key: 'date', dir: 'desc' },
@@ -76,7 +92,6 @@ export default function VentasPage() {
 
   const stats = useMemo(() => summarizeActiveSales(filtered), [filtered])
 
-  const branchOptions = [{ value: 'all', label: 'Todas las sucursales' }, ...branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))]
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8">
@@ -96,18 +111,35 @@ export default function VentasPage() {
             className="w-full rounded-xl border-0 bg-white py-3 pl-10 pr-4 text-sm text-slate-700 ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600"
           />
         </div>
-        <Select
-          value={branchId}
-          onChange={setBranchId}
-          options={branchOptions}
-          className="w-full sm:w-56"
-          data-testid="ventas-filter-branch"
+        <BranchMultiSelect
+          branches={branches}
+          branchIds={branchIds}
+          onChange={setBranchIds}
+          className={CRM_BRANCH_FILTER_CLASS}
+          testId="ventas-filter-branch"
         />
       </div>
 
       <div className="flex flex-wrap gap-2">
+        {SALE_ORIGIN_FILTERS.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => setOrigin(f.id)}
+            data-testid={`ventas-origin-${f.id}`}
+            className={cn(
+              'rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors',
+              origin === f.id ? 'border-violet-600 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-500 hover:border-violet-200',
+            )}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (
-          <button key={f.id} onClick={() => setMethod(f.id)} data-testid={`ventas-filter-${f.id}`}
+          <button key={f.id} type="button" onClick={() => setMethod(f.id)} data-testid={`ventas-filter-${f.id}`}
             className={cn('rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors', method === f.id ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-500 hover:border-blue-200')}>
             {f.label}
           </button>
@@ -119,7 +151,7 @@ export default function VentasPage() {
           <EmptyState icon={ShoppingBag} title="Sin ventas" description="No hay ventas con esos filtros." className="py-14" />
         </Card>
       ) : (
-        <ResponsiveList minTableWidth={1020} columnCount={8}>
+        <ResponsiveList minTableWidth={1100} columnCount={9}>
           <ResponsiveTable testId="ventas-table">
             <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
             <table className="w-full min-w-[1020px] text-sm">
@@ -130,6 +162,7 @@ export default function VentasPage() {
                   <SortableTh column="branch" className="px-6 py-4">Sucursal</SortableTh>
                   <SortableTh column="items" className="px-6 py-4">Artículos</SortableTh>
                   <SortableTh column="method" className="px-6 py-4">Método</SortableTh>
+                  <SortableTh column="origin" sortable={false} className="px-6 py-4">Origen</SortableTh>
                   <SortableTh column="reference" sortable={false} className="px-6 py-4">Referencia</SortableTh>
                   <SortableTh column="status" className="px-6 py-4">Estado</SortableTh>
                   <SortableTh column="total" align="right" className="px-6 py-4">Total</SortableTh>
@@ -156,7 +189,12 @@ export default function VentasPage() {
                       <td className="px-6 py-4">
                         <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-slate-600"><Icon className="h-4 w-4 text-slate-400" /> {METHOD_LABELS[s.method] || s.method}</span>
                       </td>
-                      <td className="px-6 py-4 text-slate-500">{s.reference || '—'}</td>
+                      <td className="px-6 py-4">
+                        <Badge tone={saleOriginKey(s) === 'pipeline' ? 'brand' : 'neutral'}>
+                          {saleOriginKey(s) === 'pipeline' ? 'Pipeline' : 'POS'}
+                        </Badge>
+                      </td>
+                      <td className="px-6 py-4 text-slate-500">{saleDisplayReference(s)}</td>
                       <td className="px-6 py-4">
                         <Badge tone={isVoided ? 'danger' : 'success'}>{isVoided ? 'Anulada' : 'Completada'}</Badge>
                       </td>
@@ -190,7 +228,8 @@ export default function VentasPage() {
                     <MobileField label="Artículos" fullWidth>
                       {s.items?.map((i) => `${i.qty}× ${i.name}`).join(', ') || '—'}
                     </MobileField>
-                    {s.reference ? <MobileField label="Referencia">{s.reference}</MobileField> : null}
+                    <MobileField label="Origen">{saleOriginKey(s) === 'pipeline' ? 'Pipeline' : 'POS'}</MobileField>
+                    <MobileField label="Referencia">{saleDisplayReference(s)}</MobileField>
                   </MobileCardGrid>
                   <MobileCardFooter>
                     <span />

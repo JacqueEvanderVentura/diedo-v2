@@ -1,7 +1,10 @@
-import { filterByBranch, filterByPeriod } from './reportes'
+import { applyBranchFilter } from '@/lib/branches'
+import { resolvePeriodRange } from '@/lib/datePeriod'
+import { filterByPeriod } from './reportes'
 import { computeSupplyUsageKpis } from '@/modules/inventarios/lib/supplyUsage'
+import { buildEmployeeKpis, computePunctualityStats } from '@/modules/reportes/lib/personalKpi'
 
-const ATTENDED = new Set(['completada', 'asistio'])
+const ATTENDED = new Set(['cumplida', 'completada', 'asistio'])
 const INCIDENT_LABELS = {
   ausencia: 'Ausencias',
   vacaciones: 'Vacaciones',
@@ -11,7 +14,13 @@ const INCIDENT_LABELS = {
   otro: 'Otros',
 }
 
-function periodBounds(period) {
+function periodBounds(period, dateFrom = null, dateTo = null) {
+  if (period === 'custom' && dateFrom && dateTo) {
+    const { start, end } = resolvePeriodRange({ period, dateFrom, dateTo })
+    const exclusiveEnd = new Date(end)
+    exclusiveEnd.setDate(exclusiveEnd.getDate() + 1)
+    return { start, end: exclusiveEnd }
+  }
   const now = new Date()
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const end = new Date(start)
@@ -33,8 +42,8 @@ function periodBounds(period) {
   return { start, end }
 }
 
-function overlappingDays(startDate, endDate, period) {
-  const bounds = periodBounds(period)
+function overlappingDays(startDate, endDate, period, dateFrom = null, dateTo = null) {
+  const bounds = periodBounds(period, dateFrom, dateTo)
   const start = new Date(`${startDate}T00:00:00`)
   const inclusiveEnd = new Date(`${endDate}T00:00:00`)
   inclusiveEnd.setDate(inclusiveEnd.getDate() + 1)
@@ -56,15 +65,22 @@ export function buildPersonalReport({
   employees = [],
   movements = [],
   supplies = [],
+  services = [],
   incidents = [],
   vacationRequests = [],
   branchId = '',
+  branchIds = [],
   period = 'month',
+  dateFrom = null,
+  dateTo = null,
   search = '',
 }) {
   const q = search.trim().toLowerCase()
-  const periodSales = filterByPeriod(filterByBranch(sales, branchId), period, (s) => s.createdAt)
-  const periodAppts = filterByPeriod(filterByBranch(appointments, branchId), period, (a) => a.date)
+  const range = { dateFrom, dateTo }
+  const scopedSales = applyBranchFilter(sales, { branchId, branchIds })
+  const scopedAppointments = applyBranchFilter(appointments, { branchId, branchIds })
+  const periodSales = filterByPeriod(scopedSales, period, (s) => s.createdAt, range)
+  const periodAppts = filterByPeriod(scopedAppointments, period, (a) => a.date, range)
 
   const totals = {
     salesTotal: periodSales.reduce((a, s) => a + (s.total || 0), 0),
@@ -101,10 +117,12 @@ export function buildPersonalReport({
     period,
     (movement) => movement.createdAt
   )
+  const catalogServices = services
   const supplyUsage = computeSupplyUsageKpis({
     movements: periodMovements,
     appointments: periodAppts,
     supplies,
+    services: catalogServices,
     employees: employees.map((employee) => ({
       id: employee.id,
       name: `${employee.firstName} ${employee.lastName}`.trim(),
@@ -130,7 +148,7 @@ export function buildPersonalReport({
     .filter((request) => request.status === 'aprobada')
     .map((request) => ({
       ...request,
-      days: overlappingDays(request.startDate, request.endDate, period),
+      days: overlappingDays(request.startDate, request.endDate, period, dateFrom, dateTo),
     }))
     .filter((request) => request.days > 0)
     .filter((request) => {
@@ -246,15 +264,29 @@ export function buildPersonalReport({
     }), {})
   ).map(([id, value]) => ({ id, name: INCIDENT_LABELS[id] || id, value }))
 
+  const punctuality = computePunctualityStats(periodAppts)
   totals.employeeIncidents = employeeIncidents.length
   totals.vacationDays = employeeIncidents.reduce((sum, incident) => sum + incident.days, 0)
   totals.suppliesUsed = supplyUsage.reduce((sum, usage) => sum + usage.qty, 0)
+  totals.supplyVariance = supplyUsage.reduce((sum, usage) => sum + (Number(usage.variance) || 0), 0)
   totals.teamAverageAttended = Number(teamAverage.toFixed(2))
+  totals.onTimeAppointments = punctuality.onTime
+  totals.delayedAppointments = punctuality.delayed
+  totals.punctualityRate = punctuality.rate
+
+  const employeeKpis = buildEmployeeKpis({
+    appointments: periodAppts,
+    employees,
+    incidentMetrics,
+    supplyUsage: filteredSupplyUsage,
+    teamAverageAttended: totals.teamAverageAttended,
+  })
 
   return {
     totals,
     byUser,
     byEmployee,
+    employeeKpis,
     incidentMetrics,
     incidentDistribution,
     supplyUsage: filteredSupplyUsage,

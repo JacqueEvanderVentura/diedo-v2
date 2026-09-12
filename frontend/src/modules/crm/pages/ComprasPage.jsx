@@ -1,12 +1,16 @@
 import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, ShoppingBag } from 'lucide-react'
 import { useCrmStore } from '@/stores/crmStore'
+import { usePosStore } from '@/stores/posStore'
 import { useCustomersStore } from '@/stores/customersStore'
+import { SaleDetailModal } from '../components/SaleDetailModal'
+import { mergeCrmSalesLists } from '../lib/crmSales'
 import { fmtDateTime } from '../lib/crm'
 import { formatDOP } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
 import { METHOD_LABELS } from '../lib/crm'
 import { DataFilterBar } from '@/components/ui/DataFilterBar'
+import { matchesBranches } from '@/lib/branches'
 import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
 import { useSortedRows } from '@/hooks/useTableControls'
 import {
@@ -19,7 +23,7 @@ import {
 } from '@/components/ui/ResponsiveList'
 import { cn } from '@/lib/utils'
 
-function CustomerSalesTable({ sales }) {
+function CustomerSalesTable({ sales, onOpenSale }) {
   const { rows, sortKey, sortDir, toggleSort } = useSortedRows(sales, {
     defaultSort: { key: 'date', dir: 'desc' },
     accessors: {
@@ -43,7 +47,12 @@ function CustomerSalesTable({ sales }) {
             </thead>
             <tbody>
               {rows.map((s) => (
-                <tr key={s.id} className="border-t border-slate-100">
+                <tr
+                  key={s.id}
+                  className="cursor-pointer border-t border-slate-100 transition-colors hover:bg-blue-50/40"
+                  onClick={() => onOpenSale?.(s)}
+                  data-testid={`compras-sale-row-${s.id}`}
+                >
                   <td className="py-2 text-slate-600">{fmtDateTime(s.createdAt)}</td>
                   <td className="py-2 text-slate-600">{METHOD_LABELS[s.method] || METHOD_LABELS[s.paymentMethod] || s.method || s.paymentMethod}</td>
                   <td className={cn('py-2 text-right font-semibold text-slate-900')}>{formatDOP(s.total)}</td>
@@ -55,7 +64,7 @@ function CustomerSalesTable({ sales }) {
       </ResponsiveTable>
       <ResponsiveCards>
         {rows.map((s) => (
-          <MobileCard key={s.id}>
+          <MobileCard key={s.id} onClick={() => onOpenSale?.(s)} testId={`compras-sale-card-${s.id}`}>
             <MobileCardGrid>
               <MobileField label="Fecha">{fmtDateTime(s.createdAt)}</MobileField>
               <MobileField label="Método">{METHOD_LABELS[s.method] || METHOD_LABELS[s.paymentMethod] || s.method || s.paymentMethod}</MobileField>
@@ -72,15 +81,21 @@ function CustomerSalesTable({ sales }) {
 
 export default function ComprasPage() {
   const customers = useCustomersStore((s) => s.customers)
-  const sales = useCrmStore((s) => s.sales)
+  const crmSales = useCrmStore((s) => s.sales)
+  const posSales = usePosStore((s) => s.sales)
+  const sales = useMemo(
+    () => mergeCrmSalesLists(posSales, crmSales),
+    [posSales, crmSales],
+  )
   const [query, setQuery] = useState('')
-  const [branchFilter, setBranchFilter] = useState('all')
+  const [branchIds, setBranchIds] = useState([])
   const [openIds, setOpenIds] = useState(new Set())
+  const [selectedSale, setSelectedSale] = useState(null)
 
   const byCustomer = useMemo(() => {
     const map = {}
     sales.forEach((s) => {
-      if (branchFilter !== 'all' && s.branchId !== branchFilter) return
+      if (!matchesBranches(s, branchIds, (row) => (row.branchId ? [row.branchId] : []))) return
       const id = s.customer?.id
       if (!id || id === 'walk-in') return
       if (!map[id]) map[id] = { customer: s.customer, sales: [], total: 0 }
@@ -88,7 +103,7 @@ export default function ComprasPage() {
       map[id].total += s.total || 0
     })
     return map
-  }, [sales, branchFilter])
+  }, [sales, branchIds])
 
   const filteredCustomers = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -139,8 +154,8 @@ export default function ComprasPage() {
         onSearchChange={setQuery}
         searchPlaceholder="Buscar cliente..."
         showBranch
-        branchId={branchFilter}
-        onBranchChange={setBranchFilter}
+        branchIds={branchIds}
+        onBranchIdsChange={setBranchIds}
         testId="crm-compras-filters"
       />
 
@@ -179,7 +194,7 @@ export default function ComprasPage() {
               </button>
               {open && (
                 <div className="border-t border-slate-100 bg-slate-50/50 px-4 py-3">
-                  <CustomerSalesTable sales={data.sales} />
+                  <CustomerSalesTable sales={data.sales} onOpenSale={setSelectedSale} />
                 </div>
               )}
             </Card>
@@ -187,6 +202,12 @@ export default function ComprasPage() {
         })}
         {list.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No hay compras registradas por cliente.</p>}
       </div>
+
+      <SaleDetailModal
+        open={Boolean(selectedSale)}
+        onClose={() => setSelectedSale(null)}
+        sale={selectedSale}
+      />
     </div>
   )
 }

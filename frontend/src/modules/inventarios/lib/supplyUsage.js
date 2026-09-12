@@ -1,8 +1,25 @@
-const ATTENDED_STATUSES = new Set(['completada', 'asistio'])
+import { computeExpectedSupplyUsage } from '@/modules/inventarios/lib/serviceBom'
 
-export function computeSupplyUsageKpis({ movements = [], appointments = [], supplies = [], employees = [] }) {
+const ATTENDED_STATUSES = new Set(['cumplida', 'completada', 'asistio'])
+
+function varianceLabel(variance, expectedQty) {
+  if (!expectedQty) return 'Sin BOM definido'
+  if (variance === 0) return 'Consumo alineado'
+  if (variance > 0) return `Sobreuso +${variance}`
+  return `Subuso ${variance}`
+}
+
+export function computeSupplyUsageKpis({
+  movements = [],
+  appointments = [],
+  supplies = [],
+  services = [],
+  employees = [],
+}) {
   const supplyIds = new Set(supplies.map((s) => s.id))
+  const supplyNameById = Object.fromEntries(supplies.map((supply) => [supply.id, supply.name]))
   const employeeName = (id) => employees.find((e) => e.id === id)?.name || id || 'Sin asignar'
+  const expectedUsage = computeExpectedSupplyUsage({ appointments, services })
 
   const usage = {}
   movements
@@ -26,6 +43,19 @@ export function computeSupplyUsageKpis({ movements = [], appointments = [], supp
       })
     })
 
+  Object.values(expectedUsage).forEach((row) => {
+    const key = `${row.employeeId}:${row.supplyId}`
+    if (!usage[key]) {
+      usage[key] = {
+        employeeId: row.employeeId,
+        employeeName: employeeName(row.employeeId),
+        supplyId: row.supplyId,
+        supplyName: supplyNameById[row.supplyId] || row.supplyId,
+        qty: 0,
+      }
+    }
+  })
+
   const apptCount = {}
   appointments
     .filter((a) => a.employeeId && ATTENDED_STATUSES.has(a.status))
@@ -35,17 +65,25 @@ export function computeSupplyUsageKpis({ movements = [], appointments = [], supp
 
   return Object.values(usage)
     .map((row) => {
-      const appointmentsCount = apptCount[row.employeeId] || 0
+      const key = `${row.employeeId}:${row.supplyId}`
+      const expectedQty = expectedUsage[key]?.expectedQty || 0
+      const appointmentsCount = apptCount[row.employeeId] || expectedUsage[key]?.appointmentsCount || 0
       const perAppointment = appointmentsCount > 0 ? row.qty / appointmentsCount : null
+      const variance = expectedQty ? row.qty - expectedQty : null
+      const summary = expectedQty
+        ? `${row.qty}/${expectedQty} ${row.supplyName} (${varianceLabel(variance, expectedQty)})`
+        : appointmentsCount > 0
+          ? `${row.qty} ${row.supplyName} en ${appointmentsCount} citas (~${perAppointment?.toFixed(1)} por cita)`
+          : `${row.qty} ${row.supplyName} (sin citas contadas)`
       return {
         ...row,
+        expectedQty,
+        variance,
+        varianceLabel: varianceLabel(variance, expectedQty),
         appointmentsCount,
         perAppointment,
-        summary:
-          appointmentsCount > 0
-            ? `${row.qty} ${row.supplyName} en ${appointmentsCount} citas (~${perAppointment.toFixed(1)} por cita)`
-            : `${row.qty} ${row.supplyName} (sin citas contadas)`,
+        summary,
       }
     })
-    .sort((a, b) => b.qty - a.qty)
+    .sort((a, b) => (b.variance ?? b.qty) - (a.variance ?? a.qty))
 }

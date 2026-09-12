@@ -47,7 +47,7 @@ export function ReceivableCollectMenu({ row, onConfirm, onCash, onProof, size = 
           data-testid={`cxc-confirm-${row.id}`}
         >
           <CheckCircle2 className="h-4 w-4 text-blue-600" />
-          Confirmar pago
+          Aprobar pago
         </button>
         <button
           type="button"

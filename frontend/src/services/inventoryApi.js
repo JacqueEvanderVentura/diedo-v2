@@ -95,6 +95,13 @@ export const inventoryApi = {
   getAsset: (id) => apiClient.get(`/api/v1/inventory/assets/${id}`),
   createAsset: (payload) => apiClient.post('/api/v1/inventory/assets', payload, idempotencyOptions()),
   updateAsset: (id, payload) => apiClient.patch(`/api/v1/inventory/assets/${id}`, payload),
+  uploadAssetAttachments: (id, version, files) => {
+    const formData = new FormData()
+    formData.append('version', String(version))
+    files.forEach((file) => formData.append('files', file, file.name))
+    return apiClient.upload(`/api/v1/inventory/assets/${id}/attachments`, formData)
+  },
+  previewAssetAttachment: (previewUrl) => apiClient.blob(previewUrl),
   listMovements: (params) => apiClient.get('/api/v1/inventory/movements', params),
   listAllMovements,
   getMovement: (id) => apiClient.get(`/api/v1/inventory/movements/${id}`),

@@ -4,8 +4,11 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
+import { AttachmentField } from '@/components/ui/AttachmentField'
 import { useFinanzasStore, EXPENSE_CATEGORIES } from '@/stores/finanzasStore'
+import { useActivosStore } from '@/stores/activosStore'
 import { useConfigStore } from '@/stores/configStore'
+import { mergeCategoryOptions } from '@/lib/categories'
 import { todayKey } from '@/stores/agendaStore'
 import { cn } from '@/lib/utils'
 
@@ -14,13 +17,25 @@ const STATUS_OPTIONS = [
   { value: 'pendiente', label: 'Pendiente' },
 ]
 
-const emptyVariable = () => ({ concept: '', amount: '', category: 'insumos', date: todayKey(), branchId: '', status: 'pagado', budgetId: '' })
+const emptyVariable = () => ({
+  concept: '',
+  amount: '',
+  category: 'insumos',
+  date: todayKey(),
+  branchId: '',
+  status: 'pagado',
+  budgetId: '',
+  activoId: '',
+  attachments: [],
+})
 const emptyFixed = () => ({ concept: '', amount: '', category: 'servicios', branchId: '', dayOfMonth: '1' })
 
 export function ExpenseFormModal({ open, onClose, expense, mode = 'variable' }) {
   const { addExpense, updateExpense, addFixed, updateFixed } = useFinanzasStore()
   const budgets = useFinanzasStore((s) => s.budgets)
+  const activos = useActivosStore((s) => s.activos)
   const branches = useConfigStore((s) => s.branches)
+  const categories = useConfigStore((s) => s.categories)
   const fixed = mode === 'fixed'
   const [form, setForm] = useState(fixed ? emptyFixed() : emptyVariable())
   const [err, setErr] = useState('')
@@ -36,6 +51,8 @@ export function ExpenseFormModal({ open, onClose, expense, mode = 'variable' }) 
         branchId: defaultBranch,
         ...expense,
         budgetId: expense.budgetId || '',
+        activoId: expense.activoId || '',
+        attachments: expense.attachments || [],
         dayOfMonth: String(expense.dayOfMonth || 1),
       })
     } else {
@@ -45,6 +62,21 @@ export function ExpenseFormModal({ open, onClose, expense, mode = 'variable' }) 
   }, [open, expense, fixed, branches])
 
   const branchOptions = branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))
+  const activoOptions = [
+    { value: '', label: 'Sin activo vinculado' },
+    ...activos
+      .filter((activo) => activo.status !== 'baja' && (!form.branchId || activo.branchId === form.branchId))
+      .map((activo) => ({ value: activo.id, label: `${activo.name} (${activo.code || 'sin código'})` })),
+  ]
+  const expenseCategoryOptions = useMemo(
+    () => mergeCategoryOptions(
+      categories,
+      EXPENSE_CATEGORIES.map((category) => ({ value: category.id, label: category.name })),
+      'gasto'
+    ),
+    [categories]
+  )
+
   const budgetOptions = useMemo(() => {
     const base = [{ value: '', label: 'Sin presupuesto' }]
     if (!form.branchId) return base
@@ -69,7 +101,12 @@ export function ExpenseFormModal({ open, onClose, expense, mode = 'variable' }) 
     if (!form.concept.trim()) return setErr('Ingresa el concepto.')
     if (form.amount === '' || Number(form.amount) <= 0) return setErr('Ingresa un monto válido.')
     if (!form.branchId) return setErr('Selecciona una sucursal.')
-    const payload = { ...form, budgetId: form.budgetId || null }
+    const payload = {
+      ...form,
+      budgetId: form.budgetId || null,
+      activoId: form.category === 'mantenimiento' && form.activoId ? form.activoId : null,
+      attachments: form.attachments || [],
+    }
     setSaving(true)
     try {
       if (fixed) {
@@ -141,14 +178,34 @@ export function ExpenseFormModal({ open, onClose, expense, mode = 'variable' }) 
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Categoría</label>
           <div className="flex flex-wrap gap-2">
-            {EXPENSE_CATEGORIES.map((c) => (
-              <button key={c.id} type="button" onClick={() => set('category', c.id)} data-testid={`expense-cat-${c.id}`}
-                className={cn('rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors', form.category === c.id ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-blue-200')}>
-                {c.name}
+            {expenseCategoryOptions.map((c) => (
+              <button key={c.value} type="button" onClick={() => set('category', c.value)} data-testid={`expense-cat-${c.value}`}
+                className={cn('rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors', form.category === c.value ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-blue-200')}>
+                {c.label}
               </button>
             ))}
           </div>
         </div>
+
+        {!fixed && form.category === 'mantenimiento' && (
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Activo vinculado</label>
+            <Select
+              value={form.activoId}
+              onChange={(value) => set('activoId', value)}
+              options={activoOptions}
+              data-testid="expense-field-activo"
+            />
+          </div>
+        )}
+
+        {!fixed && (
+          <AttachmentField
+            value={form.attachments}
+            onChange={(attachments) => set('attachments', attachments)}
+            testId="expense-attachments"
+          />
+        )}
 
         {err && <p className="text-sm font-medium text-red-500" data-testid="expense-form-error">{err}</p>}
 

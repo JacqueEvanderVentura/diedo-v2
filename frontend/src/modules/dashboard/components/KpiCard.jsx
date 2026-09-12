@@ -26,7 +26,7 @@ export function KpiCard({ kpi, index }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay: index * 0.06, ease: 'easeOut' }}
     >
-      <Card className="p-6" data-testid={`kpi-card-${kpi.id}`}>
+      <Card className="p-6 transition-all duration-200 hover:scale-[1.02] hover:shadow-md" data-testid={`kpi-card-${kpi.id}`}>
         <div className="mb-5 flex items-start justify-between">
           <div className={cn('flex h-12 w-12 items-center justify-center rounded-xl', toneStyles[kpi.tone])}>
             <Icon className="h-6 w-6" strokeWidth={2} />

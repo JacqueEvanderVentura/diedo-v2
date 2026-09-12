@@ -1,3 +1,4 @@
+import { branchQueryParams } from '@/lib/branches'
 import { apiClient } from './apiClient'
 import { createModuleGateway } from './dataGateway'
 import { demoRepository, DEMO_SEED_ENABLED } from './demoRepository'
@@ -5,20 +6,26 @@ import { ENDPOINTS } from './endpoints'
 import { useSessionStore } from '@/stores/sessionStore'
 
 const STATUS_FROM_API = {
-  pending: 'pendiente',
   confirmed: 'confirmada',
-  completed: 'completada',
-  attended: 'asistio',
+  fulfilled: 'cumplida',
   no_show: 'noshow',
   cancelled: 'cancelada',
-  delayed: 'retrasada',
-  rescheduled: 'reprogramada',
+  completed: 'cumplida',
+  attended: 'cumplida',
+  pending: 'confirmada',
+  delayed: 'confirmada',
+  rescheduled: 'confirmada',
 }
 
-const requestParams = ({ period, branchId } = {}) => ({
-  period,
-  branchId: branchId && branchId !== 'all' ? branchId : undefined,
-})
+const requestParams = ({ period, branchId, branchIds, dateFrom, dateTo } = {}) => {
+  const useCustomRange = period === 'custom' && dateFrom
+  return {
+    period: useCustomRange ? undefined : period,
+    dateFrom: useCustomRange ? dateFrom : undefined,
+    dateTo: useCustomRange ? (dateTo || dateFrom) : undefined,
+    ...branchQueryParams(branchId, branchIds),
+  }
+}
 
 export function mapDashboardResponse({ summary, trend, stockAlerts, appointments, activity }) {
   return {
@@ -57,7 +64,10 @@ export function mapDashboardResponse({ summary, trend, stockAlerts, appointments
 export const dashboardApi = {
   dashboard: async (filters = {}) => {
     const params = requestParams(filters)
-    const branchParams = { branchId: params.branchId }
+    const branchParams = {
+      ...(params.branchId ? { branchId: params.branchId } : {}),
+      ...(params.branchIds?.length ? { branchIds: params.branchIds } : {}),
+    }
     const [summary, trend, stockAlerts, appointments, activity] = await Promise.all([
       apiClient.get(ENDPOINTS.dashboard.summary, params),
       apiClient.get(ENDPOINTS.dashboard.salesTrend, params),

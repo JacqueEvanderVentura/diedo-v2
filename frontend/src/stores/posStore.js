@@ -20,6 +20,9 @@ import {
   mapReceivableStateMutationResponse,
   mapReceivableSummaryFromApi,
   mapReceivablesPageFromApi,
+  mapRegisterFromApi,
+  resolveRegisterBranchId,
+  mapRegisterHistoryEntry,
   mapRegisterHistoryMutationResponse,
   mapRegisterMutationResponse,
   mapSalesPageFromApi,
@@ -34,6 +37,11 @@ import {
   voidToApiPayload,
 } from '@/services/adapters/pos'
 import { buildShiftMovements } from '@/modules/pos/lib/caja'
+import {
+  emptyRegisterView,
+  isOnlineBranchId,
+  pickRegisterSnapshot,
+} from '@/modules/pos/lib/registerBranchState'
 import { getReceivableStatus, normalizeReceivable, getBalance } from '@/modules/pos/lib/receivables'
 import {
   calculatePosTotals,
@@ -48,10 +56,31 @@ import { currentSessionActor } from '@/lib/sessionActor'
 const DEFAULT_CUSTOMER = WALK_IN_CUSTOMER
 const now = () => new Date().toISOString()
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
+
+function cartItemsWithCatalogTax(items, fallbackTaxPct = 18) {
+  const products = useCatalogStore.getState().products
+  const byId = new Map(products.map((product) => [product.id, product]))
+  return items.map((item) => {
+    const product = byId.get(item.id)
+    if (!product) return item
+    return { ...item, taxPct: product.taxPct ?? item.taxPct ?? fallbackTaxPct }
+  })
+}
+
+function cartTotalsState(state) {
+  return calculatePosTotals({
+    items: cartItemsWithCatalogTax(state.items, state.taxPct),
+    discountMode: state.discountMode,
+    discountValue: state.discountValue,
+    taxPct: state.taxPct,
+  })
+}
 const agendaReceivableId = (appointmentId) => `cxc-agenda-${appointmentId}`
 const POS_PAGE_SIZE = 50
 
 let posHydrationRequest = null
+let cajaHydrationRequest = null
+let registerHistoryRequest = null
 let posGeneration = 0
 const mutationAttemptKeys = new Map()
 const detailRequests = new Map()
@@ -207,7 +236,7 @@ function emptyOnlineData(branchId) {
 function demoServerData() {
   return {
     posCatalog: [],
-    register: { open: true, openedAt: minsAgo(90), openingCash: 2000, closedAt: null },
+    register: { open: true, openedAt: minsAgo(90), openingCash: 2000, closedAt: null, branchId: 'charm-dn' },
     cashSales: 0,
     shiftSales: structuredClone(SEED_SHIFT_SALES),
     shiftIncomes: [],
@@ -284,11 +313,45 @@ function updateReceivableState(items, response) {
 }
 
 async function refreshOnlineState(get, branchId) {
+  if (get().cxcWorkspaceScope || get().cxcWorkspaceHydrated) {
+    try {
+      await get().hydrateCxcWorkspace({ force: true })
+    } catch {
+      // The mutation already committed. Keep its response locally and expose the refresh error.
+    }
+    return
+  }
+  const resolvedBranchId = branchId || get().branchId
+  if (!isOnlineBranchId(resolvedBranchId)) return
   try {
-    await get().hydrateFromApi(branchId, { force: true })
+    await get().hydrateFromApi(resolvedBranchId, { force: true })
   } catch {
     // The mutation already committed. Keep its response locally and expose the refresh error.
   }
+}
+
+async function refreshCajaState(get, branchId) {
+  const resolvedBranchId = branchId || get().cajaBranchId
+  if (!isOnlineBranchId(resolvedBranchId)) return
+  try {
+    await get().hydrateCajaBranch(resolvedBranchId, { force: true })
+  } catch {
+    // The mutation already committed. Keep its response locally and expose the refresh error.
+  }
+}
+
+async function fetchAllPaginated(request, mapPage) {
+  let page = 1
+  let items = []
+  let pagination = emptyPage()
+  while (true) {
+    const mapped = mapPage(await request(page, POS_PAGE_SIZE))
+    items = appendUniqueById(items, mapped.items)
+    pagination = mapped.pagination
+    if (!pagination.totalPages || page >= pagination.totalPages) break
+    page += 1
+  }
+  return { items, pagination }
 }
 
 async function loadNextOnlinePage({ key, set, get, request, mapPage, merge }) {
@@ -331,13 +394,22 @@ async function loadNextOnlinePage({ key, set, get, request, mapPage, merge }) {
   }
 }
 
-async function runOnlineMutation({ set, get, operation, payload, request, apply }) {
+async function runOnlineMutation({
+  set,
+  get,
+  operation,
+  payload,
+  request,
+  apply,
+  refreshScope = 'pos',
+}) {
   const attempt = mutationAttempt(operation, payload)
   set({ mutating: operation, error: null })
   let response
   try {
     response = await request(attempt.idempotencyKey)
     attempt.complete()
+    if (refreshScope === 'caja') posGeneration += 1
     if (apply) apply(response)
   } catch (error) {
     set({
@@ -346,7 +418,11 @@ async function runOnlineMutation({ set, get, operation, payload, request, apply 
     })
     throw error
   }
-  await refreshOnlineState(get, get().branchId)
+  if (refreshScope === 'caja') {
+    await refreshCajaState(get, payload?.branchId || get().cajaBranchId)
+  } else if (refreshScope === 'pos') {
+    await refreshOnlineState(get, get().branchId)
+  }
   set((state) => ({
     mutating: state.mutating === operation ? null : state.mutating,
   }))
@@ -359,6 +435,12 @@ export const usePosStore = create(
     (set, get) => ({
       // ---- cart ----
       branchId: 'charm-dn',
+      cajaBranchId: 'charm-dn',
+      registerByBranch: {},
+      cajaHydrating: false,
+      cxcHydrating: false,
+      cxcWorkspaceScope: false,
+      cxcWorkspaceHydrated: false,
       items: [],
       customer: DEFAULT_CUSTOMER,
       discountMode: 'pct', // 'pct' | 'amount'
@@ -369,7 +451,7 @@ export const usePosStore = create(
       paymentReference: '',
       cartDrawerOpen: false,
       isExpense: false,
-      documentKind: 'quote',
+      documentKind: 'invoice',
       isFinalized: false,
       activeQuoteId: null,
       heldCarts: SEED_OPEN_QUOTES.map((q) => ({
@@ -380,7 +462,7 @@ export const usePosStore = create(
       openQuotes: SEED_OPEN_QUOTES,
 
       // ---- caja (register) ----
-      register: { open: true, openedAt: minsAgo(90), openingCash: 2000, closedAt: null },
+      register: { open: true, openedAt: minsAgo(90), openingCash: 2000, closedAt: null, branchId: 'charm-dn' },
       cashSales: 0,
       shiftSales: SEED_SHIFT_SALES,
       shiftIncomes: [],
@@ -526,17 +608,29 @@ export const usePosStore = create(
             const selectedMethod = availableMethods.some((method) => method.id === get().paymentMethod)
               ? get().paymentMethod
               : availableMethods.find((method) => method.enabled)?.id || get().paymentMethod
-            set({
-              ...mapped,
-              paymentMethod: selectedMethod,
-              hydrating: false,
-              error: null,
-              apiContext: {
-                hydrated: true,
-                mode: 'online',
-                branchId,
-                lastSyncedAt: now(),
-              },
+            set((state) => {
+              const nextState = {
+                ...mapped,
+                paymentMethod: selectedMethod,
+                hydrating: false,
+                error: null,
+                apiContext: {
+                  hydrated: true,
+                  mode: 'online',
+                  branchId,
+                  lastSyncedAt: now(),
+                },
+              }
+              const snapshot = pickRegisterSnapshot({ ...state, ...nextState }, branchId)
+              return {
+                ...nextState,
+                cxcWorkspaceScope: false,
+                cxcWorkspaceHydrated: false,
+                registerByBranch: {
+                  ...state.registerByBranch,
+                  [branchId]: snapshot,
+                },
+              }
             })
             return mapped
           } catch (error) {
@@ -600,7 +694,7 @@ export const usePosStore = create(
         set,
         get,
         request: (page, pageSize) => posApi.listReceivables({
-          branchId: get().branchId,
+          ...(get().cxcWorkspaceScope ? {} : { branchId: get().branchId }),
           page,
           pageSize,
         }),
@@ -615,7 +709,7 @@ export const usePosStore = create(
         set,
         get,
         request: (page, pageSize) => posApi.listQuotes({
-          branchId: get().branchId,
+          ...(get().cxcWorkspaceScope ? {} : { branchId: get().branchId }),
           status: 'open',
           page,
           pageSize,
@@ -684,6 +778,12 @@ export const usePosStore = create(
         useConfigStore.getState().resetPaymentMethods()
         set({
           branchId: 'charm-dn',
+          cajaBranchId: 'charm-dn',
+          registerByBranch: {},
+          cajaHydrating: false,
+          cxcHydrating: false,
+          cxcWorkspaceScope: false,
+          cxcWorkspaceHydrated: false,
           ...demoServerData(),
           apiContext: { hydrated: false, mode: 'demo', branchId: null, lastSyncedAt: null },
           hydrating: false,
@@ -694,9 +794,274 @@ export const usePosStore = create(
 
       clearError: () => set({ error: null }),
 
+      hydrateCxcWorkspace: async ({ force = false } = {}) => {
+        if (get().cxcHydrating) return null
+        if (!force && get().cxcWorkspaceHydrated) return get().receivables
+        set({ cxcHydrating: true, error: null })
+        try {
+          if (!isOnlineMode()) {
+            const demo = demoServerData()
+            set({
+              receivables: demo.receivables,
+              openQuotes: demo.openQuotes,
+              heldCarts: demo.heldCarts,
+              receivableSummary: null,
+              quoteSummary: null,
+              cxcWorkspaceScope: true,
+              cxcWorkspaceHydrated: true,
+              cxcHydrating: false,
+            })
+            return demo.receivables
+          }
+
+          const receivablesPage = await fetchAllPaginated(
+            (page, pageSize) => posApi.listReceivables({ page, pageSize }),
+            mapReceivablesPageFromApi
+          )
+          const quotesPage = await fetchAllPaginated(
+            (page, pageSize) => posApi.listQuotes({ status: 'open', page, pageSize }),
+            mapQuotesPageFromApi
+          )
+          const quoteCollections = splitQuotes(quotesPage.items)
+          const [summaryRes, quoteSummaryRes] = await Promise.all([
+            posApi.receivablesSummary({}),
+            posApi.quotesSummary({}),
+          ])
+          set((state) => ({
+            receivables: receivablesPage.items,
+            receivableSummary: mapReceivableSummaryFromApi(summaryRes),
+            openQuotes: quoteCollections.openQuotes,
+            heldCarts: appendUniqueById(state.heldCarts, quoteCollections.heldCarts),
+            quoteSummary: mapQuoteSummaryFromApi(quoteSummaryRes),
+            pagination: {
+              ...state.pagination,
+              receivables: receivablesPage.pagination,
+              quotes: quotesPage.pagination,
+            },
+            cxcWorkspaceScope: true,
+            cxcWorkspaceHydrated: true,
+            cxcHydrating: false,
+            error: null,
+          }))
+          return receivablesPage.items
+        } catch (error) {
+          set({
+            cxcHydrating: false,
+            error: error.message || 'No se pudieron cargar las cuentas por cobrar.',
+          })
+          throw error
+        }
+      },
+
+      saveRegisterSnapshot: () => {
+        const branchId = get().cajaBranchId
+        if (!branchId) return
+        const snapshot = pickRegisterSnapshot(get(), branchId)
+        set((state) => ({
+          registerByBranch: {
+            ...state.registerByBranch,
+            [branchId]: snapshot,
+          },
+        }))
+      },
+
+      /** Restore register KPIs for the active POS branch (after viewing another branch in Caja). */
+      syncRegisterViewForPosBranch: () => {
+        const branchId = get().branchId
+        if (!branchId) return Promise.resolve(null)
+        const currentViewBranch = get().register?.branchId
+        if (currentViewBranch === branchId) return Promise.resolve(get().register)
+
+        if (currentViewBranch) {
+          const snapshot = pickRegisterSnapshot(get(), currentViewBranch)
+          set((state) => ({
+            registerByBranch: {
+              ...state.registerByBranch,
+              [currentViewBranch]: snapshot,
+            },
+          }))
+        }
+
+        const cached = get().registerByBranch[branchId]
+        if (cached?.register) {
+          set({
+            register: cached.register,
+            cashSales: cached.cashSales ?? 0,
+            shiftSales: cached.shiftSales ?? [],
+            shiftIncomes: cached.shiftIncomes ?? [],
+            expenses: cached.expenses ?? [],
+            registerSummary: cached.registerSummary ?? null,
+            lastCloseSummary: cached.lastCloseSummary ?? null,
+          })
+          return Promise.resolve(cached.register)
+        }
+
+        if (isOnlineMode()) {
+          return get().hydrateFromApi(branchId, { force: true }).then(() => get().register)
+        }
+
+        set({ ...emptyRegisterView(branchId) })
+        return Promise.resolve(get().register)
+      },
+
+      setCajaBranch: (branchId, { skipWorkspaceSync = false } = {}) => {
+        if (!branchId || branchId === get().cajaBranchId) {
+          if (!skipWorkspaceSync && branchId) {
+            import('@/stores/workspaceScopeStore').then(({ useWorkspaceScopeStore }) => {
+              useWorkspaceScopeStore.getState().setActiveBranchId(branchId, { syncPos: false })
+            })
+          }
+          return
+        }
+        get().saveRegisterSnapshot()
+        const cached = get().registerByBranch[branchId]
+        if (cached) {
+          set({
+            cajaBranchId: branchId,
+            ...cached,
+          })
+        } else {
+          set({
+            cajaBranchId: branchId,
+            ...emptyRegisterView(branchId),
+            pagination: emptyPagination(),
+          })
+        }
+        if (isOnlineMode()) {
+          get().hydrateCajaBranch(branchId, { force: true }).catch(() => null)
+        }
+        if (!skipWorkspaceSync) {
+          import('@/stores/workspaceScopeStore').then(({ useWorkspaceScopeStore }) => {
+            useWorkspaceScopeStore.getState().setActiveBranchId(branchId, { syncPos: false })
+          })
+        }
+      },
+
+      hydrateCajaBranch: async (branchId, { force = false } = {}) => {
+        if (!branchId || !isOnlineMode()) return null
+        if (cajaHydrationRequest?.branchId === branchId && !force) return cajaHydrationRequest.promise
+
+        const requestGeneration = posGeneration
+        set({ cajaHydrating: true, error: null })
+
+        const promise = (async () => {
+          try {
+            const [response, registersResponse] = await Promise.all([
+              posApi.state({ branchId }),
+              optionalRead(posApi.listRegisters({ branchId, page: 1, pageSize: POS_PAGE_SIZE })),
+            ])
+            if (requestGeneration !== posGeneration || get().cajaBranchId !== branchId) return null
+
+            const mappedResponse = registersResponse
+              ? { ...response, registerHistory: registersResponse.items || [] }
+              : response
+            const mapped = mapPosStateFromApi(mappedResponse, { branchId })
+            const registerId = mapped.register?.id
+            const [salesResponse, movementsResponse] = registerId
+              ? await Promise.all([
+                  optionalRead(posApi.listSales({ branchId, registerId, page: 1, pageSize: POS_PAGE_SIZE })),
+                  optionalRead(posApi.listRegisterMovements(registerId, { page: 1, pageSize: POS_PAGE_SIZE })),
+                ])
+              : [null, null]
+            if (requestGeneration !== posGeneration || get().cajaBranchId !== branchId) return null
+
+            const salesPage = mapSalesPageFromApi(salesResponse || { items: [] })
+            const movementsPage = mapCashMovementsPageFromApi(movementsResponse || { items: [] })
+            const movementCollections = splitCashMovements(movementsPage.items)
+            const registerSummary = mapped.register?.id ? mapped.register.summary : null
+            const snapshot = {
+              register: mapped.register,
+              cashSales: registerSummary?.cashSales || mapped.cashSales || 0,
+              shiftSales: salesPage.items,
+              ...movementCollections,
+              registerSummary,
+              lastCloseSummary: mapped.lastCloseSummary,
+              pagination: {
+                sales: salesPage.pagination,
+                movements: movementsPage.pagination,
+                receivables: get().pagination?.receivables || emptyPage(),
+                quotes: get().pagination?.quotes || emptyPage(),
+              },
+            }
+            set((state) => ({
+              ...snapshot,
+              registerByBranch: {
+                ...state.registerByBranch,
+                [branchId]: snapshot,
+              },
+              cajaHydrating: false,
+              error: null,
+            }))
+            return snapshot
+          } catch (error) {
+            if (requestGeneration === posGeneration) {
+              set({
+                cajaHydrating: false,
+                error: error.message || 'No se pudo cargar la caja de la sucursal.',
+              })
+            }
+            throw error
+          } finally {
+            if (cajaHydrationRequest?.promise === promise) cajaHydrationRequest = null
+          }
+        })()
+
+        cajaHydrationRequest = { branchId, promise }
+        return promise
+      },
+
+      hydrateRegisterHistory: async ({ force = false } = {}) => {
+        if (!isOnlineMode()) return get().registerHistory
+        if (registerHistoryRequest && !force) return registerHistoryRequest
+
+        const promise = (async () => {
+          try {
+            const response = await posApi.listRegisters({ page: 1, pageSize: POS_PAGE_SIZE })
+            const items = response.items || []
+            const history = items
+              .filter((entry) => !['open', 'active'].includes(String(entry.status || '').toLowerCase()))
+              .map((entry) => mapRegisterHistoryEntry(entry, resolveRegisterBranchId(entry)))
+            const openByBranch = {}
+            for (const entry of items) {
+              const branchId = resolveRegisterBranchId(entry)
+              if (!isOnlineBranchId(branchId)) continue
+              const register = mapRegisterFromApi(entry, branchId)
+              if (!register.open) continue
+              openByBranch[branchId] = {
+                ...(get().registerByBranch[branchId] || emptyRegisterView(branchId)),
+                register,
+              }
+            }
+            set((state) => ({
+              registerHistory: history,
+              registerByBranch: {
+                ...state.registerByBranch,
+                ...openByBranch,
+              },
+            }))
+            return history
+          } catch (error) {
+            if ([403, 404].includes(error?.status)) return get().registerHistory
+            throw error
+          } finally {
+            if (registerHistoryRequest === promise) registerHistoryRequest = null
+          }
+        })()
+
+        registerHistoryRequest = promise
+        return promise
+      },
+
       // ---- cart actions ----
-      setBranch: (branchId) => {
-        if (!branchId || branchId === get().branchId) return
+      setBranch: (branchId, { skipWorkspaceSync = false } = {}) => {
+        if (!branchId || branchId === get().branchId) {
+          if (!skipWorkspaceSync && branchId) {
+            import('@/stores/workspaceScopeStore').then(({ useWorkspaceScopeStore }) => {
+              useWorkspaceScopeStore.getState().setActiveBranchId(branchId, { syncPos: false })
+            })
+          }
+          return
+        }
         if (isOnlineMode()) {
           posGeneration += 1
           posHydrationRequest = null
@@ -711,14 +1076,19 @@ export const usePosStore = create(
             hydrating: false,
             error: null,
           })
-          return
+        } else {
+          set({
+            branchId,
+            ...EMPTY_CART_PATCH,
+            customer: DEFAULT_CUSTOMER,
+            cartDrawerOpen: false,
+          })
         }
-        set({
-          branchId,
-          ...EMPTY_CART_PATCH,
-          customer: DEFAULT_CUSTOMER,
-          cartDrawerOpen: false,
-        })
+        if (!skipWorkspaceSync) {
+          import('@/stores/workspaceScopeStore').then(({ useWorkspaceScopeStore }) => {
+            useWorkspaceScopeStore.getState().setActiveBranchId(branchId, { syncPos: false })
+          })
+        }
       },
       setCustomer: (customer) => set({ customer }),
       setDiscountMode: (discountMode) => set({ discountMode }),
@@ -1166,12 +1536,17 @@ export const usePosStore = create(
       getCustomerDebtSummary: (customerId) => {
         if (!customerId || customerId === 'walk-in') return null
         const s = get()
+        const branchId = s.branchId
+        const matchesBranch = (row) => !branchId || !row?.branchId || row.branchId === branchId
         const receivables = s.receivables.filter(
           (r) => r.customer?.id === customerId
+            && matchesBranch(r)
             && !['paid', 'voided', 'written_off'].includes(getReceivableStatus(r))
         )
         const receivableBalance = receivables.reduce((sum, r) => sum + getBalance(r), 0)
-        const openQuote = s.openQuotes.find((q) => q.customer?.id === customerId)
+        const openQuote = s.openQuotes.find(
+          (q) => q.customer?.id === customerId && matchesBranch(q)
+        )
         const quoteTotal = openQuote
           ? openQuote.total != null
             ? Number(openQuote.total) || 0
@@ -1213,20 +1588,22 @@ export const usePosStore = create(
 
       // ---- caja actions ----
       openRegister: (openingCash) => {
+        const branchId = get().cajaBranchId || get().branchId
         if (isOnlineMode()) {
           const payload = registerOpenToApiPayload({
-            branchId: get().branchId,
+            branchId,
             openingCash,
           })
           return runOnlineMutation({
             set,
             get,
-            operation: `register:open:${get().branchId}`,
+            operation: `register:open:${branchId}`,
             payload,
+            refreshScope: 'none',
             request: (idempotencyKey) => posApi.openRegister(payload, { idempotencyKey }),
             apply: (response) => {
-              const register = mapRegisterMutationResponse(response, get().branchId)
-              set({
+              const register = mapRegisterMutationResponse(response, branchId)
+              const snapshot = {
                 register,
                 registerSummary: register.summary || null,
                 cashSales: register.summary?.cashSales || 0,
@@ -1235,18 +1612,41 @@ export const usePosStore = create(
                 expenses: [],
                 lastCloseSummary: null,
                 pagination: emptyPagination(),
-              })
+              }
+              set((state) => ({
+                ...snapshot,
+                registerByBranch: {
+                  ...state.registerByBranch,
+                  [branchId]: pickRegisterSnapshot({ ...state, ...snapshot }, branchId),
+                },
+              }))
             },
+          }).then((response) => {
+            get().hydrateRegisterHistory({ force: true }).catch(() => null)
+            return response
           })
         }
-        set({
-          register: { open: true, openedAt: now(), openingCash: Number(openingCash) || 0, closedAt: null },
+        const snapshot = {
+          register: {
+            open: true,
+            openedAt: now(),
+            openingCash: Number(openingCash) || 0,
+            closedAt: null,
+            branchId,
+          },
           cashSales: 0,
           shiftSales: [],
           shiftIncomes: [],
           expenses: [],
           lastCloseSummary: null,
-        })
+        }
+        set((state) => ({
+          ...snapshot,
+          registerByBranch: {
+            ...state.registerByBranch,
+            [branchId]: pickRegisterSnapshot({ ...state, ...snapshot }, branchId),
+          },
+        }))
         return get().register
       },
       closeRegister: (actualCash) => {
@@ -1263,9 +1663,10 @@ export const usePosStore = create(
         if (isOnlineMode()) {
           const register = get().register
           if (!register?.id) return Promise.reject(new Error('No hay una caja sincronizada para cerrar.'))
+          const branchId = get().cajaBranchId || get().branchId
           const mapCloseSummary = (response) => mapRegisterHistoryMutationResponse(
             response,
-            get().branchId
+            branchId
           )
           const payload = registerCloseToApiPayload(register, countedCash)
           return runOnlineMutation({
@@ -1273,19 +1674,28 @@ export const usePosStore = create(
             get,
             operation: `register:close:${register.id}`,
             payload,
+            refreshScope: 'caja',
             request: (idempotencyKey) => posApi.closeRegister(register.id, payload, { idempotencyKey }),
             apply: (response) => {
-              const closed = mapRegisterMutationResponse(response, get().branchId)
+              const closed = mapRegisterMutationResponse(response, branchId)
               const summary = mapCloseSummary(response)
-              set({
+              const snapshot = {
                 register: { ...closed, open: false },
                 registerSummary: closed.summary || null,
                 lastCloseSummary: summary,
-              })
+              }
+              set((state) => ({
+                ...snapshot,
+                registerByBranch: {
+                  ...state.registerByBranch,
+                  [branchId]: pickRegisterSnapshot({ ...state, ...snapshot }, branchId),
+                },
+              }))
             },
           }).then((response) => {
             const summary = mapCloseSummary(response)
             set({ lastCloseSummary: summary })
+            get().hydrateRegisterHistory({ force: true }).catch(() => null)
             return response
           })
         }
@@ -1300,9 +1710,10 @@ export const usePosStore = create(
           const cashIncomes = s.shiftIncomes.reduce((a, i) => a + i.amount, 0)
           const expected = s.register.openingCash + s.cashSales + cashIncomes - cashExpenses
           const totalSales = activeSales.reduce((a, sale) => a + sale.total, 0)
+          const branchId = s.cajaBranchId || s.branchId
           const summary = {
             openingCash: s.register.openingCash,
-            branchId: s.branchId,
+            branchId,
             cashSales: s.cashSales,
             cashIncomes,
             expenses: cashExpenses,
@@ -1313,14 +1724,17 @@ export const usePosStore = create(
             difference: countedCash - expected,
             closedAt,
           }
-          return {
-            register: { ...s.register, open: false, closedAt },
+          const snapshot = {
+            register: { ...s.register, open: false, closedAt, branchId },
             shiftSales: recognizedShiftSales,
+            lastCloseSummary: summary,
+          }
+          return {
+            ...snapshot,
             sales: recognizedShiftSales.reduce(
               (items, sale) => replaceById(items, sale),
               s.sales
             ),
-            lastCloseSummary: summary,
             registerHistory: [
               {
                 id: genId('close'),
@@ -1330,6 +1744,10 @@ export const usePosStore = create(
               },
               ...s.registerHistory,
             ],
+            registerByBranch: {
+              ...s.registerByBranch,
+              [branchId]: pickRegisterSnapshot({ ...s, ...snapshot }, branchId),
+            },
           }
         })
         return get().lastCloseSummary
@@ -1348,6 +1766,7 @@ export const usePosStore = create(
             get,
             operation: `register:movement:income:${register.id}`,
             payload,
+            refreshScope: 'caja',
             request: (idempotencyKey) => posApi.createRegisterMovement(register.id, payload, { idempotencyKey }),
           })
         }
@@ -1379,6 +1798,7 @@ export const usePosStore = create(
             get,
             operation: `register:movement:expense:${register.id}`,
             payload,
+            refreshScope: 'caja',
             request: (idempotencyKey) => posApi.createRegisterMovement(register.id, payload, { idempotencyKey }),
           })
         }
@@ -1818,11 +2238,16 @@ export const usePosStore = create(
       clearSensitive: () => {
         posGeneration += 1
         posHydrationRequest = null
+        cajaHydrationRequest = null
+        registerHistoryRequest = null
         mutationAttemptKeys.clear()
         detailRequests.clear()
         useConfigStore.getState().resetPaymentMethods()
         set({
           branchId: 'charm-dn',
+          cajaBranchId: 'charm-dn',
+          registerByBranch: {},
+          cajaHydrating: false,
           customer: DEFAULT_CUSTOMER,
           ...EMPTY_CART_PATCH,
           cartDrawerOpen: false,
@@ -1835,15 +2260,15 @@ export const usePosStore = create(
       },
 
       // ---- selectors ----
-      getSubtotal: () => calculatePosTotals(get()).subtotal,
-      getDiscountAmount: () => calculatePosTotals(get()).discountAmount,
+      getSubtotal: () => cartTotalsState(get()).subtotal,
+      getDiscountAmount: () => cartTotalsState(get()).discountAmount,
       getDiscountPct: () => {
         const sub = get().getSubtotal()
         if (get().discountMode === 'amount') return sub > 0 ? Math.min(100, (Math.min(sub, get().discountValue) / sub) * 100) : 0
         return Math.min(100, Math.max(0, get().discountValue))
       },
-      getTaxAmount: () => calculatePosTotals(get()).taxAmount,
-      getTotal: () => calculatePosTotals(get()).total,
+      getTaxAmount: () => cartTotalsState(get()).taxAmount,
+      getTotal: () => cartTotalsState(get()).total,
       getItemCount: () => get().items.reduce((sum, i) => sum + i.qty, 0),
       getCashExpenses: () => get().registerSummary?.cashExpenses != null
         ? Number(get().registerSummary.cashExpenses) || 0
@@ -1913,7 +2338,7 @@ export const usePosStore = create(
             }))
           if (backfill.length) state.heldCarts = [...backfill, ...state.heldCarts]
         }
-        if (!state.documentKind) state.documentKind = 'quote'
+        if (!state.documentKind) state.documentKind = 'invoice'
         if (state.isFinalized == null) state.isFinalized = false
         if (state.activeQuoteId == null) state.activeQuoteId = null
         state.apiContext = { hydrated: false, mode: 'demo', branchId: null, lastSyncedAt: null }

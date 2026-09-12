@@ -2,7 +2,6 @@ import { useState, useMemo, useCallback } from 'react'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
 import { CalendarCheck, UserX, CalendarClock, Percent, Globe, Ban, Eye, Pencil } from 'lucide-react'
 import { useAgendaStore, statusMeta } from '@/stores/agendaStore'
-import { useConfigStore } from '@/stores/configStore'
 import { useRrhhStore } from '@/stores/rrhhStore'
 import { ReportFilterBar } from '../components/ReportFilterBar'
 import { Pagination } from '../components/Pagination'
@@ -11,6 +10,7 @@ import { AGENDA_REPORT_PERIODS } from '../lib/reportes'
 import { fetchAgendaReport, fetchAgendaSummary } from '@/services/reportApi'
 import { usePaginatedReport } from '../hooks/usePaginatedReport'
 import { useReportSummary } from '../hooks/useReportSummary'
+import { useReportFilters } from '../hooks/useReportFilters'
 import {
   ResponsiveList,
   ResponsiveTable,
@@ -21,14 +21,14 @@ import {
   MobileCardGrid,
 } from '@/components/ui/ResponsiveList'
 import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
-import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { AppointmentAuditModal } from '../components/AppointmentAuditModal'
 import { AppointmentFormModal } from '@/modules/agenda/components/AppointmentFormModal'
 import { formatCompactDate } from '@/modules/agenda/lib/calendar'
+import { CHART_ANIMATION } from '@/lib/chartAnimation'
 
 const STATUS_META = [
-  { id: 'completada', name: 'Cumplidas', color: '#10b981' },
+  { id: 'cumplida', name: 'Cumplidas', color: '#10b981' },
   { id: 'confirmada', name: 'Confirmadas', color: '#3b82f6' },
   { id: 'pendiente', name: 'Pendientes', color: '#f59e0b' },
   { id: 'noshow', name: 'No-show', color: '#ef4444' },
@@ -39,9 +39,8 @@ const STATUS_META = [
 ]
 export default function AgendaReportPage() {
   const appointments = useAgendaStore((s) => s.appointments)
-  const branches = useConfigStore((s) => s.branches)
-  const [period, setPeriod] = useState('month')
-  const [branchId, setBranchId] = useState('')
+  const { period, dateFrom, dateTo, branchIds, setBranchIds, onPeriodChange, params } =
+    useReportFilters({ period: 'month' })
   const [status, setStatus] = useState('')
   const [search, setSearch] = useState('')
   const [auditId, setAuditId] = useState(null)
@@ -73,8 +72,8 @@ export default function AgendaReportPage() {
   const getAppointments = useCallback(() => appointments, [appointments])
   const getEmployees = useCallback(() => employees, [employees])
   const summaryFetcher = useCallback(
-    () => fetchAgendaSummary(getAppointments, getEmployees, { branchId, status, search, period }),
-    [getAppointments, getEmployees, branchId, status, search, period]
+    () => fetchAgendaSummary(getAppointments, getEmployees, { ...params, status, search }),
+    [getAppointments, getEmployees, params, status, search]
   )
   const summary = useReportSummary(summaryFetcher, {
     total: 0,
@@ -115,27 +114,24 @@ export default function AgendaReportPage() {
     value: statusDistribution.find((item) => item.id === meta.id)?.value || 0,
   })).filter((item) => item.value > 0)
   const fetcher = useCallback(
-    (params) => fetchAgendaReport(getAppointments, { ...params, branchId, status, search, period }),
-    [getAppointments, branchId, status, search, period]
+    (pageParams) => fetchAgendaReport(getAppointments, { ...pageParams, ...params, status, search }),
+    [getAppointments, params, status, search]
   )
   const listReport = usePaginatedReport(fetcher, {}, 10, { key: 'date', dir: 'desc' })
-  const branchOptions = [
-    { value: '', label: 'Todas las sucursales' },
-    ...branches.map((b) => ({ value: b.id, label: b.name })),
-  ]
-
-  const handleBranchChange = (id) => {
-    setBranchId(id)
+  const handleBranchIdsChange = (nextBranchIds) => {
+    setBranchIds(nextBranchIds)
     listReport.setPage(1)
   }
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8">
       <ReportFilterBar
-        branchId={branchId}
-        onBranchChange={handleBranchChange}
+        branchIds={branchIds}
+        onBranchIdsChange={handleBranchIdsChange}
         period={period}
-        onPeriodChange={setPeriod}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onPeriodChange={(next) => { onPeriodChange(next); listReport.setPage(1) }}
         showPeriod
         periodOptions={AGENDA_REPORT_PERIODS}
         search={search}
@@ -144,11 +140,10 @@ export default function AgendaReportPage() {
         status={status}
         onStatusChange={setStatus}
         statusOptions={STATUS_META.map((s) => ({ value: s.id, label: s.name }))}
-        showBranch={false}
         onRefresh={() => { summary.reload(); listReport.reload() }}
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label="Citas (período)" value={total} icon={CalendarClock} tone="brand" testId="report-stat-citas" />
         <StatCard label="Citas atendidas / total" value={attendedVsTotal} icon={CalendarCheck} tone="emerald" testId="report-stat-attended-ratio" />
         <StatCard label="No-show" value={noShow} icon={UserX} tone="red" testId="report-stat-noshow" />
@@ -166,7 +161,7 @@ export default function AgendaReportPage() {
               <div className="h-[220px] w-full">
                 <ResponsiveContainer width="100%" height={220} minWidth={0}>
                   <PieChart>
-                    <Pie data={pie} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={2} isAnimationActive={false}>
+                    <Pie data={pie} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={2} {...CHART_ANIMATION}>
                       {pie.map((e) => <Cell key={e.id} fill={e.color} />)}
                     </Pie>
                     <Tooltip />
@@ -195,8 +190,8 @@ export default function AgendaReportPage() {
                   <YAxis tickLine={false} axisLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} width={32} allowDecimals={false} />
                   <Tooltip cursor={{ fill: '#f8fafc' }} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="Cumplidas" fill="#10b981" radius={[6, 6, 0, 0]} isAnimationActive={false} />
-                  <Bar dataKey="No-show" fill="#ef4444" radius={[6, 6, 0, 0]} isAnimationActive={false} />
+                  <Bar dataKey="Cumplidas" fill="#10b981" radius={[6, 6, 0, 0]} {...CHART_ANIMATION} />
+                  <Bar dataKey="No-show" fill="#ef4444" radius={[6, 6, 0, 0]} {...CHART_ANIMATION} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -216,7 +211,7 @@ export default function AgendaReportPage() {
                   <XAxis type="number" tickLine={false} axisLine={false} allowDecimals={false} />
                   <YAxis type="category" dataKey="name" tickLine={false} axisLine={false} width={100} tick={{ fontSize: 11 }} />
                   <Tooltip />
-                  <Bar dataKey="value" fill="#3b82f6" radius={[0, 6, 6, 0]} isAnimationActive={false} />
+                  <Bar dataKey="value" fill="#3b82f6" radius={[0, 6, 6, 0]} {...CHART_ANIMATION} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -231,7 +226,7 @@ export default function AgendaReportPage() {
               <div className="h-[200px] w-full">
                 <ResponsiveContainer width="100%" height={200} minWidth={0}>
                   <PieChart>
-                    <Pie data={bySource} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} isAnimationActive={false}>
+                    <Pie data={bySource} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} {...CHART_ANIMATION}>
                       {bySource.map((e) => <Cell key={e.id} fill={e.color} />)}
                     </Pie>
                     <Tooltip />
@@ -252,17 +247,8 @@ export default function AgendaReportPage() {
       </div>
 
       <div className="overflow-hidden rounded-xl border border-slate-100 bg-white shadow-soft">
-        <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="border-b border-slate-100 px-5 py-4">
           <h3 className="font-heading text-base font-semibold text-slate-800">Listado de citas</h3>
-          <div className="w-full sm:w-56">
-            <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-400">Sucursal</label>
-            <Select
-              value={branchId || ''}
-              onChange={handleBranchChange}
-              options={branchOptions}
-              data-testid="report-agenda-branch"
-            />
-          </div>
         </div>
         <ResponsiveList columnCount={9}>
           <ResponsiveTable testId="report-agenda-table" wrapCard={false}>

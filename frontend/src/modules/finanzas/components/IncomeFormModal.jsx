@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
+import { AttachmentField } from '@/components/ui/AttachmentField'
 import { useFinanzasStore } from '@/stores/finanzasStore'
 import { useConfigStore } from '@/stores/configStore'
+import { mergeCategoryOptions } from '@/lib/categories'
 import { todayKey } from '@/stores/agendaStore'
 
 const MANUAL_CATEGORY_OPTIONS = [
@@ -34,7 +36,16 @@ const SOURCE_OPTIONS = [
   { value: 'Online', label: 'Online' },
 ]
 
-const empty = () => ({ category: 'servicios', branchId: '', amount: '', date: todayKey(), customer: '', source: 'Formulario', status: 'pagado' })
+const empty = () => ({
+  category: 'servicios',
+  branchId: '',
+  amount: '',
+  date: todayKey(),
+  customer: '',
+  source: 'Formulario',
+  status: 'pagado',
+  attachments: [],
+})
 
 export function IncomeFormModal({ open, onClose, income }) {
   const addManualIncome = useFinanzasStore((state) => state.addManualIncome)
@@ -57,11 +68,13 @@ export function IncomeFormModal({ open, onClose, income }) {
     setErr('')
   }, [open, income])
 
+  const categories = useConfigStore((s) => s.categories)
   const { branches } = useConfigStore.getState()
   const branchOptions = branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))
-  const baseCategoryOptions = isPosIncome
-    ? [...MANUAL_CATEGORY_OPTIONS, ...POS_CATEGORY_OPTIONS]
-    : MANUAL_CATEGORY_OPTIONS
+  const baseCategoryOptions = useMemo(() => {
+    const manual = mergeCategoryOptions(categories, MANUAL_CATEGORY_OPTIONS, 'ingreso')
+    return isPosIncome ? [...manual, ...POS_CATEGORY_OPTIONS] : manual
+  }, [categories, isPosIncome])
   const categoryOptions = form.category && !baseCategoryOptions.some((option) => option.value === form.category)
     ? [{ value: form.category, label: `${form.category} (POS)` }, ...baseCategoryOptions]
     : baseCategoryOptions
@@ -99,6 +112,11 @@ export function IncomeFormModal({ open, onClose, income }) {
             Esta corrección modifica los reportes financieros; la venta original y su inventario permanecen intactos en Caja.
           </p>
         )}
+        <AttachmentField
+          value={form.attachments}
+          onChange={(attachments) => set('attachments', attachments)}
+          testId="income-attachments"
+        />
         {err && <p className="text-sm text-red-500">{err}</p>}
         <div className="flex gap-3 pt-1">
           <Button variant="secondary" className="flex-1" onClick={onClose}>Cancelar</Button>

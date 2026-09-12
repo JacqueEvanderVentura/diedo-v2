@@ -30,6 +30,17 @@ export const SOURCE_LABELS = {
   import: 'Importación',
 }
 
+export const ACQUISITION_SOURCES = ['whatsapp', 'instagram', 'referral', 'otros', 'pos_walk_in', 'app']
+
+export const ACQUISITION_SOURCE_LABELS = {
+  whatsapp: 'WhatsApp',
+  instagram: 'Instagram',
+  referral: 'Referido',
+  otros: 'Otros',
+  pos_walk_in: 'Mostrador / POS',
+  app: 'App Helios 360',
+}
+
 export const OPPORTUNITY_STAGES = ['nuevo', 'contactado', 'propuesta', 'negociacion', 'cerrado', 'perdido']
 
 export const STAGE_META = {

@@ -301,27 +301,34 @@ describe('store online de Terminal POS', () => {
   })
 
   it('abre un turno online sin arrastrar movimientos del turno anterior', async () => {
+    const branchId = '11111111-1111-4111-8111-111111111111'
     usePosStore.setState({
-      register: { id: null, open: false, branchId: 'branch-id', apiSynced: true },
+      branchId: 'charm-dn',
+      cajaBranchId: branchId,
+      register: { id: null, open: false, branchId, apiSynced: true },
       cashSales: 100,
       shiftSales: [{ id: 'old-sale', total: 100 }],
       shiftIncomes: [{ id: 'old-income', amount: 20 }],
       expenses: [{ id: 'old-expense', amount: 10 }],
       lastCloseSummary: { id: 'old-register' },
-      apiContext: { hydrated: true, mode: 'online', branchId: 'branch-id', lastSyncedAt: null },
+      apiContext: { hydrated: true, mode: 'online', branchId: 'charm-dn', lastSyncedAt: null },
     })
     mocks.openRegister.mockResolvedValue({
       id: 'new-register',
       status: 'open',
-      branchId: 'branch-id',
+      branchId,
       openingCash: '500',
       expectedCash: '500',
       version: 1,
     })
-    mocks.state.mockRejectedValueOnce(new Error('sin recarga'))
-
     await usePosStore.getState().openRegister(500)
 
+    expect(mocks.openRegister).toHaveBeenCalledWith(
+      expect.objectContaining({ branchId }),
+      expect.any(Object)
+    )
+    expect(mocks.state).not.toHaveBeenCalled()
+    expect(mocks.listRegisters).toHaveBeenCalled()
     expect(usePosStore.getState()).toMatchObject({
       register: { id: 'new-register', open: true },
       cashSales: 0,
@@ -329,7 +336,35 @@ describe('store online de Terminal POS', () => {
       shiftIncomes: [],
       expenses: [],
       lastCloseSummary: null,
+      error: null,
     })
+  })
+
+  it('sincroniza cajas abiertas al cargar historial de turnos', async () => {
+    const openBranchId = '22222222-2222-4222-8222-222222222222'
+    mocks.listRegisters.mockResolvedValueOnce({
+      items: [
+        {
+          id: 'open-register',
+          status: 'open',
+          branch: { id: openBranchId, name: 'Sucursal abierta' },
+          openingCash: '1000',
+        },
+        {
+          id: 'closed-register',
+          status: 'closed',
+          branch: { id: '33333333-3333-4333-8333-333333333333', name: 'Cerrada' },
+          openingCash: '0',
+        },
+      ],
+    })
+
+    await usePosStore.getState().hydrateRegisterHistory({ force: true })
+
+    expect(usePosStore.getState().registerByBranch[openBranchId]).toMatchObject({
+      register: { id: 'open-register', open: true, branchId: openBranchId },
+    })
+    expect(usePosStore.getState().registerHistory).toHaveLength(1)
   })
 
   it('aplica la CxC devuelta al reversar un pago', async () => {

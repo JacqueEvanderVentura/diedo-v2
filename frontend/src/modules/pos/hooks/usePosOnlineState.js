@@ -2,6 +2,7 @@ import { useCallback, useEffect } from 'react'
 import { useConfigStore } from '@/stores/configStore'
 import { usePosStore } from '@/stores/posStore'
 import { useSessionStore } from '@/stores/sessionStore'
+import { useWorkspaceScopeStore } from '@/stores/workspaceScopeStore'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -29,7 +30,16 @@ export function usePosOnlineState() {
     const onlineBranches = branches.filter((branch) => UUID_PATTERN.test(branch.id))
     if (!onlineBranches.length) return
     if (!onlineBranches.some((branch) => branch.id === branchId)) {
-      setBranch(onlineBranches[0].id)
+      const workspaceBranchId = useWorkspaceScopeStore.getState().activeBranchId
+      const nextBranchId = onlineBranches.some((branch) => branch.id === workspaceBranchId)
+        ? workspaceBranchId
+        : onlineBranches[0].id
+      setBranch(nextBranchId)
+      return
+    }
+    const state = usePosStore.getState()
+    if (state.register?.branchId !== branchId) {
+      state.syncRegisterViewForPosBranch().catch(() => null)
       return
     }
     hydrateFromApi(branchId).catch(() => null)

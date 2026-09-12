@@ -2,7 +2,9 @@ import { useCallback, useMemo, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import {
   AlertTriangle,
+  Award,
   Calendar,
+  Clock3,
   DollarSign,
   Download,
   PackageOpen,
@@ -10,6 +12,7 @@ import {
   Users,
 } from 'lucide-react'
 import { formatDOP } from '@/lib/format'
+import { CHART_ANIMATION } from '@/lib/chartAnimation'
 import { exportCsv } from '@/modules/finanzas/lib/export'
 import { Button } from '@/components/ui/Button'
 import { useConfigStore } from '@/stores/configStore'
@@ -23,6 +26,7 @@ import { ReportFilterBar } from '../components/ReportFilterBar'
 import { StatCard, ChartCard } from '../components/ReportPrimitives'
 import { fetchPersonalPerformanceReport } from '@/services/reportApi'
 import { useReportSummary } from '../hooks/useReportSummary'
+import { useReportFilters } from '../hooks/useReportFilters'
 import {
   ResponsiveList,
   ResponsiveTable,
@@ -37,6 +41,7 @@ import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable
 import { useSortedRows } from '@/hooks/useTableControls'
 
 const TABS = [
+  { id: 'kpi', label: 'KPI personal' },
   { id: 'usuarios', label: 'Ventas y creación' },
   { id: 'empleados', label: 'Citas atendidas' },
   { id: 'incidencias', label: 'Incidencias laborales' },
@@ -53,11 +58,12 @@ export default function PersonalPage() {
   const incidents = useIncidenciasStore((s) => s.incidencias)
   const vacationRequests = useRrhhStore((s) => s.vacationRequests)
   const supplies = useMemo(() => products.filter((p) => p.type === 'supply'), [products])
+  const services = useMemo(() => products.filter((p) => p.type === 'service'), [products])
 
-  const [period, setPeriod] = useState('month')
-  const [branchId, setBranchId] = useState('')
+  const { period, dateFrom, dateTo, branchIds, setBranchIds, onPeriodChange, params } =
+    useReportFilters({ period: 'month' })
   const [search, setSearch] = useState('')
-  const [tab, setTab] = useState('usuarios')
+  const [tab, setTab] = useState('kpi')
 
   const getData = useCallback(
     () => ({
@@ -67,14 +73,15 @@ export default function PersonalPage() {
       employees,
       movements,
       supplies,
+      services,
       incidents,
       vacationRequests,
     }),
-    [sales, appointments, users, employees, movements, supplies, incidents, vacationRequests]
+    [sales, appointments, users, employees, movements, supplies, services, incidents, vacationRequests]
   )
   const reportFetcher = useCallback(
-    () => fetchPersonalPerformanceReport(getData, { branchId, period, search }),
-    [getData, branchId, period, search]
+    () => fetchPersonalPerformanceReport(getData, { ...params, search }),
+    [getData, params, search]
   )
   const reportState = useReportSummary(reportFetcher, {
     totals: {
@@ -93,6 +100,7 @@ export default function PersonalPage() {
     incidentMetrics: [],
     incidentDistribution: [],
     supplyUsage: [],
+    employeeKpis: [],
   })
   const report = reportState.data
 
@@ -124,15 +132,50 @@ export default function PersonalPage() {
   })
 
   const { rows: supplyRows, sortKey: supplySortKey, sortDir: supplySortDir, toggleSort: toggleSupplySort } = useSortedRows(report.supplyUsage, {
-    defaultSort: { key: 'qty', dir: 'desc' },
+    defaultSort: { key: 'variance', dir: 'desc' },
     accessors: {
       employeeName: (r) => r.employeeName || '',
       supplyName: (r) => r.supplyName || '',
       qty: (r) => r.qty || 0,
+      expectedQty: (r) => r.expectedQty || 0,
+      variance: (r) => r.variance ?? 0,
       appointmentsCount: (r) => r.appointmentsCount || 0,
       summary: (r) => r.summary || '',
     },
   })
+
+  const { rows: kpiRows, sortKey: kpiSortKey, sortDir: kpiSortDir, toggleSort: toggleKpiSort } = useSortedRows(report.employeeKpis || [], {
+    defaultSort: { key: 'score', dir: 'desc' },
+    accessors: {
+      name: (r) => r.name || '',
+      score: (r) => r.score || 0,
+      appointmentsAttended: (r) => r.appointmentsAttended || 0,
+      punctualityRate: (r) => r.punctualityRate || 0,
+      incidentCount: (r) => r.incidentCount || 0,
+      supplyVariance: (r) => r.supplyVariance || 0,
+    },
+  })
+
+  const kpiChart = useMemo(
+    () => (report.employeeKpis || []).slice(0, 10).map((row) => ({
+      name: row.name.split(' ')[0],
+      score: row.score,
+    })),
+    [report.employeeKpis],
+  )
+
+  const varianceChart = useMemo(
+    () => report.supplyUsage
+      .filter((row) => row.expectedQty > 0)
+      .slice(0, 8)
+      .map((row) => ({
+        name: `${row.employeeName.split(' ')[0]} · ${row.supplyName.split(' ')[0]}`,
+        Esperado: row.expectedQty,
+        Real: row.qty,
+        Varianza: row.variance ?? 0,
+      })),
+    [report.supplyUsage],
+  )
 
   const { rows: incidentRows, sortKey: incidentSortKey, sortDir: incidentSortDir, toggleSort: toggleIncidentSort } = useSortedRows(report.incidentMetrics, {
     defaultSort: { key: 'total', dir: 'desc' },
@@ -230,13 +273,33 @@ export default function PersonalPage() {
       })
       return
     }
+    if (tab === 'kpi') {
+      exportCsv({
+        title: 'Reporte personal — KPI',
+        filename: 'reporte_personal_kpi',
+        columns: [
+          { key: 'name', label: 'Empleado' },
+          { key: 'score', label: 'Score KPI' },
+          { key: 'appointmentsAttended', label: 'Citas atendidas' },
+          { key: 'punctualityRate', label: 'Puntualidad %' },
+          { key: 'incidentCount', label: 'Incidencias' },
+          { key: 'supplyVariance', label: 'Varianza insumos' },
+          { key: 'actualSupply', label: 'Insumos reales' },
+          { key: 'expectedSupply', label: 'Insumos esperados' },
+        ],
+        rows: report.employeeKpis || [],
+      })
+      return
+    }
     exportCsv({
       title: 'Reporte personal — uso de insumos',
       filename: 'reporte_personal_insumos',
       columns: [
         { key: 'employeeName', label: 'Empleado' },
         { key: 'supplyName', label: 'Insumo' },
-        { key: 'qty', label: 'Cantidad' },
+        { key: 'expectedQty', label: 'Esperado' },
+        { key: 'qty', label: 'Real' },
+        { key: 'variance', label: 'Varianza' },
         { key: 'appointmentsCount', label: 'Citas atendidas' },
         { key: 'perAppointment', label: 'Consumo por cita' },
       ],
@@ -254,10 +317,12 @@ export default function PersonalPage() {
       </div>
 
       <ReportFilterBar
-        branchId={branchId}
-        onBranchChange={setBranchId}
+        branchIds={branchIds}
+        onBranchIdsChange={setBranchIds}
         period={period}
-        onPeriodChange={setPeriod}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onPeriodChange={onPeriodChange}
         showPeriod
         search={search}
         onSearchChange={setSearch}
@@ -266,36 +331,133 @@ export default function PersonalPage() {
         onRefresh={reportState.reload}
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         <StatCard label="Ventas totales" value={formatDOP(report.totals.salesTotal)} icon={DollarSign} tone="brand" />
         <StatCard label="Citas atendidas" value={report.totals.appointmentsAttended} icon={Calendar} tone="emerald" />
+        <StatCard label="Puntualidad" value={`${report.totals.punctualityRate ?? 100}%`} icon={Clock3} tone="violet" sub={`${report.totals.onTimeAppointments ?? 0} a tiempo · ${report.totals.delayedAppointments ?? 0} en retraso`} />
         <StatCard label="Promedio por empleado" value={report.totals.teamAverageAttended} icon={TrendingUp} tone="slate" />
         <StatCard label="Incidencias laborales" value={report.totals.employeeIncidents} icon={AlertTriangle} tone="amber" />
         <StatCard label="Días de vacaciones" value={report.totals.vacationDays} icon={Users} tone="brand" />
         <StatCard label="Insumos utilizados" value={report.totals.suppliesUsed} icon={PackageOpen} tone="emerald" />
+        <StatCard label="Varianza insumos" value={report.totals.supplyVariance ?? 0} icon={Award} tone={report.totals.supplyVariance > 0 ? 'amber' : 'emerald'} sub="Real vs esperado (BOM)" />
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex border-b border-slate-200">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={cn(
-              'relative px-6 py-3 text-sm font-medium transition-colors',
-              tab === t.id ? 'text-blue-600' : 'text-slate-500 hover:text-slate-800'
-            )}
-          >
-            {t.label}
-            {tab === t.id && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-blue-600" />}
-          </button>
-        ))}
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="-mx-1 overflow-x-auto px-1 scrollbar-hide">
+          <div className="flex min-w-max border-b border-slate-200">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={cn(
+                  'relative whitespace-nowrap px-4 py-3 text-sm font-medium transition-colors sm:px-6',
+                  tab === t.id ? 'text-blue-600' : 'text-slate-500 hover:text-slate-800'
+                )}
+              >
+                {t.label}
+                {tab === t.id && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-blue-600" />}
+              </button>
+            ))}
+          </div>
         </div>
-        <Button variant="secondary" size="sm" onClick={exportDetailCsv} data-testid="personal-export-csv">
+        <Button variant="secondary" size="sm" className="w-full shrink-0 sm:w-auto" onClick={exportDetailCsv} data-testid="personal-export-csv">
           <Download className="h-4 w-4" /> Exportar CSV
         </Button>
       </div>
+
+      {tab === 'kpi' && (
+        <>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <ChartCard title="Score KPI por empleado" subtitle="Citas, puntualidad, incidencias e insumos">
+              {kpiChart.length === 0 ? (
+                <p className="py-16 text-center text-sm text-slate-400">Sin empleados con actividad en el período</p>
+              ) : (
+                <div className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height={300} minWidth={0}>
+                    <BarChart data={kpiChart} margin={{ top: 10, right: 8, left: -12, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="4 4" stroke="#f1f5f9" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                      <YAxis domain={[0, 100]} width={32} />
+                      <Tooltip />
+                      <Bar dataKey="score" name="KPI" fill="#6366f1" radius={[6, 6, 0, 0]} {...CHART_ANIMATION} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </ChartCard>
+
+            <ChartCard title="Insumos: esperado vs real" subtitle="Basado en BOM de servicios y citas cumplidas">
+              {varianceChart.length === 0 ? (
+                <p className="py-16 text-center text-sm text-slate-400">Sin varianza calculable (define BOM en servicios)</p>
+              ) : (
+                <div className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height={300} minWidth={0}>
+                    <BarChart data={varianceChart} margin={{ top: 10, right: 8, left: -12, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="4 4" stroke="#f1f5f9" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 9 }} interval={0} angle={-18} textAnchor="end" height={70} />
+                      <YAxis allowDecimals={false} width={32} />
+                      <Tooltip />
+                      <Bar dataKey="Esperado" fill="#94a3b8" radius={[4, 4, 0, 0]} {...CHART_ANIMATION} />
+                      <Bar dataKey="Real" fill="#f97316" radius={[4, 4, 0, 0]} {...CHART_ANIMATION} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </ChartCard>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-slate-100 bg-white shadow-soft">
+            <div className="border-b border-slate-100 px-5 py-4">
+              <h3 className="font-heading text-base font-semibold text-slate-800">Ranking KPI personal</h3>
+              <p className="text-xs text-slate-400">Combina citas cumplidas, puntualidad, ausencias y sobreuso de insumos</p>
+            </div>
+            <ResponsiveList columnCount={7}>
+              <ResponsiveTable testId="report-personal-kpi" wrapCard={false}>
+                <SortableTableProvider sortKey={kpiSortKey} sortDir={kpiSortDir} onSort={toggleKpiSort}>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+                      <SortableTh column="name" className="px-4 py-3">Empleado</SortableTh>
+                      <SortableTh column="score" align="center" className="px-4 py-3">Score</SortableTh>
+                      <SortableTh column="appointmentsAttended" align="center" className="px-4 py-3">Citas</SortableTh>
+                      <SortableTh column="punctualityRate" align="center" className="px-4 py-3">Puntualidad</SortableTh>
+                      <SortableTh column="incidentCount" align="center" className="px-4 py-3">Incidencias</SortableTh>
+                      <SortableTh column="supplyVariance" align="center" className="px-4 py-3">Varianza</SortableTh>
+                      <th className="px-4 py-3 text-right">Insumos real/esp.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {kpiRows.length === 0 ? (
+                      <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-400">Sin KPI para los filtros seleccionados</td></tr>
+                    ) : (
+                      kpiRows.map((row) => (
+                        <tr key={row.employeeId} className="border-b border-slate-50">
+                          <td className="px-4 py-3 font-medium text-slate-800">{row.name}</td>
+                          <td className="px-4 py-3 text-center">
+                            <span className={cn(
+                              'rounded-full px-2.5 py-1 text-xs font-bold',
+                              row.score >= 80 ? 'bg-emerald-50 text-emerald-700' : row.score >= 60 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600',
+                            )}>
+                              {row.score}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-center text-slate-700">{row.appointmentsAttended}</td>
+                          <td className="px-4 py-3 text-center text-slate-700">{row.punctualityRate}%</td>
+                          <td className="px-4 py-3 text-center text-slate-700">{row.incidentCount}</td>
+                          <td className="px-4 py-3 text-center font-semibold text-orange-600">{row.supplyVariance > 0 ? `+${row.supplyVariance}` : row.supplyVariance}</td>
+                          <td className="px-4 py-3 text-right text-slate-600">{row.actualSupply} / {row.expectedSupply || '—'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+                </SortableTableProvider>
+              </ResponsiveTable>
+            </ResponsiveList>
+          </div>
+        </>
+      )}
 
       {tab === 'usuarios' && (
         <>
@@ -311,7 +473,7 @@ export default function PersonalPage() {
                       <XAxis type="number" tickFormatter={(v) => formatDOP(v)} tick={{ fontSize: 10 }} />
                       <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 11 }} />
                       <Tooltip formatter={(v) => formatDOP(v)} />
-                      <Bar dataKey="value" fill="#3b82f6" radius={[0, 6, 6, 0]} isAnimationActive={false} />
+                      <Bar dataKey="value" fill="#3b82f6" radius={[0, 6, 6, 0]} {...CHART_ANIMATION} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -329,7 +491,7 @@ export default function PersonalPage() {
                       <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={60} />
                       <YAxis allowDecimals={false} width={32} />
                       <Tooltip />
-                      <Bar dataKey="value" fill="#f97316" radius={[6, 6, 0, 0]} isAnimationActive={false} />
+                      <Bar dataKey="value" fill="#f97316" radius={[6, 6, 0, 0]} {...CHART_ANIMATION} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -414,8 +576,8 @@ export default function PersonalPage() {
                     <XAxis type="number" allowDecimals={false} />
                     <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} />
                     <Tooltip />
-                    <Bar dataKey="Atendidas" fill="#10b981" radius={[0, 6, 6, 0]} isAnimationActive={false} />
-                    <Bar dataKey="Promedio" fill="#cbd5e1" radius={[0, 6, 6, 0]} isAnimationActive={false} />
+                    <Bar dataKey="Atendidas" fill="#10b981" radius={[0, 6, 6, 0]} {...CHART_ANIMATION} />
+                    <Bar dataKey="Promedio" fill="#cbd5e1" radius={[0, 6, 6, 0]} {...CHART_ANIMATION} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -512,7 +674,7 @@ export default function PersonalPage() {
                     <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-18} textAnchor="end" height={72} />
                     <YAxis allowDecimals={false} width={32} />
                     <Tooltip />
-                    <Bar dataKey="value" name="Incidencias" fill="#f97316" radius={[6, 6, 0, 0]} isAnimationActive={false} />
+                    <Bar dataKey="value" name="Incidencias" fill="#f97316" radius={[6, 6, 0, 0]} {...CHART_ANIMATION} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -586,7 +748,7 @@ export default function PersonalPage() {
               <h3 className="font-heading text-base font-semibold text-slate-800">Uso de insumos por empleado</h3>
               <p className="text-xs text-slate-400">Salidas reales de inventario frente a citas atendidas</p>
             </div>
-            <ResponsiveList columnCount={5}>
+            <ResponsiveList columnCount={7}>
               <ResponsiveTable testId="report-personal-supplies" wrapCard={false}>
                 <SortableTableProvider sortKey={supplySortKey} sortDir={supplySortDir} onSort={toggleSupplySort}>
                 <table className="w-full text-sm">
@@ -594,20 +756,26 @@ export default function PersonalPage() {
                     <tr className="border-b bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                       <SortableTh column="employeeName" className="px-4 py-3">Empleado</SortableTh>
                       <SortableTh column="supplyName" className="px-4 py-3">Insumo</SortableTh>
-                      <SortableTh column="qty" align="center" className="px-4 py-3">Cantidad</SortableTh>
+                      <SortableTh column="expectedQty" align="center" className="px-4 py-3">Esperado</SortableTh>
+                      <SortableTh column="qty" align="center" className="px-4 py-3">Real</SortableTh>
+                      <SortableTh column="variance" align="center" className="px-4 py-3">Varianza</SortableTh>
                       <SortableTh column="appointmentsCount" align="center" className="px-4 py-3">Citas</SortableTh>
                       <SortableTh column="summary" className="px-4 py-3">Resumen</SortableTh>
                     </tr>
                   </thead>
                   <tbody>
                     {supplyRows.length === 0 ? (
-                      <tr><td colSpan={5} className="px-4 py-12 text-center text-slate-400">Sin salidas de insumos registradas</td></tr>
+                      <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-400">Sin salidas de insumos registradas</td></tr>
                     ) : (
                       supplyRows.map((row) => (
                         <tr key={`${row.employeeId}-${row.supplyId}`} className="border-b border-slate-50">
                           <td className="px-4 py-3 font-medium text-slate-800">{row.employeeName}</td>
                           <td className="px-4 py-3 text-slate-600">{row.supplyName}</td>
-                          <td className="px-4 py-3 text-center text-slate-700">{row.qty}</td>
+                          <td className="px-4 py-3 text-center text-slate-700">{row.expectedQty || '—'}</td>
+                          <td className="px-4 py-3 text-center font-semibold text-slate-800">{row.qty}</td>
+                          <td className="px-4 py-3 text-center font-semibold text-orange-600">
+                            {row.variance == null ? '—' : row.variance > 0 ? `+${row.variance}` : row.variance}
+                          </td>
                           <td className="px-4 py-3 text-center text-slate-700">{row.appointmentsCount}</td>
                           <td className="px-4 py-3 text-slate-500">{row.summary}</td>
                         </tr>
@@ -622,7 +790,9 @@ export default function PersonalPage() {
                   <MobileCard key={`${row.employeeId}-${row.supplyId}`} testId={`report-supply-card-${row.employeeId}-${row.supplyId}`}>
                     <MobileCardHeader title={row.employeeName} subtitle={row.supplyName} />
                     <MobileCardGrid>
-                      <MobileField label="Cantidad">{row.qty}</MobileField>
+                      <MobileField label="Esperado">{row.expectedQty || '—'}</MobileField>
+                      <MobileField label="Real">{row.qty}</MobileField>
+                      <MobileField label="Varianza">{row.varianceLabel || '—'}</MobileField>
                       <MobileField label="Citas">{row.appointmentsCount}</MobileField>
                       <MobileField label="Resumen" fullWidth>{row.summary}</MobileField>
                     </MobileCardGrid>

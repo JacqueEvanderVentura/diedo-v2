@@ -17,7 +17,10 @@ export const useDashboardStore = create(
   persist(
     (set, get) => ({
       period: 'week',
+      dateFrom: null,
+      dateTo: null,
       branchId: 'all',
+      branchIds: [],
       summary: EMPTY_SUMMARY,
       trend: EMPTY_TREND,
       stockAlerts: [],
@@ -27,16 +30,36 @@ export const useDashboardStore = create(
       error: null,
       dataState: dashboardGateway.getState(),
 
-      setPeriod: (period) => set({ period }),
-      setBranchId: (branchId) => set({ branchId }),
+      setPeriod: (period) => set({ period, dateFrom: null, dateTo: null }),
+      setPeriodFilter: ({ period, dateFrom = null, dateTo = null }) =>
+        set({ period, dateFrom, dateTo }),
+      setBranchId: (branchId) =>
+        set({
+          branchId,
+          branchIds: branchId && branchId !== 'all' ? [branchId] : [],
+        }),
+      setBranchIds: (branchIds) =>
+        set({
+          branchIds: branchIds || [],
+          branchId: branchIds?.length === 1 ? branchIds[0] : 'all',
+        }),
 
       hydrate: async (filters = {}) => {
         const requestId = ++latestRequest
-        const period = filters.period || get().period
-        const branchId = filters.branchId || get().branchId
+        const period = filters.period ?? get().period
+        const dateFrom = filters.dateFrom ?? get().dateFrom
+        const dateTo = filters.dateTo ?? get().dateTo
+        const branchId = filters.branchId ?? get().branchId
+        const branchIds = filters.branchIds ?? get().branchIds
         set({ loading: true, error: null })
         try {
-          const result = await dashboardGateway.read('dashboard', { period, branchId })
+          const result = await dashboardGateway.read('dashboard', {
+            period,
+            dateFrom,
+            dateTo,
+            branchId,
+            branchIds,
+          })
           if (requestId !== latestRequest) return result.data
           set({
             ...result.data,
@@ -54,12 +77,23 @@ export const useDashboardStore = create(
     }),
     {
       name: 'diedo-dashboard',
-      version: 2,
+      version: 3,
       migrate: (persisted) => ({
         period: persisted?.period ?? 'week',
+        dateFrom: persisted?.dateFrom ?? null,
+        dateTo: persisted?.dateTo ?? null,
         branchId: persisted?.branchId ?? 'all',
+        branchIds: persisted?.branchIds ?? (
+          persisted?.branchId && persisted.branchId !== 'all' ? [persisted.branchId] : []
+        ),
       }),
-      partialize: (state) => ({ period: state.period, branchId: state.branchId }),
+      partialize: (state) => ({
+        period: state.period,
+        dateFrom: state.dateFrom,
+        dateTo: state.dateTo,
+        branchId: state.branchId,
+        branchIds: state.branchIds,
+      }),
     }
   )
 )

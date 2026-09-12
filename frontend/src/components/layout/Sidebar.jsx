@@ -3,13 +3,13 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { NAV_GROUPS } from '@/data/navigation'
+import { NAV_GROUPS, BACKOFFICE_NAV } from '@/data/navigation'
 import { useUiStore } from '@/stores/uiStore'
 import { usePosStore } from '@/stores/posStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { isModuleAvailable } from '@/services/moduleAvailability'
-import { DiedoIcon } from '@/components/brand/DiedoIcon'
+import { HeliosIcon, PRODUCT_NAME } from '@/components/brand/HeliosIcon'
 
 const PILL_SPRING = { type: 'spring', stiffness: 420, damping: 34 }
 const RAIL_WIDTH = 76
@@ -213,6 +213,9 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
   const effectivePermissionCodes = sessionUser?.effectivePermissionCodes
   const navigation = useMemo(() => {
     if (sessionStatus === 'demo') return NAV_GROUPS
+    if (sessionUser?.isPlatformOperator) {
+      return [BACKOFFICE_NAV]
+    }
     const modules = new Set(enabledModules || [])
     const permissions = new Set(effectivePermissionCodes || [])
     return NAV_GROUPS.filter((group) => isModuleAvailable(group.module, modules))
@@ -227,7 +230,7 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
         }),
       }))
       .filter((group) => !group.children || group.children.length > 0)
-  }, [effectivePermissionCodes, enabledModules, sessionStatus])
+  }, [effectivePermissionCodes, enabledModules, sessionStatus, sessionUser?.isPlatformOperator])
   const [open, setOpen] = useState(() => deriveOpenGroups(location.pathname))
   const navRef = useRef(null)
   const canAnimate = useRef(false)
@@ -295,10 +298,10 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
       {/* Brand */}
       <div className={cn('flex h-20 shrink-0 items-center gap-3 overflow-hidden px-4 transition-all duration-200 ease-out', collapsed && 'justify-center px-0')}>
-        <DiedoIcon className="h-9 w-9 shrink-0" />
+        <HeliosIcon className="h-9 w-9 shrink-0" />
         {!collapsed && (
           <div className="min-w-0 flex-1 leading-tight">
-            <p className="truncate font-heading text-base font-bold tracking-tight text-slate-900">{sessionUser?.workspace?.name || businessName || 'Diedo App'}</p>
+            <p className="truncate font-heading text-base font-bold tracking-tight text-slate-900">{sessionUser?.workspace?.name || businessName || PRODUCT_NAME}</p>
             <p className="truncate text-[11px] font-medium text-slate-400">Admin Console</p>
           </div>
         )}

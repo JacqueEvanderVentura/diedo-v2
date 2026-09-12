@@ -1,5 +1,3 @@
-// Navigation registry — grouped. A group with `children` renders as an
-// expandable section; an item with `to` renders as a direct link.
 export const NAV_GROUPS = [
   { id: 'dashboard', module: 'dashboard', label: 'Dashboard', to: '/dashboard', icon: 'LayoutDashboard' },
   {
@@ -34,7 +32,7 @@ export const NAV_GROUPS = [
       { label: 'Leads', to: '/crm/leads' },
       { label: 'Pipeline', to: '/crm/pipeline' },
       { label: 'Seguimientos', to: '/crm/seguimiento' },
-      { label: 'Cotizaciones', to: '/crm/cotizaciones' },
+      { label: 'Cotizaciones y facturas', to: '/crm/cotizaciones' },
       { label: 'Compras por Cliente', to: '/crm/compras' },
       { label: 'Ventas', to: '/crm/ventas' },
     ],
@@ -62,11 +60,11 @@ export const NAV_GROUPS = [
     icon: 'Wallet',
     children: [
       { label: 'Overview', to: '/finanzas' },
+      { label: 'Ingresos', to: '/finanzas/ingresos' },
       { label: 'Gastos', to: '/finanzas/gastos' },
       { label: 'Pasivos', to: '/finanzas/pasivos' },
       { label: 'Presupuestos', to: '/finanzas/presupuestos' },
       { label: 'Cuentas', to: '/finanzas/cuentas' },
-      { label: 'Ingresos', to: '/finanzas/ingresos' },
     ],
   },
   {
@@ -98,6 +96,19 @@ export const NAV_GROUPS = [
   },
 ]
 
+/** Visible only to Helios platform operators (`isPlatformOperator`). */
+export const BACKOFFICE_NAV = {
+  id: 'backoffice',
+  label: 'Backoffice',
+  icon: 'Shield',
+  children: [
+    { label: 'Resumen', to: '/backoffice' },
+    { label: 'Compañías', to: '/backoffice/companias' },
+    { label: 'Usuarios', to: '/backoffice/usuarios' },
+    { label: 'Planes', to: '/backoffice/planes' },
+  ],
+}
+
 export const PAGE_META = {
   '/dashboard': { title: 'Vista General', subtitle: 'Aquí está lo que sucede en tu negocio hoy.' },
   '/pos/caja': { title: 'Caja', subtitle: 'Control de efectivo del turno.' },
@@ -112,7 +123,7 @@ export const PAGE_META = {
   '/crm/leads': { title: 'Leads', subtitle: 'Encuentra, puntúa y convierte leads potenciales.' },
   '/crm/pipeline': { title: 'Pipeline', subtitle: 'Embudo de ventas y oportunidades.' },
   '/crm/seguimiento': { title: 'Seguimientos', subtitle: 'Actividades y oportunidades cronológicas.' },
-  '/crm/cotizaciones': { title: 'Cotizaciones', subtitle: 'Genera y gestiona cotizaciones comerciales.' },
+  '/crm/cotizaciones': { title: 'Cotizaciones y facturas', subtitle: 'Cotizaciones, facturación y cuentas por cobrar en un solo lugar.' },
   '/crm/compras': { title: 'Compras por Cliente', subtitle: 'Historial de compras agregado por cliente.' },
   '/crm/ventas': { title: 'Ventas', subtitle: 'Historial de ventas registradas.' },
   '/rrhh': { title: 'RRHH', subtitle: 'Centro de gestión de recursos humanos.' },
@@ -128,21 +139,24 @@ export const PAGE_META = {
   '/finanzas/presupuestos': { title: 'Presupuestos', subtitle: 'Planificación y control por categoría.' },
   '/finanzas/cuentas': { title: 'Cuentas', subtitle: 'Gestión de cuentas bancarias, inversión y accionistas.' },
   '/finanzas/ingresos': { title: 'Ingresos', subtitle: 'Seguimiento de transacciones y facturación.' },
-  '/reportes/generales': { title: 'Reportes · Generales', subtitle: 'Ventas y ticket promedio por período.' },
+  '/reportes/generales': { title: 'Reportes · Generales', subtitle: 'Ventas (CRM) vs Comercio (POS) y quién paga.' },
   '/reportes/membresias': { title: 'Reportes · Membresías', subtitle: 'Control de ingresos recurrentes y clientes activos.' },
   '/reportes/inventario': { title: 'Reportes · Inventario', subtitle: 'Stock y rotación estimada.' },
   '/reportes/agenda': { title: 'Reportes · Agenda', subtitle: 'Citas cumplidas vs no-show.' },
   '/reportes/dividendos': { title: 'Reportes · Dividendos', subtitle: 'Distribución de utilidades entre socios.' },
   '/reportes/personal': { title: 'Reportes · Personal', subtitle: 'Directorio de empleados con filtros paginados.' },
-  '/configuracion': { title: 'Configuración', subtitle: 'Personaliza tu experiencia en Diedo App.' },
+  '/configuracion': { title: 'Configuración', subtitle: 'Personaliza tu experiencia en Helios 360.' },
   '/configuracion/sucursales': { title: 'Sucursales', subtitle: 'Gestiona las sucursales de tu negocio.' },
   '/configuracion/usuarios': { title: 'Usuarios', subtitle: 'Gestiona los usuarios del sistema.' },
   '/configuracion/categorias': { title: 'Categorías', subtitle: 'Gestiona las categorías de productos y servicios.' },
   '/configuracion/permisos': { title: 'Permisos', subtitle: 'Define qué puede hacer cada rol en el sistema.' },
   '/configuracion/whatsapp': { title: 'Mensajes de WhatsApp', subtitle: 'Personaliza los textos enviados desde los módulos.' },
   '/configuracion/metodos-pago': { title: 'Métodos de pago', subtitle: 'Métodos disponibles al cobrar.' },
+  '/backoffice': { title: 'Backoffice', subtitle: 'Operaciones de plataforma Helios 360.' },
+  '/backoffice/companias': { title: 'Compañías', subtitle: 'Workspaces de clientes en la plataforma.' },
+  '/backoffice/planes': { title: 'Planes', subtitle: 'Packs de módulos Básico, Pro y Completo.' },
 }
 
 export function getPageMeta(pathname) {
-  return PAGE_META[pathname] || { title: 'Diedo', subtitle: '' }
+  return PAGE_META[pathname] || { title: 'Helios 360', subtitle: '' }
 }

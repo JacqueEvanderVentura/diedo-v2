@@ -1,5 +1,5 @@
 {
-  "workspace": {"businessName": "Diedo Demo", "taxDefaultRate": 18, "locale": "es-DO", "currency": "DOP"},
+  "workspace": {"businessName": "Helios 360 Demo", "taxDefaultRate": 18, "locale": "es-DO", "currency": "DOP"},
   "paymentMethods": [
     {"seedKey": "cash", "code": "cash", "name": "Efectivo", "icon": "Banknote", "enabled": true, "system": true, "channel": "cash", "settlementPolicy": "immediate", "affectsCashDrawer": true, "requiresEvidence": false},
     {"seedKey": "card", "code": "card", "name": "Tarjeta", "icon": "CreditCard", "enabled": true, "system": true, "channel": "card", "settlementPolicy": "immediate", "affectsCashDrawer": false, "requiresEvidence": false},

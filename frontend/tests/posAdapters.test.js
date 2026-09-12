@@ -50,6 +50,52 @@ describe('adaptadores de Terminal POS', () => {
     expect(methods[3]).toMatchObject({ settlementMode: 'credit' })
   })
 
+  it('resuelve branchId desde branch.id en listados de caja', () => {
+    const branchId = '11111111-1111-4111-8111-111111111111'
+    const mapped = mapPosStateFromApi({
+      register: null,
+      registerHistory: [{
+        id: 'open-register',
+        status: 'open',
+        branch: { id: branchId, name: 'Principal' },
+        openingCash: '500',
+      }],
+    }, { branchId })
+
+    expect(mapped.register).toMatchObject({
+      id: 'open-register',
+      open: true,
+      branchId,
+    })
+  })
+
+  it('resuelve la caja abierta desde el listado cuando /state no expone el turno', () => {
+    const branchId = '11111111-1111-4111-8111-111111111111'
+    const mapped = mapPosStateFromApi({
+      register: null,
+      registerHistory: [
+        {
+          id: 'closed-register',
+          status: 'closed',
+          branchId,
+          openingCash: '0',
+        },
+        {
+          id: 'open-register',
+          status: 'open',
+          branchId,
+          openingCash: '1500',
+        },
+      ],
+    }, { branchId })
+
+    expect(mapped.register).toMatchObject({
+      id: 'open-register',
+      open: true,
+      openingCash: 1500,
+    })
+  })
+
   it('mapea el estado agregado sin mezclar cotizaciones retenidas con CxC', () => {
     const mapped = mapPosStateFromApi({
       register: {

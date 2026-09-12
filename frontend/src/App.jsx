@@ -8,6 +8,7 @@ import { useRrhhStore } from './stores/rrhhStore'
 import { useAgendaStore } from './stores/agendaStore'
 import { useCatalogStore } from './stores/catalogStore'
 import { configFacade } from './services/configFacade'
+import { WorkspaceScopeSync } from '@/components/branch/WorkspaceScopeSync'
 
 export default function App() {
   useLenis(false)
@@ -50,6 +51,7 @@ export default function App() {
 
   return (
     <>
+      <WorkspaceScopeSync />
       <AppRoutes />
       <Toaster
         position="top-center"

@@ -2,23 +2,24 @@ import { useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { useConfigStore } from '@/stores/configStore'
-import { DASHBOARD_FILTERS } from '@/data/dashboard'
 import { useSessionStore } from '@/stores/sessionStore'
-import { buildBranchFilterOptions } from '@/lib/branches'
-import { Select } from '@/components/ui/Select'
+import { DatePeriodFilter } from '@/components/ui/DatePeriodFilter'
+import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
+import { periodFilterLabel } from '@/lib/datePeriod'
+import { DASHBOARD_FILTERS } from '@/data/dashboard'
 import { KpiCard } from '../components/KpiCard'
 import { SalesChart } from '../components/SalesChart'
 import { StockAlerts } from '../components/StockAlerts'
 import { AppointmentsToday } from '../components/AppointmentsToday'
 import { RecentActivity } from '../components/RecentActivity'
 import { Skeleton } from '@/components/ui/Skeleton'
-import { cn } from '@/lib/utils'
 
 const REVENUE_LABELS = {
   today: 'Ingresos Hoy',
   week: 'Ingresos Semana',
   month: 'Ingresos Mes',
   quarter: 'Ingresos Trimestre',
+  custom: 'Ingresos del período',
 }
 
 function greeting() {
@@ -31,9 +32,11 @@ function greeting() {
 export default function DashboardPage() {
   const sessionUser = useSessionStore((state) => state.user)
   const period = useDashboardStore((state) => state.period)
-  const branchId = useDashboardStore((state) => state.branchId)
-  const setPeriod = useDashboardStore((state) => state.setPeriod)
-  const setBranchId = useDashboardStore((state) => state.setBranchId)
+  const dateFrom = useDashboardStore((state) => state.dateFrom)
+  const dateTo = useDashboardStore((state) => state.dateTo)
+  const branchIds = useDashboardStore((state) => state.branchIds)
+  const setPeriodFilter = useDashboardStore((state) => state.setPeriodFilter)
+  const setBranchIds = useDashboardStore((state) => state.setBranchIds)
   const hydrate = useDashboardStore((state) => state.hydrate)
   const summary = useDashboardStore((state) => state.summary)
   const trend = useDashboardStore((state) => state.trend)
@@ -45,18 +48,18 @@ export default function DashboardPage() {
   const branches = useConfigStore((state) => state.branches)
 
   useEffect(() => {
-    hydrate({ period, branchId }).catch(() => {})
-  }, [branchId, hydrate, period])
+    hydrate({ period, dateFrom, dateTo, branchIds }).catch(() => {})
+  }, [branchIds, dateFrom, dateTo, hydrate, period])
 
-  useEffect(() => {
-    if (branchId === 'all' || branches.some((branch) => branch.id === branchId)) return
-    setBranchId('all')
-  }, [branchId, branches, setBranchId])
+  const revenueLabel =
+    period === 'custom'
+      ? periodFilterLabel({ period, dateFrom, dateTo }, DASHBOARD_FILTERS)
+      : REVENUE_LABELS[period] || 'Ingresos'
 
   const kpis = [
     {
       id: 'ingresos',
-      label: REVENUE_LABELS[period],
+      label: revenueLabel,
       value: summary.revenue,
       kind: 'currency',
       tag: 'Actualización en vivo',
@@ -103,31 +106,21 @@ export default function DashboardPage() {
             Este es el resumen de tu empresa en tiempo real.
           </p>
         </div>
-        <div className="flex flex-col items-stretch gap-2 self-start sm:items-end">
-          <Select
-            value={branchId}
-            onChange={setBranchId}
-            options={buildBranchFilterOptions(branches)}
-            className="min-w-[200px]"
-            data-testid="dashboard-branch-filter"
+        <div className="flex w-full flex-col items-stretch gap-3 self-start sm:max-w-xl sm:items-end">
+          <BranchMultiSelect
+            branches={branches}
+            branchIds={branchIds}
+            onChange={setBranchIds}
+            testId="dashboard-branch-filter"
           />
-          <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide rounded-xl border border-slate-100 bg-white p-1 shadow-soft">
-            {DASHBOARD_FILTERS.map((filter) => (
-              <button
-                key={filter.id}
-                onClick={() => setPeriod(filter.id)}
-                data-testid={`dashboard-filter-${filter.id}`}
-                className={cn(
-                  'whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-semibold transition-[background-color,color] duration-200',
-                  period === filter.id
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-500 hover:text-slate-800'
-                )}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
+          <DatePeriodFilter
+            period={period}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onChange={setPeriodFilter}
+            periods={DASHBOARD_FILTERS}
+            testId="dashboard-period-filter"
+          />
         </div>
       </div>
 

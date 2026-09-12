@@ -10,6 +10,7 @@ vi.mock('@/stores/sessionStore', () => ({
 import {
   fetchAgendaReport,
   fetchAgendaSummary,
+  fetchConsolidatedReport,
   fetchDividendReport,
   fetchExpenseCategoryReport,
   fetchGeneralSummary,
@@ -32,6 +33,19 @@ describe('cliente API de Reportes', () => {
           totals: { income: '250.00', expenses: '75.00', balance: '175.00' },
           series: [],
           incomeDistribution: [],
+        }
+      }
+      if (path.endsWith('/general/consolidated')) {
+        return {
+          totalAmount: '1500.00',
+          totalSales: 2,
+          salesByChannel: [
+            { id: 'crm', label: 'Ventas (CRM)', amount: '1000.00', count: 1, customers: 1 },
+            { id: 'pos', label: 'Comercio (POS)', amount: '500.00', count: 1, customers: 1 },
+          ],
+          salesByAcquisition: [
+            { id: 'social', label: 'Redes sociales', amount: '1000.00', count: 1, customers: 1 },
+          ],
         }
       }
       if (path.endsWith('/agenda/summary')) {
@@ -57,6 +71,7 @@ describe('cliente API de Reportes', () => {
     const data = () => ({ sales: [], expenses: [], incomes: [] })
     await Promise.all([
       fetchGeneralSummary(data, { period: 'month' }),
+      fetchConsolidatedReport(data, { period: 'month' }),
       fetchTransactionsReport(data, { page: 1 }),
       fetchExpenseCategoryReport(empty, { page: 1 }),
       fetchMembershipReport({ page: 1 }),
@@ -71,6 +86,7 @@ describe('cliente API de Reportes', () => {
     expect(mocks.get.mock.calls.map(([path]) => path)).toEqual(
       expect.arrayContaining([
         '/api/v1/reports/general/summary',
+        '/api/v1/reports/general/consolidated',
         '/api/v1/reports/general/transactions',
         '/api/v1/reports/general/expense-categories',
         '/api/v1/reports/memberships',

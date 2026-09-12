@@ -11,6 +11,7 @@ import { useConfigStore } from '@/stores/configStore'
 import { useFinanzasStore } from '@/stores/finanzasStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { requiresFinanceData } from '@/services/moduleAvailability'
+import { ElevationBanner } from '@/components/auth/ElevationBanner'
 
 const CRM_SECTION_BY_PATH = Object.freeze({
   '/crm': 'overview',
@@ -31,6 +32,7 @@ export function AppFrame() {
     <div className="flex h-screen overflow-hidden bg-slate-50">
       <Sidebar />
       <div className="relative z-0 flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip">
+        <ElevationBanner />
         <Outlet />
       </div>
     </div>
@@ -78,8 +80,8 @@ export function PageShell() {
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
       <Navbar title={title} subtitle={subtitle} />
-      <main className="relative z-0 min-h-0 flex-1 overflow-x-clip overflow-y-auto scrollbar-thin [scrollbar-gutter:stable]">
-        <AnimatedOutlet />
+      <main className="relative z-0 flex min-h-0 flex-1 flex-col overflow-x-clip overflow-y-auto scrollbar-thin [scrollbar-gutter:stable]">
+        <AnimatedOutlet className="flex min-h-0 flex-1 flex-col" />
       </main>
     </div>
   )

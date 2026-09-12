@@ -25,9 +25,13 @@ returns 404; filtering by a branch outside the grant returns 403.
 - `PATCH /api/v1/catalog/categories/{categoryId}` updates fields or lifecycle status.
 
 Names are unique per workspace after whitespace and case normalization. Create accepts `name`,
-optional `description`, and `status=active|inactive`. Patch requires `version` and at least one of
-`name`, `description`, or `status=active|inactive|archived`. Archiving is rejected with 409 while a
+optional `description`, `categoryKind=product|service|supply|income|expense` (default `product`), and
+`status=active|inactive`. Patch requires `version` and at least one of `name`, `description`,
+`categoryKind`, or `status=active|inactive|archived`. Archiving is rejected with 409 while a
 non-archived product references the category.
+
+`GET /api/v1/catalog/categories` accepts optional `categoryKind` to filter catalog vs finance
+taxonomy rows.
 
 ## Products
 

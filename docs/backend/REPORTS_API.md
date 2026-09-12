@@ -9,6 +9,7 @@ horaria del workspace o de la sucursal: `today`, `week`, `month` y `quarter`.
 | Método | Ruta | Uso |
 | --- | --- | --- |
 | GET | `/api/v1/reports/general/summary` | KPIs, serie de ingresos/gastos y distribución de ingresos |
+| GET | `/api/v1/reports/general/consolidated` | Ventas por canal (CRM vs POS) y origen de captación del cliente |
 | GET | `/api/v1/reports/general/transactions` | Ventas, ingresos manuales y gastos paginados |
 | GET | `/api/v1/reports/general/expense-categories` | Gastos agrupados por categoría |
 | GET | `/api/v1/reports/memberships` | Vigencia, MRR, crecimiento y listado de membresías |
@@ -28,8 +29,13 @@ corresponda. Inventario usa `categoryId`; agenda acepta además el período `all
   otorga 30 días; una renovación extiende la vigencia desde la expiración previa si todavía está
   activa. El checkout exige un cliente registrado para este tipo de artículo.
 - Los dividendos no inventan utilidades: parten de ventas e ingresos manuales, restan gastos y
-  pagos de gastos fijos, y distribuyen solamente utilidad positiva. Nombre, documento y porcentaje
-  se leen de `branch.configuration.partners`.
+  pagos de gastos fijos, y distribuyen la utilidad neta (puede ser negativa) según participación.
+  El summary incluye `byBranch` (bruto, gastos, neto, socios) y `byPartner` (total y sucursales).
+  Nombre, documento y porcentaje se leen de `branch.configuration.partners`.
+- El consolidado clasifica ventas completadas con cotización `origin=crm` como Ventas (CRM)
+  y el resto (POS directo o hold de caja) como Comercio (POS). El origen de captación sale de
+  `customers.acquisition_source`; un pago POS sin origen cuenta como comercio/mostrador.
+  `customers` es el recuento de personas distintas (incluye tickets anónimos).
 - Los importes monetarios se serializan como strings decimales para evitar pérdida de precisión;
   el adaptador web los convierte a números únicamente para presentación y gráficas.
 - Los reportes se calculan bajo demanda sobre los módulos fuente. No existe una tabla duplicada de

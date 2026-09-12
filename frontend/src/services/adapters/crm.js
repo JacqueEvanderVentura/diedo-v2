@@ -61,6 +61,26 @@ export function mapCrmQuoteFromApi(record) {
     createdAt: quote.createdAt,
     updatedAt: quote.updatedAt || quote.createdAt,
     version: quote.version,
+    convertedSaleId:
+      record?.convertedSaleId
+      || record?.converted_sale_id
+      || quote.convertedSaleId
+      || quote.converted_sale_id
+      || null,
+    invoiceNumber:
+      record?.invoiceNumber
+      || record?.invoice_number
+      || quote.invoiceNumber
+      || quote.invoice_number
+      || null,
+    receivableId:
+      record?.receivableId
+      || record?.receivable_id
+      || null,
+    invoiceCollection:
+      record?.invoiceCollection
+      || record?.invoice_collection
+      || null,
   }
 }
 
@@ -75,7 +95,6 @@ export function mapCrmCustomerFromApi(customer) {
     email: customer.email,
     customerType: customer.customerType === 'business' ? 'b2b' : 'b2c',
     customerStatus: customer.lifecycleStatus,
-    points: numberValue(customer.loyaltyPoints),
     notes: customer.notes || '',
     branchId: branches[0]?.id || null,
     branchIds: branches.map((branch) => branch.id),

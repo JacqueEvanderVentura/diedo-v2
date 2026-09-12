@@ -1,5 +1,11 @@
 # Documentación del proyecto
 
+**Producto:** Helios 360
+
+| Recurso | Ubicación |
+|---------|-----------|
+| **Backlog PO por fases** | [PO_BACKLOG_PHASES.md](./PO_BACKLOG_PHASES.md) |
+
 ## Frontend (fases)
 
 | Recurso | Ubicación |

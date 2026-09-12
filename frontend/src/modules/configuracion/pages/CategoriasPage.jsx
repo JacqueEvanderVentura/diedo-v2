@@ -1,22 +1,36 @@
 import { useMemo, useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { Plus, Pencil, Trash2, Tag, Search } from 'lucide-react'
-import { useConfigStore, CATEGORY_TYPES, CATEGORY_COLORS } from '@/stores/configStore'
+import { useConfigStore, CATEGORY_COLORS, CATALOG_CATEGORY_TYPES, FINANCE_CATEGORY_TYPES } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { catalogApi } from '@/services/catalogApi'
 import { mapCategoryFromApi, mapCategoryCreatePayload, mapCategoryUpdatePayload } from '@/services/adapters/catalog'
+import { filterCategoriesForSection, isFinanceCategory } from '@/lib/categories'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { CategoryFormModal } from '../components/CategoryFormModal'
 import { configPageClass } from '../lib/pageShell'
+import { cn } from '@/lib/utils'
+
+const CATALOG_TABS = [
+  { id: 'all', label: 'Todos' },
+  { id: 'producto', label: 'Productos' },
+  { id: 'servicio', label: 'Servicios' },
+  { id: 'insumo', label: 'Insumos' },
+]
+
+const FINANCE_TABS = [
+  { id: 'ingreso', label: 'Ingreso' },
+  { id: 'gasto', label: 'Egreso' },
+]
 
 function colorMeta(id) {
   return CATEGORY_COLORS.find((c) => c.id === id) || CATEGORY_COLORS[0]
 }
 
-function typeName(id) {
-  return CATEGORY_TYPES.find((t) => t.id === id)?.name || id
+function typeName(id, types) {
+  return types.find((t) => t.id === id)?.name || id
 }
 
 export default function CategoriasPage({ embedded = false }) {
@@ -30,14 +44,24 @@ export default function CategoriasPage({ embedded = false }) {
 
   const [apiCategories, setApiCategories] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [section, setSection] = useState('catalog')
+  const [catalogTab, setCatalogTab] = useState('all')
+  const [financeTab, setFinanceTab] = useState('ingreso')
 
   const loadCategories = useCallback(async () => {
     setLoading(true)
     try {
       const res = await catalogApi.listCategories({ pageSize: 100 })
       const mapped = (res.items || []).map((c, i) => mapCategoryFromApi(c, i))
+      const preservedFinance = useConfigStore.getState().categories.filter(
+        (category) => isFinanceCategory(category) && !category.api
+      )
+      const merged = [
+        ...mapped,
+        ...preservedFinance.filter((category) => !mapped.some((row) => row.id === category.id)),
+      ]
       setApiCategories(mapped)
-      setCategories(mapped)
+      setCategories(merged)
     } catch (err) {
       toast.error(err.message || 'No se pudieron cargar las categorías.')
     } finally {
@@ -50,15 +74,24 @@ export default function CategoriasPage({ embedded = false }) {
   }, [isOnline, loadCategories])
 
   const categories = isOnline && apiCategories ? apiCategories : localCategories
+  const activeTab = section === 'catalog' ? catalogTab : financeTab
+  const allowedTypes = section === 'catalog' ? CATALOG_CATEGORY_TYPES : FINANCE_CATEGORY_TYPES
 
   const [query, setQuery] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
 
   const list = useMemo(() => {
+    const scoped = filterCategoriesForSection(categories, section, activeTab)
     const q = query.trim().toLowerCase()
-    return categories.filter((c) => !q || c.name.toLowerCase().includes(q) || c.description?.toLowerCase().includes(q))
-  }, [categories, query])
+    return scoped.filter((c) => !q || c.name.toLowerCase().includes(q) || c.description?.toLowerCase().includes(q))
+  }, [categories, section, activeTab, query])
+
+  const defaultTypeForSection = () => {
+    if (section === 'finance') return financeTab
+    if (catalogTab === 'all') return 'producto'
+    return catalogTab
+  }
 
   const handleSubmit = async (data) => {
     if (isOnline) {
@@ -124,14 +157,58 @@ export default function CategoriasPage({ embedded = false }) {
   }
 
   return (
-    <div className={configPageClass(embedded)}>
+    <div className={configPageClass(embedded)} data-testid="categorias-page">
+      <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1">
+        {[
+          { id: 'catalog', label: 'Catálogo' },
+          { id: 'finance', label: 'Finanzas' },
+        ].map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => setSection(item.id)}
+            className={cn(
+              'rounded-lg px-3 py-2 text-sm font-semibold transition-all',
+              section === item.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            )}
+            data-testid={`categorias-section-${item.id}`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {(section === 'catalog' ? CATALOG_TABS : FINANCE_TABS).map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => (section === 'catalog' ? setCatalogTab(tab.id) : setFinanceTab(tab.id))}
+            className={cn(
+              'rounded-full px-4 py-2 text-sm font-semibold transition-all',
+              activeTab === tab.id
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'bg-white text-slate-600 ring-1 ring-inset ring-slate-200 hover:bg-slate-50'
+            )}
+            data-testid={`categorias-tab-${tab.id}`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="relative min-w-[200px] flex-1 max-w-md">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar categorías..." className="w-full rounded-xl border-0 bg-slate-50 py-2.5 pl-10 pr-4 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-600" />
         </div>
         {(!isOnline || canManageCategories) && (
-          <Button onClick={() => { setEditing(null); setModalOpen(true) }} data-testid="categoria-new-btn"><Plus className="h-4 w-4" /> Nueva Categoría</Button>
+          <Button
+            onClick={() => { setEditing(null); setModalOpen(true) }}
+            data-testid="categoria-new-btn"
+          >
+            <Plus className="h-4 w-4" /> Nueva Categoría
+          </Button>
         )}
       </div>
 
@@ -157,7 +234,7 @@ export default function CategoriasPage({ embedded = false }) {
                     <h4 className="truncate font-semibold text-slate-800">{c.name}</h4>
                     {c.description && <p className="truncate text-sm text-slate-500">{c.description}</p>}
                     <div className="mt-2 flex flex-wrap gap-1.5">
-                      <Badge tone="brand">{typeName(c.type)}</Badge>
+                      <Badge tone="brand">{typeName(c.type, allowedTypes)}</Badge>
                       {!c.active && <Badge tone="neutral">Inactiva</Badge>}
                     </div>
                   </div>
@@ -179,6 +256,8 @@ export default function CategoriasPage({ embedded = false }) {
           open={modalOpen}
           onClose={() => setModalOpen(false)}
           category={editing}
+          allowedTypes={allowedTypes}
+          defaultType={defaultTypeForSection()}
           onSubmit={handleSubmit}
         />
       )}

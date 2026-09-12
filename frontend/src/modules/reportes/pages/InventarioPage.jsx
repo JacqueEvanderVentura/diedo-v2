@@ -5,6 +5,7 @@ import { useCatalogStore } from '@/stores/catalogStore'
 import { usePosStore } from '@/stores/posStore'
 import { CATEGORIES } from '@/data/products'
 import { formatDOP } from '@/lib/format'
+import { CHART_ANIMATION } from '@/lib/chartAnimation'
 import { StatCard, ChartCard } from '../components/ReportPrimitives'
 import { ReportFilterBar } from '../components/ReportFilterBar'
 import { Pagination } from '../components/Pagination'
@@ -39,15 +40,15 @@ function StockTip({ active, payload, label }) {
 export default function InventarioPage() {
   const products = useCatalogStore((s) => s.products)
   const sales = usePosStore((s) => s.sales)
-  const [branchId, setBranchId] = useState('')
+  const [branchIds, setBranchIds] = useState([])
   const [category, setCategory] = useState('')
   const [search, setSearch] = useState('')
 
   const getProducts = useCallback(() => products, [products])
   const getSales = useCallback(() => sales, [sales])
   const summaryFetcher = useCallback(
-    () => fetchInventorySummary(getProducts, getSales, { branchId, category, search }),
-    [getProducts, getSales, branchId, category, search]
+    () => fetchInventorySummary(getProducts, getSales, { branchIds, category, search }),
+    [getProducts, getSales, branchIds, category, search]
   )
   const summary = useReportSummary(summaryFetcher, {
     count: 0,
@@ -70,16 +71,16 @@ export default function InventarioPage() {
     ? stats.categories.map((item) => ({ value: item.id, label: item.name }))
     : CATEGORIES.map((item) => ({ value: item.id, label: item.name }))
   const fetcher = useCallback(
-    (params) => fetchInventoryReport(getProducts, getSales, { ...params, branchId, category, search }),
-    [getProducts, getSales, branchId, category, search]
+    (pageParams) => fetchInventoryReport(getProducts, getSales, { ...pageParams, branchIds, category, search }),
+    [getProducts, getSales, branchIds, category, search]
   )
   const tableReport = usePaginatedReport(fetcher, {}, 10, { key: 'name', dir: 'asc' })
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8">
       <ReportFilterBar
-        branchId={branchId}
-        onBranchChange={setBranchId}
+        branchIds={branchIds}
+        onBranchIdsChange={setBranchIds}
         search={search}
         onSearchChange={(v) => { setSearch(v); tableReport.setPage(1) }}
         searchPlaceholder="Buscar producto…"
@@ -115,7 +116,7 @@ export default function InventarioPage() {
                   <XAxis type="number" tickLine={false} axisLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
                   <YAxis type="category" dataKey="label" tickLine={false} axisLine={false} tick={{ fill: '#64748b', fontSize: 11 }} width={110} />
                   <Tooltip content={<StockTip />} cursor={{ fill: '#f8fafc' }} />
-                  <Bar dataKey="value" fill="#3b82f6" radius={[0, 6, 6, 0]} isAnimationActive={false} />
+                  <Bar dataKey="value" fill="#3b82f6" radius={[0, 6, 6, 0]} {...CHART_ANIMATION} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -133,7 +134,7 @@ export default function InventarioPage() {
                   <XAxis type="number" tickLine={false} axisLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} unit="%" />
                   <YAxis type="category" dataKey="label" tickLine={false} axisLine={false} tick={{ fill: '#64748b', fontSize: 11 }} width={110} />
                   <Tooltip formatter={(v) => `${v}%`} />
-                  <Bar dataKey="margin" fill="#10b981" radius={[0, 6, 6, 0]} isAnimationActive={false} />
+                  <Bar dataKey="margin" fill="#10b981" radius={[0, 6, 6, 0]} {...CHART_ANIMATION} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -147,7 +148,7 @@ export default function InventarioPage() {
             <div className="h-[240px] w-full">
               <ResponsiveContainer width="100%" height={240} minWidth={0}>
                 <PieChart>
-                  <Pie data={valueByCat} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={2} isAnimationActive={false}>
+                  <Pie data={valueByCat} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={2} {...CHART_ANIMATION}>
                     {valueByCat.map((e, i) => <Cell key={e.id} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                   </Pie>
                   <Tooltip formatter={(v) => formatDOP(v)} />

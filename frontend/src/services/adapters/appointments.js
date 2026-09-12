@@ -1,17 +1,24 @@
+import { normalizeAppointmentStatus } from '@/modules/agenda/lib/completion'
+
 const STATUS_FROM_API = Object.freeze({
-  pending: 'pendiente',
   confirmed: 'confirmada',
-  completed: 'completada',
-  attended: 'asistio',
+  fulfilled: 'cumplida',
   no_show: 'noshow',
   cancelled: 'cancelada',
-  delayed: 'retrasada',
-  rescheduled: 'reprogramada',
+  // Legacy reads
+  pending: 'confirmada',
+  completed: 'cumplida',
+  attended: 'cumplida',
+  delayed: 'confirmada',
+  rescheduled: 'confirmada',
 })
 
-const STATUS_TO_API = Object.freeze(
-  Object.fromEntries(Object.entries(STATUS_FROM_API).map(([api, ui]) => [ui, api]))
-)
+const STATUS_TO_API = Object.freeze({
+  confirmada: 'confirmed',
+  cumplida: 'fulfilled',
+  noshow: 'no_show',
+  cancelada: 'cancelled',
+})
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -22,11 +29,12 @@ function optionalApiReference(value) {
 }
 
 export function appointmentStatusFromApi(status) {
-  return STATUS_FROM_API[status] || status || 'pendiente'
+  return normalizeAppointmentStatus(STATUS_FROM_API[status] || status)
 }
 
 export function appointmentStatusToApi(status) {
-  return STATUS_TO_API[status] || status || 'pending'
+  const normalized = normalizeAppointmentStatus(status)
+  return STATUS_TO_API[normalized] || status || 'confirmed'
 }
 
 function actorName(actor, fallback) {
@@ -36,6 +44,7 @@ function actorName(actor, fallback) {
 
 export function mapAppointmentFromApi(item) {
   const resource = item.resource || null
+  const status = appointmentStatusFromApi(item.status)
   return {
     id: item.id,
     branchId: item.branchId,
@@ -52,13 +61,17 @@ export function mapAppointmentFromApi(item) {
     resourceId: item.resourceId || resource?.id || null,
     resourceName: resource?.name || item.resourceName || '',
     price: Number(item.price) || 0,
-    status: appointmentStatusFromApi(item.status),
+    status,
+    completed: status === 'cumplida',
+    completedAt: item.completedAt || null,
+    completionPunctuality: item.completionPunctuality || null,
+    delayResponsibility: item.delayResponsibility || null,
+    completionNote: item.completionNote || null,
     notes: item.notes || '',
     pendingPayment: item.pendingPayment === true,
     pendingAmount: Number(item.pendingAmount) || 0,
     firstTime: item.firstTime === true,
     freeTrial: item.freeTrial === true,
-    completed: item.completed === true || item.status === 'completed',
     recurrence: item.recurrence || 'none',
     repeatCount: Number(item.repeatCount) || 1,
     reminderSent: item.reminderSent !== false,
@@ -87,8 +100,8 @@ export function mapAppointmentResourceFromApi(item, fallbackBranchId) {
 }
 
 export function appointmentToApiPayload(data) {
-  const status = data.completed === true ? 'completada' : data.status
-  return {
+  const status = normalizeAppointmentStatus(data.status)
+  const payload = {
     branchId: data.branchId,
     date: data.date,
     time: data.time,
@@ -112,6 +125,15 @@ export function appointmentToApiPayload(data) {
     reminderSent: data.reminderSent !== false,
     source: data.source || 'staff',
   }
+  if (status === 'cumplida') {
+    payload.completedAt = data.completedAt || new Date().toISOString()
+    payload.completionPunctuality = data.completionPunctuality || 'on_time'
+    if (payload.completionPunctuality === 'delayed') {
+      payload.delayResponsibility = data.delayResponsibility || null
+      payload.completionNote = data.completionNote?.trim() || null
+    }
+  }
+  return payload
 }
 
 export function appointmentPatchToApiPayload(data, version) {
@@ -130,6 +152,10 @@ export function appointmentPatchToApiPayload(data, version) {
     serviceName: payload.serviceName,
     price: payload.price,
     status: payload.status,
+    completedAt: payload.completedAt,
+    completionPunctuality: payload.completionPunctuality,
+    delayResponsibility: payload.delayResponsibility,
+    completionNote: payload.completionNote,
     notes: payload.notes,
     pendingPayment: payload.pendingPayment,
     pendingAmount: payload.pendingAmount,

@@ -1,5 +1,6 @@
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { Card } from '@/components/ui/Card'
+import { CHART_ANIMATION } from '@/lib/chartAnimation'
 import { formatDOP, formatCompact } from '@/lib/format'
 
 function ChartTooltip({ active, payload, label }) {
@@ -57,7 +58,7 @@ export function SalesChart({ trend }) {
               stroke="#059669"
               strokeWidth={2.5}
               fill="url(#salesGradient)"
-              isAnimationActive={false}
+              {...CHART_ANIMATION}
               activeDot={{ r: 5, fill: '#059669', stroke: '#fff', strokeWidth: 2 }}
             />
           </AreaChart>

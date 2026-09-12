@@ -16,6 +16,8 @@ export function fillTemplate(body, vars = {}) {
   })
 }
 
+export { buildWhatsAppVariables, firstNameFromDisplayName } from '@/lib/whatsappVariables'
+
 /** Build wa.me URL with optional pre-filled message (uses `text=` per WhatsApp docs). */
 export function waMeUrl(phone, text) {
   const digits = digitsOnly(phone)

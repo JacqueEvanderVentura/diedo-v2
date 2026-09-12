@@ -1,17 +1,29 @@
-import { useState, useMemo } from 'react'
-import { Plus, Search, Users, Star, Phone, Mail, ChevronLeft, ChevronRight, Building2 } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { Plus, Search, Users, Phone, Mail, ChevronLeft, ChevronRight, Building2 } from 'lucide-react'
 import { usePosStore } from '@/stores/posStore'
+import { useCrmStore } from '@/stores/crmStore'
 import { useCustomersStore } from '@/stores/customersStore'
 import { useConfigStore } from '@/stores/configStore'
+import { useSessionStore } from '@/stores/sessionStore'
+import { customersVisibleToSession } from '@/lib/customerScope'
+import { buildCustomerWhatsAppVariables } from '@/lib/whatsappVariables'
+import { useAgendaStore } from '@/stores/agendaStore'
 import { CUSTOMER_STATUS_META, CUSTOMER_STATUSES } from '@/data/crm'
-import { formatDOP, formatNumber } from '@/lib/format'
+import { formatDOP } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Select } from '@/components/ui/Select'
+import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
+import { CRM_BRANCH_FILTER_CLASS, getRowBranchIds, matchesBranches } from '@/lib/branches'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { CustomerFormModal } from '../components/CustomerFormModal'
 import { CustomerDetailModal } from '../components/CustomerDetailModal'
+import { QuoteFormModal } from '../components/QuoteFormModal'
+import { ActivityFormModal } from '../components/ActivityFormModal'
+import { CustomerQuickOpportunityModal } from '../components/CustomerQuickOpportunityModal'
+import { SaleDetailModal } from '../components/SaleDetailModal'
 import { AppointmentFormModal } from '@/modules/agenda/components/AppointmentFormModal'
 import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
 import {
@@ -42,11 +54,25 @@ function Chip({ label, value, tone }) {
 }
 
 export default function ClientesPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const customers = useCustomersStore((s) => s.customers)
   const dataState = useCustomersStore((s) => s.dataState)
   const hydrateCustomers = useCustomersStore((s) => s.hydrate)
   const sales = usePosStore((s) => s.sales)
+  const crmSales = useCrmStore((s) => s.sales)
   const branches = useConfigStore((s) => s.branches)
+  const appointments = useAgendaStore((s) => s.appointments)
+  const agendaResources = useAgendaStore((s) => s.resources)
+  const hydrateAppointments = useAgendaStore((s) => s.hydrateAppointments)
+  const sessionUser = useSessionStore((s) => s.user)
+
+  useEffect(() => {
+    hydrateAppointments({ params: {} }).catch(() => {})
+  }, [hydrateAppointments])
+  const scopedCustomers = useMemo(
+    () => customersVisibleToSession(customers, sessionUser),
+    [customers, sessionUser]
+  )
   const branchNameById = useMemo(
     () => Object.fromEntries(branches.map((branch) => [branch.id, branch.name])),
     [branches]
@@ -55,43 +81,59 @@ export default function ClientesPage() {
   const [query, setQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [branchFilter, setBranchFilter] = useState('all')
+  const [branchIds, setBranchIds] = useState([])
   const [page, setPage] = useState(0)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [detail, setDetail] = useState(null)
   const [scheduling, setScheduling] = useState(null)
+  const [quoteOpen, setQuoteOpen] = useState(false)
+  const [quoteContext, setQuoteContext] = useState(null)
+  const [taskOpen, setTaskOpen] = useState(false)
+  const [taskCustomerId, setTaskCustomerId] = useState('')
+  const [opportunityOpen, setOpportunityOpen] = useState(false)
+  const [opportunityCustomer, setOpportunityCustomer] = useState(null)
+  const [saleDetail, setSaleDetail] = useState(null)
+
+  const requestedCustomerId = searchParams.get('customerId') || ''
+
+  useEffect(() => {
+    if (!requestedCustomerId) return
+    const customer = scopedCustomers.find((item) => item.id === requestedCustomerId)
+    if (customer) setDetail(customer)
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('customerId')
+    setSearchParams(nextParams, { replace: true })
+  }, [requestedCustomerId, scopedCustomers, searchParams, setSearchParams])
 
   // Total gastado por cliente (una sola pasada).
   const spentByCustomer = useMemo(() => {
     const map = {}
-    sales.forEach((s) => {
-      const id = s.customer?.id
-      if (!id) return
-      map[id] = (map[id] || 0) + (s.total || 0)
-    })
+    const seen = new Set()
+    for (const sale of [...sales, ...crmSales]) {
+      if (seen.has(sale.id)) continue
+      seen.add(sale.id)
+      const id = sale.customer?.id
+      if (!id) continue
+      map[id] = (map[id] || 0) + (sale.total || 0)
+    }
     return map
-  }, [sales])
+  }, [sales, crmSales])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return customers
+    return scopedCustomers
       .filter((c) => c.id !== 'walk-in')
       .filter((c) => !q || c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)) || (c.email && c.email.toLowerCase().includes(q)))
       .filter((c) => typeFilter === 'all' || (c.customerType || 'b2c') === typeFilter)
       .filter((c) => statusFilter === 'all' || (c.customerStatus || 'activo') === statusFilter)
-      .filter((c) => (
-        branchFilter === 'all'
-        || c.branchIds?.includes(branchFilter)
-        || c.branchId === branchFilter
-      ))
-  }, [customers, query, typeFilter, statusFilter, branchFilter])
+      .filter((c) => matchesBranches(c, branchIds, getRowBranchIds))
+  }, [scopedCustomers, query, typeFilter, statusFilter, branchIds])
 
   const { rows: sortedFiltered, sortKey, sortDir, toggleSort } = useSortedRows(filtered, {
     defaultSort: { key: 'name', dir: 'asc' },
     accessors: {
       name: (c) => c.name,
-      points: (c) => c.points || 0,
       spent: (c) => spentByCustomer[c.id] || 0,
     },
   })
@@ -100,14 +142,11 @@ export default function ClientesPage() {
   const list = useMemo(() => sortedFiltered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE), [sortedFiltered, page])
 
   const stats = useMemo(() => {
-    const base = customers.filter((c) => c.id !== 'walk-in')
+    const base = scopedCustomers.filter((c) => c.id !== 'walk-in')
     const conCompras = Object.keys(spentByCustomer).filter((id) => id !== 'walk-in').length
-    const totalPts = base.reduce((a, c) => a + (c.points || 0), 0)
     const prospectos = base.filter((c) => (c.customerStatus || 'activo') === 'prospecto').length
-    return { total: base.length, conCompras, totalPts, prospectos }
-  }, [customers, spentByCustomer])
-
-  const branchOptions = [{ value: 'all', label: 'Todas las sucursales' }, ...branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))]
+    return { total: base.length, conCompras, prospectos }
+  }, [scopedCustomers, spentByCustomer])
 
   const openNew = () => { setEditing(null); setFormOpen(true) }
   const openEdit = (c) => { setDetail(null); setEditing(c); setFormOpen(true) }
@@ -115,11 +154,10 @@ export default function ClientesPage() {
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8">
       <DataSourceNotice state={dataState} onRetry={() => hydrateCustomers({ force: true })} />
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         <Chip label="Clientes" value={stats.total} tone="brand" />
         <Chip label="Prospectos" value={stats.prospectos} tone="slate" />
         <Chip label="Con compras" value={stats.conCompras} tone="slate" />
-        <Chip label="Puntos acumulados" value={formatNumber(stats.totalPts)} tone="amber" />
       </div>
 
       <div className="flex flex-col gap-3">
@@ -138,8 +176,8 @@ export default function ClientesPage() {
             <Plus className="h-4 w-4" /> Nuevo cliente
           </Button>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <div className="grid grid-cols-3 rounded-xl bg-slate-100 p-1">
+        <div className="flex flex-wrap items-stretch gap-2">
+          <div className="grid shrink-0 grid-cols-3 rounded-xl bg-slate-100 p-1">
             {[{ id: 'all', label: 'Todos' }, { id: 'b2c', label: 'B2C' }, { id: 'b2b', label: 'B2B' }].map((t) => (
               <button
                 key={t.id}
@@ -151,8 +189,19 @@ export default function ClientesPage() {
               </button>
             ))}
           </div>
-          <Select value={statusFilter} onChange={(v) => { setStatusFilter(v); setPage(0) }} options={[{ value: 'all', label: 'Todos los estados' }, ...CUSTOMER_STATUSES.map((s) => ({ value: s, label: CUSTOMER_STATUS_META[s].label }))]} className="w-40" />
-          <Select value={branchFilter} onChange={(v) => { setBranchFilter(v); setPage(0) }} options={branchOptions} className="w-48" />
+          <Select
+            value={statusFilter}
+            onChange={(v) => { setStatusFilter(v); setPage(0) }}
+            options={[{ value: 'all', label: 'Todos los estados' }, ...CUSTOMER_STATUSES.map((s) => ({ value: s, label: CUSTOMER_STATUS_META[s].label }))]}
+            className="min-w-[12.5rem] flex-1 sm:max-w-xs"
+          />
+          <BranchMultiSelect
+            branches={branches}
+            branchIds={branchIds}
+            onChange={(ids) => { setBranchIds(ids); setPage(0) }}
+            className={CRM_BRANCH_FILTER_CLASS}
+            testId="clientes-branch-filter"
+          />
         </div>
       </div>
 
@@ -161,7 +210,7 @@ export default function ClientesPage() {
           <EmptyState icon={Users} title="Sin clientes" description="No hay clientes con esos filtros." className="py-14" />
         </Card>
       ) : (
-          <ResponsiveList minTableWidth={820} columnCount={5}>
+          <ResponsiveList minTableWidth={720} columnCount={4}>
           <ResponsiveTable testId="clientes-table">
             <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
             <table className="w-full min-w-[760px] text-sm">
@@ -170,7 +219,6 @@ export default function ClientesPage() {
                   <SortableTh column="name" className="px-6 py-4">Cliente</SortableTh>
                   <SortableTh column="type" sortable={false} className="px-6 py-4">Tipo / Estado</SortableTh>
                   <SortableTh column="contact" sortable={false} className="px-6 py-4">Contacto</SortableTh>
-                  <SortableTh column="points" align="center" className="px-6 py-4">Puntos</SortableTh>
                   <SortableTh column="spent" align="right" className="px-6 py-4">Total gastado</SortableTh>
                 </tr>
               </thead>
@@ -209,7 +257,7 @@ export default function ClientesPage() {
                         </Badge>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-slate-500">
+                    <td className="px-6 py-4 text-slate-500" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-2">
                         <div className="flex min-w-0 flex-col gap-0.5 text-xs">
                           {c.phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" /> {c.phone}</span>}
@@ -221,14 +269,11 @@ export default function ClientesPage() {
                             phone={c.phone}
                             context="clientes"
                             size="sm"
-                            variables={{ nombre_cliente: c.name, empresa: c.company || '' }}
+                            variables={buildCustomerWhatsAppVariables(c, appointments, agendaResources)}
                             data-testid={`clientes-wa-${c.id}`}
                           />
                         )}
                       </div>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className="inline-flex items-center gap-1 font-semibold text-amber-600"><Star className="h-3.5 w-3.5" /> {c.points || 0}</span>
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-right font-heading font-bold text-slate-900">{formatDOP(spentByCustomer[c.id] || 0)}</td>
                   </tr>
@@ -243,13 +288,13 @@ export default function ClientesPage() {
                 <MobileCardHeader
                   title={c.name}
                   badge={
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                       {c.phone && (
                         <WhatsAppMenuButton
                           phone={c.phone}
                           context="clientes"
                           size="sm"
-                          variables={{ nombre_cliente: c.name, empresa: c.company || '' }}
+                          variables={buildCustomerWhatsAppVariables(c, appointments, agendaResources)}
                           data-testid={`clientes-wa-card-${c.id}`}
                         />
                       )}
@@ -279,9 +324,6 @@ export default function ClientesPage() {
                       .filter(Boolean)
                       .join(', ') || '—'}
                   </MobileField>
-                  <MobileField label="Puntos">
-                    <span className="inline-flex items-center gap-1 font-semibold text-amber-600"><Star className="h-3.5 w-3.5" /> {c.points || 0}</span>
-                  </MobileField>
                   <MobileField label="Total gastado">
                     <span className="font-heading font-bold text-slate-900">{formatDOP(spentByCustomer[c.id] || 0)}</span>
                   </MobileField>
@@ -307,7 +349,49 @@ export default function ClientesPage() {
       )}
 
       <CustomerFormModal open={formOpen} onClose={() => setFormOpen(false)} customer={editing} />
-      <CustomerDetailModal open={!!detail} onClose={() => setDetail(null)} customer={detail} onEdit={openEdit} onSchedule={(c) => { setDetail(null); setScheduling(c) }} />
+      <CustomerDetailModal
+        open={!!detail}
+        onClose={() => setDetail(null)}
+        customer={detail}
+        onEdit={openEdit}
+        onSchedule={(c) => { setScheduling(c) }}
+        onQuote={(c) => {
+          setQuoteContext({
+            customerId: c.id,
+            branchId: c.branchIds?.[0] || c.branchId || '',
+          })
+          setQuoteOpen(true)
+        }}
+        onNewTask={(c) => {
+          setTaskCustomerId(c.id)
+          setTaskOpen(true)
+        }}
+        onNewOpportunity={(c) => {
+          setOpportunityCustomer(c)
+          setOpportunityOpen(true)
+        }}
+        onOpenSale={(sale) => setSaleDetail(sale)}
+      />
+      <QuoteFormModal
+        open={quoteOpen}
+        onClose={() => { setQuoteOpen(false); setQuoteContext(null) }}
+        initialContext={quoteContext}
+      />
+      <ActivityFormModal
+        open={taskOpen}
+        onClose={() => { setTaskOpen(false); setTaskCustomerId('') }}
+        defaultCustomerId={taskCustomerId}
+      />
+      <CustomerQuickOpportunityModal
+        open={opportunityOpen}
+        onClose={() => { setOpportunityOpen(false); setOpportunityCustomer(null) }}
+        customer={opportunityCustomer}
+      />
+      <SaleDetailModal
+        open={!!saleDetail}
+        onClose={() => setSaleDetail(null)}
+        sale={saleDetail}
+      />
       <AppointmentFormModal open={!!scheduling} onClose={() => setScheduling(null)} defaultCustomerId={scheduling?.id} />
     </div>
   )

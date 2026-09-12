@@ -9,6 +9,15 @@ export function getPaidAmount(receivable) {
 
 export const POS_PROOF_ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp'
 
+export function receivableHasPaymentEvidence(receivable, payload = {}) {
+  return Boolean(
+    payload.proof
+    || String(payload.reference || '').trim()
+    || receivable?.proof
+    || String(receivable?.reference || '').trim()
+  )
+}
+
 export function getBalance(receivable) {
   if (receivable?.apiSynced && receivable.balance != null) {
     return Math.max(0, Number(receivable.balance) || 0)

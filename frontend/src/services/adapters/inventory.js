@@ -9,7 +9,24 @@ export function mapAssetCategoryFromApi(category) {
   }
 }
 
-export function mapAssetFromApi(asset) {
+export function mapAssetFromApi(asset, previous = null) {
+  const previousPreviewById = new Map(
+    (previous?.attachments || []).map((attachment) => [
+      attachment.id,
+      attachment.previewObjectUrl || null,
+    ])
+  )
+  const attachments = (asset.attachments || []).map((attachment) => ({
+    id: attachment.id,
+    name: attachment.originalFilename,
+    contentType: attachment.contentType,
+    sizeBytes: Number(attachment.sizeBytes) || 0,
+    checksum: attachment.checksumSha256,
+    previewUrl: attachment.previewUrl,
+    previewObjectUrl: previousPreviewById.get(attachment.id) || null,
+    createdAt: attachment.createdAt,
+  }))
+
   return {
     id: asset.id,
     name: asset.name,
@@ -22,6 +39,8 @@ export function mapAssetFromApi(asset) {
     branchId: asset.branch.id,
     purchaseDate: asset.purchaseDate || '',
     notes: asset.notes || '',
+    attachments,
+    images: attachments.map((attachment) => attachment.previewObjectUrl).filter(Boolean),
     version: asset.version,
     createdAt: asset.createdAt,
     updatedAt: asset.updatedAt,

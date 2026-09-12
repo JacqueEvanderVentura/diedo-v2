@@ -385,18 +385,42 @@ export const useIncidenciasStore = create(
         const current = get().incidencias.find((incident) => incident.id === id)
         if (!current) throw new Error('La incidencia no existe.')
         if (isOnline) {
-          const incident = mapIncidentFromApi(
-            await incidentsApi.addComment(id, {
-              message: normalized,
-              version: current.version,
-            }),
-            current
-          )
+          const updatedAt = now()
+          const optimisticActivity = {
+            id: genId('activity'),
+            type: 'comment',
+            authorId: null,
+            author,
+            message: normalized,
+            createdAt: updatedAt,
+            pending: true,
+          }
+          const optimistic = {
+            ...current,
+            activity: [optimisticActivity, ...current.activity],
+          }
           set((state) => ({
-            incidencias: replaceIncident(state.incidencias, incident),
-            error: null,
+            incidencias: replaceIncident(state.incidencias, optimistic),
           }))
-          return incident
+          try {
+            const incident = mapIncidentFromApi(
+              await incidentsApi.addComment(id, {
+                message: normalized,
+                version: current.version,
+              }),
+              current
+            )
+            set((state) => ({
+              incidencias: replaceIncident(state.incidencias, incident),
+              error: null,
+            }))
+            return incident
+          } catch (error) {
+            set((state) => ({
+              incidencias: replaceIncident(state.incidencias, current),
+            }))
+            throw error
+          }
         }
 
         const updatedAt = now()
@@ -426,13 +450,36 @@ export const useIncidenciasStore = create(
         const current = get().incidencias.find((incident) => incident.id === id)
         if (!current) throw new Error('La incidencia no existe.')
         if (isOnline) {
-          const response = await incidentsApi.uploadAttachments(id, current.version, files)
-          const incident = await loadMissingPreviews(mapIncidentFromApi(response, current))
-          set((state) => ({
-            incidencias: replaceIncident(state.incidencias, incident),
-            error: null,
+          const optimisticAttachments = files.map((file, index) => ({
+            id: `pending-${genId('att')}-${index}`,
+            name: file.name || `Evidencia ${index + 1}`,
+            contentType: file.type || 'image/jpeg',
+            previewObjectUrl: createPreviewObjectUrl(file),
+            pending: true,
           }))
-          return incident
+          const optimistic = {
+            ...current,
+            attachments: [...(current.attachments || []), ...optimisticAttachments],
+            images: [
+              ...(current.images || []),
+              ...optimisticAttachments.map((attachment) => attachment.previewObjectUrl).filter(Boolean),
+            ],
+          }
+          set((state) => ({ incidencias: replaceIncident(state.incidencias, optimistic) }))
+          try {
+            const response = await incidentsApi.uploadAttachments(id, current.version, files)
+            const incident = await loadMissingPreviews(mapIncidentFromApi(response, current))
+            optimisticAttachments.forEach((attachment) => revokeObjectUrl(attachment.previewObjectUrl))
+            set((state) => ({
+              incidencias: replaceIncident(state.incidencias, incident),
+              error: null,
+            }))
+            return incident
+          } catch (error) {
+            releaseIncidentPreviews(optimistic)
+            set((state) => ({ incidencias: replaceIncident(state.incidencias, current) }))
+            throw error
+          }
         }
 
         const images = await Promise.all(files.map(fileToDataUrl))

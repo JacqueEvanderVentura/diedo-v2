@@ -7,7 +7,7 @@ export default function PlaceholderPage({ path }) {
       <EmptyState
         icon={Construction}
         title="Módulo en construcción"
-        description={`La ruta ${path} forma parte de una fase futura del roadmap Diedo.`}
+        description={`La ruta ${path} forma parte de una fase futura del roadmap Helios 360.`}
       />
     </div>
   )

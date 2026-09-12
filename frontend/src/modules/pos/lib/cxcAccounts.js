@@ -1,3 +1,4 @@
+import { isAllBranchSelection } from '@/lib/branches'
 import { calcSnapshotTotal } from './openAccount'
 import { getBalance, getPaidAmount, getReceivableStatus } from './receivables'
 
@@ -75,8 +76,13 @@ export function buildCxcAccountRows({ receivables = [], openQuotes = [], heldCar
   return rows
 }
 
-export function filterCxcAccounts(rows, { filter, query, branchFilter }) {
+export function filterCxcAccounts(rows, { filter, query, branchFilter, branchIds }) {
   const q = query.trim().toLowerCase()
+  const selectedBranchIds = Array.isArray(branchIds)
+    ? branchIds
+    : branchFilter && branchFilter !== 'all'
+      ? [branchFilter]
+      : []
 
   return rows.filter((row) => {
     if (filter === 'cxc' && row.kind !== 'receivable') return false
@@ -88,7 +94,7 @@ export function filterCxcAccounts(rows, { filter, query, branchFilter }) {
       if (row.kind === 'receivable' && ['paid', 'voided', 'written_off'].includes(row.status)) return false
     }
 
-    if (branchFilter !== 'all' && row.branchId !== branchFilter) return false
+    if (!isAllBranchSelection(selectedBranchIds) && !selectedBranchIds.includes(row.branchId)) return false
 
     if (!q) return true
     return (

@@ -11,14 +11,19 @@ export function StatCard({ label, value, icon: Icon, tone = 'brand', sub, testId
     violet: 'text-violet-600 bg-violet-50',
   }
   return (
-    <div className="flex items-center gap-4 rounded-xl border border-slate-100 bg-white px-4 py-3 shadow-soft" data-testid={testId}>
-      <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', tones[tone])}>
+    <div className="flex h-full min-w-0 items-start gap-3 rounded-xl border border-slate-100 bg-white px-4 py-3 shadow-soft" data-testid={testId}>
+      <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:h-11 sm:w-11', tones[tone])}>
         <Icon className="h-5 w-5" />
       </div>
-      <div className="min-w-0">
-        <p className="text-xs font-medium text-slate-400">{label}</p>
-        <p className="truncate font-heading text-lg font-bold text-slate-800" data-testid={testId ? `${testId}-value` : undefined}>{value}</p>
-        {sub && <p className="truncate text-[11px] text-slate-400">{sub}</p>}
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium leading-snug text-slate-400">{label}</p>
+        <p
+          className="mt-0.5 break-words font-heading text-base font-bold leading-tight text-slate-800 sm:text-lg"
+          data-testid={testId ? `${testId}-value` : undefined}
+        >
+          {value}
+        </p>
+        {sub && <p className="mt-1 text-[11px] leading-snug text-slate-400">{sub}</p>}
       </div>
     </div>
   )

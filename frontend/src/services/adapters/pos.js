@@ -259,7 +259,7 @@ export function mapReceivableFromApi(receivable) {
 
   return {
     id: receivable.id,
-    saleId: first(receivable.saleId, receivable.sale?.id, null),
+    saleId: first(receivable.saleId, receivable.sale_id, receivable.sale?.id, null),
     appointmentId: first(receivable.appointmentId, receivable.appointment?.id, null),
     source: receivable.source || receivable.sourceType || 'sale',
     branchId: first(receivable.branchId, receivable.branch?.id, null),
@@ -332,7 +332,9 @@ export function mapQuoteFromApi(quote) {
 }
 
 export function mapSaleFromApi(sale) {
-  const payment = collection(sale.payments)[0] || sale.payment || {}
+  const paymentRecord = sale.payment || collection(sale.payments)[0] || {}
+  const paymentProofs = collection(paymentRecord.proofs).map(mapProof)
+  const payment = paymentRecord
   const method = first(
     sale.methodCode,
     sale.paymentMethodCode,
@@ -360,8 +362,28 @@ export function mapSaleFromApi(sale) {
     taxAmt: numberValue(first(sale.taxAmount, sale.taxAmt)),
     total: numberValue(first(sale.total, sale.grandTotal)),
     method: paymentMethodSemanticCode(method),
+    settlementPolicy: first(
+      sale.settlementPolicy,
+      sale.settlement_policy,
+      sale.paymentMethod?.settlementPolicy,
+      sale.paymentMethod?.settlement_policy,
+      payment.paymentMethod?.settlementPolicy,
+      payment.paymentMethod?.settlement_policy,
+      null
+    ),
     reference: first(sale.reference, payment.reference, null),
+    payment: paymentRecord?.paymentMethod || paymentRecord?.amount != null || paymentProofs.length
+      ? {
+          amount: numberValue(paymentRecord.amount),
+          reference: paymentRecord.reference || null,
+          proofs: paymentProofs,
+          proof: paymentProofs[0] || mapProof(paymentRecord.proof),
+        }
+      : null,
     status: sale.status || 'posted',
+    quoteId: sale.quoteId || null,
+    origin: first(sale.origin, sale.quoteOrigin, null),
+    channel: first(sale.channel, sale.origin === 'crm' ? 'crm' : null),
     voidedAt: first(sale.voidedAt, sale.cancelledAt, null),
     voidReason: first(sale.voidReason, sale.cancellationReason, null),
     soldBy: first(
@@ -432,6 +454,35 @@ export function mapRegisterSummaryFromApi(summary = {}) {
     voidedSalesCount: numberValue(summary.voidedSalesCount),
     salesByPaymentMethod,
   }
+}
+
+function registerEntryBranchId(entry, fallbackBranchId = null) {
+  return first(entry?.branchId, entry?.branch?.id, fallbackBranchId)
+}
+
+function isOpenRegisterEntry(entry) {
+  if (!entry) return false
+  const status = normalizedCode(entry.status || (entry.open ? 'open' : 'closed'))
+  return entry.open === true || ['open', 'active'].includes(status)
+}
+
+export function resolveRegisterBranchId(register, fallbackBranchId = null) {
+  return first(register?.branchId, register?.branch?.id, fallbackBranchId)
+}
+
+export function resolveOpenRegisterFromPosState(state, branchId = null) {
+  const registerSource = first(state.register, state.currentRegister, state.activeRegister, state.shift)
+  const mapped = mapRegisterFromApi(registerSource, branchId)
+  if (mapped.open) return mapped
+
+  const openEntry = collection(first(state.registerHistory, state.registers, state.cashShifts))
+    .find((entry) => {
+      const entryBranchId = registerEntryBranchId(entry, branchId)
+      if (branchId && entryBranchId && entryBranchId !== branchId) return false
+      return isOpenRegisterEntry(entry)
+    })
+
+  return openEntry ? mapRegisterFromApi(openEntry, branchId) : mapped
 }
 
 export function mapRegisterFromApi(register, branchId = null) {
@@ -526,9 +577,9 @@ export function mapPosCatalogItemFromApi(item, branchId = null) {
 }
 
 export function mapPosStateFromApi(response, { branchId = null } = {}) {
-  const state = entity(response, ['state']) || {}
+  const state = entity(response, ['state']) || response || {}
   const registerSource = first(state.register, state.currentRegister, state.activeRegister, state.shift)
-  const register = mapRegisterFromApi(registerSource, branchId)
+  const register = resolveOpenRegisterFromPosState(state, branchId)
   const allSales = collection(first(state.sales, state.recentSales)).map(mapSaleFromApi)
   const shiftSalesSource = first(state.shiftSales, registerSource?.sales)
   const shiftSales = shiftSalesSource == null
@@ -649,6 +700,16 @@ export function mapRegisterHistoryMutationResponse(response, branchId) {
 export function mapSaleMutationResponse(response) {
   const sale = entity(response, ['sale'])
   return sale?.id ? mapSaleFromApi(sale) : null
+}
+
+export function mapCheckoutFromApi(response) {
+  const root = response?.data ?? response
+  const salePayload = entity(response, ['sale']) || (root?.id ? root : null)
+  if (!salePayload?.id) return { sale: null, receivableId: null }
+  return {
+    sale: mapSaleFromApi(salePayload),
+    receivableId: first(root?.receivableId, root?.receivable_id) || null,
+  }
 }
 
 export function mapQuoteMutationResponse(response) {

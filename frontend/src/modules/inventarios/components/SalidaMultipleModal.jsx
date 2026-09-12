@@ -7,20 +7,14 @@ import { Select } from '@/components/ui/Select'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { useInventarioStore } from '@/stores/inventarioStore'
-import { useAgendaStore } from '@/stores/agendaStore'
 import { useRrhhStore } from '@/stores/rrhhStore'
 import { useBranchStaff, resolveStaffName } from '@/modules/rrhh/lib/staff'
-
-function appointmentLabel(appointment) {
-  return `${appointment.customerName} · ${appointment.serviceName || 'Cita'} · ${appointment.date} ${appointment.time}`
-}
 
 export function SalidaMultipleModal({ open, onClose, branchId = 'all' }) {
   const branches = useConfigStore((state) => state.branches)
   const isOnline = useSessionStore((state) => state.isOnline())
   const loadStockItems = useInventarioStore((state) => state.loadStockItems)
   const recordSalida = useInventarioStore((state) => state.recordSalidaMultiple)
-  const appointments = useAgendaStore((state) => state.appointments)
   const rrhhEmployees = useRrhhStore((state) => state.employees)
   const initialBranchId = branchId === 'all' ? branches[0]?.id || '' : branchId
 
@@ -31,7 +25,6 @@ export function SalidaMultipleModal({ open, onClose, branchId = 'all' }) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState([])
   const [employeeId, setEmployeeId] = useState('')
-  const [appointmentId, setAppointmentId] = useState('')
   const [comment, setComment] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -78,18 +71,6 @@ export function SalidaMultipleModal({ open, onClose, branchId = 'all' }) {
     [stockItems]
   )
 
-  const appointmentOptions = useMemo(() => {
-    const base = [{ value: '', label: 'Sin cita vinculada' }]
-    const filtered = appointments
-      .filter((appointment) => appointment.branchId === selectedBranchId)
-      .filter((appointment) => !employeeId || appointment.employeeId === employeeId)
-      .filter((appointment) => !['cancelada', 'noshow'].includes(appointment.status))
-      .sort((a, b) => `${b.date}${b.time}`.localeCompare(`${a.date}${a.time}`))
-      .slice(0, 40)
-      .map((appointment) => ({ value: appointment.id, label: appointmentLabel(appointment) }))
-    return [...base, ...filtered]
-  }, [appointments, employeeId, selectedBranchId])
-
   const available = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
     const picked = new Set(selected.map((item) => item.id))
@@ -110,7 +91,6 @@ export function SalidaMultipleModal({ open, onClose, branchId = 'all' }) {
     setQuery('')
     setSelected([])
     setEmployeeId('')
-    setAppointmentId('')
     setComment('')
     setLoadError('')
   }
@@ -135,13 +115,12 @@ export function SalidaMultipleModal({ open, onClose, branchId = 'all' }) {
     setSaving(true)
     try {
       const employeeName = resolveStaffName(employeeId, rrhhEmployees)
-      const appointment = appointments.find((item) => item.id === appointmentId)
       await recordSalida({
         items: selected,
         employeeId,
         employeeName,
-        appointmentId: appointmentId || null,
-        appointmentLabel: appointment ? appointmentLabel(appointment) : null,
+        appointmentId: null,
+        appointmentLabel: null,
         comment,
         branchId: selectedBranchId,
       }, { isOnline })
@@ -167,7 +146,7 @@ export function SalidaMultipleModal({ open, onClose, branchId = 'all' }) {
       title={
         <div>
           <h2 className="font-heading text-lg font-semibold text-slate-900">Salida Múltiple de Insumos</h2>
-          <p className="mt-1 text-sm font-normal text-slate-500">Registra salidas atribuidas a un empleado y, opcionalmente, a una cita.</p>
+          <p className="mt-1 text-sm font-normal text-slate-500">Registra salidas atribuidas a un empleado responsable.</p>
         </div>
       }
     >
@@ -263,18 +242,11 @@ export function SalidaMultipleModal({ open, onClose, branchId = 'all' }) {
               <label className="mb-1.5 block text-xs font-medium text-slate-600">Empleado responsable *</label>
               <Select
                 value={employeeId}
-                onChange={(value) => {
-                  setEmployeeId(value)
-                  setAppointmentId('')
-                }}
+                onChange={setEmployeeId}
                 options={employeeOptions}
                 size="sm"
                 data-testid="salida-employee"
               />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-slate-600">Cita vinculada (opcional)</label>
-              <Select value={appointmentId} onChange={setAppointmentId} options={appointmentOptions} size="sm" data-testid="salida-appointment" />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-slate-600">Comentario</label>

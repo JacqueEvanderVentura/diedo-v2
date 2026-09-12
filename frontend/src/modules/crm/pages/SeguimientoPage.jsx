@@ -1,12 +1,26 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Phone, Mail, Users, StickyNote, CheckSquare, Calendar, Plus, Pencil, CalendarPlus } from 'lucide-react'
+import {
+  Phone,
+  Mail,
+  Users,
+  StickyNote,
+  CheckSquare,
+  Calendar,
+  Plus,
+  Pencil,
+  CalendarPlus,
+  FileText,
+  Briefcase,
+} from 'lucide-react'
 import { useCrmStore } from '@/stores/crmStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
-import { buildBranchFilterOptions } from '@/lib/branches'
-import { ACTIVITY_TYPE_META } from '@/data/crm'
+import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
+import { CRM_BRANCH_FILTER_CLASS, matchesBranches } from '@/lib/branches'
+import { ACTIVITY_TYPE_META, STAGE_META } from '@/data/crm'
+import { buildLeadHandoffPaths } from '../lib/leadHandoff'
 import { fmtDateTime } from '../lib/crm'
 import { formatDOP } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
@@ -43,6 +57,26 @@ function ActivityCard({ act, users, onToggle, onEdit }) {
             {act.completedAt ? <Badge tone="success">Completada</Badge> : <Badge tone="warning">Pendiente</Badge>}
           </div>
           {act.customerName && <p className="mt-1 text-sm text-slate-500">{act.customerName}</p>}
+          <div className="mt-2 flex flex-wrap gap-3 text-xs font-semibold">
+            {act.customerId && (
+              <Link
+                to={`/crm/clientes?customerId=${encodeURIComponent(act.customerId)}`}
+                className="text-blue-600 hover:underline"
+                data-testid={`activity-link-customer-${act.id}`}
+              >
+                Ver cliente
+              </Link>
+            )}
+            {act.opportunityId && (
+              <Link
+                to="/crm/pipeline"
+                className="text-blue-600 hover:underline"
+                data-testid={`activity-link-opportunity-${act.id}`}
+              >
+                Ver en pipeline
+              </Link>
+            )}
+          </div>
           {act.description && <p className="mt-2 text-sm text-slate-600">{act.description}</p>}
           <p className="mt-2 flex items-center gap-1 text-xs text-slate-400">
             <Calendar className="h-3.5 w-3.5" />
@@ -73,7 +107,44 @@ function ActivityCard({ act, users, onToggle, onEdit }) {
   )
 }
 
+function OpportunityRow({ opportunity, onNewTask, onNavigate }) {
+  const paths = buildLeadHandoffPaths({
+    opportunityId: opportunity.id,
+    customerId: opportunity.customerId || null,
+  })
+  const stage = STAGE_META[opportunity.stage]
+
+  return (
+    <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" data-testid={`seguimiento-opp-${opportunity.id}`}>
+      <div>
+        <p className="font-semibold text-slate-900">{opportunity.title}</p>
+        <p className="text-sm text-slate-500">{opportunity.customerName}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+        <Button size="sm" variant="secondary" onClick={() => onNewTask(opportunity.id)}>
+          <CalendarPlus className="h-3.5 w-3.5" /> Tarea
+        </Button>
+        {paths.quote && (
+          <Button size="sm" variant="secondary" onClick={() => onNavigate(paths.quote)}>
+            <FileText className="h-3.5 w-3.5" /> Cotizar
+          </Button>
+        )}
+        {paths.pipeline && (
+          <Button size="sm" variant="secondary" onClick={() => onNavigate(paths.pipeline)}>
+            <Briefcase className="h-3.5 w-3.5" /> Pipeline
+          </Button>
+        )}
+        <div className="text-right">
+          <p className="font-heading font-bold text-emerald-600">{formatDOP(opportunity.value)}</p>
+          <Badge tone={stage?.tone || 'brand'}>{stage?.label || opportunity.stage}</Badge>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 export default function SeguimientoPage() {
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const activities = useCrmStore((s) => s.activities)
   const opportunities = useCrmStore((s) => s.opportunities)
@@ -82,10 +153,13 @@ export default function SeguimientoPage() {
   const sessionUser = useSessionStore((s) => s.user)
   const branches = useConfigStore((s) => s.branches)
   const [view, setView] = useState('actividades')
-  const [branchFilter, setBranchFilter] = useState('all')
+  const [branchIds, setBranchIds] = useState([])
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [defaultOpportunityId, setDefaultOpportunityId] = useState('')
+  const [defaultCustomerId, setDefaultCustomerId] = useState('')
+
+  const requestedCustomerId = searchParams.get('customerId') || ''
 
   const visibleUsers = useMemo(() => (
     sessionUser?.membershipId
@@ -110,16 +184,28 @@ export default function SeguimientoPage() {
     setSearchParams(nextParams, { replace: true })
   }, [opportunities, requestedOpportunityId, searchParams, setSearchParams])
 
+  useEffect(() => {
+    if (!requestedCustomerId) return
+    setDefaultCustomerId(requestedCustomerId)
+    setDefaultOpportunityId('')
+    setEditing(null)
+    setView('actividades')
+    setFormOpen(true)
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('customerId')
+    setSearchParams(nextParams, { replace: true })
+  }, [requestedCustomerId, searchParams, setSearchParams])
+
   const oppBranchMap = useMemo(
     () => Object.fromEntries(opportunities.map((o) => [o.id, o.branchId])),
     [opportunities]
   )
 
   const grouped = useMemo(() => {
-    const branchMatch = (act) => {
-      if (branchFilter === 'all') return true
-      return (act.branchId || oppBranchMap[act.opportunityId]) === branchFilter
-    }
+    const branchMatch = (act) => matchesBranches(act, branchIds, (row) => {
+      const id = row.branchId || oppBranchMap[row.opportunityId]
+      return id ? [id] : []
+    })
     const pending = activities.filter((a) => !a.completedAt && branchMatch(a))
     const completed = activities.filter((a) => a.completedAt && branchMatch(a))
     const now = Date.now()
@@ -129,12 +215,11 @@ export default function SeguimientoPage() {
     overdue.sort((a, b) => new Date(a.dueAt) - new Date(b.dueAt))
     completed.sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt))
     return { overdue, upcoming, completed }
-  }, [activities, branchFilter, oppBranchMap])
+  }, [activities, branchIds, oppBranchMap])
 
-  const filteredOpportunities = useMemo(() => {
-    if (branchFilter === 'all') return opportunities
-    return opportunities.filter((o) => o.branchId === branchFilter)
-  }, [opportunities, branchFilter])
+  const filteredOpportunities = useMemo(() => (
+    opportunities.filter((o) => matchesBranches(o, branchIds, (row) => (row.branchId ? [row.branchId] : [])))
+  ), [opportunities, branchIds])
 
   const oppsByDate = useMemo(() => {
     const groups = {}
@@ -149,6 +234,7 @@ export default function SeguimientoPage() {
   const openNew = () => {
     setEditing(null)
     setDefaultOpportunityId('')
+    setDefaultCustomerId('')
     setFormOpen(true)
   }
 
@@ -177,6 +263,7 @@ export default function SeguimientoPage() {
     setFormOpen(false)
     setEditing(null)
     setDefaultOpportunityId('')
+    setDefaultCustomerId('')
   }
 
   return (
@@ -193,7 +280,13 @@ export default function SeguimientoPage() {
         )}
       </div>
 
-      <Select value={branchFilter} onChange={setBranchFilter} options={buildBranchFilterOptions(branches)} className="max-w-xs" data-testid="seguimiento-branch-filter" />
+      <BranchMultiSelect
+        branches={branches}
+        branchIds={branchIds}
+        onChange={setBranchIds}
+        className={CRM_BRANCH_FILTER_CLASS}
+        testId="seguimiento-branch-filter"
+      />
 
       <div className="grid w-full max-w-md grid-cols-2 rounded-xl bg-slate-100 p-1">
         {[
@@ -261,21 +354,12 @@ export default function SeguimientoPage() {
               <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-400">{date}</h3>
               <div className="space-y-2">
                 {opps.map((o) => (
-                  <Card key={o.id} className="flex items-center justify-between p-4">
-                    <div>
-                      <p className="font-semibold text-slate-900">{o.title}</p>
-                      <p className="text-sm text-slate-500">{o.customerName}</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Button size="sm" variant="secondary" onClick={() => openForOpportunity(o.id)}>
-                        <CalendarPlus className="h-3.5 w-3.5" /> Nueva tarea
-                      </Button>
-                      <div className="text-right">
-                      <p className="font-heading font-bold text-emerald-600">{formatDOP(o.value)}</p>
-                      <Badge tone="brand">{o.stage}</Badge>
-                      </div>
-                    </div>
-                  </Card>
+                  <OpportunityRow
+                    key={o.id}
+                    opportunity={o}
+                    onNewTask={openForOpportunity}
+                    onNavigate={navigate}
+                  />
                 ))}
               </div>
             </div>
@@ -289,6 +373,7 @@ export default function SeguimientoPage() {
         onClose={closeForm}
         activity={editing}
         defaultOpportunityId={defaultOpportunityId}
+        defaultCustomerId={defaultCustomerId}
       />
     </div>
   )

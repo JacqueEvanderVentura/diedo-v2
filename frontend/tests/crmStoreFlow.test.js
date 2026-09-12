@@ -187,4 +187,56 @@ describe('flujo conectado del store CRM', () => {
     }))
     expect(useCrmStore.getState().quotes[0]).toMatchObject({ id: quoteId, opportunityId, total: 25000 })
   })
+
+  it('envía opportunityId y líneas al actualizar una cotización en línea', async () => {
+    const quoteId = '88888888-8888-4888-8888-888888888888'
+    const newOppId = '99999999-9999-4999-8999-999999999999'
+    useCrmStore.setState({
+      quotes: [{
+        id: quoteId,
+        number: 'COT-2026-011',
+        opportunityId: null,
+        customerId,
+        branchId,
+        status: 'borrador',
+        total: 1000,
+        items: [{ itemId: 'item-a', name: 'A', qty: 1, price: 1000 }],
+        version: 2,
+      }],
+    })
+    mocks.updateQuote.mockResolvedValue({
+      quote: {
+        id: quoteId,
+        number: 'COT-2026-011',
+        customerId,
+        branchId,
+        total: '3000.00',
+        version: 3,
+        lines: [
+          { itemId: 'item-a', itemName: 'A', quantity: '1', unitPrice: '1000.00' },
+          { itemId: 'item-b', itemName: 'B', quantity: '2', unitPrice: '1000.00' },
+        ],
+      },
+      opportunityId: newOppId,
+      crmStatus: 'borrador',
+    })
+
+    await useCrmStore.getState().updateQuote(quoteId, {
+      opportunityId: newOppId,
+      items: [
+        { itemId: 'item-a', qty: 1, price: 1000 },
+        { itemId: 'item-b', qty: 2, price: 1000 },
+      ],
+    })
+
+    expect(mocks.updateQuote).toHaveBeenCalledWith(quoteId, {
+      version: 2,
+      opportunityId: newOppId,
+      lines: [
+        { itemId: 'item-a', quantity: 1, unitPrice: 1000 },
+        { itemId: 'item-b', quantity: 2, unitPrice: 1000 },
+      ],
+    })
+    expect(useCrmStore.getState().quotes[0].opportunityId).toBe(newOppId)
+  })
 })

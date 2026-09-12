@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { LogIn } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { HeliosIcon, PRODUCT_NAME } from '@/components/brand/HeliosIcon'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { useSessionStore } from '@/stores/sessionStore'
@@ -24,9 +24,9 @@ export default function LoginPage() {
     }
     setLoading(true)
     try {
-      await login(email.trim(), password)
+      const user = await login(email.trim(), password)
       toast.success('Sesión iniciada')
-      navigate('/dashboard', { replace: true })
+      navigate(user.isPlatformOperator ? '/backoffice' : '/dashboard', { replace: true })
     } catch (err) {
       setError(err.message || 'No se pudo iniciar sesión.')
     } finally {
@@ -38,10 +38,9 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
       <Card className="w-full max-w-md p-8" data-testid="login-page">
         <div className="mb-6 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-white">
-            <LogIn className="h-7 w-7" />
-          </div>
-          <h1 className="font-heading text-2xl font-bold text-slate-900">Iniciar sesión</h1>
+          <HeliosIcon className="mx-auto mb-4 h-14 w-14" />
+          <h1 className="font-heading text-2xl font-bold text-slate-900">{PRODUCT_NAME}</h1>
+          <p className="mt-1 text-sm font-medium text-slate-600">Iniciar sesión</p>
           <p className="mt-2 text-sm text-slate-500">
             Conecta con la API local. El modo demo solo se activa mediante configuración explícita.
           </p>

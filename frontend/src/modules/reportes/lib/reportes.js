@@ -1,3 +1,6 @@
+import { applyBranchFilter } from '@/lib/branches'
+import { inDateRange, isCustomPeriod, parseWhen, resolvePeriodRange } from '@/lib/datePeriod'
+
 // Utilidades de período para reportes (reutiliza opciones del dashboard).
 export const REPORT_PERIODS = [
   { id: 'today', label: 'Hoy', days: 1 },
@@ -14,28 +17,25 @@ export const AGENDA_REPORT_PERIODS = [
 
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 
-export function parseWhen(v) {
-  if (!v) return null
-  if (typeof v === 'string' && v.length === 10) {
-    const [y, m, d] = v.split('-').map(Number)
-    return new Date(y, m - 1, d)
-  }
-  return new Date(v)
-}
+export { parseWhen } from '@/lib/datePeriod'
 
-function periodStart(period) {
+function periodStart(period, range = {}) {
+  if (isCustomPeriod(range)) return resolvePeriodRange(range).start
   const now = new Date()
   if (period === 'today') return new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const days = REPORT_PERIODS.find((p) => p.id === period)?.days || 7
   return new Date(Date.now() - days * 86400000)
 }
 
-export function inPeriod(v, period) {
+export function inPeriod(v, period, range = {}) {
+  if (isCustomPeriod({ period, ...range })) {
+    return inDateRange(v, { period, dateFrom: range.dateFrom, dateTo: range.dateTo })
+  }
   const d = parseWhen(v)
   if (!d) return false
   const now = new Date()
   const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
-  return d >= periodStart(period) && d <= endOfToday
+  return d >= periodStart(period, range) && d <= endOfToday
 }
 
 function startOfDay(d) {
@@ -72,8 +72,11 @@ function endOfQuarter(d) {
 }
 
 /** Citas usan ventanas de calendario (incluyen fechas futuras del período). */
-export function inAppointmentPeriod(v, period) {
+export function inAppointmentPeriod(v, period, range = {}) {
   if (!period || period === 'all') return true
+  if (isCustomPeriod({ period, ...range })) {
+    return inDateRange(v, { period, dateFrom: range.dateFrom, dateTo: range.dateTo })
+  }
   const d = parseWhen(v)
   if (!d) return false
   const now = new Date()
@@ -97,23 +100,25 @@ export function inAppointmentPeriod(v, period) {
 const dayLabel = (d) => `${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()]}`
 
 // Serie temporal: por día (<=31d) o por semana (trimestre).
-export function buildSeries(items, period, getDate, getValue = () => 1) {
-  const start = periodStart(period)
-  const now = new Date()
+export function buildSeries(items, period, getDate, getValue = () => 1, range = {}) {
+  const { start, end } = isCustomPeriod({ period, ...range })
+    ? resolvePeriodRange({ period, dateFrom: range.dateFrom, dateTo: range.dateTo })
+    : { start: periodStart(period, range), end: new Date() }
   const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate())
-  const dayCount = Math.max(1, Math.round((now - startDay) / 86400000) + 1)
+  const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate())
+  const dayCount = Math.max(1, Math.round((endDay - startDay) / 86400000) + 1)
   const weekly = dayCount > 31
 
   const buckets = []
   const index = {}
   if (weekly) {
-    for (let s = new Date(startDay); s <= now; s.setDate(s.getDate() + 7)) {
+    for (let s = new Date(startDay); s <= endDay; s.setDate(s.getDate() + 7)) {
       const key = dayLabel(s)
       index[key] = buckets.length
       buckets.push({ label: key, value: 0, _from: new Date(s) })
     }
   } else {
-    for (let s = new Date(startDay); s <= now; s.setDate(s.getDate() + 1)) {
+    for (let s = new Date(startDay); s <= endDay; s.setDate(s.getDate() + 1)) {
       const key = dayLabel(s)
       index[key] = buckets.length
       buckets.push({ label: key, value: 0, _from: new Date(s) })
@@ -147,9 +152,21 @@ export function filterByBranch(items, branchId, getBranchId = (i) => i.branchId)
   return items.filter((i) => getBranchId(i) === branchId)
 }
 
-export function filterByPeriod(items, period, getDate) {
+export function filterByPeriod(items, period, getDate, range = {}) {
   if (!period) return items
-  return items.filter((i) => inPeriod(getDate(i), period))
+  return items.filter((i) => inPeriod(getDate(i), period, range))
+}
+
+function resolveBranchFilter(branchFilter) {
+  if (branchFilter && typeof branchFilter === 'object' && !Array.isArray(branchFilter)) {
+    return branchFilter
+  }
+  return { branchId: branchFilter }
+}
+
+function filterRows(items, branchFilter, period, getDate, range = {}) {
+  const scoped = applyBranchFilter(items, resolveBranchFilter(branchFilter))
+  return filterByPeriod(scoped, period, getDate, range)
 }
 
 export function aggregateProductSales(sales, products) {
@@ -177,10 +194,10 @@ export function aggregateProductSales(sales, products) {
   return byKey
 }
 
-export function buildIncomeExpenseSeries(sales, expenses, incomes, period, branchId) {
-  const saleRows = filterByPeriod(filterByBranch(sales, branchId), period, (s) => s.createdAt)
-  const expenseRows = filterByPeriod(filterByBranch(expenses, branchId), period, (e) => e.date || e.createdAt)
-  const incomeRows = filterByPeriod(filterByBranch(incomes, branchId), period, (e) => e.date || e.createdAt)
+export function buildIncomeExpenseSeries(sales, expenses, incomes, period, branchFilter, range = {}) {
+  const saleRows = filterRows(sales, branchFilter, period, (s) => s.createdAt, range)
+  const expenseRows = filterRows(expenses, branchFilter, period, (e) => e.date || e.createdAt, range)
+  const incomeRows = filterRows(incomes, branchFilter, period, (e) => e.date || e.createdAt, range)
 
   const buckets = buildSeries(
     [
@@ -190,7 +207,8 @@ export function buildIncomeExpenseSeries(sales, expenses, incomes, period, branc
     ],
     period,
     (r) => r.date,
-    (r) => r.amount
+    (r) => r.amount,
+    range
   )
 
   const ingresoByLabel = {}
@@ -218,8 +236,8 @@ export function buildIncomeExpenseSeries(sales, expenses, incomes, period, branc
   }))
 }
 
-export function expenseCategoryBreakdown(expenses, period, branchId, getCategoryName = (c) => c) {
-  const rows = filterByPeriod(filterByBranch(expenses, branchId), period, (e) => e.date || e.createdAt)
+export function expenseCategoryBreakdown(expenses, period, branchFilter, getCategoryName = (c) => c, range = {}) {
+  const rows = filterRows(expenses, branchFilter, period, (e) => e.date || e.createdAt, range)
   const map = {}
   rows.forEach((e) => {
     const key = getCategoryName(e.category) || e.category || 'Otros'
@@ -235,16 +253,23 @@ export function expenseCategoryBreakdown(expenses, period, branchId, getCategory
     .sort((a, b) => b.amount - a.amount)
 }
 
-export function incomeDistribution(sales, incomes, period, branchId, methodLabels = {}) {
-  const saleRows = filterByPeriod(filterByBranch(sales, branchId), period, (s) => s.createdAt)
-  const incomeRows = filterByPeriod(filterByBranch(incomes, branchId), period, (e) => e.date || e.createdAt)
+function normalizeIncomeCategory(name, methodLabels = {}) {
+  const raw = String(name || '').trim()
+  if (!raw) return 'Otros'
+  const key = raw.toLowerCase()
+  return methodLabels[key] || raw
+}
+
+export function incomeDistribution(sales, incomes, period, branchFilter, methodLabels = {}, range = {}) {
+  const saleRows = filterRows(sales, branchFilter, period, (s) => s.createdAt, range)
+  const incomeRows = filterRows(incomes, branchFilter, period, (e) => e.date || e.createdAt, range)
   const map = {}
   saleRows.forEach((s) => {
-    const key = methodLabels[s.method] || s.method || 'Venta POS'
+    const key = normalizeIncomeCategory(s.method || 'venta_pos', methodLabels)
     map[key] = (map[key] || 0) + (s.total || 0)
   })
   incomeRows.forEach((e) => {
-    const key = e.categoryName || e.category || 'Ingreso manual'
+    const key = normalizeIncomeCategory(e.categoryName || e.category || 'Ingreso manual', methodLabels)
     map[key] = (map[key] || 0) + (e.amount || 0)
   })
   const total = Object.values(map).reduce((a, v) => a + v, 0)
@@ -253,11 +278,11 @@ export function incomeDistribution(sales, incomes, period, branchId, methodLabel
     .sort((a, b) => b.value - a.value)
 }
 
-export function financialTotals(sales, expenses, incomes, period, branchId) {
+export function financialTotals(sales, expenses, incomes, period, branchFilter, range = {}) {
   const ingresos =
-    filterByPeriod(filterByBranch(sales, branchId), period, (s) => s.createdAt).reduce((a, s) => a + (s.total || 0), 0) +
-    filterByPeriod(filterByBranch(incomes, branchId), period, (e) => e.date || e.createdAt).reduce((a, e) => a + (e.amount || 0), 0)
-  const gastos = filterByPeriod(filterByBranch(expenses, branchId), period, (e) => e.date || e.createdAt).reduce(
+    filterRows(sales, branchFilter, period, (s) => s.createdAt, range).reduce((a, s) => a + (s.total || 0), 0) +
+    filterRows(incomes, branchFilter, period, (e) => e.date || e.createdAt, range).reduce((a, e) => a + (e.amount || 0), 0)
+  const gastos = filterRows(expenses, branchFilter, period, (e) => e.date || e.createdAt, range).reduce(
     (a, e) => a + (e.amount || 0),
     0
   )

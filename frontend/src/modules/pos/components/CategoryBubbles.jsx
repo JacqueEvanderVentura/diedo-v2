@@ -2,13 +2,14 @@ import { useMemo } from 'react'
 import { Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useConfigStore } from '@/stores/configStore'
+import { HorizontalScrollStrip } from '@/components/ui/HorizontalScrollStrip'
 
 export function CategoryBubbles({ active, onChange, onNewItem }) {
   const categories = useConfigStore((s) => s.categories)
   const items = useMemo(() => [{ id: 'all', name: 'Todos' }, ...categories], [categories])
   return (
     <div className="mb-4 flex items-center gap-3" data-testid="pos-category-bubbles">
-      <div className="flex min-w-0 flex-1 gap-3 overflow-x-auto pb-1 scrollbar-hide">
+      <HorizontalScrollStrip className="flex flex-1 gap-3 pb-1" testId="pos-category-scroll">
         {items.map((cat) => {
           const isActive = active === cat.id
           return (
@@ -27,7 +28,7 @@ export function CategoryBubbles({ active, onChange, onNewItem }) {
             </button>
           )
         })}
-      </div>
+      </HorizontalScrollStrip>
 
       {onNewItem && (
         <button

@@ -39,7 +39,11 @@ import { useSortedRows } from '@/hooks/useTableControls'
 import { filterMovements, methodLabel, PAYMENT_BREAKDOWN, sumByMethod } from '../lib/caja'
 import { cn } from '@/lib/utils'
 import { PosSyncStatus } from '../components/PosSyncStatus'
-import { usePosOnlineState } from '../hooks/usePosOnlineState'
+import { BranchRegisterStatusBar } from '../components/BranchRegisterStatusBar'
+import { useCajaBranchState } from '../hooks/useCajaBranchState'
+import { PermissionElevationModal } from '@/components/auth/PermissionElevationModal'
+
+const VOID_INVOICE_PERMISSION = 'sales.invoice.void'
 
 const fmtTime = (iso) =>
   new Date(iso).toLocaleString('es-DO', { hour: '2-digit', minute: '2-digit' })
@@ -62,7 +66,7 @@ const TYPE_META = {
 
 function KpiCard({ label, value, sub, children }) {
   return (
-    <Card className="min-w-0 p-5">
+    <Card className="min-w-0 p-5 transition-all duration-200 hover:scale-[1.02] hover:shadow-md">
       <p className="text-sm text-slate-500">{label}</p>
       {value != null && value !== '' && (
         <p className="mt-1 break-words font-heading text-2xl font-bold tracking-tight text-slate-900">{value}</p>
@@ -73,23 +77,28 @@ function KpiCard({ label, value, sub, children }) {
   )
 }
 
-function RegisterHistoryPanel({ history }) {
+function RegisterHistoryPanel({ history, branches = [] }) {
+  const branchMap = useMemo(
+    () => Object.fromEntries(branches.map((branch) => [branch.id, branch.name])),
+    [branches]
+  )
   const [search, setSearch] = useState('')
-  const [branchFilter, setBranchFilter] = useState('all')
+  const [branchIds, setBranchIds] = useState([])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return history.filter((h) => {
-      if (branchFilter !== 'all' && h.branchId !== branchFilter) return false
+      if (branchIds.length && !branchIds.includes(h.branchId)) return false
       if (!q) return true
       return h.userName?.toLowerCase().includes(q)
     })
-  }, [history, search, branchFilter])
+  }, [history, search, branchIds])
 
   const { rows: displayRows, sortKey, sortDir, toggleSort } = useSortedRows(filtered, {
     defaultSort: { key: 'closedAt', dir: 'desc' },
     accessors: {
       closedAt: (h) => new Date(h.closedAt),
+      branch: (h) => branchMap[h.branchId] || '',
       userName: (h) => h.userName || '',
       openingCash: (h) => h.openingCash || 0,
       expected: (h) => h.expected || 0,
@@ -110,18 +119,19 @@ function RegisterHistoryPanel({ history }) {
           onSearchChange={setSearch}
           searchPlaceholder="Buscar por usuario..."
           showBranch
-          branchId={branchFilter}
-          onBranchChange={setBranchFilter}
+          branchIds={branchIds}
+          onBranchIdsChange={setBranchIds}
           testId="caja-history-filters"
         />
       </div>
-      <ResponsiveList columnCount={7}>
+      <ResponsiveList columnCount={8}>
         <ResponsiveTable testId="caja-history-table" wrapCard={false}>
           <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
                 <SortableTh column="closedAt" className="px-4 py-3">Fecha</SortableTh>
+                <SortableTh column="branch" className="px-4 py-3">Sucursal</SortableTh>
                 <SortableTh column="userName" className="px-4 py-3">Usuario</SortableTh>
                 <SortableTh column="openingCash" align="right" className="px-4 py-3">Inicial</SortableTh>
                 <SortableTh column="expected" align="right" className="px-4 py-3">Esperado</SortableTh>
@@ -134,6 +144,7 @@ function RegisterHistoryPanel({ history }) {
               {displayRows.map((h) => (
                 <tr key={h.id} className="border-b border-slate-50">
                   <td className="px-4 py-3 text-slate-600">{fmtDateTime(h.closedAt)}</td>
+                  <td className="px-4 py-3 text-slate-600">{branchMap[h.branchId] || '—'}</td>
                   <td className="px-4 py-3">{h.userName}</td>
                   <td className="px-4 py-3 text-right">{formatDOP(h.openingCash)}</td>
                   <td className="px-4 py-3 text-right">{formatDOP(h.expected)}</td>
@@ -177,8 +188,10 @@ function RegisterHistoryPanel({ history }) {
 }
 
 export default function CajaPage() {
-  const { isOnline, hydrating, mutating, error, refresh } = usePosOnlineState()
+  const { isOnline, hydrating, mutating, error, refresh } = useCajaBranchState()
   const register = usePosStore((s) => s.register)
+  const cajaBranchId = usePosStore((s) => s.cajaBranchId)
+  const registerByBranch = usePosStore((s) => s.registerByBranch)
   const shiftSales = usePosStore((s) => s.shiftSales)
   const shiftIncomes = usePosStore((s) => s.shiftIncomes)
   const expenses = usePosStore((s) => s.expenses)
@@ -186,8 +199,7 @@ export default function CajaPage() {
   const registerSummary = usePosStore((s) => s.registerSummary)
   const quoteSummary = usePosStore((s) => s.quoteSummary)
   const pagination = usePosStore((s) => s.pagination)
-  const branchId = usePosStore((s) => s.branchId)
-  const setBranch = usePosStore((s) => s.setBranch)
+  const setCajaBranch = usePosStore((s) => s.setCajaBranch)
   const getCashInDrawer = usePosStore((s) => s.getCashInDrawer)
   const getCashIncomes = usePosStore((s) => s.getCashIncomes)
   const getCashExpenses = usePosStore((s) => s.getCashExpenses)
@@ -205,9 +217,11 @@ export default function CajaPage() {
   const branches = useConfigStore((s) => s.branches)
   const canManageRegister = useSessionStore((s) => s.hasPermission('pos.register.manage'))
   const canManageCash = useSessionStore((s) => s.hasPermission('pos.cash.manage'))
-  const canVoidSales = useSessionStore((s) => s.hasPermission('pos.void'))
+  const canVoidSales = useSessionStore((s) => s.hasPermission(VOID_INVOICE_PERMISSION))
 
   const [openInput, setOpenInput] = useState('')
+  const [elevationOpen, setElevationOpen] = useState(false)
+  const [pendingVoidSale, setPendingVoidSale] = useState(null)
   const [closeOpen, setCloseOpen] = useState(false)
   const [closeInput, setCloseInput] = useState('')
   const [closeError, setCloseError] = useState('')
@@ -238,6 +252,7 @@ export default function CajaPage() {
   const hasMoreSales = isOnline && salesPage.page < salesPage.totalPages
   const hasMoreCashMovements = isOnline && movementsPage.page < movementsPage.totalPages
   const loadingMore = Boolean(salesPage.loading || movementsPage.loading)
+  const selectedBranch = branches.find((branch) => branch.id === cajaBranchId)
 
   const handleLoadMore = async () => {
     try {
@@ -285,9 +300,29 @@ export default function CajaPage() {
     }
   }
 
+  const beginVoidSale = (sale) => {
+    if (!sale) return
+    if (!canVoidSales) {
+      setPendingVoidSale(sale)
+      setElevationOpen(true)
+      return
+    }
+    setSaleToVoid(sale)
+    setVoidReason('')
+    setVoidError('')
+  }
+
+  const handleElevatedForVoid = () => {
+    if (!pendingVoidSale) return
+    setSaleToVoid(pendingVoidSale)
+    setPendingVoidSale(null)
+    setVoidReason('')
+    setVoidError('')
+  }
+
   const handleVoidSale = async () => {
     if (!canVoidSales) {
-      toast.error('No tienes permiso para anular ventas.')
+      toast.error('No tienes permiso para anular facturas.')
       return
     }
     if (!saleToVoid) return
@@ -310,9 +345,34 @@ export default function CajaPage() {
   }
 
   if (!register.open) {
+    if (isOnline && hydrating && !mutating) {
+      return (
+        <div className="mx-auto w-full max-w-3xl space-y-6 p-6 sm:p-8">
+          <PosSyncStatus isOnline={isOnline} hydrating={hydrating} error={error} onRetry={refresh} />
+          <BranchRegisterStatusBar
+            branches={branches}
+            cajaBranchId={cajaBranchId}
+            registerByBranch={registerByBranch}
+            posState={{ register }}
+            onSelect={setCajaBranch}
+          />
+          <Card className="p-8 text-center text-sm text-slate-500" data-testid="caja-loading-card">
+            Cargando estado de caja...
+          </Card>
+        </div>
+      )
+    }
+
     return (
       <div className="mx-auto w-full max-w-3xl space-y-6 p-6 sm:p-8">
         <PosSyncStatus isOnline={isOnline} hydrating={hydrating} error={error} onRetry={refresh} />
+        <BranchRegisterStatusBar
+          branches={branches}
+          cajaBranchId={cajaBranchId}
+          registerByBranch={registerByBranch}
+          posState={{ register }}
+          onSelect={setCajaBranch}
+        />
         <Card className="p-8" data-testid="caja-open-card">
           <div className="mb-6 flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
@@ -320,8 +380,26 @@ export default function CajaPage() {
             </div>
             <div>
               <h2 className="font-heading text-xl font-bold text-slate-900">Abrir caja</h2>
-              <p className="text-sm text-slate-400">Registra el efectivo inicial del turno.</p>
+              <p className="text-sm text-slate-400">
+                {selectedBranch
+                  ? `Sucursal: ${selectedBranch.name}. Registra el efectivo inicial del turno.`
+                  : 'Selecciona la sucursal y registra el efectivo inicial del turno.'}
+              </p>
             </div>
+          </div>
+          <div className="mb-4">
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Sucursal</label>
+            <Select
+              value={cajaBranchId}
+              onChange={setCajaBranch}
+              disabled={Boolean(mutating)}
+              className="w-full"
+              options={branches.filter((branch) => branch.active !== false).map((branch) => ({
+                value: branch.id,
+                label: branch.name,
+              }))}
+              data-testid="caja-open-branch"
+            />
           </div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Efectivo inicial (RD$)</label>
           <input
@@ -353,7 +431,7 @@ export default function CajaPage() {
           </Card>
         )}
 
-        <RegisterHistoryPanel history={registerHistory} />
+        <RegisterHistoryPanel history={registerHistory} branches={branches} />
       </div>
     )
   }
@@ -361,17 +439,37 @@ export default function CajaPage() {
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="caja-page">
       <PosSyncStatus isOnline={isOnline} hydrating={hydrating} error={error} onRetry={refresh} />
+      <BranchRegisterStatusBar
+        branches={branches}
+        cajaBranchId={cajaBranchId}
+        registerByBranch={registerByBranch}
+        posState={{ register }}
+        onSelect={setCajaBranch}
+      />
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-4">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
             <Unlock className="h-7 w-7" />
           </div>
           <div>
-            <h2 className="font-heading text-xl font-bold text-slate-900">Caja Abierta</h2>
+            <h2 className="font-heading text-xl font-bold text-slate-900">
+              Caja abierta · {selectedBranch?.name || 'Sucursal'}
+            </h2>
             <p className="text-sm text-slate-500">Abierta desde {fmtDateTime(register.openedAt)}</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Select
+            value={cajaBranchId}
+            onChange={setCajaBranch}
+            disabled={Boolean(mutating)}
+            className="w-[200px]"
+            options={branches.filter((branch) => branch.active !== false).map((branch) => ({
+              value: branch.id,
+              label: branch.name,
+            }))}
+            data-testid="caja-branch-select"
+          />
           <Button variant="secondary" onClick={() => setMovementOpen(true)} disabled={Boolean(mutating) || !canManageCash} data-testid="caja-add-movement">
             <DollarSign className="h-4 w-4" /> Movimiento
           </Button>
@@ -387,13 +485,6 @@ export default function CajaPage() {
           >
             <Lock className="h-4 w-4" /> Cerrar Caja
           </Button>
-          <Select
-            value={branchId}
-            onChange={setBranch}
-            disabled={Boolean(mutating)}
-            className="w-[180px]"
-            options={branches.map((b) => ({ value: b.id, label: b.name }))}
-          />
         </div>
       </div>
 
@@ -512,16 +603,12 @@ export default function CajaPage() {
                           )}>
                             {isVoided ? '' : isOut ? '−' : '+'}{formatDOP(m.amount)}
                           </span>
-                          {m.type === 'venta' && !isVoided && canVoidSales && (
+                          {m.type === 'venta' && !isVoided && (
                             <button
                               type="button"
-                              title="Anular venta"
+                              title="Anular factura"
                               disabled={Boolean(mutating)}
-                              onClick={() => {
-                                setSaleToVoid(m.meta)
-                                setVoidReason('')
-                                setVoidError('')
-                              }}
+                              onClick={() => beginVoidSale(m.meta)}
                               className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
                               data-testid={`caja-void-sale-${m.id}`}
                             >
@@ -588,7 +675,7 @@ export default function CajaPage() {
         </Card>
       </div>
 
-      <RegisterHistoryPanel history={registerHistory} />
+      <RegisterHistoryPanel history={registerHistory} branches={branches} />
 
       <MovementModal open={movementOpen} onClose={() => setMovementOpen(false)} />
 
@@ -657,13 +744,13 @@ export default function CajaPage() {
           setVoidReason('')
           setVoidError('')
         }}
-        title="Anular venta"
+        title="Anular factura"
         testId="caja-void-sale-modal"
       >
         {saleToVoid && (
           <div className="space-y-4">
             <div className="rounded-xl bg-red-50 p-4 text-sm text-red-900">
-              <p className="font-semibold">{saleToVoid.customer?.name || saleToVoid.items?.[0]?.name || 'Venta POS'}</p>
+              <p className="font-semibold">{saleToVoid.customer?.name || saleToVoid.items?.[0]?.name || 'Factura POS'}</p>
               <p className="mt-1">Monto a anular: {formatDOP(saleToVoid.total)}</p>
             </div>
             <div>
@@ -691,12 +778,23 @@ export default function CajaPage() {
                 Cancelar
               </Button>
               <Button variant="dangerSolid" onClick={handleVoidSale} disabled={Boolean(mutating)} data-testid="caja-confirm-void-sale">
-                <Ban className="h-4 w-4" /> Anular venta
+                <Ban className="h-4 w-4" /> Anular factura
               </Button>
             </div>
           </div>
         )}
       </Modal>
+
+      <PermissionElevationModal
+        open={elevationOpen}
+        onClose={() => {
+          setElevationOpen(false)
+          setPendingVoidSale(null)
+        }}
+        permissionCode={VOID_INVOICE_PERMISSION}
+        description="Para anular una factura, un supervisor con permiso debe autorizar esta sesión por 3 minutos."
+        onElevated={handleElevatedForVoid}
+      />
     </div>
   )
 }

@@ -1,7 +1,8 @@
 import { formatDOP } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
-import { formatShortDate, aptTone } from '../../lib/calendar'
+import { aptTone } from '../../lib/calendar'
+import { appointmentWhatsAppFields, buildWhatsAppVariables } from '@/lib/whatsappVariables'
 
 const TONES = {
   default: 'bg-blue-50 border-blue-100 text-blue-900 hover:bg-blue-100',
@@ -42,10 +43,8 @@ export function AppointmentChip({ apt, onClick, compact }) {
           size="xs"
           className="opacity-70 hover:opacity-100"
           variables={{
-            nombre_cliente: apt.customerName || '',
-            fecha: formatShortDate(apt.date),
-            hora: apt.time || '',
-            servicio: apt.serviceName || '',
+            ...buildWhatsAppVariables({ name: apt.customerName, phone: apt.customerPhone }),
+            ...appointmentWhatsAppFields(apt),
           }}
           data-testid={`calendar-apt-wa-${apt.id}`}
         />

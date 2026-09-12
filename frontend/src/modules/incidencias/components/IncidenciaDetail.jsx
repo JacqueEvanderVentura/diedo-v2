@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
-import { ImagePlus, Paperclip, Send } from 'lucide-react'
+import { Eye, ImagePlus, Paperclip, Send, ZoomIn } from 'lucide-react'
+import { ImageLightbox } from '@/modules/pos/components/ProofImagePreview'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -32,6 +33,7 @@ export function IncidenciaDetail({
   item,
   branchName,
   activoName,
+  onViewActivoHistory,
   onStatusChange,
   onComment,
   onAddImages,
@@ -39,6 +41,7 @@ export function IncidenciaDetail({
 }) {
   const [comment, setComment] = useState('')
   const [pendingAction, setPendingAction] = useState(null)
+  const [lightbox, setLightbox] = useState(null)
   const fileRef = useRef(null)
 
   if (!item) {
@@ -64,12 +67,14 @@ export function IncidenciaDetail({
     : (item.images || []).map((src, index) => ({ id: `local-${index}`, src, name: `Evidencia ${index + 1}` }))
 
   const sendComment = async () => {
-    if (!comment.trim() || pendingAction) return
+    const message = comment.trim()
+    if (!message || pendingAction) return
     setPendingAction('comment')
+    setComment('')
     try {
-      await onComment(item.id, currentSessionActor().name, comment)
-      setComment('')
+      await onComment(item.id, currentSessionActor().name, message)
     } catch (error) {
+      setComment(message)
       toast.error(error.message || 'No se pudo agregar el comentario.')
     } finally {
       setPendingAction(null)
@@ -105,6 +110,7 @@ export function IncidenciaDetail({
   }
 
   return (
+    <>
     <div className="flex h-full flex-col rounded-xl border border-slate-100 bg-white shadow-soft" data-testid="incidencia-detail">
       <div className="border-b border-slate-100 p-6">
         <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -118,7 +124,22 @@ export function IncidenciaDetail({
           <Badge tone={st.tone}>{st.name}</Badge>
           <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{tp.name}</span>
           {branchName && <span className="text-xs text-slate-400">· {branchName}</span>}
-          {activoName && <span className="text-xs text-slate-400">· {activoName}</span>}
+          {activoName && (
+            <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+              · {activoName}
+              {item.activoId && onViewActivoHistory && (
+                <button
+                  type="button"
+                  onClick={() => onViewActivoHistory(item.activoId)}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-blue-600"
+                  title="Ver historial del activo"
+                  data-testid="incidencia-view-activo-history"
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </span>
+          )}
           {item.employee?.name && (
             <span className="text-xs text-slate-400">
               · {item.employee.name}{employeeKind ? ` — ${employeeKind.name}` : ''}
@@ -163,9 +184,18 @@ export function IncidenciaDetail({
           {previewItems.length > 0 ? (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {previewItems.map((preview) => (
-                <div key={preview.id} className="aspect-square overflow-hidden rounded-lg border border-slate-100 bg-slate-50">
+                <button
+                  key={preview.id}
+                  type="button"
+                  onClick={() => setLightbox(preview)}
+                  className="group relative aspect-square overflow-hidden rounded-lg border border-slate-100 bg-slate-50"
+                  data-testid={`incidencia-image-${preview.id}`}
+                >
                   <img src={preview.src} alt={`Evidencia: ${preview.name}`} className="h-full w-full object-cover" />
-                </div>
+                  <span className="absolute inset-0 flex items-center justify-center bg-slate-900/0 transition-colors group-hover:bg-slate-900/35">
+                    <ZoomIn className="h-5 w-5 text-white opacity-0 transition-opacity group-hover:opacity-100" />
+                  </span>
+                </button>
               ))}
             </div>
           ) : (
@@ -235,5 +265,12 @@ export function IncidenciaDetail({
         </div>
       </div>
     </div>
+    <ImageLightbox
+      open={Boolean(lightbox)}
+      src={lightbox?.src}
+      alt={lightbox?.name}
+      onClose={() => setLightbox(null)}
+    />
+    </>
   )
 }

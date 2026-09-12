@@ -21,11 +21,26 @@ export function employeeWorksAtBranch(emp, branchId) {
   return getEmployeeBranchIds(emp).includes(branchId)
 }
 
-export function staffOptionsForBranch(employees, branchId) {
+export function isSelectableAsSpecialist(employee) {
+  if (!employee?.active) return false
+  if (typeof employee.selectableAsSpecialist === 'boolean') return employee.selectableAsSpecialist
+  return /especialista/i.test(employee.position || '')
+}
+
+export function staffOptionsForBranch(employees, branchId, { bookableOnly = false } = {}) {
   return employees
     .filter((e) => e.active && employeeWorksAtBranch(e, branchId))
+    .filter((e) => !bookableOnly || isSelectableAsSpecialist(e))
     .map((e) => ({ id: e.id, name: fullName(e) }))
     .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export function useBranchBookableStaff(branchId) {
+  const employees = useRrhhStore((s) => s.employees)
+  return useMemo(
+    () => staffOptionsForBranch(employees, branchId, { bookableOnly: true }),
+    [employees, branchId]
+  )
 }
 
 export function allStaffOptions(employees) {

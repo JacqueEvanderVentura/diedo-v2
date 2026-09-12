@@ -10,9 +10,12 @@ import { Badge } from '@/components/ui/Badge'
 import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { AppointmentFormModal } from '../components/AppointmentFormModal'
+import { CompleteAppointmentModal } from '../components/CompleteAppointmentModal'
+import { formatCompletionSummary } from '../lib/completion'
 import { AppointmentShareModal } from '../components/AppointmentShareModal'
 import { DeleteAppointmentModal } from '../components/DeleteAppointmentModal'
 import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
+import { appointmentWhatsAppFields, buildWhatsAppVariables } from '@/lib/whatsappVariables'
 import { formatShortDate, endTime } from '../lib/calendar'
 import { isProximoAppointment } from '../lib/appointments'
 import { ResponsiveList, ResponsiveTable, ResponsiveCards } from '@/components/ui/ResponsiveList'
@@ -64,10 +67,8 @@ function ActionButtons({ apt, onEdit, onDelete, onShare, canManage, canDelete, o
         context="agenda"
         size="sm"
         variables={{
-          nombre_cliente: apt.customerName || '',
-          fecha: formatShortDate(apt.date),
-          hora: apt.time || '',
-          servicio: apt.serviceName || '',
+          ...buildWhatsAppVariables({ name: apt.customerName, phone: apt.customerPhone }),
+          ...appointmentWhatsAppFields(apt),
         }}
         data-testid={`gestion-wa-${apt.id}`}
       />
@@ -156,6 +157,7 @@ export default function GestionCitasPage() {
   const appointments = useAgendaStore((s) => s.appointments)
   const deleteAppointment = useAgendaStore((s) => s.deleteAppointment)
   const setAppointmentStatus = useAgendaStore((s) => s.setStatus)
+  const completeAppointment = useAgendaStore((s) => s.completeAppointment)
   const dataState = useAgendaStore((s) => s.dataState)
   const hydrateAppointments = useAgendaStore((s) => s.hydrateAppointments)
   const rrhhEmployees = useRrhhStore((s) => s.employees)
@@ -175,6 +177,8 @@ export default function GestionCitasPage() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const [statusUpdatingId, setStatusUpdatingId] = useState(null)
+  const [completing, setCompleting] = useState(null)
+  const [savingCompletion, setSavingCompletion] = useState(false)
 
   const appointmentQuery = useMemo(
     () => branchId === 'all' ? {} : { branchId },
@@ -258,6 +262,10 @@ export default function GestionCitasPage() {
 
   const changeStatus = async (apt, nextStatus) => {
     if (statusUpdatingId) return
+    if (nextStatus === 'cumplida') {
+      setCompleting(apt)
+      return
+    }
     const receivablePolicy = getAppointmentReceivablePolicy({
       appointment: apt,
       online,
@@ -275,6 +283,21 @@ export default function GestionCitasPage() {
       toast.error(error.message || 'No se pudo actualizar el estado')
     } finally {
       setStatusUpdatingId(null)
+    }
+  }
+
+  const confirmCompletion = async (payload) => {
+    if (!completing) return
+    setSavingCompletion(true)
+    try {
+      await completeAppointment(completing.id, payload)
+      setCompleting(null)
+      toast.success('Cita marcada como cumplida')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo marcar la cita como cumplida')
+      throw error
+    } finally {
+      setSavingCompletion(false)
     }
   }
 
@@ -410,6 +433,13 @@ export default function GestionCitasPage() {
         loading={deleting}
         onClose={() => setDeleteTarget(null)}
         onConfirm={confirmDelete}
+      />
+      <CompleteAppointmentModal
+        open={Boolean(completing)}
+        appointment={completing}
+        onClose={() => setCompleting(null)}
+        onConfirm={confirmCompletion}
+        saving={savingCompletion}
       />
     </div>
   )

@@ -16,4 +16,12 @@ export const authApi = {
   updateProfile: (displayName) => apiClient.patch('/api/v1/auth/profile', { displayName }),
   sessions: () => apiClient.get('/api/v1/auth/sessions'),
   revokeSession: (sessionId) => apiClient.delete(`/api/v1/auth/sessions/${sessionId}`),
+
+  elevate: ({ email, password, permissionCode }) => apiClient.post('/api/v1/auth/elevate', {
+    email,
+    password,
+    permissionCode,
+  }),
+
+  revokeElevation: () => apiClient.post('/api/v1/auth/elevate/revoke'),
 }

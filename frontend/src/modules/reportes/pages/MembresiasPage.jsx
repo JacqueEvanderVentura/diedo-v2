@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, Users, DollarSign, Receipt, TrendingUp } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { formatDOP } from '@/lib/format'
+import { CHART_ANIMATION } from '@/lib/chartAnimation'
 import { useConfigStore } from '@/stores/configStore'
 import { MEMBERSHIP_PLANS, MEMBERSHIP_STATUSES } from '@/data/reportes'
 import { fetchMembershipReport } from '@/services/reportApi'
@@ -39,7 +40,12 @@ export default function MembresiasPage() {
   const branchName = (id) => branches.find((b) => b.id === id)?.name || id
 
   const fetcher = useCallback((params) => fetchMembershipReport(params), [])
-  const report = usePaginatedReport(fetcher, { branchId: '', status: '', search: '', plan: '' }, 10, { key: 'clientName', dir: 'asc' })
+  const report = usePaginatedReport(
+    fetcher,
+    { branchIds: [], status: '', search: '', plan: '' },
+    10,
+    { key: 'clientName', dir: 'asc' }
+  )
 
   const summary = report.summary || {
     activeCount: 0,
@@ -67,8 +73,8 @@ export default function MembresiasPage() {
       </div>
 
       <ReportFilterBar
-        branchId={report.filters.branchId}
-        onBranchChange={(v) => report.setFilter('branchId', v)}
+        branchIds={report.filters.branchIds || []}
+        onBranchIdsChange={(branchIds) => report.patchFilters({ branchIds })}
         search={report.filters.search}
         onSearchChange={(v) => report.setFilter('search', v)}
         searchPlaceholder="Buscar socio o membresía…"
@@ -105,7 +111,7 @@ export default function MembresiasPage() {
                 <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} />
                 <YAxis tickLine={false} axisLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={(v) => `$${v / 1000}k`} />
                 <Tooltip formatter={(v) => formatDOP(v)} />
-                <Bar dataKey="value" fill="#3b82f6" radius={[6, 6, 0, 0]} isAnimationActive={false} />
+                <Bar dataKey="value" fill="#3b82f6" radius={[6, 6, 0, 0]} {...CHART_ANIMATION} />
               </BarChart>
             </ResponsiveContainer>
           </div>

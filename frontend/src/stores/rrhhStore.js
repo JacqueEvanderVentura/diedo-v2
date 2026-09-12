@@ -65,6 +65,7 @@ function normalizeEmployee(data) {
     profileVersion: data.profileVersion || 1,
     profileUpdatedAt: data.profileUpdatedAt || null,
     workSchedule: normalizeWorkSchedule(data.workSchedule),
+    selectableAsSpecialist: data.selectableAsSpecialist ?? /especialista/i.test(data.position || ''),
     createdAt: data.createdAt || now(),
     updatedAt: data.updatedAt || now(),
     api: data.api === true,
@@ -90,6 +91,7 @@ export const useRrhhStore = create(
       documentHistory: [],
       payrollRuns: [],
       performanceReviews: SEED_REVIEWS,
+      employeeBookingFlags: {},
       getEmployeeByUserId: (userId) => get().employees.find((e) => e.usuarioId === userId),
 
       hydrateEmployees: async ({ force = false } = {}) => {
@@ -101,9 +103,14 @@ export const useRrhhStore = create(
           const result = await employeesGateway.read('employees')
           const mapper = result.source === 'demo' ? mapEmployeeFromDemo : mapEmployeeFromApi
           const profileByEmployee = new Map(get().employeeProfiles.map((item) => [item.employeeId, item]))
+          const flags = get().employeeBookingFlags || {}
           const employees = result.data.map((item) => {
             const employee = normalizeEmployee(mapper(item))
-            return normalizeEmployee({ ...employee, ...(profileByEmployee.get(employee.id) || {}) })
+            const merged = normalizeEmployee({ ...employee, ...(profileByEmployee.get(employee.id) || {}) })
+            if (Object.hasOwn(flags, merged.id)) {
+              return normalizeEmployee({ ...merged, selectableAsSpecialist: flags[merged.id] })
+            }
+            return merged
           })
           set({ employees, employeesDataState: employeesGateway.getState(), hydratingEmployees: false })
           return employees
@@ -193,6 +200,9 @@ export const useRrhhStore = create(
         } else {
           const complete = { ...current, ...data }
           const { schedule, timezone, ...basicPayload } = employeeToApiPayload(complete)
+          if (Object.hasOwn(data, 'selectableAsSpecialist')) {
+            basicPayload.onlineBookingSelectable = data.selectableAsSpecialist
+          }
           const response = await employeesGateway.mutate('updateEmployee', id, {
             ...basicPayload,
             version: current.version,
@@ -216,7 +226,10 @@ export const useRrhhStore = create(
           }
         }
         set((state) => ({
-          employees: state.employees.map((item) => (item.id === id ? employee : item)),
+          employees: state.employees.map((item) => (item.id === id ? {
+            ...employee,
+            selectableAsSpecialist: data.selectableAsSpecialist ?? employee.selectableAsSpecialist,
+          } : item)),
           hrOverview: null,
         }))
         return employee

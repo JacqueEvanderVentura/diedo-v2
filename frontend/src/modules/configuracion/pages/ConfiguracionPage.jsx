@@ -31,6 +31,7 @@ import SucursalesPage from './SucursalesPage'
 import CategoriasPage from './CategoriasPage'
 import MetodosPagoPage from './MetodosPagoPage'
 import PlantillasWaPanel from '../components/PlantillasWaPanel'
+import BillingDocumentsPanel from '../components/BillingDocumentsPanel'
 
 const EMBED_MAP = {
   usuarios: UsuariosPage,
@@ -39,9 +40,23 @@ const EMBED_MAP = {
   categorias: CategoriasPage,
   'metodos-pago': MetodosPagoPage,
   whatsapp: PlantillasWaPanel,
+  'billing-documents': BillingDocumentsPanel,
 }
 
 const SECTIONS = [
+  {
+    title: 'General',
+    items: [
+      {
+        id: 'cotizaciones-facturas',
+        title: 'Cotizaciones y Facturas',
+        subtitle: 'Logo, RNC y datos que salen en PDF',
+        icon: Receipt,
+        kind: 'embed',
+        embed: 'billing-documents',
+      },
+    ],
+  },
   {
     title: 'Administración',
     items: [
@@ -56,7 +71,6 @@ const SECTIONS = [
       { id: 'doc-crm', title: 'Documentación CRM', subtitle: 'Configura requisitos de perfiles', icon: FileText, kind: 'stub' },
       { id: 'impuestos-nomina', title: 'Impuestos de Nómina', subtitle: 'Configura aportes TSS e INFOTEP', icon: Receipt, kind: 'stub' },
       { id: 'agenda-cabinas', title: 'Agenda y Cabinas', subtitle: 'Horarios, cabinas y permisos por sucursal', icon: CalendarDays, kind: 'stub' },
-      { id: 'datos-facturacion', title: 'Datos de Facturación', subtitle: 'Logo y sello para facturas', icon: Receipt, kind: 'stub' },
     ],
   },
   {
@@ -234,7 +248,7 @@ export default function ConfiguracionPage() {
         </div>
         <div>
           <h2 className="font-heading text-xl font-bold text-slate-900">Configuración</h2>
-          <p className="text-sm text-slate-500">Personaliza tu experiencia en Diedo App</p>
+          <p className="text-sm text-slate-500">Personaliza tu experiencia en Helios 360</p>
         </div>
       </div>
 
@@ -250,7 +264,7 @@ export default function ConfiguracionPage() {
       ))}
 
       <footer className="border-t border-slate-100 pt-6 text-center text-xs text-slate-400">
-        <p className="font-semibold text-slate-500">Diedo App v1.0.0</p>
+        <p className="font-semibold text-slate-500">Helios 360 v1.0.0</p>
         <p className="mt-1">© 2024 Todos los derechos reservados</p>
       </footer>
     </div>

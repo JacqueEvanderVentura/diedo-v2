@@ -1,6 +1,6 @@
 # /docs
 
-Documentación viva de **Diedo / Vilma AI**.
+Documentación viva de **Helios 360**.
 
 ## Fases del frontend
 

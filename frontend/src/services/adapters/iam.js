@@ -142,6 +142,13 @@ export function mapSessionUser(me) {
     effectivePermissionCodes: me.effectivePermissionCodes || [],
     workspacePermissionCodes: me.workspacePermissionCodes || [],
     enabledModules: me.enabledModules || [],
+    isPlatformOperator: Boolean(me.isPlatformOperator),
+    elevation: me.elevation
+      ? {
+          grantedByName: me.elevation.grantedByName,
+          expiresAt: me.elevation.expiresAt,
+        }
+      : null,
     initials: me.displayName
       ?.split(' ')
       .map((p) => p[0])

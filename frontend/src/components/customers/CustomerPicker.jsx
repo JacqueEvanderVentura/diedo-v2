@@ -1,7 +1,9 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { Users, ChevronRight, Search, Check, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCustomersStore } from '@/stores/customersStore'
+import { useSessionStore } from '@/stores/sessionStore'
+import { customersAtBranch, customersVisibleToSession } from '@/lib/customerScope'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -14,9 +16,13 @@ export function CustomerPicker({
   placeholder = 'Seleccionar cliente…',
   testIdPrefix = 'customer-picker',
   className,
+  branchId = null,
+  allowManualEntry = false,
+  manualEntryLabel = 'Cliente manual (escribir datos)',
 }) {
   const customers = useCustomersStore((s) => s.customers)
   const addCustomer = useCustomersStore((s) => s.addCustomer)
+  const user = useSessionStore((s) => s.user)
 
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -42,8 +48,17 @@ export function CustomerPicker({
     return () => document.removeEventListener('mousedown', onClick)
   }, [open])
 
+  const scopedCustomers = useMemo(
+    () => customersVisibleToSession(customers, user),
+    [customers, user]
+  )
+  const branchScopedCustomers = useMemo(
+    () => customersAtBranch(scopedCustomers, branchId),
+    [scopedCustomers, branchId]
+  )
+
   const q = query.trim().toLowerCase()
-  const filtered = customers.filter((c) => {
+  const filtered = branchScopedCustomers.filter((c) => {
     if (c.isDefault) return false
     if (!q) return true
     return c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q))
@@ -64,7 +79,11 @@ export function CustomerPicker({
     if (!name.trim()) return setErr('Ingresa el nombre del cliente.')
     setSaving(true)
     try {
-      const customer = await addCustomer({ name: name.trim(), phone: phone.trim() || null })
+      const customer = await addCustomer({
+        name: name.trim(),
+        phone: phone.trim() || null,
+        branchIds: branchId ? [branchId] : undefined,
+      })
       onChange?.(customer)
       toast.success(`Cliente "${customer.name}" creado y seleccionado`)
       setName('')
@@ -109,6 +128,23 @@ export function CustomerPicker({
         className="p-0"
         data-testid={`${testIdPrefix}-menu`}
       >
+        {allowManualEntry && (
+          <button
+            type="button"
+            onClick={() => {
+              onChange?.(null)
+              setOpen(false)
+              setQuery('')
+            }}
+            data-testid={`${testIdPrefix}-manual`}
+            className="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-3 text-left transition-colors hover:bg-amber-50"
+          >
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+              <Users className="h-4 w-4" />
+            </div>
+            <span className="text-sm font-semibold text-amber-800">{manualEntryLabel}</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={openCreate}

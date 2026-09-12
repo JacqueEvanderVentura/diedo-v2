@@ -68,6 +68,12 @@ import SucursalesPage from '@/modules/configuracion/pages/SucursalesPage'
 
 import ConfiguracionPage from '@/modules/configuracion/pages/ConfiguracionPage'
 
+import BackofficePage from '@/modules/backoffice/pages/BackofficePage'
+import CompaniasPage from '@/modules/backoffice/pages/CompaniasPage'
+import CompaniaDetailPage from '@/modules/backoffice/pages/CompaniaDetailPage'
+import PlanesPage from '@/modules/backoffice/pages/PlanesPage'
+import BackofficeUsuariosPage from '@/modules/backoffice/pages/BackofficeUsuariosPage'
+
 import UsuariosPage from '@/modules/configuracion/pages/UsuariosPage'
 
 import CategoriasPage from '@/modules/configuracion/pages/CategoriasPage'
@@ -117,6 +123,12 @@ export function AppRoutes() {
         <Route element={<PageShell />}>
 
           <Route path="/dashboard" element={<DashboardPage />} />
+
+          <Route path="/backoffice" element={<BackofficePage />} />
+          <Route path="/backoffice/companias" element={<CompaniasPage />} />
+          <Route path="/backoffice/companias/:workspaceId" element={<CompaniaDetailPage />} />
+          <Route path="/backoffice/planes" element={<PlanesPage />} />
+          <Route path="/backoffice/usuarios" element={<BackofficeUsuariosPage />} />
 
           <Route path="/pos/caja" element={<CajaPage />} />
 

@@ -10,6 +10,11 @@ export const DEFAULT_WHATSAPP_TEMPLATES = {
       name: 'Confirmación de Cita',
       body: 'Hola {{nombre_cliente}}, tu cita para el {{fecha}} a las {{hora}} ha sido confirmada.',
     },
+    {
+      id: 'enlace-agendacion',
+      name: 'Enlace de agendación',
+      body: 'Hola {{nombre_cliente}}, agenda tu próxima cita aquí: {{enlace}}',
+    },
   ],
   oportunidades: [
     {
@@ -27,7 +32,7 @@ export const DEFAULT_WHATSAPP_TEMPLATES = {
     {
       id: 'saludo',
       name: 'Saludo de seguimiento',
-      body: 'Hola {{nombre_cliente}}, gracias por confiar en nosotros. ¿En qué podemos ayudarle hoy?',
+      body: 'Hola {{firstName}}, gracias por confiar en nosotros. ¿En qué podemos ayudarle hoy?',
     },
     {
       id: 'promocion',
@@ -38,7 +43,7 @@ export const DEFAULT_WHATSAPP_TEMPLATES = {
 }
 
 export const WHATSAPP_VARIABLES = {
-  agenda: ['nombre_cliente', 'fecha', 'hora', 'servicio'],
+  agenda: ['nombre_cliente', 'fecha', 'hora', 'servicio', 'enlace'],
   oportunidades: ['nombre_cliente', 'empresa', 'ubicacion'],
   clientes: ['nombre_cliente', 'empresa'],
 }

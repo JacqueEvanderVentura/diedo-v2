@@ -10,6 +10,7 @@ import {
   syncAppointmentReceivable,
 } from '@/modules/agenda/lib/receivableSync'
 import { getAppointmentReceivablePolicy } from '@/modules/agenda/lib/receivablePermissions'
+import { normalizeAppointmentStatus } from '@/modules/agenda/lib/completion'
 
 const genId = () => `apt-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const genLogId = () => `log-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
@@ -29,17 +30,16 @@ export const toKey = (date) => {
 export const todayKey = () => toKey(new Date())
 
 export const APPOINTMENT_STATUSES = [
-  { id: 'pendiente', name: 'Pendiente', tone: 'warning' },
-  { id: 'confirmada', name: 'Confirmada', tone: 'brand' },
-  { id: 'completada', name: 'Completada', tone: 'success' },
-  { id: 'asistio', name: 'Asistió', tone: 'success' },
-  { id: 'noshow', name: 'No-show', tone: 'danger' },
-  { id: 'cancelada', name: 'Cancelada', tone: 'neutral' },
-  { id: 'retrasada', name: 'Retrasada', tone: 'warning' },
-  { id: 'reprogramada', name: 'Reprogramada', tone: 'brand' },
+  { id: 'confirmada', name: 'CONFIRMADO', tone: 'brand' },
+  { id: 'cumplida', name: 'CUMPLIDA', tone: 'success' },
+  { id: 'noshow', name: 'NO SHOW', tone: 'danger' },
+  { id: 'cancelada', name: 'CANCELADO', tone: 'neutral' },
 ]
 
-export const statusMeta = (id) => APPOINTMENT_STATUSES.find((status) => status.id === id) || APPOINTMENT_STATUSES[0]
+export const statusMeta = (id) => {
+  const normalized = normalizeAppointmentStatus(id)
+  return APPOINTMENT_STATUSES.find((status) => status.id === normalized) || APPOINTMENT_STATUSES[0]
+}
 
 function auditActor(source) {
   if (source === 'self') return { userId: null, userName: 'Portal de agendación' }
@@ -78,7 +78,11 @@ function normalizeAppointment(data) {
     pendingAmount: Number(data.pendingAmount) || 0,
     firstTime: data.firstTime === true,
     freeTrial: data.freeTrial === true,
-    completed: data.completed === true,
+    completed: normalizeAppointmentStatus(data.status) === 'cumplida' || data.completed === true,
+    completedAt: data.completedAt || null,
+    completionPunctuality: data.completionPunctuality || null,
+    delayResponsibility: data.delayResponsibility || null,
+    completionNote: data.completionNote || null,
     recurrence: data.recurrence || 'none',
     repeatCount: Number(data.repeatCount) || 1,
     reminderSent: data.reminderSent !== false,
@@ -91,7 +95,7 @@ function normalizeAppointment(data) {
     serviceId: data.serviceId || null,
     serviceName: data.serviceName || '',
     price: Number(data.price) || 0,
-    status: data.status || 'pendiente',
+    status: normalizeAppointmentStatus(data.status || 'confirmada'),
   }
 }
 
@@ -329,12 +333,27 @@ export const useAgendaStore = create((set, get) => ({
     }
   },
 
+  completeAppointment: async (id, completion) => {
+    const current = get().appointments.find((appointment) => appointment.id === id)
+    if (!current) throw new Error('Cita no encontrada.')
+    return get().updateAppointment(id, {
+      ...current,
+      ...completion,
+      status: 'cumplida',
+      completed: true,
+    })
+  },
+
   setStatus: async (id, status) => {
     const current = get().appointments.find((appointment) => appointment.id === id)
     if (!current) throw new Error('Cita no encontrada.')
-    if (current.status === status) return current
+    const nextStatus = normalizeAppointmentStatus(status)
+    if (nextStatus === 'cumplida') {
+      throw new Error('Usa el flujo de cumplimiento para marcar la cita como cumplida.')
+    }
+    if (normalizeAppointmentStatus(current.status) === nextStatus) return current
     if (useSessionStore.getState().status === 'demo') {
-      const updated = updateDemoAppointment(current, { status })
+      const updated = updateDemoAppointment(current, { status: nextStatus, completed: false })
       set((state) => ({ appointments: replaceAppointment(state.appointments, updated) }))
       syncAppointmentReceivable(updated)
       return updated
@@ -343,7 +362,7 @@ export const useAgendaStore = create((set, get) => ({
       const updated = await appointmentsGateway.mutate(
         'updateAppointmentStatus',
         id,
-        status,
+        nextStatus,
         current.version
       )
       set((state) => ({ appointments: replaceAppointment(state.appointments, updated) }))

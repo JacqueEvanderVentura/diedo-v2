@@ -41,7 +41,7 @@ export async function copyImageBlob(blob) {
   await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })])
 }
 
-function ImageLightbox({ open, src, alt, onClose }) {
+export function ImageLightbox({ open, src, alt, onClose }) {
   const titleId = useId()
 
   useEffect(() => {

@@ -22,6 +22,7 @@ export const crmApi = {
   customers: (params) => apiClient.get(`${CRM_BASE}/customers`, params),
   quotes: (params) => apiClient.get(`${CRM_BASE}/quotes`, params),
   sales: (params) => apiClient.get(`${CRM_BASE}/sales`, params),
+  getSale: (saleId) => apiClient.get(`${CRM_BASE}/sales/${saleId}`),
   scoring: () => apiClient.get(`${CRM_BASE}/settings/scoring`),
   discoveryCapabilities: () => apiClient.get(`${CRM_BASE}/discovery/capabilities`),
   searchDiscovery: (payload) => apiClient.post(`${CRM_BASE}/discovery/search`, payload),
@@ -86,6 +87,11 @@ export const crmApi = {
   cancelQuote: (quoteId, version, reason = 'Cancelada desde CRM') => apiClient.post(
     `${CRM_BASE}/quotes/${quoteId}/cancel`,
     { version, reason }
+  ),
+  invoiceQuote: (quoteId, payload, key) => apiClient.post(
+    `${CRM_BASE}/quotes/${quoteId}/invoice`,
+    payload,
+    idempotencyOptions(key)
   ),
 }
 

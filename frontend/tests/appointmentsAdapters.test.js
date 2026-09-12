@@ -12,11 +12,14 @@ import { getAppointmentReceivablePolicy } from '@/modules/agenda/lib/receivableP
 
 describe('adaptadores de Agenda', () => {
   it('traduce todos los estados entre el contrato y la UI existente', () => {
-    expect(appointmentStatusFromApi('pending')).toBe('pendiente')
+    expect(appointmentStatusFromApi('confirmed')).toBe('confirmada')
+    expect(appointmentStatusFromApi('fulfilled')).toBe('cumplida')
+    expect(appointmentStatusFromApi('completed')).toBe('cumplida')
     expect(appointmentStatusFromApi('no_show')).toBe('noshow')
     expect(appointmentStatusFromApi('cancelled')).toBe('cancelada')
     expect(appointmentStatusToApi('confirmada')).toBe('confirmed')
-    expect(appointmentStatusToApi('reprogramada')).toBe('rescheduled')
+    expect(appointmentStatusToApi('cumplida')).toBe('fulfilled')
+    expect(appointmentStatusToApi('reprogramada')).toBe('confirmed')
   })
 
   it('mapea referencias, snapshots monetarios y resourceId al modelo visual', () => {
@@ -107,7 +110,7 @@ describe('adaptadores de Agenda', () => {
       customerName: 'Juan',
       serviceName: '1 sesión axilas',
       price: 900,
-      status: 'pendiente',
+      status: 'confirmada',
       recurrence: 'none',
     })).toMatchObject({
       customerId: null,

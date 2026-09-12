@@ -445,6 +445,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "pos.receivables.collect",
         "pos.receivables.manage",
         "pos.void",
+        "sales.invoice.void",
         "inventory.read",
         "inventory.manage",
         "inventory.move",
@@ -490,6 +491,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "pos.receivables.read",
         "pos.receivables.collect",
         "pos.void",
+        "sales.invoice.void",
         "inventory.read",
         "inventory.move",
         "purchasing.read",
@@ -652,7 +654,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
   },
   "configuration": {
     "workspace": {
-      "businessName": "Diedo Demo",
+      "businessName": "Helios 360 Demo",
       "taxDefaultRate": 18,
       "locale": "es-DO",
       "currency": "DOP"
@@ -1924,6 +1926,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
           "NORTH",
           "EAST"
         ],
+        "acquisitionSource": "whatsapp",
         "status": "active",
         "points": 340
       },
@@ -1937,6 +1940,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "branchCodes": [
           "DOWNTOWN"
         ],
+        "acquisitionSource": "referral",
         "status": "active",
         "points": 120
       },
@@ -1950,6 +1954,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "branchCodes": [
           "NORTH"
         ],
+        "acquisitionSource": "instagram",
         "status": "active",
         "points": 890
       },
@@ -1965,6 +1970,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
           "DOWNTOWN",
           "EAST"
         ],
+        "acquisitionSource": "pos_walk_in",
         "status": "active",
         "points": 55
       },
@@ -1978,6 +1984,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "branchCodes": [
           "EAST"
         ],
+        "acquisitionSource": "otros",
         "status": "active",
         "points": 410
       }
@@ -2032,6 +2039,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "website": "https://studio-jr.example.com",
         "location": "Santo Domingo",
         "source": "referral",
+        "acquisitionSource": "referral",
         "rawSnippet": "Salón de belleza con agenda, citas, clientes y punto de venta.",
         "status": "convertido",
         "scoreManual": 91,

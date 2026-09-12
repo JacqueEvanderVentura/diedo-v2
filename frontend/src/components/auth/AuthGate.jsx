@@ -46,6 +46,14 @@ export function AuthGate() {
   }
 
   if (status === 'online' && user) {
+    if (location.pathname.startsWith('/backoffice')) {
+      if (!user.isPlatformOperator) {
+        return <Navigate to="/dashboard" replace />
+      }
+    } else if (user.isPlatformOperator) {
+      return <Navigate to="/backoffice" replace />
+    }
+
     const requirement = routeRequirement(location.pathname)
     if (requirement?.module && !isModuleAvailable(requirement.module, user.enabledModules)) {
       return <Navigate to="/dashboard" replace />

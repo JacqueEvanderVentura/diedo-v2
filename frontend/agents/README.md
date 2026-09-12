@@ -1,6 +1,6 @@
 # /agents
 
-Carpeta de contexto para agentes de IA que colaboran en el proyecto **Diedo / Vilma AI**.
+Carpeta de contexto para agentes de IA que colaboran en el proyecto **Helios 360**.
 
 ## Propósito
 Mantener instrucciones, prompts y decisiones que los agentes deben conocer antes de
@@ -22,6 +22,14 @@ tocar el código. Siempre presente en el repo (junto con `/docs`).
 - Filtros de categoría = **bubbles horizontales** scroll-x (nunca `<select>`).
 - Empty states + skeletons + validaciones inline (nunca `alert()`).
 - Todo elemento interactivo lleva `data-testid` en kebab-case.
+
+### Resolver bloqueos en el flujo (obligatorio)
+Cuando falte configuración, permiso, dato maestro o sincronización con la API:
+- **No** dejar al usuario solo con un toast o un error genérico al confirmar.
+- **Sí** mostrar en el mismo modal/panel: qué falta, por qué bloquea el paso, y un **CTA inmediato** (enlace a Configuración, botón de sincronizar, elevación de permiso, crear/vincular cliente, etc.).
+- **No** mandar a otro módulo “a ciegas”: el enlace debe abrir el ajuste concreto (ej. `/configuracion?open=metodos-pago`) y el usuario debe poder volver al flujo sin perder contexto.
+- Cobros y facturación usan los **mismos métodos de pago que Caja/POS** (`PaymentMethodPicker`, `PaymentEvidenceFields`: referencia + comprobante en transferencia/link/tarjeta), no listas ad hoc ni modos duplicados.
+- Componente reutilizable para avisos: `src/components/ui/InlineSetupCard.jsx`.
 
 ## Cómo agregar un módulo nuevo
 1. Crear `src/modules/<modulo>/pages` y `.../components`.

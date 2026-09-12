@@ -1,6 +1,7 @@
 import { Search, RefreshCw, Filter, Building2 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
+import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
 import { Button } from '@/components/ui/Button'
 import { useConfigStore } from '@/stores/configStore'
 import { buildBranchFilterOptions } from '@/lib/branches'
@@ -14,10 +15,14 @@ export function DataFilterBar({
   search = '',
   onSearchChange,
   searchPlaceholder = 'Buscar…',
+  searchListId,
   showSearch = true,
   branchId,
+  branchIds,
   onBranchChange,
+  onBranchIdsChange,
   showBranch = false,
+  multiBranch = true,
   branchAllValue = 'all',
   filters = [],
   extra,
@@ -34,17 +39,26 @@ export function DataFilterBar({
       data-testid={testId}
     >
       <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
-        {showBranch && onBranchChange && (
-          <div className="min-w-[200px] flex-1">
+        {showBranch && (onBranchIdsChange || onBranchChange) && (
+          <div className="min-w-[220px] flex-1 sm:max-w-sm">
             <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase text-slate-400">
               <Building2 className="h-3.5 w-3.5" /> Sucursal
             </label>
-            <Select
-              value={branchId ?? branchAllValue}
-              onChange={onBranchChange}
-              options={branchOptions}
-              data-testid={`${testId}-branch`}
-            />
+            {multiBranch && onBranchIdsChange ? (
+              <BranchMultiSelect
+                branches={branches}
+                branchIds={branchIds || []}
+                onChange={onBranchIdsChange}
+                testId={`${testId}-branch`}
+              />
+            ) : (
+              <Select
+                value={branchId ?? branchAllValue}
+                onChange={onBranchChange}
+                options={branchOptions}
+                data-testid={`${testId}-branch`}
+              />
+            )}
           </div>
         )}
         {showSearch && onSearchChange && (
@@ -59,13 +73,14 @@ export function DataFilterBar({
                 placeholder={searchPlaceholder}
                 value={search}
                 onChange={(e) => onSearchChange(e.target.value)}
+                list={searchListId}
                 data-testid={`${testId}-search`}
               />
             </div>
           </div>
         )}
         {filters.map((f) => (
-          <div key={f.id} className={cn('min-w-[160px] flex-1', f.className)}>
+          <div key={f.id} className={cn('min-w-[12.5rem] flex-1 sm:max-w-xs', f.className)}>
             {f.label && (
               <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase text-slate-400">
                 {f.icon || <Filter className="h-3.5 w-3.5" />}

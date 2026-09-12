@@ -1,9 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Pencil, ArchiveX, Search, Boxes } from 'lucide-react'
+import { Plus, Pencil, ArchiveX, Search, Boxes, ZoomIn, Eye } from 'lucide-react'
+import { ImageLightbox } from '@/modules/pos/components/ProofImagePreview'
 import { useActivosStore, ACTIVO_STATUSES, statusMeta, catName } from '@/stores/activosStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
+import { useIncidenciasStore } from '@/stores/incidenciasStore'
+import { useFinanzasStore } from '@/stores/finanzasStore'
+import { ActivoHistoryModal } from '@/modules/activos/components/ActivoHistoryModal'
 import { formatDOP } from '@/lib/format'
 import { buildBranchFilterOptions, branchName } from '@/lib/branches'
 import { Select } from '@/components/ui/Select'
@@ -32,6 +36,10 @@ export function ActivosTab() {
   const loadError = useActivosStore((s) => s.error)
   const branches = useConfigStore((s) => s.branches)
   const isOnline = useSessionStore((s) => s.isOnline())
+  const incidencias = useIncidenciasStore((s) => s.incidencias)
+  const hydrateIncidents = useIncidenciasStore((s) => s.hydrateFromApi)
+  const expenses = useFinanzasStore((s) => s.expenses)
+  const hydrateFinance = useFinanzasStore((s) => s.hydrateFromApi)
 
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('all')
@@ -40,7 +48,16 @@ export function ActivosTab() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [retiringId, setRetiringId] = useState(null)
+  const [lightbox, setLightbox] = useState(null)
+  const [historyActivo, setHistoryActivo] = useState(null)
   const categoryFilters = [{ id: 'all', name: 'Todos' }, ...categories]
+
+  useEffect(() => {
+    if (!isOnline) return undefined
+    hydrateIncidents().catch(() => null)
+    hydrateFinance().catch(() => null)
+    return undefined
+  }, [isOnline, hydrateIncidents, hydrateFinance])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -86,6 +103,20 @@ export function ActivosTab() {
   }
 
   const branchOptions = buildBranchFilterOptions(branches)
+
+  const previewFor = (activo) => {
+    const attachment = activo.attachments?.find((item) => item.previewObjectUrl || item.dataUrl)
+    return attachment?.previewObjectUrl || attachment?.dataUrl || activo.images?.[0] || null
+  }
+
+  const historyIncidencias = historyActivo
+    ? incidencias.filter((incident) => incident.activoId === historyActivo.id)
+    : []
+  const historyMantenimientos = historyActivo
+    ? expenses.filter((expense) => expense.activoId === historyActivo.id && expense.category === 'mantenimiento')
+    : []
+  const maintenanceCountFor = (activoId) =>
+    expenses.filter((expense) => expense.activoId === activoId && expense.category === 'mantenimiento').length
 
   return (
     <>
@@ -181,12 +212,34 @@ export function ActivosTab() {
                 <tbody className="divide-y divide-slate-50">
                   {displayRows.map((a) => {
                     const st = statusMeta(a.status)
+                    const preview = previewFor(a)
                     return (
                       <tr key={a.id} className="transition-colors hover:bg-slate-50/60" data-testid={`activos-row-${a.id}`}>
                         <td className="px-5 py-4">
-                          <div className="min-w-0">
-                            <p className="truncate font-semibold text-slate-800">{a.name}</p>
-                            <p className="text-xs text-slate-400">Código: {a.code || 'N/A'}</p>
+                          <div className="flex min-w-0 items-center gap-3">
+                            {preview ? (
+                              <button
+                                type="button"
+                                onClick={() => setLightbox({ src: preview, name: a.name })}
+                                className="group relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-slate-100 bg-slate-50"
+                                data-testid={`activos-thumb-${a.id}`}
+                              >
+                                <img src={preview} alt={a.name} className="h-full w-full object-cover" />
+                                <span className="absolute inset-0 flex items-center justify-center bg-slate-900/0 transition-colors group-hover:bg-slate-900/35">
+                                  <ZoomIn className="h-4 w-4 text-white opacity-0 transition-opacity group-hover:opacity-100" />
+                                </span>
+                              </button>
+                            ) : (
+                              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400">
+                                <Boxes className="h-4 w-4" />
+                              </span>
+                            )}
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold text-slate-800">{a.name}</p>
+                              <p className="text-xs text-slate-400">
+                                Código: {a.code || 'N/A'} · {maintenanceCountFor(a.id)} mant.
+                              </p>
+                            </div>
                           </div>
                         </td>
                         <td className="whitespace-nowrap px-5 py-4 text-slate-500">{catName(a.category, categories)}</td>
@@ -197,6 +250,15 @@ export function ActivosTab() {
                         <td className="whitespace-nowrap px-5 py-4 text-right font-heading font-bold text-blue-600">{formatDOP(a.value)}</td>
                         <td className="px-5 py-4">
                           <div className="flex items-center justify-end gap-1">
+                            <button
+                              aria-label={`Ver detalle de ${a.name}`}
+                              title="Ver mantenimientos"
+                              onClick={() => setHistoryActivo(a)}
+                              data-testid={`activos-history-${a.id}`}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
                             <button aria-label={`Editar ${a.name}`} onClick={() => openEdit(a)} data-testid={`activos-edit-${a.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600">
                               <Pencil className="h-4 w-4" />
                             </button>
@@ -228,10 +290,19 @@ export function ActivosTab() {
                   <MobileCard key={a.id} testId={`activos-card-${a.id}`}>
                     <MobileCardHeader
                       title={a.name}
-                      subtitle={`Código: ${a.code || 'N/A'}`}
+                      subtitle={`Código: ${a.code || 'N/A'} · ${maintenanceCountFor(a.id)} mant.`}
                       badge={<Badge tone={st.tone}>{st.name}</Badge>}
                       actions={
                         <div className="flex items-center gap-1">
+                          <button
+                            aria-label={`Ver detalle de ${a.name}`}
+                            title="Ver mantenimientos"
+                            onClick={() => setHistoryActivo(a)}
+                            data-testid={`activos-history-${a.id}`}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
                           <button aria-label={`Editar ${a.name}`} onClick={() => openEdit(a)} data-testid={`activos-edit-${a.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600">
                             <Pencil className="h-4 w-4" />
                           </button>
@@ -266,6 +337,19 @@ export function ActivosTab() {
       </Card>
 
       <ActivoFormModal open={modalOpen} onClose={() => setModalOpen(false)} activo={editing} />
+      <ActivoHistoryModal
+        open={Boolean(historyActivo)}
+        onClose={() => setHistoryActivo(null)}
+        activo={historyActivo}
+        incidencias={historyIncidencias}
+        mantenimientos={historyMantenimientos}
+      />
+      <ImageLightbox
+        open={Boolean(lightbox)}
+        src={lightbox?.src}
+        alt={lightbox?.name}
+        onClose={() => setLightbox(null)}
+      />
     </>
   )
 }

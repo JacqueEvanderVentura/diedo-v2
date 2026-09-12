@@ -55,6 +55,30 @@ export function normalizeTime(value) {
   return str
 }
 
+export function validateWorkSchedule(input) {
+  const errors = []
+  if (!input || typeof input !== 'object') return errors
+
+  for (const day of WEEKDAY_KEYS) {
+    const blocks = Array.isArray(input[day]) ? input[day] : []
+    blocks.forEach((block) => {
+      const start = normalizeTime(block?.start)
+      const end = normalizeTime(block?.end)
+      if (!start || !end) return
+      const startMin = timeToMinutes(start)
+      const endMin = timeToMinutes(end)
+      const label = WEEKDAY_LABELS[day]
+      if (startMin === endMin) {
+        errors.push(`${label}: la entrada y la salida no pueden ser la misma hora (${start}).`)
+      } else if (endMin <= startMin) {
+        errors.push(`${label}: la entrada no puede ser posterior a la salida (${start} – ${end}).`)
+      }
+    })
+  }
+
+  return errors
+}
+
 export function normalizeWorkSchedule(input) {
   const schedule = emptyWorkSchedule()
   if (!input || typeof input !== 'object') return schedule

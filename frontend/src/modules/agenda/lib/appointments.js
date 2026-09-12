@@ -1,6 +1,6 @@
 import { todayKey } from '@/stores/agendaStore'
 
-const CLOSED_STATUSES = new Set(['cancelada', 'completada', 'noshow'])
+const CLOSED_STATUSES = new Set(['cancelada', 'cumplida', 'noshow'])
 
 export function isProximoAppointment(appointment) {
   if (!appointment) return false

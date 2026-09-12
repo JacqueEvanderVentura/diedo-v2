@@ -31,6 +31,11 @@ export function usePaginatedReport(fetcher, initialFilters = {}, initialPageSize
     setFilters((f) => ({ ...f, [key]: value }))
   }
 
+  const patchFilters = (patch) => {
+    setPage(1)
+    setFilters((current) => ({ ...current, ...patch }))
+  }
+
   const resetFilters = () => {
     setPage(1)
     setFilters(initialFilters)
@@ -63,6 +68,7 @@ export function usePaginatedReport(fetcher, initialFilters = {}, initialPageSize
       setPageSize(size)
     },
     setFilter,
+    patchFilters,
     setFilters,
     resetFilters,
     reload: load,

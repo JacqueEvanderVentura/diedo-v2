@@ -12,9 +12,19 @@ export { USER_ROLES }
 
 export const CATEGORY_TYPES = [
   { id: 'producto', name: 'Producto' },
-  { id: 'gasto', name: 'Gasto' },
+  { id: 'servicio', name: 'Servicio' },
+  { id: 'insumo', name: 'Insumo' },
   { id: 'ingreso', name: 'Ingreso' },
+  { id: 'gasto', name: 'Gasto' },
 ]
+
+export const CATALOG_CATEGORY_TYPES = CATEGORY_TYPES.filter((type) =>
+  ['producto', 'servicio', 'insumo'].includes(type.id)
+)
+
+export const FINANCE_CATEGORY_TYPES = CATEGORY_TYPES.filter((type) =>
+  ['ingreso', 'gasto'].includes(type.id)
+)
 
 export const CATEGORY_COLORS = [
   { id: 'indigo', bg: '#e0e7ff', fg: '#4338ca' },
@@ -73,14 +83,31 @@ const SEED_BRANCHES = [
   },
 ]
 
-const SEED_CATEGORIES = CATEGORIES.filter((c) => c.id !== 'all').map((c, i) => ({
-  id: c.id,
-  name: c.name,
-  description: '',
-  type: 'producto',
-  color: CATEGORY_COLORS[i % CATEGORY_COLORS.length].id,
-  active: true,
-}))
+const CATALOG_SEED_TYPES = {
+  'depto-laser': 'servicio',
+  laser: 'servicio',
+  otros: 'servicio',
+  ventas: 'servicio',
+  productos: 'producto',
+  insumos: 'insumo',
+}
+
+const SEED_CATEGORIES = [
+  ...CATEGORIES.filter((c) => c.id !== 'all').map((c, i) => ({
+    id: c.id,
+    name: c.name,
+    description: '',
+    type: CATALOG_SEED_TYPES[c.id] || 'producto',
+    color: CATEGORY_COLORS[i % CATEGORY_COLORS.length].id,
+    active: true,
+  })),
+  { id: 'fin-ing-servicios', name: 'Servicios', description: 'Ingresos por servicios', type: 'ingreso', color: 'emerald', active: true },
+  { id: 'fin-ing-efectivo', name: 'Efectivo', description: 'Ingresos en efectivo', type: 'ingreso', color: 'sky', active: true },
+  { id: 'fin-ing-transferencia', name: 'Transferencias Bancarias', description: 'Ingresos por transferencia', type: 'ingreso', color: 'teal', active: true },
+  { id: 'fin-gas-alquiler', name: 'Alquiler', description: 'Gasto fijo de local', type: 'gasto', color: 'rose', active: true },
+  { id: 'fin-gas-insumos', name: 'Insumos', description: 'Materiales y consumibles', type: 'gasto', color: 'amber', active: true },
+  { id: 'fin-gas-marketing', name: 'Marketing', description: 'Publicidad y promociones', type: 'gasto', color: 'violet', active: true },
+]
 
 const SEED_METHODS = PAYMENT_METHODS.map((m) => ({ ...m, enabled: true, core: true }))
 
@@ -90,7 +117,22 @@ const SEED_USERS = [
   { id: 'u3', name: 'Sol Demo', email: 'sol.cashier.demo@example.test', role: 'Cajero', active: true, branchIds: ['charm-dn'], lastAccess: null },
 ]
 
-const SEED_SETTINGS = { businessName: 'Diedo App', taxDefault: 18, region: 'República Dominicana', currency: 'RD$' }
+const SEED_SETTINGS = {
+  businessName: 'Helios 360',
+  taxDefault: 18,
+  region: 'República Dominicana',
+  currency: 'RD$',
+  billingDocuments: {
+    tradeName: 'Helios 360',
+    legalName: '',
+    rnc: '',
+    address: '',
+    phone: '',
+    email: '',
+    logoDataUrl: '',
+    footerNote: '',
+  },
+}
 
 function normalizeBranch(data) {
   return {
@@ -197,6 +239,13 @@ export const useConfigStore = create(
 
       // ---- settings ----
       updateSettings: (data) => set((s) => ({ settings: { ...s.settings, ...data } })),
+      updateBillingDocuments: (data) =>
+        set((s) => ({
+          settings: {
+            ...s.settings,
+            billingDocuments: { ...s.settings.billingDocuments, ...data },
+          },
+        })),
 
       // ---- whatsapp templates ----
       updateWhatsappTemplates: (context, templates) =>
@@ -210,6 +259,13 @@ export const useConfigStore = create(
             [context]: (s.whatsappTemplates[context] || []).map((t) =>
               t.id === templateId ? { ...t, body } : t
             ),
+          },
+        })),
+      addWhatsappTemplate: (context, template) =>
+        set((s) => ({
+          whatsappTemplates: {
+            ...s.whatsappTemplates,
+            [context]: [...(s.whatsappTemplates[context] || []), template],
           },
         })),
 

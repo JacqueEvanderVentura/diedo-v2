@@ -26,14 +26,19 @@ export function Modal({ open, onClose, title, children, testId, wide = false, xl
   return createPortal(
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[80] flex items-end justify-center overflow-y-auto p-4 sm:items-center">
           <motion.div
             initial={modalBackdropTransition.initial}
             animate={modalBackdropTransition.animate}
             exit={modalBackdropTransition.exit}
             transition={modalBackdropTransition.transition}
-            onClick={onClose}
             className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) {
+                e.preventDefault()
+                onClose?.()
+              }
+            }}
           />
           <motion.div
             initial={modalPanelTransition.initial}
@@ -44,12 +49,14 @@ export function Modal({ open, onClose, title, children, testId, wide = false, xl
             aria-modal="true"
             aria-labelledby={titleId}
             data-testid={testId}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
             className={cn(
-              'relative z-10 w-full rounded-2xl border border-slate-100 bg-white shadow-xl',
+              'relative z-10 flex max-h-[min(90dvh,calc(100vh-2rem))] w-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl',
               xlarge ? 'max-w-4xl' : wide ? 'max-w-2xl' : 'max-w-md'
             )}
           >
-            <div className="flex items-center justify-between border-b border-slate-100 p-5">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-100 p-5">
               <div id={titleId} className="min-w-0 text-lg font-semibold tracking-tight text-slate-900">{title}</div>
               <button
                 type="button"
@@ -61,7 +68,14 @@ export function Modal({ open, onClose, title, children, testId, wide = false, xl
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className={cn('p-5', (wide || xlarge) && 'max-h-[calc(90vh-4.5rem)] overflow-y-auto scrollbar-thin', bodyClassName)}>{children}</div>
+            <div
+              className={cn(
+                'min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 scrollbar-thin',
+                bodyClassName,
+              )}
+            >
+              {children}
+            </div>
           </motion.div>
         </div>
       )}

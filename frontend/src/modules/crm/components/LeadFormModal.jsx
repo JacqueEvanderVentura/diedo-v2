@@ -4,9 +4,11 @@ import { Save } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { Select } from '@/components/ui/Select'
+import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
 import { useConfigStore } from '@/stores/configStore'
 import { useCrmStore } from '@/stores/crmStore'
+import { ACQUISITION_SOURCES, ACQUISITION_SOURCE_LABELS } from '@/data/crm'
+import { cn } from '@/lib/utils'
 
 const emptyForm = (branchId = '') => ({
   branchId,
@@ -16,6 +18,7 @@ const emptyForm = (branchId = '') => ({
   phone: '',
   website: '',
   location: '',
+  acquisitionSource: 'whatsapp',
 })
 
 export function LeadFormModal({ open, onClose }) {
@@ -49,6 +52,7 @@ export function LeadFormModal({ open, onClose }) {
         website: form.website.trim() || null,
         location: form.location.trim() || null,
         source: 'manual',
+        acquisitionSource: form.acquisitionSource || null,
         status: 'nuevo',
       })
       toast.success('Lead creado')
@@ -60,16 +64,20 @@ export function LeadFormModal({ open, onClose }) {
     }
   }
 
-  const branchOptions = branches
-    .filter((branch) => branch.active)
-    .map((branch) => ({ value: branch.id, label: branch.name }))
-
   return (
     <Modal open={open} onClose={onClose} title="Nuevo lead" testId="lead-form-modal" wide>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Sucursal</label>
-          <Select value={form.branchId} onChange={(value) => set('branchId', value)} options={branchOptions} />
+          <BranchMultiSelect
+            branches={branches}
+            branchIds={form.branchId ? [form.branchId] : []}
+            onChange={(ids) => set('branchId', ids[0] || '')}
+            selectionMode="single"
+            showAllOption={false}
+            className="w-full"
+            testId="lead-branch"
+          />
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Contacto</label>
@@ -94,6 +102,26 @@ export function LeadFormModal({ open, onClose }) {
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Ubicación</label>
           <Input value={form.location} onChange={(event) => set('location', event.target.value)} placeholder="Ciudad o sector" />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="mb-1.5 block text-sm font-medium text-slate-600">Origen de captación</label>
+          <div className="flex flex-wrap gap-2" data-testid="lead-acquisition">
+            {ACQUISITION_SOURCES.map((source) => (
+              <button
+                key={source}
+                type="button"
+                onClick={() => set('acquisitionSource', source)}
+                className={cn(
+                  'rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
+                  form.acquisitionSource === source
+                    ? 'border-blue-600 bg-blue-50 text-blue-700'
+                    : 'border-slate-200 text-slate-500 hover:border-blue-200'
+                )}
+              >
+                {ACQUISITION_SOURCE_LABELS[source]}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       <div className="mt-6 flex justify-end gap-2">

@@ -55,14 +55,22 @@ export function mergeApiProduct(apiProduct, localProduct, categoryIdToLocal) {
   }
 }
 
+export function productBranchIds(product) {
+  if (!product) return []
+  if (Array.isArray(product.branchIds) && product.branchIds.length) return product.branchIds
+  if (product.branchId) return [product.branchId]
+  return []
+}
+
+export function isProductAvailableAtBranch(product, branchId) {
+  if (!product || !branchId) return false
+  if (product.status && product.status !== 'active') return false
+  return productBranchIds(product).includes(branchId)
+}
+
 export function projectProductToBranch(product, branchId) {
   if (!branchId || branchId === 'all') return product
-  const branchIds = Array.isArray(product.branchIds)
-    ? product.branchIds
-    : product.branchId
-      ? [product.branchId]
-      : []
-  if (!branchIds.includes(branchId)) return null
+  if (!isProductAvailableAtBranch(product, branchId)) return null
 
   if (product.type === 'service') return { ...product, branchId, stock: null }
   if (!Array.isArray(product.stockLocations)) return { ...product, branchId }

@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Calendar, Target, Users, MessageCircle, Save } from 'lucide-react'
 import { useConfigStore } from '@/stores/configStore'
-import { WHATSAPP_VARIABLES } from '@/data/whatsappTemplates'
+import { WHATSAPP_VARIABLE_CHIPS, insertTemplateToken } from '@/lib/whatsappVariables'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { cn } from '@/lib/utils'
@@ -20,19 +20,29 @@ export default function PlantillasWaPanel({ embedded = false }) {
 
   const [tab, setTab] = useState('agenda')
   const [draft, setDraft] = useState(() => structuredClone(stored))
+  const caretByTemplate = useRef({})
 
   useEffect(() => {
     setDraft(structuredClone(stored))
   }, [stored])
 
   const templates = draft[tab] || []
-  const variables = WHATSAPP_VARIABLES[tab] || []
+  const variables = WHATSAPP_VARIABLE_CHIPS[tab] || []
 
   const setBody = (id, body) => {
     setDraft((d) => ({
       ...d,
       [tab]: (d[tab] || []).map((t) => (t.id === id ? { ...t, body } : t)),
     }))
+  }
+
+  const insertVariable = (templateId, key) => {
+    const template = templates.find((item) => item.id === templateId)
+    if (!template) return
+    const caret = caretByTemplate.current[templateId] ?? template.body.length
+    const next = insertTemplateToken(template.body, key, caret)
+    caretByTemplate.current[templateId] = next.caret
+    setBody(templateId, next.body)
   }
 
   const save = () => {
@@ -78,12 +88,12 @@ export default function PlantillasWaPanel({ embedded = false }) {
         <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
           <h4 className="mb-2 text-sm font-semibold text-slate-700">Variables disponibles</h4>
           <div className="flex flex-wrap gap-2">
-            {variables.map((v) => (
+            {variables.map((variable) => (
               <span
-                key={v}
+                key={variable.key}
                 className="rounded border border-slate-200 bg-white px-2 py-1 font-mono text-xs text-blue-600"
               >
-                {`{{${v}}}`}
+                {`{{${variable.key}}}`}
               </span>
             ))}
           </div>
@@ -93,9 +103,31 @@ export default function PlantillasWaPanel({ embedded = false }) {
           {templates.map((tpl) => (
             <div key={tpl.id}>
               <label className="text-base font-medium text-slate-800">{tpl.name}</label>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {variables.map((variable) => (
+                  <button
+                    key={`${tpl.id}-${variable.key}`}
+                    type="button"
+                    onClick={() => insertVariable(tpl.id, variable.key)}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 hover:border-blue-200 hover:text-blue-700"
+                    data-testid={`plantilla-chip-${tab}-${variable.key}`}
+                  >
+                    {variable.label}
+                  </button>
+                ))}
+              </div>
               <textarea
                 value={tpl.body}
                 onChange={(e) => setBody(tpl.id, e.target.value)}
+                onSelect={(e) => {
+                  caretByTemplate.current[tpl.id] = e.target.selectionStart
+                }}
+                onKeyUp={(e) => {
+                  caretByTemplate.current[tpl.id] = e.target.selectionStart
+                }}
+                onClick={(e) => {
+                  caretByTemplate.current[tpl.id] = e.target.selectionStart
+                }}
                 rows={4}
                 placeholder="Escribe el mensaje aquí..."
                 className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"

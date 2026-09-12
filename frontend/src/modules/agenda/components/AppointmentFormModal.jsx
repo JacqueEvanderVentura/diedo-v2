@@ -5,6 +5,8 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
+import { DatePicker } from '@/components/ui/DatePicker'
+import { TimePicker } from '@/components/ui/TimePicker'
 import { APPOINTMENT_STATUSES, useAgendaStore, todayKey } from '@/stores/agendaStore'
 import { useRrhhStore } from '@/stores/rrhhStore'
 import { useCustomersStore } from '@/stores/customersStore'
@@ -19,9 +21,9 @@ import {
   REPEAT_COUNTS,
 } from '@/data/agenda'
 import { useBranchStaff } from '@/modules/rrhh/lib/staff'
-import { getAvailableSlots, fitsInSchedule } from '../lib/selfBooking'
+import { getAvailableSlots, fitsInSchedule, isSlotAvailable } from '../lib/selfBooking'
+import { useAvailabilityAppointments } from '../hooks/useAvailabilityAppointments'
 import { formatDOP } from '@/lib/format'
-import { cn } from '@/lib/utils'
 import { isAppointmentConflict } from '@/services/adapters/appointments'
 import { useSessionStore } from '@/stores/sessionStore'
 import { servicesForBranch } from '../lib/serviceAvailability'
@@ -29,6 +31,7 @@ import {
   APPOINTMENT_RECEIVABLE_PERMISSION_NOTE,
   getAppointmentReceivablePolicy,
 } from '../lib/receivablePermissions'
+import { buildCompletionPayload } from '../lib/completion'
 
 const EMPTY_SLOT = Object.freeze({})
 
@@ -66,7 +69,6 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
   const branches = useConfigStore((s) => s.branches)
   const employees = useRrhhStore((s) => s.employees)
   const vacationRequests = useRrhhStore((s) => s.vacationRequests)
-  const appointments = useAgendaStore((s) => s.appointments)
   const canManage = useSessionStore((s) => s.hasPermission('appointment.manage'))
   const canManageReceivables = useSessionStore((s) => s.hasPermission('pos.receivables.manage'))
   const sessionStatus = useSessionStore((s) => s.status)
@@ -75,6 +77,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
   const [form, setForm] = useState(empty())
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
+  const appointments = useAvailabilityAppointments(form.date, form.employeeId)
   const editing = !!appointment
   const servicesReady = sessionStatus === 'demo' || catalogHydrated
   const services = useMemo(
@@ -106,7 +109,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
   })
   const statusOptions = editing
     ? APPOINTMENT_STATUSES
-    : APPOINTMENT_STATUSES.filter((status) => ['pendiente', 'confirmada'].includes(status.id))
+    : APPOINTMENT_STATUSES.filter((status) => status.id === 'confirmada')
   const price = selectedService?.price || form.price || 0
   const branchStaff = useBranchStaff(form.branchId)
   const branchResources = useMemo(
@@ -241,7 +244,10 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     if (form.employeeId && !availableSlots.includes(form.time)) {
       return setErr('Ese horario ya no está disponible para el empleado.')
     }
-    const payload = buildPayload()
+    let payload = buildPayload()
+    if (payload.status === 'cumplida' && !payload.completionPunctuality) {
+      payload = { ...payload, ...buildCompletionPayload({ punctuality: 'on_time' }) }
+    }
     setSaving(true)
     setErr('')
     try {
@@ -277,12 +283,58 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     [form, customers, selectedService, price, appointment]
   )
 
+  const timeSlotsForPicker = form.employeeId && form.date ? availableSlots : null
+
   return (
     <Modal open={open} onClose={onClose} title={editing ? 'Editar cita' : 'Nueva Cita'} testId="appointment-form-modal" wide={wide}>
       <div className="space-y-4">
-        <div className="flex flex-col items-center gap-3">
-          <AppointmentShareCard appointment={previewAppointment} showAudit={editing} />
-          {editing && <AppointmentShareActions appointment={previewAppointment} />}
+        {editing && (
+          <div className="flex flex-col items-center gap-3">
+            <AppointmentShareCard appointment={previewAppointment} showAudit />
+            <AppointmentShareActions appointment={previewAppointment} />
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-600">Cliente</label>
+            <CustomerPicker
+              value={selectedCustomer}
+              onChange={pickCustomer}
+              branchId={form.branchId}
+              testIdPrefix="appointment-customer"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Fecha</label>
+            <DatePicker
+              value={form.date}
+              onChange={(date) => set('date', date)}
+              testId="appointment-field-date"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Hora</label>
+            <TimePicker
+              value={form.time}
+              onChange={(time) => set('time', time)}
+              slots={timeSlotsForPicker}
+              emptyMessage="No hay cupos según el horario del empleado."
+              testId="appointment-field-time"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Duración</label>
+            <Select
+              value={form.duration}
+              onChange={(v) => set('duration', Number(v))}
+              options={DURATION_OPTIONS}
+              data-testid="appointment-field-duration"
+            />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -339,64 +391,6 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
               </p>
             )}
           </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-600">Fecha</label>
-            <Input type="date" value={form.date} onChange={(e) => { set('date', e.target.value); setErr('') }} data-testid="appointment-field-date" />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-600">Hora</label>
-            {form.employeeId && form.date ? (
-              <div className="space-y-2">
-                {availableSlots.length === 0 ? (
-                  <p className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                    No hay cupos según el horario del empleado.
-                  </p>
-                ) : (
-                  <div className="grid max-h-36 grid-cols-4 gap-2 overflow-y-auto rounded-xl border border-slate-100 p-2 sm:grid-cols-5">
-                    {availableSlots.map((slot) => (
-                      <button
-                        key={slot}
-                        type="button"
-                        onClick={() => { set('time', slot); setErr('') }}
-                        className={cn(
-                          'rounded-lg border px-2 py-2 text-xs font-semibold transition-colors',
-                          form.time === slot
-                            ? 'border-blue-600 bg-blue-50 text-blue-700'
-                            : 'border-slate-200 text-slate-600 hover:border-blue-200'
-                        )}
-                        data-testid={`appointment-slot-${slot}`}
-                      >
-                        {slot}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <Input type="time" value={form.time} onChange={(e) => { set('time', e.target.value); setErr('') }} data-testid="appointment-field-time" />
-            )}
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-600">Duración</label>
-            <Select
-              value={form.duration}
-              onChange={(v) => set('duration', Number(v))}
-              options={DURATION_OPTIONS}
-              data-testid="appointment-field-duration"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-600">Cliente</label>
-          <CustomerPicker
-            value={selectedCustomer}
-            onChange={pickCustomer}
-            testIdPrefix="appointment-customer"
-          />
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -421,7 +415,11 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
             <Select
               value={form.status}
               onChange={(value) => {
-                setForm((current) => ({ ...current, status: value, completed: value === 'completada' }))
+                setForm((current) => ({
+                  ...current,
+                  status: value,
+                  completed: value === 'cumplida',
+                }))
                 setErr('')
               }}
               options={statusOptions.map((s) => ({
@@ -432,25 +430,6 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
               data-testid="appointment-field-status"
             />
           </div>
-          {editing && (
-            <label className="flex items-center gap-2 pt-8 text-sm font-medium text-slate-600">
-              <input
-                type="checkbox"
-                checked={form.completed}
-                onChange={(event) => {
-                  const completed = event.target.checked
-                  setForm((current) => ({
-                    ...current,
-                    completed,
-                    status: completed ? 'completada' : 'confirmada',
-                  }))
-                  setErr('')
-                }}
-                data-testid="appointment-field-completed"
-              />
-              Completada
-            </label>
-          )}
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

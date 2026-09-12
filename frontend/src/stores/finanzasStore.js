@@ -17,6 +17,7 @@ import {
   mapFinanceLiabilityFromApi,
   mapFinanceOverviewFromApi,
 } from '@/services/adapters/finance'
+import { demoSvgImage } from '@/lib/imageAttachments'
 import { ephemeralJsonStorage, registerSensitiveStateCleaner } from '@/services/storagePolicy'
 import { useSessionStore } from '@/stores/sessionStore'
 import { isRecognizedPosIncome, isThisMonth } from '@/modules/finanzas/lib/finanzas'
@@ -62,19 +63,44 @@ export const catName = (id) => EXPENSE_CATEGORIES.find((category) => category.id
 const financeFixture = DEMO_SNAPSHOT.finance || {}
 const budgetIdFor = (seedKey) => seedKey ? `budget:${seedKey}` : null
 
-const SEED_EXPENSES = (financeFixture.expenses || []).map((item) => ({
-  id: `expense:${item.seedKey}`,
-  concept: item.concept,
-  amount: Number(item.amount),
-  category: item.category,
-  date: item.date,
-  branchId: branchIdFor(item.branchCode),
-  status: item.status,
-  budgetId: budgetIdFor(item.budgetSeedKey),
-  source: 'finanzas',
-  editable: true,
-  createdAt: item.createdAt,
-}))
+const SEED_EXPENSES = [
+  ...(financeFixture.expenses || []).map((item) => ({
+    id: `expense:${item.seedKey}`,
+    concept: item.concept,
+    amount: Number(item.amount),
+    category: item.category,
+    date: item.date,
+    branchId: branchIdFor(item.branchCode),
+    status: item.status,
+    budgetId: budgetIdFor(item.budgetSeedKey),
+    activoId: null,
+    attachments: [],
+    source: 'finanzas',
+    editable: true,
+    createdAt: item.createdAt,
+  })),
+  {
+    id: 'expense:seed-mnt-ac-4',
+    concept: 'Mantenimiento preventivo AC sala principal',
+    amount: 4500,
+    category: 'mantenimiento',
+    date: '2026-07-12',
+    branchId: 'charm-santiago',
+    status: 'pagado',
+    budgetId: null,
+    activoId: 'act-seed-4',
+    attachments: [{
+      id: 'exp-att-4',
+      name: 'Factura mantenimiento EQP-009',
+      contentType: 'image/svg+xml',
+      previewObjectUrl: demoSvgImage('#0f766e', 'FAC'),
+      dataUrl: demoSvgImage('#0f766e', 'FAC'),
+    }],
+    source: 'finanzas',
+    editable: true,
+    createdAt: '2026-07-12T10:00:00Z',
+  },
+]
 
 const SEED_FIXED = (financeFixture.fixedExpenses || []).map((item) => ({
   id: `fixed:${item.seedKey}`,
@@ -302,6 +328,8 @@ export const useFinanzasStore = create(
           const expense = {
             id: genId('exp'),
             ...expenseToApiPayload({ ...data, date: data.date || dayKey() }),
+            activoId: data.activoId || null,
+            attachments: data.attachments || [],
             source: 'finanzas',
             editable: true,
           }
@@ -553,6 +581,7 @@ export const useFinanzasStore = create(
           const income = {
             id: genId('inc'),
             ...manualIncomeToApiPayload({ ...data, date: data.date || dayKey() }),
+            attachments: data.attachments || [],
             editable: true,
           }
           set((state) => ({ manualIncomes: [income, ...state.manualIncomes] }))

@@ -1,11 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { RegisterActionModal } from './RegisterActionModal'
 import { Menu, Search, Store, ChevronDown, Check, Lock, Unlock, ReceiptText } from 'lucide-react'
 import { useConfigStore } from '@/stores/configStore'
 import { usePosStore } from '@/stores/posStore'
 import { useUiStore } from '@/stores/uiStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { DropdownPanel } from '@/components/ui/DropdownPanel'
+import { resolveBranchRegisterOpen } from '../lib/registerBranchState'
 import { cn } from '@/lib/utils'
 
 function BranchSelector() {
@@ -70,10 +72,11 @@ function BranchSelector() {
 export function PosTopBar({ query, onQueryChange }) {
   const toggleSidebar = useUiStore((s) => s.toggleSidebar)
   const navigate = useNavigate()
-  const registerOpen = usePosStore((s) => s.register.open)
+  const registerOpen = usePosStore((s) => resolveBranchRegisterOpen(s, s.branchId))
   const pendingCxc = usePosStore((s) => s.receivables.filter((r) => r.status === 'pending').length)
   const canReadCash = useSessionStore((s) => s.hasPermission('pos.cash.read'))
   const canReadReceivables = useSessionStore((s) => s.hasPermission('pos.receivables.read'))
+  const [registerModal, setRegisterModal] = useState(null)
 
   return (
     <header className="flex shrink-0 flex-col gap-3 border-b border-slate-100 bg-white/85 p-4 backdrop-blur-md sm:flex-row sm:items-center sm:gap-4 sm:px-6">
@@ -126,7 +129,8 @@ export function PosTopBar({ query, onQueryChange }) {
 
         {canReadCash && (
           <button
-            onClick={() => navigate('/pos/caja')}
+            type="button"
+            onClick={() => setRegisterModal(registerOpen ? 'close' : 'open')}
             data-testid="pos-caja-shortcut"
             className={cn(
               'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors',
@@ -138,6 +142,12 @@ export function PosTopBar({ query, onQueryChange }) {
           </button>
         )}
       </div>
+
+      <RegisterActionModal
+        open={registerModal !== null}
+        mode={registerModal || 'open'}
+        onClose={() => setRegisterModal(null)}
+      />
     </header>
   )
 }

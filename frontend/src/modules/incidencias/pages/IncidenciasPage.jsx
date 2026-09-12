@@ -7,6 +7,8 @@ import { useIncidenciasStore } from '@/stores/incidenciasStore'
 import { useNotificationsStore } from '@/stores/notificationsStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useActivosStore } from '@/stores/activosStore'
+import { useFinanzasStore } from '@/stores/finanzasStore'
+import { ActivoHistoryModal } from '@/modules/activos/components/ActivoHistoryModal'
 import { useSessionStore } from '@/stores/sessionStore'
 import { useRrhhStore } from '@/stores/rrhhStore'
 import { usersApi } from '@/services/usersApi'
@@ -36,6 +38,7 @@ export default function IncidenciasPage() {
   const branches = useConfigStore((s) => s.branches)
   const localUsers = useConfigStore((s) => s.users)
   const activos = useActivosStore((s) => s.activos)
+  const expenses = useFinanzasStore((s) => s.expenses)
   const employees = useRrhhStore((s) => s.employees)
   const hydrateEmployees = useRrhhStore((s) => s.hydrateEmployees)
   const hydrateAssets = useActivosStore((s) => s.hydrateFromApi)
@@ -54,6 +57,7 @@ export default function IncidenciasPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
+  const [historyActivoId, setHistoryActivoId] = useState(null)
   const [apiUsers, setApiUsers] = useState([])
 
   useEffect(() => {
@@ -182,6 +186,15 @@ export default function IncidenciasPage() {
   const activoName = selected?.activoId
     ? activos.find((a) => a.id === selected.activoId)?.name
     : null
+  const historyActivo = historyActivoId
+    ? activos.find((activo) => activo.id === historyActivoId) || null
+    : null
+  const historyIncidencias = historyActivoId
+    ? incidencias.filter((incident) => incident.activoId === historyActivoId)
+    : []
+  const historyMantenimientos = historyActivoId
+    ? expenses.filter((expense) => expense.activoId === historyActivoId && expense.category === 'mantenimiento')
+    : []
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="incidencias-page">
@@ -247,6 +260,7 @@ export default function IncidenciasPage() {
             item={selected}
             branchName={branchName}
             activoName={activoName}
+            onViewActivoHistory={setHistoryActivoId}
             onStatusChange={handleStatusChange}
             onComment={handleComment}
             onAddImages={handleAddImages}
@@ -264,6 +278,14 @@ export default function IncidenciasPage() {
         activos={activos}
         employees={employees}
         canAttach={canManage}
+      />
+
+      <ActivoHistoryModal
+        open={Boolean(historyActivoId)}
+        onClose={() => setHistoryActivoId(null)}
+        activo={historyActivo}
+        incidencias={historyIncidencias}
+        mantenimientos={historyMantenimientos}
       />
     </div>
   )

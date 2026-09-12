@@ -32,7 +32,7 @@ function toLocalInput(iso) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-export function ActivityFormModal({ open, onClose, activity, defaultOpportunityId = '' }) {
+export function ActivityFormModal({ open, onClose, activity, defaultOpportunityId = '', defaultCustomerId = '' }) {
   const addActivity = useCrmStore((s) => s.addActivity)
   const updateActivity = useCrmStore((s) => s.updateActivity)
   const opportunities = useCrmStore((s) => s.opportunities)
@@ -48,6 +48,7 @@ export function ActivityFormModal({ open, onClose, activity, defaultOpportunityI
   useEffect(() => {
     if (open) {
       const defaultOpportunity = opportunities.find((item) => item.id === defaultOpportunityId)
+      const defaultCustomer = customers.find((item) => item.id === defaultCustomerId)
       setForm(
         activity
           ? {
@@ -64,10 +65,19 @@ export function ActivityFormModal({ open, onClose, activity, defaultOpportunityI
                 || currentSessionActor().id,
               dueAt: toLocalInput(activity.dueAt),
             }
-          : empty(defaultOpportunity)
+          : defaultOpportunity
+            ? empty(defaultOpportunity)
+            : defaultCustomer
+              ? {
+                  ...empty(),
+                  customerId: defaultCustomer.id,
+                  customerName: defaultCustomer.name,
+                  branchId: defaultCustomer.branchIds?.[0] || defaultCustomer.branchId || '',
+                }
+              : empty()
       )
     }
-  }, [open, activity, defaultOpportunityId, opportunities])
+  }, [open, activity, defaultOpportunityId, defaultCustomerId, opportunities, customers])
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -173,7 +183,7 @@ export function ActivityFormModal({ open, onClose, activity, defaultOpportunityI
             onChange={selectCustomer}
             placeholder="Seleccionar cliente"
             options={customerOptions}
-            disabled={editing || Boolean(form.opportunityId && form.customerId)}
+            disabled={editing || Boolean(form.opportunityId && form.customerId) || Boolean(defaultCustomerId)}
           />
         </div>
         <div>

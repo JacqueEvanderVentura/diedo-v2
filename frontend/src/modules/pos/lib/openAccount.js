@@ -89,7 +89,7 @@ export const EMPTY_CART_PATCH = {
   paymentReference: '',
   transferProof: null,
   isExpense: false,
-  documentKind: 'quote',
+  documentKind: 'invoice',
   isFinalized: false,
   activeQuoteId: null,
 }

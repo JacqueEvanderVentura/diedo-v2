@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { List, Search, Sparkles, SlidersHorizontal, MapPin, Phone, Globe, Import, UserCheck, Briefcase, Plus } from 'lucide-react'
+import { List, Search, ScanSearch, SlidersHorizontal, MapPin, Phone, Globe, Import, UserCheck, Briefcase, Plus } from 'lucide-react'
 import { useCrmStore } from '@/stores/crmStore'
 import { searchBusinesses } from '@/services/leadSearch'
 import {
@@ -10,23 +10,27 @@ import {
   LEAD_STATUS_META,
   LEAD_STATUSES,
   SOURCE_LABELS,
+  ACQUISITION_SOURCE_LABELS,
 } from '@/data/crm'
+import { buildWhatsAppVariables } from '@/lib/whatsapp'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Select } from '@/components/ui/Select'
-import { buildBranchFilterOptions } from '@/lib/branches'
+import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
+import { matchesBranches } from '@/lib/branches'
 import { useConfigStore } from '@/stores/configStore'
 import { ModuleFitBars, ScoreBadge } from '../components/ModuleFitBars'
 import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
 import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
 import { cn } from '@/lib/utils'
 import { LeadFormModal } from '../components/LeadFormModal'
+import { LeadHandoffStrip } from '../components/LeadHandoffStrip'
 import { FEATURES } from '@/config/features'
 
 const TABS = [
   { id: 'lista', label: 'Lista', icon: List },
-  ...(FEATURES.crmDiscovery ? [{ id: 'descubrir', label: 'Descubrir', icon: Sparkles }] : []),
+  ...(FEATURES.crmDiscovery ? [{ id: 'descubrir', label: 'Descubrir', icon: ScanSearch }] : []),
   { id: 'criterios', label: 'Criterios', icon: SlidersHorizontal },
 ]
 
@@ -40,20 +44,21 @@ function LeadsListaTab() {
 
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [branchFilter, setBranchFilter] = useState('all')
+  const [branchIds, setBranchIds] = useState([])
   const [editingScore, setEditingScore] = useState(null)
   const [manualVal, setManualVal] = useState('')
   const [manualNotes, setManualNotes] = useState('')
+  const [handoff, setHandoff] = useState(null)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return leads.filter((l) => {
       if (statusFilter !== 'all' && l.status !== statusFilter) return false
-      if (branchFilter !== 'all' && l.branchId !== branchFilter) return false
+      if (!matchesBranches(l, branchIds)) return false
       if (!q) return true
       return [l.name, l.company, l.location, l.phone, l.email].some((f) => f && `${f}`.toLowerCase().includes(q))
     })
-  }, [leads, query, statusFilter, branchFilter])
+  }, [leads, query, statusFilter, branchIds])
 
   const saveManual = (id) => {
     setManualScore(id, manualVal, manualNotes)
@@ -65,9 +70,31 @@ function LeadsListaTab() {
     try {
       const opportunity = await addToPipeline(leadId)
       if (!opportunity) return toast.error('No se encontró el lead')
-      toast.success('Oportunidad creada en el pipeline')
+      const lead = useCrmStore.getState().leads.find((item) => item.id === leadId)
+      setHandoff({
+        leadId,
+        opportunityId: opportunity.id,
+        customerId: opportunity.customerId || lead?.customerId || null,
+      })
+      toast.success('Oportunidad creada. Elige el siguiente paso en la tarjeta del lead.')
     } catch (error) {
       toast.error(error.message || 'No se pudo enviar el lead al pipeline')
+    }
+  }
+
+  const convertLead = async (leadId) => {
+    try {
+      const customer = await convertToCustomer(leadId)
+      const lead = useCrmStore.getState().leads.find((item) => item.id === leadId)
+      const opportunity = useCrmStore.getState().opportunities.find((item) => item.leadId === leadId)
+      setHandoff({
+        leadId,
+        customerId: customer?.id || lead?.customerId || null,
+        opportunityId: opportunity?.id || lead?.opportunityId || null,
+      })
+      toast.success('Lead convertido a cliente')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo convertir el lead')
     }
   }
 
@@ -89,12 +116,12 @@ function LeadsListaTab() {
           options={[{ value: 'all', label: 'Todos los estados' }, ...LEAD_STATUSES.map((s) => ({ value: s, label: LEAD_STATUS_META[s].label }))]}
           className="w-full sm:w-48"
         />
-        <Select
-          value={branchFilter}
-          onChange={setBranchFilter}
-          options={buildBranchFilterOptions(branches)}
-          className="w-full sm:w-48"
-          data-testid="leads-branch-filter"
+        <BranchMultiSelect
+          branches={branches}
+          branchIds={branchIds}
+          onChange={setBranchIds}
+          className="w-full sm:w-56"
+          testId="leads-branch-filter"
         />
       </div>
 
@@ -110,6 +137,11 @@ function LeadsListaTab() {
                     <ScoreBadge score={lead.score} />
                     <Badge tone={meta.tone}>{meta.label}</Badge>
                     <Badge tone="neutral">{SOURCE_LABELS[lead.source] || lead.source}</Badge>
+                    {lead.acquisitionSource && (
+                      <Badge tone="brand">
+                        {ACQUISITION_SOURCE_LABELS[lead.acquisitionSource] || lead.acquisitionSource}
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-3 text-sm text-slate-500">
                     {lead.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{lead.location}</span>}
@@ -125,11 +157,12 @@ function LeadsListaTab() {
                       phone={lead.phone}
                       context="oportunidades"
                       size="sm"
-                      variables={{
-                        nombre_cliente: lead.name || lead.company || '',
-                        empresa: lead.company || lead.name || '',
+                      variables={buildWhatsAppVariables({
+                        name: lead.name || lead.company || '',
+                        phone: lead.phone,
+                        company: lead.company || lead.name || '',
                         ubicacion: lead.location || '',
-                      }}
+                      })}
                       data-testid={`lead-wa-${lead.id}`}
                     />
                   )}
@@ -147,14 +180,7 @@ function LeadsListaTab() {
                           <Briefcase className="h-3.5 w-3.5" /> Pipeline
                         </Button>
                       )}
-                      <Button size="sm" onClick={async () => {
-                        try {
-                          await convertToCustomer(lead.id)
-                          toast.success('Convertido a cliente')
-                        } catch (error) {
-                          toast.error(error.message || 'No se pudo convertir el lead')
-                        }
-                      }}>
+                      <Button size="sm" onClick={() => convertLead(lead.id)}>
                         <UserCheck className="h-3.5 w-3.5" /> Convertir
                       </Button>
                     </>
@@ -167,6 +193,9 @@ function LeadsListaTab() {
                   />
                 </div>
               </div>
+              {handoff?.leadId === lead.id && (
+                <LeadHandoffStrip handoff={handoff} onDismiss={() => setHandoff(null)} />
+              )}
               {editingScore === lead.id && (
                 <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
                   <label className="text-sm">
@@ -251,11 +280,14 @@ function LeadsDescubrirTab() {
       <div className="grid gap-3 sm:grid-cols-3">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ej: salón de belleza, restaurante..." className="rounded-xl border-0 bg-white px-4 py-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-600" />
         <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Ubicación" className="rounded-xl border-0 bg-white px-4 py-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-600" />
-        <Select
-          value={branchId}
-          onChange={setBranchId}
-          options={branches.filter((branch) => branch.active).map((branch) => ({ value: branch.id, label: branch.name }))}
-          placeholder="Sucursal destino"
+        <BranchMultiSelect
+          branches={branches}
+          branchIds={branchId ? [branchId] : []}
+          onChange={(ids) => setBranchId(ids[0] || '')}
+          selectionMode="single"
+          showAllOption={false}
+          className="w-full"
+          testId="leads-import-branch"
         />
       </div>
       <Button onClick={runSearch} disabled={loading}>
@@ -303,7 +335,7 @@ function LeadsCriteriosTab() {
   return (
     <Card className="p-6">
       <h3 className="font-heading text-lg font-semibold text-slate-900">Pesos del scoring automático</h3>
-      <p className="mt-1 text-sm text-slate-500">Ajusta la importancia de cada módulo Diedo al calcular el fit del lead.</p>
+      <p className="mt-1 text-sm text-slate-500">Ajusta la importancia de cada módulo Helios 360 al calcular el fit del lead.</p>
       <div className="mt-6 space-y-5">
         {DIEDO_MODULES.map((mod) => (
           <div key={mod}>
@@ -328,25 +360,30 @@ function LeadsCriteriosTab() {
   )
 }
 
+const LEADS_SUBTITLE = FEATURES.crmDiscovery
+  ? 'Descubre negocios, puntúalos y llévalos al pipeline o conviértelos en clientes.'
+  : 'Registra leads, puntúalos y conviértelos en clientes u oportunidades sin salir del flujo.'
+
 export default function LeadsPage() {
   const [params, setParams] = useSearchParams()
   const [formOpen, setFormOpen] = useState(false)
   const tabParam = params.get('tab') || 'lista'
   const tab = TABS.some((t) => t.id === tabParam) ? tabParam : 'lista'
+  const tabCols = TABS.length <= 2 ? 'grid-cols-2' : 'grid-cols-3'
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="crm-leads">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-heading text-2xl font-bold text-slate-900">Leads</h2>
-          <p className="text-sm text-slate-500">Encuentra, puntúa y convierte leads potenciales.</p>
+          <p className="text-sm text-slate-500">{LEADS_SUBTITLE}</p>
         </div>
         <Button onClick={() => setFormOpen(true)} data-testid="lead-new">
           <Plus className="h-4 w-4" /> Nuevo lead
         </Button>
       </div>
 
-      <div className="grid w-full max-w-lg grid-cols-3 rounded-xl bg-slate-100 p-1">
+      <div className={cn('grid w-full max-w-lg rounded-xl bg-slate-100 p-1', tabCols)}>
         {TABS.map((t) => {
           const Icon = t.icon
           const active = tab === t.id

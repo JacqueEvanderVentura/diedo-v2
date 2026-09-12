@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import * as Icons from 'lucide-react'
-import { TrendingUp, Receipt, Hash, Plus, Pencil, Trash2 } from 'lucide-react'
+import { TrendingUp, Receipt, Hash, Plus, Pencil, Trash2, Printer, Download } from 'lucide-react'
 import { usePosStore } from '@/stores/posStore'
 import { useFinanzasStore } from '@/stores/finanzasStore'
 import { useConfigStore } from '@/stores/configStore'
@@ -8,6 +8,7 @@ import { useSessionStore } from '@/stores/sessionStore'
 import { toast } from 'sonner'
 import { formatDOP } from '@/lib/format'
 import { fmtWhen, isRecognizedPosIncome, isThisMonth, parseWhen } from '../lib/finanzas'
+import { downloadIncomeInvoice, isPosIncome, printIncomeInvoice } from '../lib/incomeInvoice'
 import { METHOD_LABELS, METHOD_ICON } from '@/modules/crm/lib/crm'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -55,6 +56,18 @@ function isToday(v) {
   return d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
 }
 
+function incomeDayKey(v) {
+  const d = parseWhen(v)
+  if (!d) return null
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+}
+
+function incomeMonthKey(v) {
+  const d = parseWhen(v)
+  if (!d) return null
+  return `${d.getFullYear()}-${d.getMonth()}`
+}
+
 export default function IngresosPage() {
   const sales = usePosStore((s) => s.sales)
   const manualIncomes = useFinanzasStore((s) => s.manualIncomes)
@@ -62,6 +75,8 @@ export default function IngresosPage() {
   const incomesProjected = useFinanzasStore((s) => s.incomesProjected)
   const deleteIncome = useFinanzasStore((s) => s.deleteIncome)
   const branches = useConfigStore((s) => s.branches)
+  const settings = useConfigStore((s) => s.settings)
+  const paymentMethods = useConfigStore((s) => s.paymentMethods)
   const canManageIncome = useSessionStore((s) => s.hasPermission('finance.manage'))
 
   const [period, setPeriod] = useState('month')
@@ -85,6 +100,8 @@ export default function IngresosPage() {
       status: 'pagado',
       amount: s.total,
       source: 'POS',
+      origin: 'pos',
+      reference: s.number || null,
       editable: false,
       version: null,
     }))
@@ -98,6 +115,8 @@ export default function IngresosPage() {
       status: i.status,
       amount: i.amount,
       source: i.source || 'Formulario',
+      origin: i.origin || (i.source === 'POS' ? 'pos' : 'manual'),
+      reference: i.reference || null,
       editable: i.editable !== false,
     }))
     return [...fromSales, ...fromManual]
@@ -126,8 +145,34 @@ export default function IngresosPage() {
   })
 
   const total = useMemo(() => filtered.reduce((a, i) => a + (i.amount || 0), 0), [filtered])
-  const dailyTotal = useMemo(() => allIncomes.filter((i) => isToday(i.date)).reduce((a, i) => a + i.amount, 0), [allIncomes])
-  const monthlyTotal = useMemo(() => allIncomes.filter((i) => isThisMonth(i.date)).reduce((a, i) => a + i.amount, 0), [allIncomes])
+  const dailySummary = useMemo(() => {
+    if (period === 'all') {
+      const amount = allIncomes.reduce((sum, income) => sum + (income.amount || 0), 0)
+      const activeDays = new Set(allIncomes.map((income) => incomeDayKey(income.date)).filter(Boolean))
+      return {
+        label: 'Ingreso diario promedio',
+        value: activeDays.size ? amount / activeDays.size : 0,
+      }
+    }
+    return {
+      label: 'Ingreso Diario Total',
+      value: allIncomes.filter((income) => isToday(income.date)).reduce((sum, income) => sum + income.amount, 0),
+    }
+  }, [allIncomes, period])
+  const monthlySummary = useMemo(() => {
+    if (period === 'all') {
+      const amount = allIncomes.reduce((sum, income) => sum + (income.amount || 0), 0)
+      const activeMonths = new Set(allIncomes.map((income) => incomeMonthKey(income.date)).filter(Boolean))
+      return {
+        label: 'Ingreso mensual promedio',
+        value: activeMonths.size ? amount / activeMonths.size : 0,
+      }
+    }
+    return {
+      label: 'Ingresos Mensuales Total',
+      value: allIncomes.filter((income) => isThisMonth(income.date)).reduce((sum, income) => sum + income.amount, 0),
+    }
+  }, [allIncomes, period])
   const ticket = filtered.length ? total / filtered.length : 0
 
   const byMethod = useMemo(() => {
@@ -179,6 +224,29 @@ export default function IngresosPage() {
     setDeleteError('')
   }
 
+  const invoiceCtx = useMemo(
+    () => ({ branches, settings, paymentMethods }),
+    [branches, settings, paymentMethods]
+  )
+
+  const handlePrintInvoice = useCallback(async (income) => {
+    try {
+      await printIncomeInvoice(income, invoiceCtx)
+      toast.success('Enviando a impresión…')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo imprimir la factura.')
+    }
+  }, [invoiceCtx])
+
+  const handleDownloadInvoice = useCallback(async (income) => {
+    try {
+      await downloadIncomeInvoice(income, invoiceCtx)
+      toast.success('Factura descargada')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo descargar la factura.')
+    }
+  }, [invoiceCtx])
+
   const confirmDelete = async () => {
     if (!deleteTarget || deleting) return
     setDeleting(true)
@@ -221,8 +289,8 @@ export default function IngresosPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <SummaryCard label="Ingreso Diario Total" value={formatDOP(dailyTotal)} icon={TrendingUp} tone="emerald" />
-        <SummaryCard label="Ingresos Mensuales Total" value={formatDOP(monthlyTotal)} icon={Receipt} tone="brand" />
+        <SummaryCard label={dailySummary.label} value={formatDOP(dailySummary.value)} icon={TrendingUp} tone="emerald" />
+        <SummaryCard label={monthlySummary.label} value={formatDOP(monthlySummary.value)} icon={Receipt} tone="brand" />
         <SummaryCard label="Transacción Promedio" value={formatDOP(ticket)} icon={Hash} tone="slate" />
       </div>
 
@@ -287,6 +355,30 @@ export default function IngresosPage() {
                         <td className="whitespace-nowrap px-6 py-4 text-right font-heading font-bold text-emerald-600">+ {formatDOP(i.amount)}</td>
                         <td className="px-6 py-4">
                           <div className="flex justify-end gap-1">
+                            {isPosIncome(i) && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handlePrintInvoice(i)}
+                                  aria-label={`Imprimir factura de ${i.customer}`}
+                                  title="Imprimir factura"
+                                  data-testid={`ingresos-print-${i.id}`}
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-violet-50 hover:text-violet-600"
+                                >
+                                  <Printer className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadInvoice(i)}
+                                  aria-label={`Descargar factura de ${i.customer}`}
+                                  title="Descargar factura"
+                                  data-testid={`ingresos-download-${i.id}`}
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+                                >
+                                  <Download className="h-4 w-4" />
+                                </button>
+                              </>
+                            )}
                             {i.editable && canManageIncome ? (
                               <>
                                 <button
@@ -310,9 +402,9 @@ export default function IngresosPage() {
                                   <Trash2 className="h-4 w-4" />
                                 </button>
                               </>
-                            ) : (
-                              <span className="text-xs text-slate-400">{i.editable ? 'Solo lectura' : 'Desde POS'}</span>
-                            )}
+                            ) : !isPosIncome(i) ? (
+                              <span className="text-xs text-slate-400">Solo lectura</span>
+                            ) : null}
                           </div>
                         </td>
                       </tr>
@@ -343,32 +435,58 @@ export default function IngresosPage() {
                     </MobileCardGrid>
                     <MobileCardFooter>
                       <span className="text-xs text-slate-400">Acciones</span>
-                      {i.editable && canManageIncome ? (
-                        <div className="flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() => openEdit(i)}
-                            aria-label={`Editar ingreso de ${i.customer}`}
-                            title="Editar ingreso"
-                            data-testid={`ingresos-card-edit-${i.id}`}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => requestDelete(i)}
-                            aria-label={`Eliminar ingreso de ${i.customer}`}
-                            title="Eliminar ingreso"
-                            data-testid={`ingresos-card-delete-${i.id}`}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-400">{i.editable ? 'Solo lectura' : 'Desde POS'}</span>
-                      )}
+                      <div className="flex gap-1">
+                        {isPosIncome(i) && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handlePrintInvoice(i)}
+                              aria-label={`Imprimir factura de ${i.customer}`}
+                              title="Imprimir factura"
+                              data-testid={`ingresos-card-print-${i.id}`}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-violet-50 hover:text-violet-600"
+                            >
+                              <Printer className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadInvoice(i)}
+                              aria-label={`Descargar factura de ${i.customer}`}
+                              title="Descargar factura"
+                              data-testid={`ingresos-card-download-${i.id}`}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+                            >
+                              <Download className="h-4 w-4" />
+                            </button>
+                          </>
+                        )}
+                        {i.editable && canManageIncome ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => openEdit(i)}
+                              aria-label={`Editar ingreso de ${i.customer}`}
+                              title="Editar ingreso"
+                              data-testid={`ingresos-card-edit-${i.id}`}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => requestDelete(i)}
+                              aria-label={`Eliminar ingreso de ${i.customer}`}
+                              title="Eliminar ingreso"
+                              data-testid={`ingresos-card-delete-${i.id}`}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </>
+                        ) : !isPosIncome(i) ? (
+                          <span className="text-xs text-slate-400">Solo lectura</span>
+                        ) : null}
+                      </div>
                     </MobileCardFooter>
                   </MobileCard>
                 )

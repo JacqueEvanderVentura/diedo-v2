@@ -1,12 +1,12 @@
 import { useEffect, useState, useMemo } from 'react'
-import { toast } from 'sonner'
 import { Clock, Plus, Search, ChevronLeft, ChevronRight, Link2 } from 'lucide-react'
 import { useAgendaStore, todayKey } from '@/stores/agendaStore'
-import { useConfigStore } from '@/stores/configStore'
+import { useActiveBranchScope } from '@/hooks/useActiveBranchScope'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { AppointmentFormModal } from '../components/AppointmentFormModal'
 import { BookingLinkModal } from '../components/BookingLinkModal'
+import { BranchSchedulesModal } from '../components/BranchSchedulesModal'
 import { WeekView } from '../components/calendar/WeekView'
 import { DayView } from '../components/calendar/DayView'
 import { MonthView } from '../components/calendar/MonthView'
@@ -39,24 +39,17 @@ export default function CalendarioPage() {
   const dataState = useAgendaStore((s) => s.dataState)
   const hydrateAppointments = useAgendaStore((s) => s.hydrateAppointments)
   const hydrateResources = useAgendaStore((s) => s.hydrateResources)
-  const branches = useConfigStore((s) => s.branches)
+  const { activeBranchId: branchId, setActiveBranch: setBranchId, branches, selectOptions } = useActiveBranchScope()
   const canManage = useSessionStore((s) => s.hasPermission('appointment.manage'))
-  const [branchId, setBranchId] = useState(branches[0]?.id || '')
   const [view, setView] = useState('week')
   const [cursor, setCursor] = useState(todayKey())
   const [showCancelled, setShowCancelled] = useState(false)
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [linkModalOpen, setLinkModalOpen] = useState(false)
+  const [schedulesModalOpen, setSchedulesModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [defaults, setDefaults] = useState({})
-
-  useEffect(() => {
-    if (!branches.length) return
-    if (!branchId || !branches.some((branch) => branch.id === branchId)) {
-      setBranchId(branches[0].id)
-    }
-  }, [branchId, branches])
 
   const appointmentQuery = useMemo(() => {
     if (!branchId) return {}
@@ -132,7 +125,7 @@ export default function CalendarioPage() {
           <Select
             value={branchId}
             onChange={setBranchId}
-            options={branches.map((b) => ({ value: b.id, label: b.name }))}
+            options={selectOptions}
             size="sm"
             variant="muted"
             className="w-auto min-w-[140px]"
@@ -144,7 +137,7 @@ export default function CalendarioPage() {
             </Button>
           )}
           {FEATURES.calendarSchedules && (
-            <Button variant="secondary" size="sm" onClick={() => toast('Horarios (próximamente)')} data-testid="calendar-schedules">
+            <Button variant="secondary" size="sm" onClick={() => setSchedulesModalOpen(true)} data-testid="calendar-schedules">
               <Clock className="h-4 w-4" /> Horarios
             </Button>
           )}
@@ -256,6 +249,16 @@ export default function CalendarioPage() {
           onClose={() => setLinkModalOpen(false)}
           branchId={branchId}
           branchName={branches.find((b) => b.id === branchId)?.name || ''}
+        />
+      )}
+
+      {FEATURES.calendarSchedules && (
+        <BranchSchedulesModal
+          open={schedulesModalOpen}
+          onClose={() => setSchedulesModalOpen(false)}
+          branchId={branchId}
+          branchName={branches.find((b) => b.id === branchId)?.name || ''}
+          referenceDate={cursor}
         />
       )}
     </div>

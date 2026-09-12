@@ -3,25 +3,24 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
-import { CATEGORY_TYPES, CATEGORY_COLORS } from '@/stores/configStore'
+import { CATEGORY_COLORS } from '@/stores/configStore'
 import { cn } from '@/lib/utils'
 
-const TYPE_OPTIONS = CATEGORY_TYPES.map((t) => ({ value: t.id, label: t.name }))
+const empty = (defaultType = 'producto') => ({ name: '', description: '', type: defaultType, color: CATEGORY_COLORS[0].id, active: true })
 
-const empty = () => ({ name: '', description: '', type: 'producto', color: CATEGORY_COLORS[0].id, active: true })
-
-export function CategoryFormModal({ open, onClose, category, onSubmit }) {
-  const [form, setForm] = useState(empty())
+export function CategoryFormModal({ open, onClose, category, onSubmit, allowedTypes = [], defaultType = 'producto' }) {
+  const typeOptions = allowedTypes.map((type) => ({ value: type.id, label: type.name }))
+  const [form, setForm] = useState(empty(defaultType))
   const [err, setErr] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const editing = !!category
 
   useEffect(() => {
     if (!open) return
-    setForm(category ? { ...empty(), ...category } : empty())
+    setForm(category ? { ...empty(defaultType), ...category } : empty(defaultType))
     setErr('')
     setSubmitting(false)
-  }, [open, category])
+  }, [open, category, defaultType])
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -53,7 +52,7 @@ export function CategoryFormModal({ open, onClose, category, onSubmit }) {
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Tipo</label>
-          <Select value={form.type} disabled={submitting} onChange={(v) => set('type', v)} options={TYPE_OPTIONS} />
+          <Select value={form.type} disabled={submitting} onChange={(v) => set('type', v)} options={typeOptions} />
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Color</label>

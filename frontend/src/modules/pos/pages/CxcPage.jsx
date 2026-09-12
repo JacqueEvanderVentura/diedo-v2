@@ -36,6 +36,7 @@ import { ReceivablePaymentModal } from '../components/ReceivablePaymentModal'
 import { ReceivableProofModal } from '../components/ReceivableProofModal'
 import { ReceivableCollectMenu } from '../components/ReceivableCollectMenu'
 import { ProofImagePreview } from '../components/ProofImagePreview'
+import { ReceivablePaymentLog } from '../components/ReceivablePaymentLog'
 import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
 import {
   ResponsiveList,
@@ -53,7 +54,7 @@ import {
   getReceivableStatus,
   getReceivableVoidPolicy,
   STATUS_META,
-  PAYMENT_METHODS,
+  receivableHasPaymentEvidence,
 } from '../lib/receivables'
 import {
   buildCxcAccountRows,
@@ -67,7 +68,7 @@ import { DataFilterBar } from '@/components/ui/DataFilterBar'
 import { useSortedRows } from '@/hooks/useTableControls'
 import { cn } from '@/lib/utils'
 import { PosSyncStatus } from '../components/PosSyncStatus'
-import { usePosOnlineState } from '../hooks/usePosOnlineState'
+import { useCxcPageState } from '../hooks/useCxcPageState'
 
 const METHOD_LABELS = {
   transferencia: { label: 'Transferencia', icon: ArrowLeftRight },
@@ -105,68 +106,8 @@ const FILTERS = [
   { id: 'all', label: 'Todas' },
 ]
 
-function PaymentLog({ receivable, onReverse, onDownload, busy }) {
-  const payments = [...(receivable.payments || [])].sort(
-    (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
-  )
-  const total = payments.length
-
-  if (!total) {
-    return <p className="text-sm text-slate-500">Sin pagos registrados aún.</p>
-  }
-
-  return (
-    <div className="space-y-2">
-      {payments.map((p, i) => {
-        const methodLabel = PAYMENT_METHODS.find((m) => m.id === p.method)?.label || p.method
-        return (
-          <div key={p.id} className="rounded-xl bg-slate-50 px-4 py-3 text-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="font-semibold text-slate-800">
-                Pago {i + 1}{total > 1 ? ` de ${total}` : ''}
-              </span>
-              <div className="flex items-center gap-2">
-                <span className={cn('font-heading font-bold', p.reversed ? 'text-slate-400 line-through' : 'text-emerald-700')}>{formatDOP(p.amount)}</span>
-                {!p.reversed && onReverse && (
-                  <button
-                    type="button"
-                    title="Reversar pago"
-                    disabled={busy}
-                    onClick={() => onReverse(p)}
-                    className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-            <p className="mt-1 text-xs text-slate-500">
-              {methodLabel}
-              {p.reference ? ` · Ref. ${p.reference}` : ''}
-              {' · '}
-              {fmtDate(p.createdAt)}
-            </p>
-            {p.note && <p className="mt-1 text-xs text-slate-600">{p.note}</p>}
-            {p.proof && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => onDownload?.(p.proof)}
-                className="mt-1.5 flex items-center gap-1 text-xs font-medium text-emerald-700 hover:underline disabled:opacity-50"
-              >
-                <Download className="h-3 w-3" />
-                Descargar {p.proof.name}
-              </button>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 export default function CxcPage() {
-  const { isOnline, hydrating, mutating, error, refresh } = usePosOnlineState()
+  const { isOnline, hydrating, mutating, error, refresh } = useCxcPageState()
   const navigate = useNavigate()
   const receivables = usePosStore((s) => s.receivables)
   const openQuotes = usePosStore((s) => s.openQuotes)
@@ -195,7 +136,7 @@ export default function CxcPage() {
 
   const [filter, setFilter] = useState('open')
   const [query, setQuery] = useState('')
-  const [branchFilter, setBranchFilter] = useState('all')
+  const [branchIds, setBranchIds] = useState([])
   const [detail, setDetail] = useState(null)
   const [editRow, setEditRow] = useState(null)
   const [paymentRow, setPaymentRow] = useState(null)
@@ -210,8 +151,8 @@ export default function CxcPage() {
   )
 
   const filtered = useMemo(
-    () => filterCxcAccounts(allRows, { filter, query, branchFilter }),
-    [allRows, filter, query, branchFilter]
+    () => filterCxcAccounts(allRows, { filter, query, branchIds }),
+    [allRows, filter, query, branchIds]
   )
 
   const summary = useMemo(
@@ -291,9 +232,9 @@ export default function CxcPage() {
       toast.error('No tienes permiso para registrar cobros de CxC.')
       return false
     }
-    if (isOnline && !payload.proof) {
+    if (isOnline && !receivableHasPaymentEvidence(r, payload)) {
       setProofRow(r)
-      toast.info('Sube el comprobante para confirmar el pago en línea.')
+      toast.info('Ingresa el N° de referencia o sube el comprobante.')
       return false
     }
     try {
@@ -544,8 +485,8 @@ export default function CxcPage() {
         onSearchChange={setQuery}
         searchPlaceholder="Buscar por cliente o ID..."
         showBranch
-        branchId={branchFilter}
-        onBranchChange={setBranchFilter}
+        branchIds={branchIds}
+        onBranchIdsChange={setBranchIds}
         testId="cxc-filters"
         extra={
           <div className="flex items-center gap-1 overflow-x-auto rounded-xl border border-slate-100 bg-white p-1 shadow-soft">
@@ -566,7 +507,7 @@ export default function CxcPage() {
         }
       />
 
-      <AnimatedTabPanel panelKey={`${filter}-${query}-${branchFilter}`}>
+      <AnimatedTabPanel panelKey={`${filter}-${query}-${branchIds.join(',')}`}>
       {filtered.length === 0 ? (
         <Card className="overflow-hidden">
           <EmptyState icon={CheckCircle2} title="Nada por aquí" description="No hay cuentas en este filtro." className="py-14" />
@@ -763,7 +704,7 @@ export default function CxcPage() {
                   <History className="h-4 w-4 text-blue-600" />
                   <h4 className="font-heading font-semibold text-slate-900">Historial de pagos</h4>
                 </div>
-                <PaymentLog
+                <ReceivablePaymentLog
                   receivable={detail}
                   onReverse={canCollectReceivables ? handleReversePayment : null}
                   onDownload={handleDownloadProof}

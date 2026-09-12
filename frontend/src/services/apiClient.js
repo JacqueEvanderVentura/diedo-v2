@@ -21,9 +21,16 @@ function buildUrl(path, params) {
   const url = new URL(`${base}${apiPath}`, window.location.origin)
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') {
-        url.searchParams.set(key, String(value))
+      if (value === undefined || value === null || value === '') return
+      if (Array.isArray(value)) {
+        value.forEach((item) => {
+          if (item !== undefined && item !== null && item !== '') {
+            url.searchParams.append(key, String(item))
+          }
+        })
+        return
       }
+      url.searchParams.set(key, String(value))
     })
   }
   return BASE_URL_IS_ABSOLUTE ? url.href : url.pathname + url.search

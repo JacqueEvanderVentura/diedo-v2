@@ -12,6 +12,8 @@ import {
   UserRound,
 } from 'lucide-react'
 import { useInventarioStore } from '@/stores/inventarioStore'
+import { useCatalogStore } from '@/stores/catalogStore'
+import { movementHasSupplyItems } from '@/lib/categories'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -73,6 +75,11 @@ const TYPE_OPTIONS = [
   { value: 'entrada', label: 'Entradas' },
 ]
 
+const SCOPE_OPTIONS = [
+  { value: 'all', label: 'Todos los ítems' },
+  { value: 'insumos', label: 'Solo insumos' },
+]
+
 function formatDate(iso) {
   try {
     return new Date(iso).toLocaleString('es-DO', { dateStyle: 'medium', timeStyle: 'short' })
@@ -122,17 +129,30 @@ export function MovimientosTab() {
   const movements = useInventarioStore((state) => state.movements)
   const hydrating = useInventarioStore((state) => state.hydrating)
   const error = useInventarioStore((state) => state.error)
+  const products = useCatalogStore((state) => state.products)
   const [search, setSearch] = useState('')
   const [branchFilter, setBranchFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
+  const [scopeFilter, setScopeFilter] = useState('all')
   const [salidaOpen, setSalidaOpen] = useState(false)
   const [ajusteOpen, setAjusteOpen] = useState(false)
+
+  const supplyIds = useMemo(
+    () => new Set(products.filter((product) => product.type === 'supply').map((product) => product.id)),
+    [products]
+  )
+
+  const supplyNames = useMemo(
+    () => products.filter((product) => product.type === 'supply').map((product) => product.name).filter(Boolean),
+    [products]
+  )
 
   const filtered = useMemo(() => {
     const normalizedQuery = search.trim().toLowerCase()
     return movements.filter((movement) => {
       if (branchFilter !== 'all' && movement.branchId !== branchFilter) return false
       if (typeFilter !== 'all' && movement.type !== typeFilter) return false
+      if (scopeFilter === 'insumos' && !movementHasSupplyItems(movement, supplyIds)) return false
       if (!normalizedQuery) return true
       const searchable = [
         movement.comment,
@@ -145,7 +165,7 @@ export function MovimientosTab() {
       ].join(' ').toLowerCase()
       return searchable.includes(normalizedQuery)
     })
-  }, [movements, search, branchFilter, typeFilter])
+  }, [movements, search, branchFilter, typeFilter, scopeFilter, supplyIds])
 
   const { rows: sorted, sortKey, sortDir, toggleSort } = useSortedRows(filtered, {
     defaultSort: { key: 'createdAt', dir: 'desc' },
@@ -179,18 +199,33 @@ export function MovimientosTab() {
             search={search}
             onSearchChange={setSearch}
             searchPlaceholder="Buscar por ítem, empleado o comentario…"
+            searchListId="movimientos-supply-names"
             showBranch
             branchId={branchFilter}
             onBranchChange={setBranchFilter}
-            filters={[{
-              id: 'type',
-              label: 'Tipo',
-              value: typeFilter,
-              onChange: setTypeFilter,
-              options: TYPE_OPTIONS,
-            }]}
+            filters={[
+              {
+                id: 'scope',
+                label: 'Alcance',
+                value: scopeFilter,
+                onChange: setScopeFilter,
+                options: SCOPE_OPTIONS,
+              },
+              {
+                id: 'type',
+                label: 'Tipo',
+                value: typeFilter,
+                onChange: setTypeFilter,
+                options: TYPE_OPTIONS,
+              },
+            ]}
             testId="movimientos-filters"
           />
+          {supplyNames.length > 0 && (
+            <datalist id="movimientos-supply-names">
+              {supplyNames.map((name) => <option key={name} value={name} />)}
+            </datalist>
+          )}
           <div className="mt-3 flex flex-wrap gap-2 text-xs">
             {[
               { key: 'createdAt', label: 'Fecha' },

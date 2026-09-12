@@ -34,8 +34,14 @@ import { HeldCartsModal } from './HeldCartsModal'
 import { PaymentSection } from './PaymentSection'
 
 import { ReceivablePaymentModal } from './ReceivablePaymentModal'
+import { SaleInvoiceModal } from './SaleInvoiceModal'
 
 import { buildInvoiceHtml, printInvoice, downloadInvoicePdf, makeInvoiceId, formatInvoiceDate, invoiceFilename } from '../lib/invoice'
+import { buildInvoiceDataFromSale } from '@/modules/crm/lib/sales'
+import { applyBillingBrandingToInvoiceData } from '@/modules/configuracion/lib/billingDocuments'
+import { useCustomersStore } from '@/stores/customersStore'
+import { mapSaleFromApi } from '@/services/adapters/pos'
+import { resolveBranchRegisterOpen } from '../lib/registerBranchState'
 
 
 
@@ -72,6 +78,7 @@ export function CartPanel({ onCheckoutDone }) {
   const taxPct = usePosStore((s) => s.taxPct)
 
   const register = usePosStore((s) => s.register)
+  const registerOpen = usePosStore((s) => resolveBranchRegisterOpen(s, s.branchId))
 
   const recordSale = usePosStore((s) => s.recordSale)
 
@@ -120,10 +127,12 @@ export function CartPanel({ onCheckoutDone }) {
   const mutating = usePosStore((s) => s.mutating)
 
   const branches = useConfigStore((s) => s.branches)
+  const catalogProducts = useCatalogStore((s) => s.products)
 
   const paymentMethods = useConfigStore((s) => s.paymentMethods)
 
   const settings = useConfigStore((s) => s.settings)
+  const customers = useCustomersStore((s) => s.customers)
   const isOnline = useSessionStore((s) => s.status === 'online')
   const canSell = useSessionStore((s) => s.hasPermission('pos.sell'))
   const canManageQuotes = useSessionStore((s) => s.hasPermission('sales.quote.manage'))
@@ -140,6 +149,7 @@ export function CartPanel({ onCheckoutDone }) {
   const [heldOpen, setHeldOpen] = useState(false)
 
   const [paymentReceivable, setPaymentReceivable] = useState(null)
+  const [completedInvoice, setCompletedInvoice] = useState(null)
 
 
 
@@ -152,7 +162,14 @@ export function CartPanel({ onCheckoutDone }) {
   const discountPct = isExpense ? 0 : getDiscountPct()
   const taxAmt = isExpense ? 0 : getTaxAmount()
   const total = isExpense ? subtotal : getTotal()
-  const taxRates = [...new Set(items.map((item) => Number(item.taxPct ?? taxPct) || 0))]
+  const resolvedItems = useMemo(() => {
+    const byId = new Map(catalogProducts.map((product) => [product.id, product]))
+    return items.map((item) => ({
+      ...item,
+      taxPct: byId.get(item.id)?.taxPct ?? item.taxPct ?? taxPct,
+    }))
+  }, [items, catalogProducts, taxPct])
+  const taxRates = [...new Set(resolvedItems.map((item) => Number(item.taxPct ?? taxPct) || 0))]
   const taxLabel = taxRates.length === 1 ? `ITBIS (${taxRates[0]}%)` : 'ITBIS (por artículo)'
   const canSubmit = isExpense ? canManageCash : isQuote ? canManageQuotes : canSell
 
@@ -160,7 +177,7 @@ export function CartPanel({ onCheckoutDone }) {
 
   const customerDebt = useMemo(
     () => (customer?.id ? getCustomerDebtSummary(customer.id) : null),
-    [customer?.id, receivables, openQuotes, getCustomerDebtSummary]
+    [customer?.id, branchId, receivables, openQuotes, getCustomerDebtSummary]
   )
 
 
@@ -337,7 +354,7 @@ export function CartPanel({ onCheckoutDone }) {
       return
     }
 
-    if (!register.open) {
+    if (!registerOpen) {
 
       toast.error('Abre la caja para poder cobrar')
 
@@ -396,6 +413,8 @@ export function CartPanel({ onCheckoutDone }) {
 
 
 
+    const invoiceDraft = buildCurrentInvoice()
+
     try {
       const checkoutResponse = await recordSale({ total, method: paymentMethod, customer, reference: paymentReference, items, subtotal, discountAmt, discountPct, taxPct, taxAmt })
 
@@ -421,6 +440,7 @@ export function CartPanel({ onCheckoutDone }) {
         toast.success(`Venta cobrada · ${formatDOP(total)}`)
       }
 
+      openSaleInvoice(checkoutResponse, invoiceDraft)
       clearCart()
       onCheckoutDone?.()
     } catch (operationError) {
@@ -439,51 +459,64 @@ export function CartPanel({ onCheckoutDone }) {
 
     const id = makeInvoiceId(issuedAt, kind)
 
-    const data = {
-
+    const base = {
       id,
-
       kind,
-
       issuedAt: formatInvoiceDate(issuedAt),
-
-      businessName: settings.businessName || 'Diedo App',
-
       branchName: branches.find((b) => b.id === branchId)?.name || '',
-
       region: settings.region || '',
-
+      customerId: customer?.id || null,
+      customerRecord: customer,
       customerName: customer?.name || 'Cliente Mostrador',
-
       customerPhone: customer?.phone || '',
-
       paymentMethod: paymentMethods.find((m) => m.id === paymentMethod)?.name || paymentMethod,
-
       paymentReference: paymentReference.trim(),
-
       items,
-
       subtotal,
-
       discountAmt,
-
       discountPct,
-
       taxPct,
-
       taxLabel,
-
       taxAmt,
-
       total,
-
     }
+    const data = applyBillingBrandingToInvoiceData(base, settings, customers)
 
     return { id, data, html: buildInvoiceHtml(data) }
 
   }
 
+  const invoiceContext = useMemo(
+    () => ({ branches, settings, paymentMethods, customers }),
+    [branches, settings, paymentMethods, customers]
+  )
 
+  const openSaleInvoice = (checkoutResponse, draftInvoice) => {
+    const sale = checkoutResponse?.id
+      ? mapSaleFromApi(checkoutResponse)
+      : {
+        id: checkoutResponse,
+        branchId,
+        total,
+        method: paymentMethod,
+        customer,
+        reference: paymentReference.trim() || null,
+        items: resolvedItems,
+        subtotal,
+        discountAmt,
+        discountPct,
+        taxPct,
+        taxAmt,
+        createdAt: new Date().toISOString(),
+      }
+    const data = checkoutResponse?.id
+      ? buildInvoiceDataFromSale(sale, invoiceContext)
+      : draftInvoice.data
+    setCompletedInvoice({
+      data,
+      html: buildInvoiceHtml(data),
+    })
+  }
 
   const handlePrint = () => {
 
@@ -495,16 +528,15 @@ export function CartPanel({ onCheckoutDone }) {
 
 
 
-  const handleDownload = () => {
-
+  const handleDownload = async () => {
     if (empty) return toast.error('El carrito está vacío')
-
     const { id, data } = buildCurrentInvoice()
-
-    downloadInvoicePdf(data, invoiceFilename(id))
-
-    toast.success(isExpense ? 'Gasto descargado' : isQuote ? 'Cotización descargada' : 'Factura descargada')
-
+    try {
+      await downloadInvoicePdf(data, invoiceFilename(id))
+      toast.success(isExpense ? 'Gasto descargado' : isQuote ? 'Cotización descargada' : 'Factura descargada')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo descargar el documento.')
+    }
   }
 
 
@@ -1070,6 +1102,12 @@ export function CartPanel({ onCheckoutDone }) {
 
         receivable={paymentReceivable}
 
+      />
+
+      <SaleInvoiceModal
+        open={Boolean(completedInvoice)}
+        onClose={() => setCompletedInvoice(null)}
+        invoice={completedInvoice}
       />
 
     </div>

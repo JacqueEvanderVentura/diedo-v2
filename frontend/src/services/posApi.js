@@ -119,6 +119,7 @@ export const posApi = {
   listReceivables: (params) => apiClient.get(`${POS_BASE}/receivables`, params),
   receivablesSummary: (params) => apiClient.get(`${POS_BASE}/receivables/summary`, params),
   getReceivable: (receivableId) => apiClient.get(`${POS_BASE}/receivables/${receivableId}`),
+  getReceivableForSale: (saleId) => apiClient.get(`${POS_BASE}/sales/${saleId}/receivable`),
   updateReceivable: (receivableId, payload, { idempotencyKey } = {}) => apiClient.patch(
     `${POS_BASE}/receivables/${receivableId}`,
     payload,

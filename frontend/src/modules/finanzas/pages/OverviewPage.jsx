@@ -17,6 +17,7 @@ import { useFinanzasStore } from '@/stores/finanzasStore'
 import { usePosStore } from '@/stores/posStore'
 import { formatDOP, formatCompact } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
+import { CHART_ANIMATION } from '@/lib/chartAnimation'
 import { Button } from '@/components/ui/Button'
 import { ExportMenu } from '../components/ExportMenu'
 import { cn } from '@/lib/utils'
@@ -38,7 +39,7 @@ function KpiCard({ label, value, icon: Icon, tone }) {
     amber: 'bg-amber-50 text-amber-600',
   }
   return (
-    <Card className="p-5">
+    <Card className="p-5 transition-all duration-200 hover:scale-[1.02] hover:shadow-md">
       <div className="flex items-start justify-between">
         <div className={cn('flex h-11 w-11 items-center justify-center rounded-xl', tones[tone])}>
           <Icon className="h-5 w-5" />
@@ -127,7 +128,7 @@ export default function OverviewPage() {
                 <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
                 <YAxis tickLine={false} axisLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} tickFormatter={formatCompact} width={56} />
                 <Tooltip content={<ChartTooltip />} />
-                <Area type="monotone" dataKey="value" stroke="#2563eb" strokeWidth={2.5} fill="url(#finGradient)" isAnimationActive={false} />
+                <Area type="monotone" dataKey="value" stroke="#2563eb" strokeWidth={2.5} fill="url(#finGradient)" {...CHART_ANIMATION} />
               </AreaChart>
             </ResponsiveContainer>
           </div>

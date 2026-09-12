@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { Upload, CheckCircle2, Hash, Banknote, Paperclip } from 'lucide-react'
+import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { formatDOP } from '@/lib/format'
-import { getBalance, POS_PROOF_ACCEPT } from '@/modules/pos/lib/receivables'
+import { getBalance, POS_PROOF_ACCEPT, receivableHasPaymentEvidence } from '@/modules/pos/lib/receivables'
+import { usePosStore } from '@/stores/posStore'
 import { cn } from '@/lib/utils'
-import { useSessionStore } from '@/stores/sessionStore'
+import { ProofImagePreview } from './ProofImagePreview'
 
 export function ReceivableProofModal({
   open,
@@ -20,39 +22,62 @@ export function ReceivableProofModal({
   const [err, setErr] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const inputRef = useRef(null)
-  const isOnline = useSessionStore((state) => state.status === 'online')
+  const downloadPaymentProof = usePosStore((state) => state.downloadPaymentProof)
 
   useEffect(() => {
     if (!open) {
       setFile(null)
       setReference('')
       setErr('')
+      return
     }
-  }, [open])
+    setFile(null)
+    setReference(receivable?.reference || '')
+    setErr('')
+  }, [open, receivable?.id, receivable?.reference])
 
   if (!receivable) return null
 
   const balance = getBalance(receivable)
-  const hasProof = Boolean(file)
-  const hasReference = reference.trim().length > 0
-  const canValidate = isOnline ? hasProof : hasProof || hasReference
-
-  const buildPayload = () => ({
+  const existingProof = receivable.proof || null
+  const hasExistingProof = Boolean(existingProof)
+  const payload = {
     proof: file,
     reference: reference.trim() || null,
-  })
+  }
+  const canValidate = receivableHasPaymentEvidence(receivable, payload)
+  const canSaveNewProof = Boolean(file)
+
+  const loadProof = async (proof) => {
+    if (proof instanceof Blob) return proof
+    return downloadPaymentProof(proof)
+  }
+
+  const handleDownload = async (proof) => {
+    try {
+      const blob = proof instanceof Blob ? proof : await downloadPaymentProof(proof)
+      const objectUrl = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = objectUrl
+      anchor.download = proof?.name || 'comprobante'
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(objectUrl)
+    } catch (error) {
+      toast.error(error.message || 'No se pudo descargar el comprobante.')
+    }
+  }
 
   const guard = async (fn) => {
     if (!canValidate) {
-      setErr(isOnline
-        ? 'Sube el comprobante para completar esta operación en línea.'
-        : 'Ingresa el N° de referencia o sube el comprobante.')
+      setErr('Ingresa el N° de referencia o sube el comprobante.')
       return
     }
     setErr('')
     setSubmitting(true)
     try {
-      await fn(buildPayload())
+      await fn(payload)
     } catch (operationError) {
       setErr(operationError.message || 'No se pudo procesar el comprobante.')
     } finally {
@@ -66,18 +91,28 @@ export function ReceivableProofModal({
         <div className="rounded-xl bg-slate-50 p-4">
           <p className="font-heading font-bold text-slate-900">{receivable.customer?.name}</p>
           <p className="text-sm text-slate-500">Saldo pendiente: {formatDOP(balance)}</p>
-          {receivable.proof && (
-            <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-emerald-700">
-              <Paperclip className="h-3.5 w-3.5" />
-              Comprobante actual: {receivable.proof.name}
-            </p>
-          )}
         </div>
 
-        <p className="text-xs font-medium text-slate-500">
-          Ingresa el <span className="font-semibold text-slate-600">N° de referencia</span>{' '}
-          <span className="font-bold">o</span> sube el comprobante (una de las dos).
-        </p>
+        {hasExistingProof && !file && (
+          <ProofImagePreview
+            proof={existingProof}
+            loadProof={loadProof}
+            onDownload={handleDownload}
+          />
+        )}
+
+        {!hasExistingProof && (
+          <p className="text-xs font-medium text-slate-500">
+            Ingresa el <span className="font-semibold text-slate-600">N° de referencia</span>{' '}
+            <span className="font-bold">o</span> sube el comprobante (una de las dos).
+          </p>
+        )}
+
+        {hasExistingProof && (
+          <p className="text-xs font-medium text-slate-500">
+            Ya hay un comprobante. Puedes confirmar el pago ahora, o reemplazarlo si hace falta.
+          </p>
+        )}
 
         <div className="relative">
           <Hash className={cn('pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2', err && !canValidate ? 'text-red-400' : 'text-slate-400')} />
@@ -100,8 +135,8 @@ export function ReceivableProofModal({
           className="hidden"
           data-testid="cxc-proof-file"
           onChange={(e) => {
-            const f = e.target.files?.[0]
-            setFile(f || null)
+            const next = e.target.files?.[0]
+            setFile(next || null)
             setErr('')
           }}
         />
@@ -119,8 +154,10 @@ export function ReceivableProofModal({
                   : 'border-slate-300 bg-slate-50 text-slate-500 hover:border-blue-300 hover:bg-blue-50'
             )}
           >
-            {file ? <CheckCircle2 className="h-5 w-5 shrink-0" /> : <Upload className="h-5 w-5 shrink-0" />}
-            <span className="min-w-0 flex-1 truncate font-medium">{file ? file.name : 'Subir comprobante'}</span>
+            {file ? <CheckCircle2 className="h-5 w-5 shrink-0" /> : hasExistingProof ? <Paperclip className="h-5 w-5 shrink-0" /> : <Upload className="h-5 w-5 shrink-0" />}
+            <span className="min-w-0 flex-1 truncate font-medium">
+              {file ? file.name : hasExistingProof ? 'Reemplazar comprobante (opcional)' : 'Subir comprobante'}
+            </span>
           </button>
           {file && (
             <button
@@ -138,7 +175,7 @@ export function ReceivableProofModal({
         <div className="space-y-2 border-t border-slate-100 pt-4">
           <Button
             className="w-full"
-            onClick={() => guard((payload) => onConfirm(receivable, payload))}
+            onClick={() => guard((next) => onConfirm(receivable, next))}
             disabled={submitting}
             data-testid="cxc-proof-confirm"
           >
@@ -148,22 +185,24 @@ export function ReceivableProofModal({
           <Button
             variant="secondary"
             className="w-full"
-            onClick={() => guard((payload) => onCash(receivable, payload))}
+            onClick={() => guard((next) => onCash(receivable, next))}
             disabled={submitting}
             data-testid="cxc-proof-cash"
           >
             <Banknote className="h-4 w-4" />
             Cobrar en efectivo
           </Button>
-          <Button
-            variant="ghost"
-            className="w-full text-slate-600"
-            onClick={() => guard((payload) => onSaveOnly(receivable, payload))}
-            disabled={submitting}
-            data-testid="cxc-proof-save-only"
-          >
-            Solo guardar comprobante
-          </Button>
+          {canSaveNewProof && (
+            <Button
+              variant="ghost"
+              className="w-full text-slate-600"
+              onClick={() => guard((next) => onSaveOnly(receivable, next))}
+              disabled={submitting}
+              data-testid="cxc-proof-save-only"
+            >
+              Solo guardar comprobante
+            </Button>
+          )}
         </div>
       </div>
     </Modal>

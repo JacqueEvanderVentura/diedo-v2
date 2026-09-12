@@ -2,26 +2,68 @@ import { useMemo, useState, useEffect } from 'react'
 import { Link, useSearchParams, Navigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { CalendarClock, MessageSquare, CreditCard, ArrowLeft, Send } from 'lucide-react'
-import { DiedoIcon } from '@/components/brand/DiedoIcon'
+import { HeliosIcon } from '@/components/brand/HeliosIcon'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { useAgendaStore, statusMeta, todayKey } from '@/stores/agendaStore'
 import { useSelfBookingStore, recallDocument } from '@/stores/selfBookingStore'
+import { useSessionStore } from '@/stores/sessionStore'
+import { publicBookingApi } from '@/services/publicBookingApi'
+import { useConfigStore } from '@/stores/configStore'
+import { normalizeDocumentId } from '../lib/selfBooking'
 import { fmtDate } from '@/modules/crm/lib/crm'
 import { cn } from '@/lib/utils'
 
 export default function PerfilPublicoPage() {
   const [params] = useSearchParams()
   const docParam = params.get('doc') || recallDocument()
+  const branchId = params.get('branch') || useConfigStore.getState().branches[0]?.id
+  const isDemo = useSessionStore((s) => s.status) === 'demo'
   const lookupByDocument = useSelfBookingStore((s) => s.lookupByDocument)
   const upsertProfile = useSelfBookingStore((s) => s.upsertProfile)
   const addClaim = useSelfBookingStore((s) => s.addClaim)
   const getClaimsForProfile = useSelfBookingStore((s) => s.getClaimsForProfile)
   const appointments = useAgendaStore((s) => s.appointments)
 
-  const profile = useMemo(() => (docParam ? lookupByDocument(docParam) : null), [docParam, lookupByDocument])
+  const [remoteProfile, setRemoteProfile] = useState(null)
+  const [remoteAppointments, setRemoteAppointments] = useState(null)
+
+  useEffect(() => {
+    if (isDemo || !docParam || !branchId) return
+    const key = normalizeDocumentId(docParam)
+    publicBookingApi.identify(branchId, { documentType: 'cedula', documentId: key })
+      .then(async (identity) => {
+        if (!identity.customerId) {
+          setRemoteProfile(null)
+          return
+        }
+        setRemoteProfile({
+          docType: identity.documentType,
+          documentId: key,
+          name: identity.displayName || '',
+          email: identity.email || '',
+          phone: identity.phone || '',
+          address: identity.address || '',
+          wantsInvoice: identity.wantsInvoice,
+          wantsContact: identity.wantsContact,
+          customerId: identity.customerId,
+        })
+        const result = await publicBookingApi.getProfile(branchId, {
+          documentType: identity.documentType,
+          documentId: key,
+        })
+        setRemoteAppointments(result.items || [])
+      })
+      .catch(() => setRemoteProfile(null))
+  }, [branchId, docParam, isDemo])
+
+  const profile = useMemo(() => {
+    if (!docParam) return null
+    if (!isDemo && remoteProfile) return remoteProfile
+    return lookupByDocument(docParam)
+  }, [docParam, lookupByDocument, isDemo, remoteProfile])
 
   const [form, setForm] = useState(null)
   const [claimType, setClaimType] = useState('general')
@@ -42,11 +84,20 @@ export default function PerfilPublicoPage() {
   }, [profile])
 
   const customerAppointments = useMemo(() => {
+    if (!isDemo && remoteAppointments) {
+      return remoteAppointments.map((item) => ({
+        id: item.id,
+        date: item.date,
+        time: item.time,
+        serviceName: item.serviceName,
+        status: item.status,
+      }))
+    }
     if (!profile?.customerId) return []
     return appointments
       .filter((a) => a.customerId === profile.customerId)
       .sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time))
-  }, [appointments, profile])
+  }, [appointments, profile, isDemo, remoteAppointments])
 
   const upcoming = customerAppointments.filter((a) => a.date >= todayKey())
   const past = customerAppointments.filter((a) => a.date < todayKey())
@@ -212,7 +263,7 @@ function Shell({ children }) {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/20">
       <header className="border-b border-white/60 bg-white/80 px-4 py-4 backdrop-blur-md">
         <div className="mx-auto flex max-w-lg items-center gap-3">
-          <DiedoIcon />
+          <HeliosIcon />
           <span className="font-heading font-bold text-slate-900">Mi perfil</span>
         </div>
       </header>

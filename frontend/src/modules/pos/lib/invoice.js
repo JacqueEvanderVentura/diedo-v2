@@ -1,7 +1,6 @@
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import { buildHeliosLogoHtml, PRODUCT_NAME } from '@/components/brand/HeliosIcon'
 import { formatDOP } from '@/lib/format'
-import { printHtml } from '@/lib/print'
+import { downloadHtmlAsPdf, printHtml } from '@/lib/print'
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -36,15 +35,6 @@ function formatItemPriceHtml(item) {
   return escapeHtml(formatDOP(unit))
 }
 
-function formatItemPricePdf(item) {
-  const unit = itemUnitPrice(item)
-  const list = itemListPrice(item)
-  if (isItemDiscounted(item)) {
-    return `${formatDOP(unit)} (antes ${formatDOP(list)})`
-  }
-  return formatDOP(unit)
-}
-
 export function formatInvoiceDate(date = new Date()) {
   return date.toLocaleString('es-DO', {
     dateStyle: 'medium',
@@ -61,17 +51,23 @@ export function invoiceFilename(id) {
   return `${id}.pdf`
 }
 
-const LOGO_SVG = `<svg width="36" height="36" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="30" cy="18" r="6" fill="#3B82F6"/><rect x="24" y="30" width="12" height="40" rx="6" fill="#3B82F6"/><circle cx="30" cy="82" r="6" fill="#22D3EE"/><path d="M42 30H56A22 22 0 0 1 71.5 36.5" stroke="#A855F7" stroke-width="12" stroke-linecap="round"/><path d="M42 70H56A22 22 0 0 0 71.5 63.5" stroke="#22D3EE" stroke-width="12" stroke-linecap="round"/><circle cx="82" cy="50" r="6" fill="#A855F7"/></svg>`
-
 export function buildInvoiceHtml(data) {
   const {
     id,
     issuedAt,
     businessName,
+    legalName = '',
+    businessRnc = '',
+    businessAddress = '',
+    businessPhone = '',
+    businessEmail = '',
+    logoDataUrl = '',
+    footerNote = '',
     branchName,
     region,
     customerName,
     customerPhone,
+    customerTaxLine = '',
     paymentMethod,
     paymentReference,
     items,
@@ -83,15 +79,23 @@ export function buildInvoiceHtml(data) {
     taxAmt,
     total,
     kind = 'sale',
+    validUntil = '',
   } = data
 
   const isExpense = kind === 'expense'
   const isQuote = kind === 'quote'
   const docTitle = isExpense ? 'Gasto' : isQuote ? 'Cotización' : 'Factura'
   const totalColor = isExpense ? '#dc2626' : isQuote ? '#d97706' : '#2563eb'
-  const footer = isExpense
-    ? `Comprobante de gasto · ${escapeHtml(businessName)}`
-    : `Gracias por su compra · ${escapeHtml(businessName)}`
+  const footerText = footerNote
+    || (isExpense
+      ? `Comprobante de gasto · ${escapeHtml(businessName)}`
+      : isQuote
+        ? `Cotización sujeta a disponibilidad · ${escapeHtml(businessName)}`
+        : `Gracias por su compra · ${escapeHtml(businessName)}`)
+
+  const logoHtml = logoDataUrl
+    ? `<img src="${logoDataUrl.replace(/"/g, '&quot;')}" alt="" class="brand-logo" />`
+    : buildHeliosLogoHtml({ title: businessName || PRODUCT_NAME })
 
   const rows = items
     .map((item) => {
@@ -137,6 +141,7 @@ export function buildInvoiceHtml(data) {
       margin-bottom: 24px;
     }
     .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-logo { width: 36px; height: 36px; flex-shrink: 0; border-radius: 8px; object-fit: contain; }
     .brand h1 { margin: 0; font-size: 22px; letter-spacing: -0.02em; }
     .brand p { margin: 0 2px 0 0; font-size: 12px; color: #64748b; }
     .meta { text-align: right; font-size: 13px; color: #475569; }
@@ -173,9 +178,15 @@ export function buildInvoiceHtml(data) {
   <div class="sheet">
     <header>
       <div class="brand">
-        ${LOGO_SVG}
+        ${logoHtml}
         <div>
           <h1>${escapeHtml(businessName)}</h1>
+          ${legalName && legalName !== businessName ? `<p>${escapeHtml(legalName)}</p>` : ''}
+          ${businessRnc ? `<p class="muted">RNC ${escapeHtml(businessRnc)}</p>` : ''}
+          ${businessAddress ? `<p class="muted">${escapeHtml(businessAddress)}</p>` : ''}
+          ${[businessPhone, businessEmail].filter(Boolean).length
+    ? `<p class="muted">${escapeHtml([businessPhone, businessEmail].filter(Boolean).join(' · '))}</p>`
+    : ''}
           <p>${escapeHtml([branchName, region].filter(Boolean).join(' · '))}</p>
         </div>
       </div>
@@ -190,12 +201,14 @@ export function buildInvoiceHtml(data) {
       <div>
         <div class="label">Cliente</div>
         <div><strong>${escapeHtml(customerName)}</strong></div>
+        ${customerTaxLine ? `<div class="muted">${escapeHtml(customerTaxLine)}</div>` : ''}
         ${customerPhone ? `<div class="muted">${escapeHtml(customerPhone)}</div>` : ''}
       </div>
       <div>
-        <div class="label">Pago</div>
+        <div class="label">${isQuote ? 'Condición' : 'Pago'}</div>
         <div><strong>${escapeHtml(paymentMethod)}</strong></div>
         ${paymentReference ? `<div class="muted">Ref: ${escapeHtml(paymentReference)}</div>` : ''}
+        ${isQuote && validUntil ? `<div class="muted">Válida hasta ${escapeHtml(validUntil)}</div>` : ''}
       </div>
     </div>
 
@@ -222,7 +235,7 @@ export function buildInvoiceHtml(data) {
       <div class="grand"><span>Total</span><span>${escapeHtml(formatDOP(total))}</span></div>
     </div>
 
-    <footer>${footer}</footer>
+    <footer>${footerText}</footer>
   </div>
 </body>
 </html>`
@@ -232,114 +245,6 @@ export function printInvoice(html) {
   printHtml(html)
 }
 
-export function downloadInvoicePdf(data, filename) {
-  const {
-    id,
-    issuedAt,
-    businessName,
-    branchName,
-    region,
-    customerName,
-    customerPhone,
-    paymentMethod,
-    paymentReference,
-    items,
-    subtotal,
-    discountAmt,
-    discountPct,
-    taxPct,
-    taxLabel,
-    taxAmt,
-    total,
-    kind = 'sale',
-  } = data
-
-  const isExpense = kind === 'expense'
-  const isQuote = kind === 'quote'
-  const docTitle = isExpense ? 'Gasto' : isQuote ? 'Cotización' : 'Factura'
-  const pdf = new jsPDF()
-  const margin = 14
-  let y = 18
-
-  pdf.setFontSize(16)
-  pdf.text(businessName, margin, y)
-  y += 7
-  pdf.setFontSize(9)
-  pdf.setTextColor(100)
-  const subtitle = [branchName, region].filter(Boolean).join(' · ')
-  if (subtitle) {
-    pdf.text(subtitle, margin, y)
-    y += 5
-  }
-  pdf.setTextColor(0)
-
-  pdf.setFontSize(11)
-  pdf.text(docTitle, 150, 18, { align: 'right' })
-  pdf.setFontSize(9)
-  pdf.setTextColor(80)
-  pdf.text(id, 150, 24, { align: 'right' })
-  pdf.text(issuedAt, 150, 29, { align: 'right' })
-  pdf.setTextColor(0)
-
-  y += 6
-  pdf.setFontSize(9)
-  pdf.text(`Cliente: ${customerName}`, margin, y)
-  y += 5
-  if (customerPhone) {
-    pdf.text(customerPhone, margin, y)
-    y += 5
-  }
-  pdf.text(`Pago: ${paymentMethod}${paymentReference ? ` · Ref: ${paymentReference}` : ''}`, margin, y)
-  y += 8
-
-  autoTable(pdf, {
-    startY: y,
-    head: [['Descripción', 'Cant.', 'Precio', 'Importe']],
-    body: items.map((item) => {
-      const unit = itemUnitPrice(item)
-      const line = unit * item.qty
-      const desc = item.sku ? `${item.name}\nSKU: ${item.sku}` : item.name
-      return [desc, String(item.qty), formatItemPricePdf(item), formatDOP(line)]
-    }),
-    styles: { fontSize: 9, cellPadding: 3 },
-    headStyles: { fillColor: isExpense ? [220, 38, 38] : isQuote ? [217, 119, 6] : [37, 99, 235] },
-    columnStyles: {
-      1: { halign: 'right' },
-      2: { halign: 'right' },
-      3: { halign: 'right' },
-    },
-  })
-
-  const finalY = (pdf.lastAutoTable?.finalY ?? y) + 10
-  const totalsX = 130
-  let ty = finalY
-
-  pdf.setFontSize(10)
-  pdf.text('Subtotal:', totalsX, ty)
-  pdf.text(formatDOP(subtotal), 196, ty, { align: 'right' })
-  ty += 6
-
-  if (discountAmt > 0) {
-    pdf.setTextColor(5, 150, 105)
-    pdf.text(`Descuento (${discountPct.toFixed(1)}%):`, totalsX, ty)
-    pdf.text(`−${formatDOP(discountAmt)}`, 196, ty, { align: 'right' })
-    pdf.setTextColor(0)
-    ty += 6
-  }
-
-  pdf.text(`${taxLabel || `ITBIS (${taxPct}%)`}:`, totalsX, ty)
-  pdf.text(formatDOP(taxAmt), 196, ty, { align: 'right' })
-  ty += 8
-
-  pdf.setFontSize(12)
-  pdf.setFont(undefined, 'bold')
-  pdf.text('Total:', totalsX, ty)
-  if (isExpense) pdf.setTextColor(220, 38, 38)
-  else if (isQuote) pdf.setTextColor(217, 119, 6)
-  else pdf.setTextColor(37, 99, 235)
-  pdf.text(formatDOP(total), 196, ty, { align: 'right' })
-  pdf.setTextColor(0)
-  pdf.setFont(undefined, 'normal')
-
-  pdf.save(filename)
+export async function downloadInvoicePdf(data, filename) {
+  await downloadHtmlAsPdf(buildInvoiceHtml(data), filename)
 }

@@ -1,4 +1,4 @@
-# Diedo / Vilma AI — Frontend (Fase 1)
+# Helios 360 — Frontend (Fase 1)
 
 ERP/POS multi-módulo construido como **PWA** con **React + Vite** (JS/JSX, sin TypeScript, sin Next).
 Esta entrega cubre la **Fase 1**: Navbar + Dashboard + Terminal POS. 100% datos mock.

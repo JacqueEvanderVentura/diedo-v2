@@ -8,7 +8,7 @@ import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { DEPARTMENTS } from '@/data/rrhh'
 import { fullName } from '../lib/rrhh'
-import { emptyWorkSchedule } from '../lib/schedule'
+import { emptyWorkSchedule, validateWorkSchedule } from '../lib/schedule'
 import { EmployeeScheduleEditor } from './EmployeeScheduleEditor'
 import { cn } from '@/lib/utils'
 
@@ -24,6 +24,7 @@ const empty = () => ({
   usuarioId: '',
   jefeIds: [],
   active: true,
+  selectableAsSpecialist: false,
   hireDate: new Date().toISOString().slice(0, 10),
   workSchedule: emptyWorkSchedule(),
 })
@@ -99,6 +100,8 @@ export function EmployeeFormModal({ open, onClose, employee, employees, platform
     if (!form.lastName.trim()) return setErr('Ingresa el apellido.')
     if (!form.position.trim()) return setErr('Ingresa el cargo.')
     if (!form.branchIds.length) return setErr('Selecciona al menos una sucursal.')
+    const scheduleErrors = validateWorkSchedule(form.workSchedule)
+    if (scheduleErrors.length) return setErr(scheduleErrors.join(' '))
     setSaving(true)
     try {
       await onSubmit({
@@ -214,6 +217,15 @@ export function EmployeeFormModal({ open, onClose, employee, employees, platform
           <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-xl bg-slate-50 px-4 py-3">
             <input type="checkbox" checked={form.active} onChange={(e) => set('active', e.target.checked)} className="h-4 w-4 rounded border-slate-300" />
             <span className="text-sm font-medium text-slate-700">Empleado activo</span>
+          </label>
+          <label className="mt-2 flex cursor-pointer items-center gap-3 rounded-xl border border-slate-100 bg-white px-4 py-3">
+            <input
+              type="checkbox"
+              checked={form.selectableAsSpecialist}
+              onChange={(e) => set('selectableAsSpecialist', e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            <span className="text-sm font-medium text-slate-700">Seleccionable como especialista (agenda en línea)</span>
           </label>
         </section>
       </div>
