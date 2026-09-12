@@ -31,10 +31,9 @@ def upgrade() -> None:
             server_default="product",
         ),
     )
-    op.create_check_constraint(
-        "ck_item_categories_category_kind_values",
-        "item_categories",
-        _KIND_CHECK,
+    op.execute(
+        f"ALTER TABLE item_categories ADD CONSTRAINT ck_item_categories_category_kind_values "
+        f"CHECK ({_KIND_CHECK})"
     )
 
 

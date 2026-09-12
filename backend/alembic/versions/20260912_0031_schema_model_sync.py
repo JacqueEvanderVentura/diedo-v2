@@ -38,10 +38,9 @@ def upgrade() -> None:
         'ALTER TABLE item_categories DROP CONSTRAINT IF EXISTS '
         '"ck_item_categories_category_kind_values"'
     )
-    op.create_check_constraint(
-        "ck_item_categories_category_kind_values",
-        "item_categories",
-        _KIND_CHECK,
+    op.execute(
+        f"ALTER TABLE item_categories ADD CONSTRAINT ck_item_categories_category_kind_values "
+        f"CHECK ({_KIND_CHECK})"
     )
     op.create_index(
         "ix_item_categories_workspace_kind",
