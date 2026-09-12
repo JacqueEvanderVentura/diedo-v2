@@ -38,7 +38,21 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint("ck_crm_leads_acquisition_source_values", "crm_leads", type_="check")
+    op.execute(
+        'ALTER TABLE crm_leads DROP CONSTRAINT IF EXISTS '
+        '"ck_crm_leads_acquisition_source_values"'
+    )
+    op.execute(
+        'ALTER TABLE crm_leads DROP CONSTRAINT IF EXISTS '
+        '"ck_crm_leads_ck_crm_leads_acquisition_source_values"'
+    )
     op.drop_column("crm_leads", "acquisition_source")
-    op.drop_constraint("ck_customers_acquisition_source_values", "customers", type_="check")
+    op.execute(
+        'ALTER TABLE customers DROP CONSTRAINT IF EXISTS '
+        '"ck_customers_acquisition_source_values"'
+    )
+    op.execute(
+        'ALTER TABLE customers DROP CONSTRAINT IF EXISTS '
+        '"ck_customers_ck_customers_acquisition_source_values"'
+    )
     op.drop_column("customers", "acquisition_source")

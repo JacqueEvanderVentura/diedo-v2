@@ -1005,7 +1005,14 @@ def test_crm_quote_accepted_does_not_auto_invoice_and_crm_invoice_works_without_
     assert accepted.status_code == 200, accepted.text
     assert accepted.json()["crmStatus"] == "aceptada"
     with session_scope() as session:
-        sales_before = session.scalar(select(func.count()).select_from(Sale)) or 0
+        sales_before = (
+            session.scalar(
+                select(func.count())
+                .select_from(Sale)
+                .where(Sale.workspace_id == seeded.workspace_id)
+            )
+            or 0
+        )
     assert sales_before == 0
 
     pos_state = client.get(
