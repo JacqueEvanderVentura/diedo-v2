@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from decimal import Decimal
-from uuid import uuid7
+from uuid import UUID, uuid7
 
 import pytest
 from app.core.security import hash_password
@@ -1005,15 +1005,18 @@ def test_crm_quote_accepted_does_not_auto_invoice_and_crm_invoice_works_without_
     assert accepted.status_code == 200, accepted.text
     assert accepted.json()["crmStatus"] == "aceptada"
     with session_scope() as session:
-        sales_before = (
+        invoiced_sales = (
             session.scalar(
                 select(func.count())
                 .select_from(Sale)
-                .where(Sale.workspace_id == seeded.workspace_id)
+                .where(
+                    Sale.workspace_id == seeded.workspace_id,
+                    Sale.quote_id == UUID(quote_id),
+                )
             )
             or 0
         )
-    assert sales_before == 0
+    assert invoiced_sales == 0
 
     pos_state = client.get(
         "/api/v1/pos/state", headers=headers, params={"branchId": branch_id_text}

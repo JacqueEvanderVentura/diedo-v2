@@ -24,7 +24,7 @@ from app.db.models import (
 )
 from app.db.session import dispose_engine, session_scope
 from app.services.local_bootstrap import bootstrap_local_foundation
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 _OWNER_PASSWORD = "pos-migration-password-not-a-secret"
 
@@ -214,6 +214,8 @@ def test_0013_backfills_only_attributable_appointment_receivables() -> None:
         catalog_workspace_id = catalog_workspace.id
         custom_card_id = custom_card.id
         existing_entitlement_id = existing_entitlement.id
+        session.execute(delete(Appointment).where(Appointment.workspace_id == workspace_id))
+        session.execute(delete(Appointment).where(Appointment.workspace_id == catalog_workspace_id))
 
     dispose_engine()
     migration_config = _migration_config()
@@ -221,10 +223,9 @@ def test_0013_backfills_only_attributable_appointment_receivables() -> None:
         command.downgrade(migration_config, "20260831_0012")
         command.upgrade(migration_config, "20260831_0013")
         command.upgrade(migration_config, "head")
-    except BaseException:
-        command.upgrade(migration_config, "head")
-        raise
     finally:
+        dispose_engine()
+        command.upgrade(migration_config, "head")
         dispose_engine()
 
     with session_scope() as session:
