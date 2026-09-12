@@ -90,6 +90,9 @@ def test_0013_backfills_only_attributable_appointment_receivables() -> None:
     suffix = uuid7().hex[-12:]
     with session_scope() as session:
         summary = bootstrap_local_foundation(session, hash_password(_OWNER_PASSWORD))
+        session.execute(
+            text("TRUNCATE TABLE appointment_events, appointments RESTART IDENTITY CASCADE")
+        )
         branch = session.scalar(
             select(Branch).where(
                 Branch.workspace_id == summary.workspace_id,
