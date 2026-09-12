@@ -307,7 +307,8 @@ def test_provisioning_creates_an_isolated_ready_workspace(
     assert UUID(context.json()["workspaceId"]) == workspace_id
     assert context.json()["effectiveScope"]["workspaceWide"] is True
     assert "branch.manage" in context.json()["effectivePermissionCodes"]
-    assert context.json()["visibleBranches"] == []
+    assert len(context.json()["visibleBranches"]) == 1
+    assert context.json()["visibleBranches"][0]["name"] == "Principal"
 
     branch = client.post(
         "/api/v1/branches",

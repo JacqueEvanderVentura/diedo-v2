@@ -975,9 +975,7 @@ def test_crm_quote_accepted_does_not_auto_invoice_and_crm_invoice_works_without_
         f"/api/v1/crm/leads/{lead.json()['id']}/opportunity",
         headers={**headers, "Idempotency-Key": f"crm-inv-opp-{suffix}"},
         json={
-            "branchId": branch_id_text,
             "title": "Oportunidad factura",
-            "customerName": converted.json()["displayName"],
             "value": "1500.00",
         },
     )

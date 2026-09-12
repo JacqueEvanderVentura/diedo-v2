@@ -38,9 +38,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint(
-        "ck_item_categories_category_kind_values",
-        "item_categories",
-        type_="check",
+    op.execute(
+        'ALTER TABLE item_categories DROP CONSTRAINT IF EXISTS '
+        '"ck_item_categories_category_kind_values"'
     )
     op.drop_column("item_categories", "category_kind")

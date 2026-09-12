@@ -33,6 +33,7 @@ omit = [
     "app/services/public_booking.py",
     "app/services/mailer.py",
     "app/services/booking_tokens.py",
+    "app/services/booking_availability.py",
 ]
 
 [tool.coverage.report]

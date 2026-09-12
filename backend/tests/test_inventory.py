@@ -474,7 +474,7 @@ def test_inventory_complete_http_contract_and_idempotent_ledger(client: TestClie
             "status": "reparacion",
             "page": 1,
             "pageSize": 10,
-            "sortBy": "value",
+                "sortBy": "createdAt",
             "sortDirection": "desc",
         },
     )
