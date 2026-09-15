@@ -1,0 +1,18 @@
+{
+  "name": "diedo-frontend",
+  "compatibility_date": "2026-09-14",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  },
+  "env": {
+    "preview": {
+      "name": "diedo-frontend-preview",
+      "workers_dev": true
+    },
+    "production": {
+      "name": "diedo-frontend-production",
+      "workers_dev": true
+    }
+  }
+}

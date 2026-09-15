@@ -1,22 +1,31 @@
-name: Deploy frontend (full-stack) to GitHub Pages
+name: Deploy frontend to Cloudflare Workers
 
 on:
   push:
     branches: [full-stack]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-fe-pages.yml"
+  pull_request:
+    branches: [full-stack]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-fe-pages.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages-full-stack
+  group: cloudflare-frontend-full-stack
   cancel-in-progress: true
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,38 +33,46 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        working-directory: frontend
         run: npm ci
 
-      - name: Build for GitHub Pages
-        working-directory: frontend
+      - name: Build production bundle
         env:
-          GITHUB_PAGES: 'true'
-          # Same production API the Railway `web` service uses.
           VITE_API_BASE_URL: https://api-production-b1fb.up.railway.app
-          VITE_DEMO_SEED_ENABLED: 'false'
+          VITE_DEMO_SEED_ENABLED: "false"
+          VITE_FEATURE_SELF_BOOKING: "false"
+          VITE_FEATURE_INVITATIONS: "false"
+          VITE_FEATURE_CRM_DISCOVERY: "false"
+          VITE_FEATURE_PAYROLL: "false"
+          VITE_FEATURE_PERFORMANCE: "false"
+          VITE_FEATURE_NOTIFICATIONS: "false"
+          VITE_FEATURE_CALENDAR_SCHEDULES: "false"
+          VITE_FEATURE_REGIONAL_MODULES: "false"
         run: npm run build
 
-      - name: Add SPA fallback for client-side routes
-        run: cp frontend/dist/index.html frontend/dist/404.html
+      - name: Run frontend tests
+        run: npm test
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: frontend/dist
+      - name: Validate Wrangler plan
+        env:
+          ENV_NAME: ${{ github.event_name == 'pull_request' && 'preview' || 'production' }}
+        run: |
+          npx wrangler deploy --dry-run --config wrangler.jsonc --env $ENV_NAME
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Deploy to Cloudflare (preview)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy --config wrangler.jsonc --env preview
+
+      - name: Deploy to Cloudflare (production)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/full-stack'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy --config wrangler.jsonc --env production
