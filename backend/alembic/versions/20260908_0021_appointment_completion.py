@@ -59,6 +59,10 @@ def upgrade() -> None:
     op.add_column("appointments", sa.Column("delay_responsibility", sa.String(length=16), nullable=True))
     op.add_column("appointments", sa.Column("completion_note", sa.String(length=500), nullable=True))
 
+    # The legacy check rejects 'fulfilled'; replace it around the data conversion
+    # in the same transaction so existing completed/attended appointments migrate.
+    op.drop_constraint(op.f("ck_appointments_status_values"), "appointments", type_="check")
+
     op.execute(
         """
         UPDATE appointments
@@ -76,7 +80,6 @@ def upgrade() -> None:
         """
     )
 
-    op.drop_constraint(op.f("ck_appointments_status_values"), "appointments", type_="check")
     op.create_check_constraint(
         op.f("ck_appointments_status_values"),
         "appointments",
