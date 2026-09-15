@@ -87,6 +87,14 @@ def test_s3_storage_requires_bucket_and_endpoint() -> None:
     assert configured.s3_bucket == "uploads"
 
 
+def test_resend_settings_have_safe_defaults() -> None:
+    configured = Settings(_env_file=None)
+
+    assert configured.email_enabled is False
+    assert configured.resend_request_timeout_seconds == 10
+    assert configured.email_from == "Helios 360 ERP <onboarding@resend.dev>"
+
+
 def test_invitations_default_off_in_production_and_can_be_explicitly_enabled() -> None:
     production = Settings(
         app_env="production",
