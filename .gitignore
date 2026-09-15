@@ -91,3 +91,5 @@ android-sdk/
 credentials.json
 *.key
 .credentials
+frontend/.wrangler.deploy.json
+frontend/worker-configuration.d.ts

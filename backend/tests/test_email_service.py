@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
-
 from app.config import Settings
+from app.scripts import send_resend_test
 from app.services import email as email_service
 from app.services.email import (
     EmailAuthenticationError,
@@ -16,7 +17,6 @@ from app.services.email import (
     EmailValidationError,
     send_email,
 )
-from app.scripts import send_resend_test
 
 
 def _settings_for_test(*, enabled: bool = True) -> Settings:
@@ -29,8 +29,11 @@ def _settings_for_test(*, enabled: bool = True) -> Settings:
     )
 
 
-def _configure_resend_stub(monkeypatch: pytest.MonkeyPatch, *, send_result: object) -> dict[str, object]:
+def _configure_resend_stub(
+    monkeypatch: pytest.MonkeyPatch, *, send_result: object
+) -> dict[str, object]:
     captured: dict[str, object] = {}
+
     class _SdkError(Exception):
         pass
 
@@ -54,6 +57,7 @@ def _configure_resend_stub(monkeypatch: pytest.MonkeyPatch, *, send_result: obje
     monkeypatch.setattr(email_service, "RequestsClient", lambda timeout: f"http-client:{timeout}")
     monkeypatch.setattr(email_service, "MissingApiKeyError", _AuthError)
     monkeypatch.setattr(email_service, "InvalidApiKeyError", _AuthError)
+
     class _ValidationError(_SdkError):
         pass
 
@@ -77,7 +81,9 @@ def test_send_email_rejects_when_disabled_without_force() -> None:
         )
 
 
-def test_send_email_raises_if_api_key_missing_even_with_force(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_send_email_raises_if_api_key_missing_even_with_force(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _configure_resend_stub(monkeypatch, send_result={"id": "ignored"})
 
     with pytest.raises(EmailConfigurationError, match="no está configurada"):
@@ -128,6 +134,93 @@ def test_send_email_success_returns_provider_id_and_honors_idempotency(
     assert payload["to"] == "owner@erp.dev"  # type: ignore[index]
     assert payload["from"] == "Helios 360 ERP <notificaciones@mail.helios360erp.com>"  # type: ignore[index]
     assert captured["options"] == {"idempotency_key": "idem-01"}  # type: ignore[comparison-overlap]
+
+
+@pytest.mark.parametrize("idempotency_key", [None, "sdk-contract-01"])
+def test_send_email_uses_installed_sdk_contract(idempotency_key: str | None) -> None:
+    import resend
+
+    previous_client = resend.default_http_client
+    previous_api_key = resend.api_key
+    with patch("resend.http_client_requests.requests.request") as request:
+        request.return_value = SimpleNamespace(
+            content=b'{"id":"sdk-message-123"}',
+            status_code=200,
+            headers={"Content-Type": "application/json"},
+        )
+        result = send_email(
+            to="owner@erp.dev",
+            subject="SDK contract",
+            html="<p>Test</p>",
+            text="Test",
+            idempotency_key=idempotency_key,
+            config=_settings_for_test(),
+        )
+
+    assert result.provider_id == "sdk-message-123"
+    request.assert_called_once()
+    assert request.call_args.kwargs["headers"].get("Idempotency-Key") == idempotency_key
+    assert request.call_args.kwargs["json"]["to"] == "owner@erp.dev"
+    assert request.call_args.kwargs["timeout"] == 10
+    assert resend.default_http_client is previous_client
+    assert resend.api_key == previous_api_key
+
+
+def test_send_email_reports_unavailable_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(email_service, "resend", None)
+    with pytest.raises(EmailConfigurationError, match="SDK de Resend"):
+        send_email(
+            to="owner@erp.dev",
+            subject="Unavailable SDK",
+            html="<p>Test</p>",
+            text="Test",
+            idempotency_key=None,
+            config=_settings_for_test(),
+        )
+
+
+@pytest.mark.parametrize("response", [{}, {"id": ""}, SimpleNamespace(id=123)])
+def test_send_email_rejects_provider_response_without_valid_id(monkeypatch, response):
+    _configure_resend_stub(monkeypatch, send_result=response)
+    with pytest.raises(EmailTransportError, match="identificador"):
+        send_email(
+            to="owner@erp.dev",
+            subject="Test",
+            html="<p>Test</p>",
+            text="Test",
+            idempotency_key=None,
+            config=_settings_for_test(),
+        )
+    assert email_service.resend.default_http_client == "default-http-client"
+    assert email_service.resend.api_key is None
+
+
+def test_send_email_accepts_provider_object_response(monkeypatch):
+    _configure_resend_stub(monkeypatch, send_result=SimpleNamespace(id="object-message"))
+    result = send_email(
+        to="owner@erp.dev",
+        subject="Test",
+        html="<p>Test</p>",
+        text="Test",
+        idempotency_key=None,
+        config=_settings_for_test(),
+    )
+    assert result.provider_id == "object-message"
+
+
+def test_test_email_command_returns_failure_without_provider_details(monkeypatch, capsys):
+    def failing_send(**_kwargs):
+        raise EmailTransportError("Proveedor no disponible") from RuntimeError("private-details")
+
+    monkeypatch.setattr(send_resend_test, "send_email", failing_send)
+    monkeypatch.setattr("sys.argv", ["send_resend_test", "--to", "owner@erp.dev"])
+    with pytest.raises(SystemExit) as exc:
+        send_resend_test.main()
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert '"status": "failed"' in output
+    assert "Proveedor no disponible" in output
+    assert "private-details" not in output
 
 
 def test_send_email_maps_authentication_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -212,17 +305,20 @@ def test_send_resend_test_command_outputs_only_status_and_provider_id(
         "send_email",
         lambda **_kwargs: EmailDeliveryResult(provider_id="provider-123"),
     )
-    monkeypatch.setattr("sys.argv", [
-        "send_resend_test.py",
-        "--to",
-        "owner@erp.dev",
-        "--subject",
-        "Mensaje de prueba",
-        "--text",
-        "Contenido secreto",
-        "--html",
-        "<p>Contenido secreto</p>",
-    ])
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "send_resend_test.py",
+            "--to",
+            "owner@erp.dev",
+            "--subject",
+            "Mensaje de prueba",
+            "--text",
+            "Contenido secreto",
+            "--html",
+            "<p>Contenido secreto</p>",
+        ],
+    )
 
     send_resend_test.main()
 

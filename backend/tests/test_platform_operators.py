@@ -17,6 +17,7 @@ from app.services.errors import ConflictError
 from app.services.platform_operators import create_platform_operator
 from pydantic import SecretStr
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 
 
 def operator_input():
@@ -184,3 +185,57 @@ def test_cli_password_confirmation_and_validation_do_not_write(monkeypatch, caps
     captured = capsys.readouterr()
     assert "Datos inválidos" in captured.err
     assert invalid not in captured.err + captured.out
+
+
+@pytest.mark.integration
+def test_cli_interactive_creation_and_retry_preserve_password(monkeypatch, capsys):
+    data = operator_input()
+    password = data.password.get_secret_value()
+    monkeypatch.setattr(cli.getpass, "getpass", lambda _: password)
+    args = ["--email", str(data.email), "--name", data.display_name]
+    assert cli.main(args) == 0
+    assert "Operador creado" in capsys.readouterr().out
+    replacement = "Replacement!" + secrets.token_hex(20)
+    monkeypatch.setattr(cli.getpass, "getpass", lambda _: replacement)
+    assert cli.main(args) == 0
+    captured = capsys.readouterr()
+    assert "Se conservaron" in captured.out
+    assert password not in captured.out + captured.err
+    assert replacement not in captured.out + captured.err
+    with session_scope() as session:
+        user = session.scalar(select(PlatformUser).where(PlatformUser.email == str(data.email)))
+        assert verify_password(password, user.password_hash)
+        assert not verify_password(replacement, user.password_hash)
+
+
+@pytest.mark.parametrize("error", [EOFError(), KeyboardInterrupt(), cli.getpass.GetPassWarning()])
+def test_cli_cancels_when_password_cannot_be_hidden(monkeypatch, capsys, error):
+    def unavailable(_):
+        raise error
+
+    def forbidden():
+        raise AssertionError("Cancelled input must not open a transaction")
+
+    monkeypatch.setattr(cli.getpass, "getpass", unavailable)
+    monkeypatch.setattr(cli, "session_scope", forbidden)
+    assert cli.main(["--email", "operator@example.com", "--name", "Operator"]) == 1
+    assert "contraseña oculta" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("database_failure", [False, True])
+def test_cli_reports_conflicts_and_redacts_database_errors(monkeypatch, capsys, database_failure):
+    data = operator_input()
+    password = data.password.get_secret_value()
+    monkeypatch.setattr(cli.sys, "stdin", io.StringIO(password + "\n"))
+
+    def failing_transaction():
+        if database_failure:
+            raise SQLAlchemyError(f"Database parameters include {password}")
+        raise ConflictError("Ese correo pertenece a una cuenta de cliente.")
+
+    monkeypatch.setattr(cli, "session_scope", failing_transaction)
+    assert cli.main(["--email", str(data.email), "--name", "Operator", "--password-stdin"]) == 1
+    captured = capsys.readouterr()
+    expected = "Revisa conexión" if database_failure else "cuenta de cliente"
+    assert expected in captured.err
+    assert password not in captured.out + captured.err

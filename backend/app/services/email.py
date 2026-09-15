@@ -1,44 +1,54 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from types import ModuleType
+from typing import TYPE_CHECKING
 
 from app.config import Settings, settings
 from app.services.errors import ServiceUnavailableError
 
-RequestsClient = None
-_ResendApplicationError = Exception
-ValidationError = Exception
-InvalidApiKeyError = Exception
-MissingApiKeyError = Exception
-RateLimitError = Exception
-ResendError = Exception
-MissingRequiredFieldsError = Exception
+if TYPE_CHECKING:
+    from resend import Emails
+    from resend.http_client_requests import RequestsClient as _RequestsClient
+
+resend: ModuleType | None
+_IMPORT_ERROR: Exception | None
+RequestsClient: type[_RequestsClient] | None = None
+_ResendApplicationError: type[Exception] = Exception
+ValidationError: type[Exception] = Exception
+InvalidApiKeyError: type[Exception] = Exception
+MissingApiKeyError: type[Exception] = Exception
+RateLimitError: type[Exception] = Exception
+ResendError: type[Exception] = Exception
+MissingRequiredFieldsError: type[Exception] = Exception
 
 try:
-    import resend
+    import resend as _resend_sdk
 except Exception as exc:  # pragma: no cover
     resend = None
     _IMPORT_ERROR = exc
 else:
+    resend = _resend_sdk
     _IMPORT_ERROR = None
     try:
-        from resend.exceptions import (
-            ApplicationError as _ResendApplicationError,
-            InvalidApiKeyError,
-            MissingApiKeyError,
-            RateLimitError,
-            ResendError,
-            ValidationError,
-            MissingRequiredFieldsError,
-        )
+        from resend import exceptions as _resend_exceptions
+
+        _ResendApplicationError = _resend_exceptions.ApplicationError
+        InvalidApiKeyError = _resend_exceptions.InvalidApiKeyError
+        MissingApiKeyError = _resend_exceptions.MissingApiKeyError
+        MissingRequiredFieldsError = _resend_exceptions.MissingRequiredFieldsError
+        RateLimitError = _resend_exceptions.RateLimitError
+        ResendError = _resend_exceptions.ResendError
+        ValidationError = _resend_exceptions.ValidationError
     except Exception:  # pragma: no cover
         ValidationError = InvalidApiKeyError = MissingApiKeyError = RateLimitError = ResendError = (
             Exception
         )
         MissingRequiredFieldsError = Exception
     try:
-        from resend.http_client_requests import RequestsClient
+        from resend.http_client_requests import RequestsClient as _SdkRequestsClient
+
+        RequestsClient = _SdkRequestsClient
     except Exception:  # pragma: no cover
         RequestsClient = None
 
@@ -96,16 +106,12 @@ def _normalize_recipient(value: str) -> str:
 
 
 def _deliver(
-    payload: dict[str, Any],
+    payload: Emails.SendParams,
     idempotency_key: str | None,
 ) -> object:
     assert resend is not None
     if idempotency_key:
-        # SDK variants accept either `options` or `idempotency_key`.
-        try:
-            return resend.Emails.send(payload, options={"idempotency_key": idempotency_key})
-        except TypeError:
-            return resend.Emails.send(payload, idempotency_key=idempotency_key)
+        return resend.Emails.send(payload, options={"idempotency_key": idempotency_key})
     return resend.Emails.send(payload)
 
 
@@ -131,7 +137,7 @@ def send_email(
     if api_key is None or not api_key.get_secret_value().strip():
         raise EmailConfigurationError("La API key de Resend no está configurada.")
 
-    payload = {
+    payload: Emails.SendParams = {
         "to": _normalize_recipient(to),
         "from": config.email_from,
         "subject": subject,
@@ -143,8 +149,12 @@ def send_email(
     previous_api_key = getattr(resend, "api_key", None)
 
     if RequestsClient is not None:
-        resend.default_http_client = RequestsClient(timeout=config.resend_request_timeout_seconds)
-    resend.api_key = api_key.get_secret_value()
+        setattr(
+            resend,
+            "default_http_client",
+            RequestsClient(timeout=config.resend_request_timeout_seconds),
+        )
+    setattr(resend, "api_key", api_key.get_secret_value())
 
     try:
         response = _deliver(payload, idempotency_key)
@@ -156,7 +166,9 @@ def send_email(
     except RateLimitError as exc:
         raise EmailRateLimitError("Límite de envío de Resend alcanzado.") from exc
     except (_ResendApplicationError, ResendError, TimeoutError, RuntimeError) as exc:
-        raise EmailTransportError("No se pudo completar el envío con el proveedor de correo.") from exc
+        raise EmailTransportError(
+            "No se pudo completar el envío con el proveedor de correo."
+        ) from exc
     finally:
-        resend.default_http_client = previous_client
-        resend.api_key = previous_api_key
+        setattr(resend, "default_http_client", previous_client)
+        setattr(resend, "api_key", previous_api_key)

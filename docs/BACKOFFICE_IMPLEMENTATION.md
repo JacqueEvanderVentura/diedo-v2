@@ -59,8 +59,8 @@ Desde `backend`, configurar `APP_ENV=test` y `DATABASE_URL` apuntando a una base
 Desde `frontend`:
 
 ```powershell
-npm test
 npm run build
+npm test
 npm run test:e2e:full-stack -- backoffice.spec.js
 ```
 

@@ -46,6 +46,19 @@ Login: `owner@erp.dev` (contraseña definida en `backend/.env` → `LOCAL_BOOTST
 yarn build      # build de producción
 ```
 
+### Validación local y CI
+
+Desde `frontend`, ejecutar en este orden:
+
+```bash
+npm ci
+npm run build
+npm test
+npx wrangler deploy --dry-run --config wrangler.jsonc --env production
+```
+
+Las pruebas de Cloudflare verifican los assets versionados de `dist/assets`, por lo que necesitan un build previo. El último comando valida el despliegue sin publicar.
+
 ## Estructura
 ```
 public/fonts/            # woff2 self-hosted (Inter, Outfit)
@@ -73,3 +86,9 @@ src/
 4. Crear store en `src/stores` si necesita estado
 
 Ver `agents/README.md` para las convenciones y reglas UX no negociables.
+
+## Producción: Cloudflare y Railway
+
+GitHub publica desde `full-stack`. La web usa `/api-backend` y el Worker reenvía la API a Railway, con cookies en el mismo origen. `CLOUDFLARE_API_TOKEN` se guarda como secreto de Actions y `CLOUDFLARE_ACCOUNT_ID` como variable del repositorio.
+
+El dominio aprobado es `app.helios360erp.com`. Se habilita con `CLOUDFLARE_CUSTOM_DOMAIN` únicamente cuando la zona esté activa; mientras tanto funciona `workers.dev`. Ver la [guía de despliegue y activación del dominio](../docs/CLOUDFLARE_MIGRATION_RUNBOOK.md).

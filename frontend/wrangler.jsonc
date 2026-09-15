@@ -1,18 +1,22 @@
 {
   "name": "diedo-frontend",
+  "main": "./worker.js",
   "compatibility_date": "2026-09-14",
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "binding": "ASSETS",
+    "not_found_handling": "none"
   },
   "env": {
     "preview": {
       "name": "diedo-frontend-preview",
-      "workers_dev": true
+      "workers_dev": true,
+      "vars": { "API_ORIGIN": "https://api-production-b1fb.up.railway.app" }
     },
     "production": {
       "name": "diedo-frontend-production",
-      "workers_dev": true
+      "workers_dev": true,
+      "vars": { "API_ORIGIN": "https://api-production-b1fb.up.railway.app" }
     }
   }
 }

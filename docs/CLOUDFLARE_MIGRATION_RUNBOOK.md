@@ -1,139 +1,57 @@
-## Republicación solicitada desde full-stack
+# Cloudflare + Railway: despliegue y dominio
 
-Frontend reconstruido desde 159520977214271a5132fc069ba59814b6b648b8 en erp-cloudflare-release, conservando exclusivamente worker.js y su entrada main para el 404 autorizado. npm ci, build, 297 pruebas y dry-run aprobados. Publicado en producción: versión 14742d49-8400-4bda-8ec2-08ce417e8d5b. Cloudflare confirmó que los assets son idénticos a la publicación anterior. Comprobación HTTP posterior aprobada.
+## Configuración vigente — 15 de septiembre de 2026
 
-## Verificación posterior: CORS de producción activo
+- Frontend de producción: https://diedo-frontend-production.helios360erp.workers.dev
+- Frontend de preview: https://diedo-frontend-preview.helios360erp.workers.dev
+- Backend de Railway: https://api-production-b1fb.up.railway.app
+- Repositorio: https://github.com/JacqueEvanderVentura/diedo-v2, rama `full-stack`.
+- Dominio aprobado: `app.helios360erp.com`. Su activación queda pendiente del acceso al DNS; `workers.dev` permanece disponible.
 
-Comprobado el 2026-09-15 02:29 UTC: el despliegue API 9e3083ed-8a94-4e3c-894a-21fc26ed0cc4 terminó SUCCESS y ya incluye CORS de producción. No fue necesario volver a desplegar.
+Esta guía sustituye los estados históricos de migración registrados en versiones anteriores del documento.
 
-- OPTIONS desde https://diedo-frontend-production.helios360erp.workers.dev: 200 con allow-origin exacto y allow-credentials=true.
-- Origen no autorizado: 400 sin allow-origin.
-- API ready, base de datos OK; comprobación completa de alojamiento de producción PASS.
-- El CI de frontend figura SUCCESS; los últimos resultados consultados de backend y despliegue automático todavía figuran FAILURE. La sesión real del usuario sigue pendiente de verificar.
+## Publicación automática
 
-Esta actualización sustituye el estado anterior de CORS pendiente.
+GitHub Actions tiene el secreto `CLOUDFLARE_API_TOKEN` y la variable `CLOUDFLARE_ACCOUNT_ID` configurados. El token `diedo-github-actions` permite publicar Workers en la cuenta y gestionar rutas únicamente en la zona `helios360erp.com`. Nunca guardar su valor en el repositorio.
 
-# Estado actual de la migración gratuita
+Los cambios de frontend en `full-stack` ejecutan `Deploy frontend to Cloudflare Workers`: instalación, build, pruebas, validación de Wrangler, publicación y comprobaciones HTTP. Los pull requests del mismo repositorio publican en el Worker de preview compartido. `Frontend CI` también valida build, pruebas y configuración.
 
-- Web que ya conecta con la API: https://diedo-frontend-preview.helios360erp.workers.dev
-- Dirección definitiva publicada: https://diedo-frontend-production.helios360erp.workers.dev (CORS pendiente de aplicar en Railway).
-- API saludable, base de datos OK, revisión 20260912_0031. Código remoto integrado: 1595209.
-- Worker mínimo autorizado por el usuario: devuelve 404 para solicitudes no navegacionales sin archivo. Archivos existentes y navegación SPA siguen servidos directamente por Cloudflare.
-- Prueba real antes del arreglo: 200 al pedir JS inexistente. Después: PASS en preview, producción y Wrangler local (health, SPA, cabeceras, caché, MIME y 404).
-- La prueba de navegación usa curl porque fetch de Node sobrescribe Sec-Fetch-Mode; no se cambió el resultado esperado.
-- Versión preview: c2a6d2fd-1fa3-4628-a8cc-2382d3b744c7.
-- Versión producción: bfff7d32-85c3-4b1a-b98c-620d578e23ae.
-- Código de Worker y pruebas: commit 68d377e en codex/cloudflare-free. Mismo bundle React que el preview validado; los commits remotos nuevos no cambiaron src/public salvo health y headers ya presentes.
-- CORS conserva Railway, Pages y preview, y añade producción. El servicio activo aún devuelve 400 al origen producción; Railway omitió el intento por CI fallido. La llamada de redeploy fue rechazada porque el intento SKIPPED no tiene imagen. Queda un cambio CORS en el panel para aplicar tras arreglar CI.
-- CI backend reproducido: fallaba Ruff en los archivos de correo; corregido formato/imports. Ruff completo pasa y 27 pruebas de correo/configuración/CORS pasan. No se afirma que todo el CI remoto pase.
-- GitHub todavía no tiene CLOUDFLARE_API_TOKEN ni CLOUDFLARE_ACCOUNT_ID. Se requiere acceso de administración para configurarlos; la cuenta conectada tiene WRITE.
-- Pendiente: login real, renovación, logout y archivos con sesión del usuario; credenciales de Resend y recepción de un correo de prueba; CI completo y retiro de alojamientos anteriores tras las 48 horas de validación.
+Railway tiene el servicio `api` del proyecto `diedo-production` conectado al mismo repositorio y rama. Construye `backend/Dockerfile` desde la raíz, espera los checks de GitHub y ejecuta `python -m app.scripts.predeploy` antes del arranque. Su comprobación de disponibilidad es `/health/ready`. Se conservan PostgreSQL, almacenamiento y variables existentes.
 
-## Siguiente paso para probar tú
+La web usa `VITE_API_BASE_URL=/api-backend`. El Worker envía esas peticiones al origen fijo de Railway definido en `API_ORIGIN`; la lógica de negocio y los datos permanecen en Railway. Los archivos estáticos los sirve Cloudflare directamente. Las respuestas API no se almacenan en caché; las cookies conservan HttpOnly/Secure, usan SameSite=Lax y la ruta `/api-backend/api/v1/auth`. No se depende de cookies de terceros.
 
-Abre la dirección preview e inicia sesión con tu usuario habitual. No envíes tu contraseña por el chat. La pantalla de acceso ya carga en el navegador.
+## Activar app.helios360erp.com cuando haya acceso al dominio
 
-## Historial y guía anterior
+1. En Cloudflare, revisar la zona `helios360erp.com` y conservar todos los registros DNS necesarios, especialmente correo (MX, SPF, DKIM y DMARC). No borrar registros existentes al trasladar DNS.
+2. En el registrador del dominio, sustituir los servidores de nombres actuales (`ns67.worldnic.com` y `ns68.worldnic.com`) por los asignados por Cloudflare:
+   - `fish.ns.cloudflare.com`
+   - `santino.ns.cloudflare.com`
+3. Esperar a que Cloudflare muestre la zona como **Active**. La zona estaba **pending** al preparar esta integración. Si los servidores asignados cambian, usar los que muestre Cloudflare en ese momento.
+4. Revisar que `app` no apunte a otro servicio. Resolver cualquier conflicto existente antes de activar el Worker en ese nombre.
+5. Crear la variable de repositorio de GitHub `CLOUDFLARE_CUSTOM_DOMAIN` con el valor exacto `app.helios360erp.com`:
 
-Las secciones siguientes son el registro de fases previas; ante diferencias prevalece este estado actual.
+   ```powershell
+   gh variable set CLOUDFLARE_CUSTOM_DOMAIN --body app.helios360erp.com --repo JacqueEvanderVentura/diedo-v2
+   gh workflow run deploy-fe-pages.yml --ref full-stack --repo JacqueEvanderVentura/diedo-v2
+   ```
 
-# Publicar la web gratis, paso a paso
+6. El workflow genera la ruta `custom_domain` para producción y verifica tanto `workers.dev` como el dominio. Cloudflare administra el registro y certificado del Custom Domain. Esperar a que el certificado esté activo si la emisión aún está en curso.
+7. Verificar https://app.helios360erp.com/login y probar acceso, recarga de página, renovación de sesión y logout con una cuenta de producción. Las credenciales locales de prueba no son credenciales de producción.
 
-## Qué vamos a usar
+No hace falta crear `api.helios360erp.com`, cambiar Railway ni reconstruir con una URL diferente: el proxy sigue usando el origen de Railway. Preview conserva su dirección `workers.dev`.
 
-- **Cloudflare** aloja la web en una dirección gratuita terminada en `workers.dev`.
-- **Railway** mantiene la API: https://api-production-b1fb.up.railway.app
-- **Resend** queda en modo de pruebas con `Helios 360 ERP <onboarding@resend.dev>`.
-- No se requiere comprar un dominio ni cambiar servidores DNS. Railway conserva su coste actual.
+## Validación y diagnóstico
 
-`helios360erp.com` se añadió a Cloudflare, pero no se confirmó su propiedad. No lo usamos para la web, la API ni el correo. Su aviso “Invalid nameservers” no impide usar workers.dev.
-
-## 1. Activar la dirección gratuita de Cloudflare
-
-Abre https://dash.cloudflare.com/96ecfecb9fbc377880e4809b0b22037a/workers-and-pages e inicia sesión.
-Cloudflare indica que abrir esta sección por primera vez crea el subdominio workers.dev de la cuenta. Si solicita completar la configuración, usa la opción gratuita.
-
-Resultado esperado: la cuenta tiene un subdominio terminado en workers.dev. No necesitas pulsar Buy domain ni configurar DNS.
-
-## 2. Dar acceso a la herramienta de publicación
-
-Wrangler es la herramienta que sube los archivos desde este ordenador. Ya está instalado en el proyecto.
-Abre PowerShell y ejecuta estas líneas una por una:
+Desde `frontend`, después del build y pruebas:
 
 ```powershell
-cd C:\Users\jeanp\Code\erp-back\frontend
-npx wrangler login
-npx wrangler whoami
+node scripts/check-hosting.mjs https://diedo-frontend-production.helios360erp.workers.dev
 ```
 
-El primer comando de Wrangler abre el navegador para que autorices tu cuenta. El segundo comprueba el acceso. No pegues contraseñas ni claves en el chat.
+La comprobación valida health, navegación SPA, cabeceras, caché, MIME de JS/CSS, 404 de archivos inexistentes, disponibilidad real de Railway y rechazo de acceso anónimo a `/auth/me`. Las pruebas unitarias verifican subida de archivos, cookies de renovación/logout, redirecciones y rechazo de orígenes externos.
 
-Después de autorizar puedo continuar con la publicación desde esta tarea.
+- GitHub Actions: https://github.com/JacqueEvanderVentura/diedo-v2/actions
+- Cloudflare Workers: https://dash.cloudflare.com/96ecfecb9fbc377880e4809b0b22037a/workers-and-pages
+- Railway: https://railway.com/project/3ad8fb51-7f62-4229-93a4-daba5d21ab91
 
-## 3. Lo que se verifica antes de publicar
-
-Estos pasos corresponden a quien realiza el despliegue:
-
-1. Reconciliar la copia local y full-stack antes de publicar: local `8380ffa`, remoto observado `362e775`. Conservar los cambios locales y registrar el SHA final.
-2. Ejecutar las pruebas; compilar con la URL Railway y todas las funcionalidades pendientes desactivadas. Las variables exactas están en `.github/workflows/deploy-fe-pages.yml`.
-3. Ejecutar `npx wrangler deploy --dry-run --env preview`. Este comando valida sin publicar.
-4. Publicar con `npx wrangler deploy --env preview`. Copiar la URL real que devuelve, sin inventar el nombre de cuenta.
-5. Añadir esa URL exacta a CORS_ORIGINS de la API, conservando las anteriores. CORS es la lista de webs que pueden llamar a la API desde el navegador.
-6. Probar inicio de sesión, renovación, cierre de sesión y lectura de archivos. Las cookies cruzan sitios distintos (workers.dev y railway.app); comprobar también navegadores que bloquean cookies de terceros antes de dar la migración por terminada.
-7. Validar y publicar producción con `npx wrangler deploy --dry-run --env production` y después `npx wrangler deploy --env production`. Autorizar su URL exacta en CORS.
-
-No retirar Railway hasta superar las pruebas reales. El plazo de 48 horas empieza después de esa validación.
-
-## 4. Correo de prueba sin dominio
-
-En Resend crea una cuenta y una API key con permiso de envío. Guarda la clave directamente en Variables del servicio api de Railway. Nunca la guardes en Git.
-
-```dotenv
-RESEND_API_KEY=<clave privada>
-EMAIL_FROM=Helios 360 ERP <onboarding@resend.dev>
-EMAIL_ENABLED=false
-RESEND_REQUEST_TIMEOUT_SECONDS=10
-```
-
-El remitente de prueba permite enviar al correo asociado a tu cuenta de Resend; no permite notificar a todos los usuarios del ERP. Los flujos funcionales siguen pendientes de un desarrollo posterior.
-
-Antes de un ensayo real, indicar el correo de esa cuenta. Desde backend, con las dependencias instaladas y la clave disponible en ese entorno, ejecutar una sola vez (sustituir TU_CORREO):
-
-```powershell
-python -m app.scripts.send_resend_test --to TU_CORREO --idempotency-key prueba-inicial-sin-dominio-001
-```
-
-El comando habilita el envío solo para esa ejecución. Un resultado sent con provider_id confirma aceptación por Resend; revisar el buzón para confirmar recepción. No se ha enviado ningún correo en esta adaptación.
-
-## 5. Publicaciones automáticas y recuperación
-
-GitHub necesita el secreto CLOUDFLARE_API_TOKEN y la variable CLOUDFLARE_ACCOUNT_ID. Se configuran en Settings → Secrets and variables → Actions del repositorio; esto puede requerir al propietario. La automatización debe publicar únicamente tras superar las pruebas y el build. Actualmente falta validar su ejecución en GitHub.
-
-Conservar la web anterior: https://web-production-be856.up.railway.app
-Después de 48 horas de validación, retirar la publicación anterior de Railway y GitHub Pages. No hacerlo mientras la nueva web esté pendiente de publicar o de probar.
-
-Para recuperar una versión anterior de Cloudflare, consultar `npx wrangler versions list --env production` y usar `npx wrangler rollback ID_VERSION --env production` con una versión verificada. Esto no modifica PostgreSQL.
-
-## Estado comprobado en esta adaptación
-
-- Wrangler 4.131.2 instalado; falta iniciar sesión en la terminal.
-- Cloudflare conectado por API; todavía sin subdominio workers.dev.
-- API Railway: /health/ready respondió 200. El último intento de despliegue aparece FAILED, con error al actualizar appointments durante la migración. Resolver ese fallo antes de redesplegar la API; una versión anterior sigue atendiendo.
-- Pruebas nuevas ejecutadas antes de implementar: fallaron por workers_dev ausente y remitente antiguo, respectivamente.
-- Después del cambio: 5 pruebas de configuración de Cloudflare y 27 pruebas de configuración, correo y CORS del backend pasan.
-- Publicación, CORS real, sesión en Cloudflare, prueba real de correo y retirada de servicios: pendientes.
-
-Referencias: [workers.dev](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/), [limitación del remitente de Resend](https://resend.com/docs/knowledge-base/403-error-resend-dev-domain).
-
-## Publicación de prueba realizada
-
-- Copia actualizada: C:/Users/jeanp/Code/erp-cloudflare-free, rama codex/cloudflare-free.
-- Base remota: 362e775; commit publicado: 8ec37e5.
-- URL: https://diedo-frontend-preview.helios360erp.workers.dev
-- Versión Cloudflare: 132b3634-6d02-4511-a275-3dcbb0eeea93.
-- 82 archivos y 297 pruebas pasan; build y dry-run pasan.
-- HTTPS, health, SPA, MIME de JS/CSS, cabeceras y caché comprobados.
-- check-hosting.mjs detectó un fallo: un JS inexistente devuelve HTML con 200 en modo SPA puro. Pendiente resolver antes de producción; un Worker mínimo exige revisar la decisión original de no añadir lógica de servidor.
-- CORS_ORIGINS guardado en Railway conservando ambos orígenes anteriores y añadiendo preview, con skipDeploys=true. Aún no está activo en el proceso de API; OPTIONS devuelve 400.
-- Resolver la migración fallida de la API antes de redesplegar y comprobar login/refresh/logout. Railway sigue activo.
-- Resend sigue preparado en erp-back; pendiente integrar sobre la base actual y hacer el envío real.
+Si falla un check, revisar su paso antes de reintentar el despliegue. No desactivar las validaciones de Railway. Si el problema aparece únicamente con el dominio, `workers.dev` sigue disponible. Para retirar la asociación personalizada, eliminar `CLOUDFLARE_CUSTOM_DOMAIN` y volver a ejecutar el workflow; revisar la ruta y DNS resultantes en Cloudflare.
