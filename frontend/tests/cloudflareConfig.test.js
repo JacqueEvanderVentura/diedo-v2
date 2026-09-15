@@ -18,6 +18,7 @@ describe('Cloudflare static deployment configuration', () => {
     for (const workflow of ['deploy-fe-pages.yml', 'frontend-ci.yml']) {
       const body = fs.readFileSync(path.join('..', '.github', 'workflows', workflow), 'utf8')
       expect(body).toContain('VITE_API_BASE_URL: /api-backend')
+      expect(body).toMatch(/VITE_FEATURE_SELF_BOOKING: ["']true["']/)
       expect(body).not.toContain('api.helios360erp.com')
     }
     expect(config.assets.binding).toBe('ASSETS')

@@ -32,20 +32,25 @@ const STEPS = ['Identificación', 'Datos', 'Cita', 'Confirmación']
 
 export default function AgendarPage() {
   const [params] = useSearchParams()
-  const branchId = params.get('branch') || 'charm-dn'
+  const requestedBranchId = params.get('branch')
   const branches = useConfigStore((s) => s.branches)
   const products = useCatalogStore((s) => s.products)
   const employees = useRrhhStore((s) => s.employees)
   const vacationRequests = useRrhhStore((s) => s.vacationRequests)
   const dataMode = useSessionStore((s) => s.status)
   const isDemo = dataMode === 'demo'
+  const branchId = requestedBranchId || (isDemo ? 'charm-dn' : '')
   const lookupByDocument = useSelfBookingStore((s) => s.lookupByDocument)
   const identifyRemote = useSelfBookingStore((s) => s.identifyRemote)
   const fetchRemoteSlots = useSelfBookingStore((s) => s.fetchRemoteSlots)
   const upsertProfile = useSelfBookingStore((s) => s.upsertProfile)
   const bookAppointment = useSelfBookingStore((s) => s.bookAppointment)
 
-  const branch = branches.find((b) => b.id === branchId) || branches[0]
+  const [remoteBranch, setRemoteBranch] = useState(null)
+  const [contextError, setContextError] = useState('')
+  const branch = isDemo
+    ? branches.find((b) => b.id === branchId) || branches[0]
+    : remoteBranch?.id === branchId ? remoteBranch : null
   const [step, setStep] = useState(0)
   const [lookupDocType, setLookupDocType] = useState('cedula')
   const [lookup, setLookup] = useState('')
@@ -74,8 +79,8 @@ export default function AgendarPage() {
     return products.filter((p) => p.type === 'service').slice(0, 8)
   }, [products, remoteServices])
   const bookableStaff = useMemo(() => {
-    if (remoteSpecialists?.length) {
-      return remoteSpecialists.map((member) => ({
+    if (!isDemo) {
+      return (remoteSpecialists || []).map((member) => ({
         id: member.id,
         name: member.displayName,
         firstName: member.displayName,
@@ -83,7 +88,7 @@ export default function AgendarPage() {
       }))
     }
     return localBookableStaff
-  }, [localBookableStaff, remoteSpecialists])
+  }, [isDemo, localBookableStaff, remoteSpecialists])
   const service = services.find((s) => s.id === form.serviceId)
   const selectedEmployee = employees.find((e) => e.id === form.employeeId)
   const appointmentDuration = service?.durationMinutes || service?.duration || 30
@@ -91,9 +96,21 @@ export default function AgendarPage() {
   const appointments = useAvailabilityAppointments(isDemo ? form.date : null, isDemo ? form.employeeId : null)
 
   useEffect(() => {
-    if (isDemo || !branch?.id) return
-    publicBookingApi.getContext(branch.id)
+    if (isDemo) return
+    let active = true
+    setRemoteBranch(null)
+    setRemoteServices([])
+    setRemoteSpecialists([])
+    setRemoteSlots(null)
+    setContextError('')
+    if (!branchId) {
+      setContextError('El enlace no contiene una sucursal. Solicita un nuevo enlace al establecimiento.')
+      return
+    }
+    publicBookingApi.getContext(branchId)
       .then((context) => {
+        if (!active) return
+        setRemoteBranch({ id: context.branch.branchId, name: context.branch.branchName })
         setRemoteServices(
           (context.services || []).map((item) => ({
             id: item.id,
@@ -105,8 +122,11 @@ export default function AgendarPage() {
         )
         setRemoteSpecialists(context.specialists || [])
       })
-      .catch(() => {})
-  }, [branch?.id, isDemo])
+      .catch(() => {
+        if (active) setContextError('No se pudo cargar la sucursal. Intenta nuevamente o solicita un nuevo enlace.')
+      })
+    return () => { active = false }
+  }, [branchId, isDemo])
 
   useEffect(() => {
     if (isDemo || !branch?.id || !form.employeeId || !form.date) return
@@ -131,7 +151,7 @@ export default function AgendarPage() {
 
   const slots = useMemo(() => {
     if (!form.employeeId || !form.date) return []
-    if (!isDemo && remoteSlots) return remoteSlots
+    if (!isDemo) return remoteSlots || []
     return getAvailableSlots({
       date: form.date,
       employeeId: form.employeeId,
@@ -230,6 +250,16 @@ export default function AgendarPage() {
   }
 
   const goBack = () => setStep((current) => Math.max(0, current - 1))
+
+  if (!isDemo && (!branch || contextError)) {
+    return (
+      <PublicShell>
+        <p role={contextError ? 'alert' : 'status'} className="mx-auto max-w-lg text-center text-slate-600">
+          {contextError || 'Cargando sucursal…'}
+        </p>
+      </PublicShell>
+    )
+  }
 
   if (done) {
     return (
