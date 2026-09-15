@@ -1,3 +1,18 @@
+## Republicación solicitada desde full-stack
+
+Frontend reconstruido desde 159520977214271a5132fc069ba59814b6b648b8 en erp-cloudflare-release, conservando exclusivamente worker.js y su entrada main para el 404 autorizado. npm ci, build, 297 pruebas y dry-run aprobados. Publicado en producción: versión 14742d49-8400-4bda-8ec2-08ce417e8d5b. Cloudflare confirmó que los assets son idénticos a la publicación anterior. Comprobación HTTP posterior aprobada.
+
+## Verificación posterior: CORS de producción activo
+
+Comprobado el 2026-09-15 02:29 UTC: el despliegue API 9e3083ed-8a94-4e3c-894a-21fc26ed0cc4 terminó SUCCESS y ya incluye CORS de producción. No fue necesario volver a desplegar.
+
+- OPTIONS desde https://diedo-frontend-production.helios360erp.workers.dev: 200 con allow-origin exacto y allow-credentials=true.
+- Origen no autorizado: 400 sin allow-origin.
+- API ready, base de datos OK; comprobación completa de alojamiento de producción PASS.
+- El CI de frontend figura SUCCESS; los últimos resultados consultados de backend y despliegue automático todavía figuran FAILURE. La sesión real del usuario sigue pendiente de verificar.
+
+Esta actualización sustituye el estado anterior de CORS pendiente.
+
 # Estado actual de la migración gratuita
 
 - Web que ya conecta con la API: https://diedo-frontend-preview.helios360erp.workers.dev

@@ -1,9 +1,11 @@
 import hmac
+from math import ceil
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Security, status
+from fastapi import APIRouter, Depends, Query, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import AwareDatetime
 
 from app.api.deps import DatabaseSession
 from app.config import settings
@@ -14,7 +16,10 @@ from app.repositories.backoffice import (
     BackofficeUserRecord,
     BackofficeWorkspaceRecord,
 )
+from app.repositories.users import RoleAssignmentSpec
 from app.schemas.backoffice import (
+    BackofficeAuditListResponse,
+    BackofficeAuditResponse,
     BackofficeBranchResponse,
     BackofficeContextResponse,
     BackofficeModuleListResponse,
@@ -24,6 +29,7 @@ from app.schemas.backoffice import (
     BackofficePlanCountResponse,
     BackofficePlanListResponse,
     BackofficePlanResponse,
+    BackofficeSubscriptionResponse,
     BackofficeUserListResponse,
     BackofficeUserResponse,
     BackofficeWorkspaceDetailResponse,
@@ -33,14 +39,23 @@ from app.schemas.backoffice import (
     CreateWorkspaceRequest,
     ProvisionedOwnerResponse,
     ProvisionedWorkspaceResponse,
+    UpdateBackofficeMembershipRequest,
     UpdateBackofficePlanRequest,
+    UpdateBackofficeSubscriptionRequest,
     UpdateBackofficeUserRequest,
     UpdateBackofficeWorkspaceRequest,
 )
 from app.schemas.common import ErrorResponse
+from app.schemas.users import (
+    BranchRoleAssignmentInput,
+    LegalEntityRoleAssignmentInput,
+    UserFormOptionsResponse,
+    UserRoleAssignmentResponse,
+)
 from app.services.auth import AuthService
 from app.services.backoffice import BackofficeService
 from app.services.errors import AuthenticationError
+from app.services.subscription_access import effective_subscription_status
 from app.services.subscription_plans import PlanRecord
 
 _backoffice_key = APIKeyHeader(
@@ -60,7 +75,7 @@ def require_backoffice_access(
     supplied_key: Annotated[str | None, Security(_backoffice_key)],
     database: DatabaseSession,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
-) -> None:
+) -> UUID | None:
     if credentials is not None and credentials.scheme.casefold() == "bearer":
         try:
             principal = AuthService(database).authenticate_access_token(credentials.credentials)
@@ -68,7 +83,7 @@ def require_backoffice_access(
             pass
         else:
             if AuthRepository(database).is_platform_operator(principal.platform_user_id):
-                return
+                return principal.platform_user_id
 
     configured = settings.backoffice_api_key
     if (
@@ -79,37 +94,21 @@ def require_backoffice_access(
             configured.get_secret_value(),
         )
     ):
-        return
+        return None
     if configured is None:
         raise_api_error(503, "El aprovisionamiento de workspaces no está habilitado.")
     raise_api_error(401, "La clave de backoffice no es válida.", "X-Backoffice-Key")
 
 
-BackofficeAccess = Annotated[None, Depends(require_backoffice_access)]
+BackofficeAccess = Annotated[UUID | None, Depends(require_backoffice_access)]
 
-
-def get_backoffice_operator_id(
-    database: DatabaseSession,
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
-) -> UUID | None:
-    if credentials is None or credentials.scheme.casefold() != "bearer":
-        return None
-    try:
-        principal = AuthService(database).authenticate_access_token(credentials.credentials)
-    except AuthenticationError:
-        return None
-    if AuthRepository(database).is_platform_operator(principal.platform_user_id):
-        return principal.platform_user_id
-    return None
-
-
-BackofficeOperatorId = Annotated[UUID | None, Depends(get_backoffice_operator_id)]
 
 router = APIRouter(prefix="/api/v1/backoffice", tags=["backoffice"])
 
 _RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"model": ErrorResponse},
     401: {"model": ErrorResponse},
+    403: {"model": ErrorResponse},
     404: {"model": ErrorResponse},
     409: {"model": ErrorResponse},
     503: {"model": ErrorResponse},
@@ -152,6 +151,19 @@ def _summary_response(record: BackofficeWorkspaceRecord) -> BackofficeWorkspaceS
         plan_label=_plan_label(record),
         subscription_status=record.subscription_status,
         enabled_modules=list(record.enabled_modules),
+        configured_modules=list(record.configured_modules),
+        subscription=(
+            BackofficeSubscriptionResponse(
+                version=record.subscription.version,
+                status=record.subscription.status,
+                effective_status=effective_subscription_status(record.subscription),
+                started_at=record.subscription.started_at,
+                ends_at=record.subscription.ends_at,
+                notes=record.subscription.notes,
+            )
+            if record.subscription is not None
+            else None
+        ),
         plan_customized=record.plan_customized,
     )
 
@@ -178,6 +190,19 @@ def _detail_response(
         plan_label=_plan_label(record),
         subscription_status=record.subscription_status,
         enabled_modules=list(record.enabled_modules),
+        configured_modules=list(record.configured_modules),
+        subscription=(
+            BackofficeSubscriptionResponse(
+                version=record.subscription.version,
+                status=record.subscription.status,
+                effective_status=effective_subscription_status(record.subscription),
+                started_at=record.subscription.started_at,
+                ends_at=record.subscription.ends_at,
+                notes=record.subscription.notes,
+            )
+            if record.subscription is not None
+            else None
+        ),
         plan_customized=record.plan_customized,
         branches=[
             BackofficeBranchResponse(
@@ -209,7 +234,7 @@ def list_workspaces(
     database: DatabaseSession,
     _access: BackofficeAccess,
 ) -> BackofficeWorkspaceListResponse:
-    records = BackofficeService(database).list_workspaces()
+    records = BackofficeService(database, _access).list_workspaces()
     return BackofficeWorkspaceListResponse(items=[_summary_response(record) for record in records])
 
 
@@ -223,7 +248,7 @@ def get_workspace(
     database: DatabaseSession,
     _access: BackofficeAccess,
 ) -> BackofficeWorkspaceDetailResponse:
-    record = BackofficeService(database).get_workspace(workspace_id)
+    record = BackofficeService(database, _access).get_workspace(workspace_id)
     return _detail_response(database, record)
 
 
@@ -238,7 +263,7 @@ def update_workspace(
     database: DatabaseSession,
     _access: BackofficeAccess,
 ) -> BackofficeWorkspaceDetailResponse:
-    record = BackofficeService(database).update_workspace(
+    record = BackofficeService(database, _access).update_workspace(
         workspace_id,
         name=payload.name,
         status=payload.status,
@@ -260,7 +285,7 @@ def create_workspace(
     database: DatabaseSession,
     _access: BackofficeAccess,
 ) -> ProvisionedWorkspaceResponse:
-    result = BackofficeService(database).provision_workspace(
+    result = BackofficeService(database, _access).provision_workspace(
         slug=payload.slug,
         name=payload.name,
         default_currency=payload.default_currency,
@@ -321,6 +346,19 @@ def _user_response(record: BackofficeUserRecord) -> BackofficeUserResponse:
         platform_status=record.platform_status,  # type: ignore[arg-type]
         role_name=record.role_name,
         version=record.version,
+        membership_version=record.membership_version,
+        role_assignments=[
+            UserRoleAssignmentResponse(
+                id=item.id,
+                role_id=item.role_id,
+                role_code=item.role.code,
+                role_name=item.role.name,
+                scope_type="legalEntity" if item.scope_type == "legal_entity" else item.scope_type,
+                legal_entity_id=item.legal_entity_id,
+                branch_id=item.branch_id,
+            )
+            for item in record.role_assignments
+        ],
         is_platform_operator=record.is_platform_operator,
     )
 
@@ -334,11 +372,13 @@ def get_overview(
     database: DatabaseSession,
     _access: BackofficeAccess,
 ) -> BackofficeOverviewResponse:
-    overview = BackofficeService(database).overview()
+    overview = BackofficeService(database, _access).overview()
     return BackofficeOverviewResponse(
         active_workspaces=overview.active_workspaces,
         suspended_workspaces=overview.suspended_workspaces,
         total_users=overview.total_users,
+        active_memberships=overview.active_memberships,
+        inactive_memberships=overview.inactive_memberships,
         active_users=overview.active_users,
         disabled_users=overview.disabled_users,
         workspaces_by_plan=[
@@ -361,12 +401,32 @@ def list_users(
     database: DatabaseSession,
     _access: BackofficeAccess,
     search: str | None = None,
-    workspace_id: UUID | None = None,
+    workspace_id: Annotated[UUID | None, Query(alias="workspaceId")] = None,
+    platform_status: Annotated[
+        Literal["active", "disabled"] | None, Query(alias="platformStatus")
+    ] = None,
     status: Literal["active", "disabled"] | None = None,
-    page: int = 1,
-    page_size: int = 25,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int | None, Query(alias="pageSize", ge=1, le=100)] = None,
+    legacy_workspace_id: Annotated[
+        UUID | None, Query(alias="workspace_id", include_in_schema=False)
+    ] = None,
+    legacy_page_size: Annotated[
+        int | None, Query(alias="page_size", ge=1, le=100, include_in_schema=False)
+    ] = None,
 ) -> BackofficeUserListResponse:
-    result, total_pages = BackofficeService(database).list_users(
+    if (
+        workspace_id is not None
+        and legacy_workspace_id is not None
+        and workspace_id != legacy_workspace_id
+    ):
+        raise_api_error(400, "Filtros de compañía contradictorios.", "workspaceId")
+    if page_size is not None and legacy_page_size is not None and page_size != legacy_page_size:
+        raise_api_error(400, "Tamaños de página contradictorios.", "pageSize")
+    workspace_id = workspace_id or legacy_workspace_id
+    page_size = page_size or legacy_page_size or 25
+    result, total_pages = BackofficeService(database, _access).list_users(
+        platform_status=platform_status,
         search=search,
         workspace_id=workspace_id,
         status=status,
@@ -378,6 +438,7 @@ def list_users(
         page=max(page, 1),
         page_size=min(max(page_size, 1), 100),
         total_items=result.total_items,
+        total_users=result.total_users,
         total_pages=total_pages,
     )
 
@@ -393,11 +454,12 @@ def create_user(
     database: DatabaseSession,
     _access: BackofficeAccess,
 ) -> BackofficeUserResponse:
-    record = BackofficeService(database).create_user(
+    record = BackofficeService(database, _access).create_user(
         workspace_id=payload.workspace_id,
         display_name=payload.display_name,
         email=str(payload.email),
-        password=payload.password.get_secret_value(),
+        password=payload.password.get_secret_value() if payload.password else None,
+        role_assignments=_assignment_specs(payload.role_assignments),
         role_code=payload.role_code,
     )
     return _user_response(record)
@@ -413,13 +475,12 @@ def update_user(
     payload: UpdateBackofficeUserRequest,
     database: DatabaseSession,
     _access: BackofficeAccess,
-    operator_id: BackofficeOperatorId,
 ) -> BackofficeUserResponse:
-    record = BackofficeService(database).update_platform_user(
+    record = BackofficeService(database, _access).update_platform_user(
         user_id,
         status=payload.status,
         expected_version=payload.version,
-        actor_platform_user_id=operator_id,
+        actor_platform_user_id=_access,
     )
     return _user_response(record)
 
@@ -433,14 +494,19 @@ def list_workspace_members(
     workspace_id: UUID,
     database: DatabaseSession,
     _access: BackofficeAccess,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=100)] = 25,
 ) -> BackofficeUserListResponse:
-    items = BackofficeService(database).list_workspace_members(workspace_id)
+    result, total_pages = BackofficeService(database, _access).list_workspace_members(
+        workspace_id, page=page, page_size=page_size
+    )
     return BackofficeUserListResponse(
-        items=[_user_response(item) for item in items],
-        page=1,
-        page_size=len(items),
-        total_items=len(items),
-        total_pages=1 if items else 0,
+        items=[_user_response(item) for item in result.items],
+        page=page,
+        page_size=page_size,
+        total_items=result.total_items,
+        total_users=result.total_users,
+        total_pages=total_pages,
     )
 
 
@@ -453,9 +519,12 @@ def list_modules(
     database: DatabaseSession,
     _access: BackofficeAccess,
 ) -> BackofficeModuleListResponse:
-    modules = BackofficeService(database).list_modules()
+    modules = BackofficeService(database, _access).list_modules()
     return BackofficeModuleListResponse(
-        items=[BackofficeModuleResponse(code=code, name=name) for code, name in modules]
+        items=[
+            BackofficeModuleResponse(code=code, name=name, dependency_codes=dependencies)
+            for code, name, dependencies in modules
+        ]
     )
 
 
@@ -468,7 +537,7 @@ def list_plans(
     database: DatabaseSession,
     _access: BackofficeAccess,
 ) -> BackofficePlanListResponse:
-    plans = BackofficeService(database).list_plans()
+    plans = BackofficeService(database, _access).list_plans()
     return BackofficePlanListResponse(items=[_plan_response(plan) for plan in plans])
 
 
@@ -483,7 +552,7 @@ def update_plan(
     database: DatabaseSession,
     _access: BackofficeAccess,
 ) -> BackofficePlanResponse:
-    service = BackofficeService(database)
+    service = BackofficeService(database, _access)
     record = service.update_plan(
         plan_id,
         name=payload.name,
@@ -493,3 +562,114 @@ def update_plan(
         expected_version=payload.version,
     )
     return _plan_response(record)
+
+
+def _assignment_specs(assignments: Any) -> list[RoleAssignmentSpec] | None:
+    if assignments is None:
+        return None
+    result = []
+    for item in assignments:
+        if isinstance(item, BranchRoleAssignmentInput):
+            result.append(
+                RoleAssignmentSpec(
+                    role_id=item.role_id, scope_type="branch", branch_id=item.branch_id
+                )
+            )
+        elif isinstance(item, LegalEntityRoleAssignmentInput):
+            result.append(
+                RoleAssignmentSpec(
+                    role_id=item.role_id,
+                    scope_type="legal_entity",
+                    legal_entity_id=item.legal_entity_id,
+                )
+            )
+        else:
+            result.append(RoleAssignmentSpec(role_id=item.role_id, scope_type="workspace"))
+    return result
+
+
+@router.get("/workspaces/{workspace_id}/member-options", responses=_RESPONSES)
+def member_options(
+    workspace_id: UUID, database: DatabaseSession, _access: BackofficeAccess
+) -> UserFormOptionsResponse:
+    return UserFormOptionsResponse.model_validate(
+        BackofficeService(database, _access).member_options(workspace_id)
+    )
+
+
+@router.get("/workspaces/{workspace_id}/members/{membership_id}", responses=_RESPONSES)
+def get_member(
+    workspace_id: UUID, membership_id: UUID, database: DatabaseSession, _access: BackofficeAccess
+) -> BackofficeUserResponse:
+    return _user_response(
+        BackofficeService(database, _access).get_member(workspace_id, membership_id)
+    )
+
+
+@router.patch("/workspaces/{workspace_id}/members/{membership_id}", responses=_RESPONSES)
+def update_member(
+    workspace_id: UUID,
+    membership_id: UUID,
+    payload: UpdateBackofficeMembershipRequest,
+    database: DatabaseSession,
+    _access: BackofficeAccess,
+) -> BackofficeUserResponse:
+    return _user_response(
+        BackofficeService(database, _access).update_member(
+            workspace_id,
+            membership_id,
+            expected_version=payload.version,
+            status=payload.status,
+            assignments=_assignment_specs(payload.role_assignments),
+        )
+    )
+
+
+@router.patch("/workspaces/{workspace_id}/subscription", responses=_RESPONSES)
+def update_subscription(
+    workspace_id: UUID,
+    payload: UpdateBackofficeSubscriptionRequest,
+    database: DatabaseSession,
+    _access: BackofficeAccess,
+) -> BackofficeWorkspaceDetailResponse:
+    record = BackofficeService(database, _access).update_subscription(
+        workspace_id,
+        expected_version=payload.version,
+        status=payload.status,
+        started_at=payload.started_at,
+        ends_at=payload.ends_at,
+        notes=payload.notes,
+    )
+    return _detail_response(database, record)
+
+
+@router.get("/audit", responses=_RESPONSES)
+def list_audit(
+    database: DatabaseSession,
+    _access: BackofficeAccess,
+    workspace_id: Annotated[UUID | None, Query(alias="workspaceId")] = None,
+    actor_id: Annotated[UUID | None, Query(alias="actorId")] = None,
+    target_id: Annotated[UUID | None, Query(alias="targetId")] = None,
+    action: str | None = None,
+    date_from: Annotated[AwareDatetime | None, Query(alias="dateFrom")] = None,
+    date_to: Annotated[AwareDatetime | None, Query(alias="dateTo")] = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=100)] = 25,
+) -> BackofficeAuditListResponse:
+    items, total = BackofficeService(database, _access).list_audit(
+        workspace_id=workspace_id,
+        actor_id=actor_id,
+        target_id=target_id,
+        action=action,
+        date_from=date_from,
+        date_to=date_to,
+        page=page,
+        page_size=page_size,
+    )
+    return BackofficeAuditListResponse(
+        items=[BackofficeAuditResponse(**item) for item in items],
+        total_items=total,
+        total_pages=ceil(total / page_size),
+        page=page,
+        page_size=page_size,
+    )

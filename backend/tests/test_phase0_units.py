@@ -69,6 +69,7 @@ def test_module_access_removes_modules_with_unmet_dependencies() -> None:
         "RepositoryStub",
         (),
         {
+            "customer_subscription": lambda _self, _workspace_id: None,
             "list_access_records": lambda _self, _workspace_id: [
                 ModuleAccessRecord("foundation", "available", (), "enabled", now, None),
                 ModuleAccessRecord("sales", "available", ("catalog",), "enabled", now, None),

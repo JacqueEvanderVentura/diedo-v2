@@ -1,25 +1,22 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { backofficeApi } from '@/services/backofficeApi'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 
-const CORE_MODULES = new Set(['foundation', 'iam'])
+import { ModulePicker } from '../components/ModulePicker'
 
 export default function PlanesPage() {
   const [plans, setPlans] = useState([])
   const [modules, setModules] = useState([])
   const [loading, setLoading] = useState(true)
   const [savingId, setSavingId] = useState(null)
-
-  const moduleNameByCode = useMemo(
-    () => Object.fromEntries(modules.map((item) => [item.code, item.name])),
-    [modules],
-  )
+  const [error, setError] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
+    setError('')
     try {
       const [planData, moduleData] = await Promise.all([
         backofficeApi.listPlans(),
@@ -28,7 +25,7 @@ export default function PlanesPage() {
       setPlans(planData.items || [])
       setModules(moduleData.items || [])
     } catch (err) {
-      toast.error(err.message || 'No se pudieron cargar los planes.')
+      setError(err.message || 'No se pudieron cargar los planes.')
     } finally {
       setLoading(false)
     }
@@ -38,29 +35,20 @@ export default function PlanesPage() {
     load()
   }, [load])
 
-  const toggleModule = (planId, code) => {
-    setPlans((current) =>
-      current.map((plan) => {
-        if (plan.planId !== planId || CORE_MODULES.has(code)) return plan
-        const selected = new Set(plan.moduleCodes || [])
-        if (selected.has(code)) selected.delete(code)
-        else selected.add(code)
-        return { ...plan, moduleCodes: [...selected].sort() }
-      }),
-    )
-  }
-
   const savePlan = async (plan) => {
     setSavingId(plan.planId)
+    setError('')
     try {
       const updated = await backofficeApi.updatePlan(plan.planId, {
         version: plan.version,
         moduleCodes: plan.moduleCodes,
       })
-      setPlans((current) => current.map((item) => (item.planId === updated.planId ? updated : item)))
+      setPlans((current) =>
+        current.map((item) => (item.planId === updated.planId ? updated : item))
+      )
       toast.success(`Plan ${updated.name} actualizado`)
     } catch (err) {
-      toast.error(err.message || 'No se pudo guardar el plan.')
+      setError(err.message || 'No se pudo guardar el plan.')
     } finally {
       setSavingId(null)
     }
@@ -79,10 +67,19 @@ export default function PlanesPage() {
       <div className="mb-6">
         <h2 className="font-heading text-xl font-semibold text-slate-900">Planes comerciales</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Define qué módulos incluye cada pack. `foundation` e `iam` siempre van incluidos.
+          Los cambios se aplican a nuevas asignaciones y al restaurar los módulos de una compañía.
+          Las compañías existentes conservan sus módulos.
         </p>
       </div>
 
+      {error && (
+        <div role="alert" className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
+          {error}
+          <Button variant="secondary" className="ml-3" onClick={load}>
+            Recargar datos actuales
+          </Button>
+        </div>
+      )}
       <div className="grid gap-4 lg:grid-cols-3">
         {plans.map((plan) => (
           <Card key={plan.planId} className="flex flex-col p-6">
@@ -94,27 +91,18 @@ export default function PlanesPage() {
               <Badge tone={plan.status === 'active' ? 'success' : 'neutral'}>{plan.status}</Badge>
             </div>
             <p className="mb-4 text-sm text-slate-600">{plan.description}</p>
-            <div className="flex flex-1 flex-wrap gap-2">
-              {modules.map((module) => {
-                const selected = (plan.moduleCodes || []).includes(module.code)
-                const locked = CORE_MODULES.has(module.code)
-                return (
-                  <button
-                    key={`${plan.planId}-${module.code}`}
-                    type="button"
-                    disabled={locked}
-                    onClick={() => toggleModule(plan.planId, module.code)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                      selected
-                        ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-200'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    } ${locked ? 'cursor-not-allowed opacity-70' : ''}`}
-                  >
-                    {moduleNameByCode[module.code] || module.code}
-                  </button>
+            <ModulePicker
+              modules={modules}
+              selected={plan.moduleCodes || []}
+              disabled={savingId === plan.planId}
+              onChange={(codes) =>
+                setPlans((current) =>
+                  current.map((item) =>
+                    item.planId === plan.planId ? { ...item, moduleCodes: codes } : item
+                  )
                 )
-              })}
-            </div>
+              }
+            />
             <Button
               type="button"
               className="mt-5"

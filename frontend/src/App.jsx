@@ -16,6 +16,7 @@ export default function App() {
   const initialized = useSessionStore((s) => s.initialized)
   const status = useSessionStore((s) => s.status)
   const workspaceId = useSessionStore((s) => s.user?.workspaceId)
+  const isPlatformOperator = useSessionStore((s) => s.user?.isPlatformOperator)
   const visibleBranches = useSessionStore((s) => s.user?.visibleBranches)
   const hydrateCustomers = useCustomersStore((s) => s.hydrate)
   const hydrateEmployees = useRrhhStore((s) => s.hydrateEmployees)
@@ -30,12 +31,15 @@ export default function App() {
   useEffect(() => {
     if (!initialized) return
     configFacade.synchronizeSessionBranches({ status, workspaceId, visibleBranches })
-    if (status !== 'demo' && !workspaceId) return
-    const requests = [
-      hydrateCustomers({ force: true }),
-      hydrateEmployees({ force: true }),
-      hydrateHrData({ force: true }),
-    ]
+    if (isPlatformOperator || (status !== 'demo' && !workspaceId)) return
+    const session = useSessionStore.getState()
+    const requests = []
+    if (status === 'demo' || (session.hasModule('crm') && session.hasPermission('customer.read'))) {
+      requests.push(hydrateCustomers({ force: true }))
+    }
+    if (status === 'demo' || (session.hasModule('hr') && session.hasPermission('employee.read'))) {
+      requests.push(hydrateEmployees({ force: true }), hydrateHrData({ force: true }))
+    }
     if (status === 'demo' || useSessionStore.getState().hasModule('appointments')) {
       requests.push(hydrateAppointments({ force: true }))
     }
@@ -47,7 +51,7 @@ export default function App() {
       requests.push(hydrateCatalog(configFacade.branches()))
     }
     Promise.allSettled(requests)
-  }, [hydrateAppointments, hydrateCatalog, hydrateCustomers, hydrateEmployees, hydrateHrData, initialized, status, visibleBranches, workspaceId])
+  }, [hydrateAppointments, hydrateCatalog, hydrateCustomers, hydrateEmployees, hydrateHrData, initialized, isPlatformOperator, status, visibleBranches, workspaceId])
 
   return (
     <>

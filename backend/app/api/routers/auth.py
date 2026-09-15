@@ -122,6 +122,7 @@ def _current_session_response(
         effective_permission_codes=list(context.permission_codes),
         workspace_permission_codes=list(context.workspace_permission_codes),
         enabled_modules=list(context.enabled_modules),
+        subscription_status=context.subscription_status,
         is_platform_operator=principal.is_platform_operator,
         elevation=(
             SessionElevationResponse(

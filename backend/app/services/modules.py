@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.repositories.modules import ModuleAccessRepository
 from app.services.errors import AuthorizationError
+from app.services.subscription_access import effective_subscription_status
 
 
 class ModuleAccessService:
@@ -15,6 +16,7 @@ class ModuleAccessService:
 
     def enabled_modules(self, workspace_id: UUID, *, now: datetime | None = None) -> frozenset[str]:
         instant = now or datetime.now(UTC)
+        subscription = self._repository.customer_subscription(workspace_id)
         records = self._repository.list_access_records(workspace_id)
         enabled = {
             record.code
@@ -26,6 +28,10 @@ class ModuleAccessService:
             and (record.effective_until is None or record.effective_until >= instant)
         }
         dependencies = {record.code: set(record.dependency_codes) for record in records}
+        if subscription is not None and effective_subscription_status(
+            subscription, now=instant
+        ) not in {"active", "trial"}:
+            enabled &= {"foundation", "iam"}
         while True:
             invalid = {code for code in enabled if not dependencies.get(code, set()) <= enabled}
             if not invalid:
@@ -35,7 +41,7 @@ class ModuleAccessService:
 
     def require_module(self, workspace_id: UUID, module_code: str) -> None:
         if module_code not in self.enabled_modules(workspace_id):
-            raise AuthorizationError("El módulo no está habilitado para este workspace.")
+            raise AuthorizationError("El módulo no está habilitado para este workspace.", "module")
 
     def module_for_permission(self, permission_code: str) -> str | None:
         return self._repository.module_code_for_permission(permission_code)

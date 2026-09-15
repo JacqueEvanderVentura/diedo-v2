@@ -16,6 +16,8 @@ from app.db.models import (
     WorkspaceMembership,
     WorkspaceSubscription,
 )
+from app.repositories.users import RoleAssignmentRecord, UsersRepository
+from app.services.modules import ModuleAccessService
 from app.services.platform_workspace import PLATFORM_WORKSPACE_SLUG
 from app.services.subscription_plans import SubscriptionPlanRepository, WorkspaceEntitlementService
 
@@ -45,6 +47,8 @@ class BackofficeWorkspaceRecord:
     subscription_status: str | None
     enabled_modules: tuple[str, ...]
     plan_customized: bool
+    configured_modules: tuple[str, ...] = ()
+    subscription: WorkspaceSubscription | None = None
 
 
 @dataclass(frozen=True)
@@ -69,12 +73,15 @@ class BackofficeUserRecord:
     role_name: str | None
     version: int
     is_platform_operator: bool
+    membership_version: int = 1
+    role_assignments: tuple[RoleAssignmentRecord, ...] = ()
 
 
 @dataclass(frozen=True)
 class BackofficeUserPage:
     items: tuple[BackofficeUserRecord, ...]
     total_items: int
+    total_users: int = 0
 
 
 @dataclass(frozen=True)
@@ -85,6 +92,8 @@ class BackofficeOverviewRecord:
     active_users: int
     disabled_users: int
     workspaces_by_plan: tuple[tuple[str, str, int], ...]
+    active_memberships: int = 0
+    inactive_memberships: int = 0
 
 
 class BackofficeRepository:
@@ -190,7 +199,11 @@ class BackofficeRepository:
             plan_code=plan.code if plan is not None else None,
             plan_name=plan.name if plan is not None else None,
             subscription_status=subscription.status if subscription is not None else None,
-            enabled_modules=enabled_modules,
+            enabled_modules=tuple(
+                sorted(ModuleAccessService(self._session).enabled_modules(workspace.id))
+            ),
+            configured_modules=enabled_modules,
+            subscription=subscription,
             plan_customized=plan_customized,
         )
 
@@ -205,6 +218,7 @@ class BackofficeRepository:
                 PlatformUser.version,
                 PlatformUser.is_platform_operator,
                 WorkspaceMembership.status.label("membership_status"),
+                WorkspaceMembership.version.label("membership_version"),
                 Workspace.id.label("workspace_id"),
                 Workspace.name.label("workspace_name"),
                 Workspace.slug.label("workspace_slug"),
@@ -225,8 +239,14 @@ class BackofficeRepository:
         status: str | None,
         page: int,
         page_size: int,
+        platform_status: str | None = None,
+        membership_id: UUID | None = None,
     ) -> BackofficeUserPage:
         query = self._customer_membership_base()
+        if membership_id is not None:
+            query = query.where(WorkspaceMembership.id == membership_id)
+        if platform_status is not None:
+            query = query.where(PlatformUser.status == platform_status)
         if workspace_id is not None:
             query = query.where(Workspace.id == workspace_id)
         if status == "active":
@@ -253,6 +273,9 @@ class BackofficeRepository:
 
         total_items = self._session.scalar(select(func.count()).select_from(query.subquery()))
         total_items = int(total_items or 0)
+        total_users = int(
+            self._session.scalar(select(func.count(func.distinct(query.subquery().c.user_id)))) or 0
+        )
         offset = (page - 1) * page_size
         rows = self._session.execute(
             query.order_by(Workspace.name, PlatformUser.display_name, PlatformUser.id)
@@ -263,6 +286,9 @@ class BackofficeRepository:
         items: list[BackofficeUserRecord] = []
         for row in rows:
             role_name = self._primary_role_name(row.workspace_id, row.membership_id)
+            user = UsersRepository(self._session).get_user_for_authorization(
+                workspace_id=row.workspace_id, membership_id=row.membership_id
+            )
             items.append(
                 BackofficeUserRecord(
                     user_id=row.user_id,
@@ -276,20 +302,25 @@ class BackofficeRepository:
                     platform_status=row.platform_status,
                     role_name=role_name,
                     version=row.version,
+                    membership_version=row.membership_version,
+                    role_assignments=user.role_assignments if user is not None else (),
                     is_platform_operator=row.is_platform_operator,
                 )
             )
-        return BackofficeUserPage(items=tuple(items), total_items=total_items)
+        return BackofficeUserPage(
+            items=tuple(items), total_items=total_items, total_users=total_users
+        )
 
-    def list_workspace_members(self, workspace_id: UUID) -> tuple[BackofficeUserRecord, ...]:
+    def get_member(self, workspace_id: UUID, membership_id: UUID) -> BackofficeUserRecord | None:
         page = self.list_users(
             search=None,
             workspace_id=workspace_id,
             status=None,
             page=1,
-            page_size=500,
+            page_size=1,
+            membership_id=membership_id,
         )
-        return page.items
+        return page.items[0] if page.items else None
 
     def _primary_role_name(self, workspace_id: UUID, membership_id: UUID) -> str | None:
         row = self._session.execute(
@@ -334,7 +365,6 @@ class BackofficeRepository:
             select(WorkspaceMembership.id).where(
                 WorkspaceMembership.workspace_id == workspace_id,
                 WorkspaceMembership.platform_user_id == platform_user_id,
-                WorkspaceMembership.status.in_(("active", "invited")),
             )
         )
         return existing is not None
@@ -389,7 +419,6 @@ class BackofficeRepository:
             .where(
                 Workspace.slug != PLATFORM_WORKSPACE_SLUG,
                 PlatformUser.is_platform_operator.is_(False),
-                WorkspaceMembership.status == "active",
             )
             .distinct()
         ).subquery()
@@ -415,13 +444,33 @@ class BackofficeRepository:
             .join(Workspace, Workspace.id == WorkspaceSubscription.workspace_id)
             .where(
                 Workspace.slug != PLATFORM_WORKSPACE_SLUG,
-                WorkspaceSubscription.status == "active",
+                WorkspaceSubscription.status.in_(("active", "trial")),
+                WorkspaceSubscription.started_at <= func.now(),
+                or_(
+                    WorkspaceSubscription.ends_at.is_(None),
+                    WorkspaceSubscription.ends_at >= func.now(),
+                ),
             )
             .group_by(SubscriptionPlan.code, SubscriptionPlan.name, SubscriptionPlan.sort_order)
             .order_by(SubscriptionPlan.sort_order, SubscriptionPlan.code)
         ).all()
 
+        membership_rows = self._session.execute(
+            select(WorkspaceMembership.status, func.count())
+            .join(Workspace, Workspace.id == WorkspaceMembership.workspace_id)
+            .join(PlatformUser, PlatformUser.id == WorkspaceMembership.platform_user_id)
+            .where(
+                Workspace.slug != PLATFORM_WORKSPACE_SLUG,
+                PlatformUser.is_platform_operator.is_(False),
+            )
+            .group_by(WorkspaceMembership.status)
+        ).all()
+        memberships = {status: count for status, count in membership_rows}
         return BackofficeOverviewRecord(
+            active_memberships=int(memberships.get("active", 0)),
+            inactive_memberships=sum(
+                int(count) for status, count in membership_rows if status != "active"
+            ),
             active_workspaces=active_workspaces,
             suspended_workspaces=suspended_workspaces,
             total_users=total_users,

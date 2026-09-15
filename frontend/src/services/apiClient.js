@@ -6,6 +6,7 @@ let sessionHandlers = {
   getRefreshToken: () => null,
   setTokens: () => {},
   clearSession: () => {},
+  refreshContext: async () => {},
 }
 
 let refreshPromise = null
@@ -136,6 +137,9 @@ async function request(path, {
   const data = await parseBody(response)
 
   if (!response.ok) {
+    if (response.status === 403 && auth && data?.parameter === 'module') {
+      await sessionHandlers.refreshContext().catch(() => {})
+    }
     const error = new Error(data?.message || `Error ${response.status}`)
     error.status = response.status
     error.parameter = data?.parameter

@@ -26,6 +26,28 @@ afterEach(() => {
 })
 
 describe('apiClient URL base', () => {
+  it('actualiza el contexto ante módulos retirados y conserva la denegación original', async () => {
+    const { apiClient, bindSessionHandlers } = await loadApiClient('/api-backend')
+    const refreshContext = vi.fn().mockResolvedValue({})
+    bindSessionHandlers({ refreshContext })
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify({ message: 'Módulo deshabilitado', parameter: 'module' }), { status: 403 }))
+    await expect(apiClient.get('/api/v1/catalog/categories')).rejects.toMatchObject({ status: 403, parameter: 'module' })
+    expect(refreshContext).toHaveBeenCalledOnce()
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify({ message: 'Permiso denegado' }), { status: 403 }))
+    await expect(apiClient.get('/api/v1/customers')).rejects.toMatchObject({ status: 403 })
+    expect(refreshContext).toHaveBeenCalledOnce()
+  })
+
+  it('un refresh rechazado limpia la sesión sin intentar actualizar módulos', async () => {
+    const { apiClient, bindSessionHandlers } = await loadApiClient('/api-backend')
+    const clearSession = vi.fn()
+    const refreshContext = vi.fn()
+    bindSessionHandlers({ clearSession, refreshContext })
+    fetch.mockResolvedValueOnce(new Response('{}', { status: 403 }))
+    await expect(apiClient.refreshSession()).resolves.toBe(false)
+    expect(clearSession).toHaveBeenCalledOnce()
+    expect(refreshContext).not.toHaveBeenCalled()
+  })
   it('mantiene una base relativa para usar el proxy de Vite', async () => {
     const { apiClient } = await loadApiClient('/api-backend/')
 

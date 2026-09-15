@@ -4,10 +4,11 @@ from typing import Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import EmailStr, Field, field_validator, model_validator
+from pydantic import AwareDatetime, EmailStr, Field, field_validator, model_validator
 
 from app.schemas.common import ApiModel
 from app.schemas.passwords import NewPassword
+from app.schemas.users import RoleAssignmentInput, UpdateUserRequest, UserRoleAssignmentResponse
 
 
 class WorkspaceOwnerInput(ApiModel):
@@ -101,6 +102,29 @@ class BackofficeContextResponse(ApiModel):
     ready: bool = True
 
 
+class BackofficeSubscriptionResponse(ApiModel):
+    version: int
+    status: str
+    effective_status: str
+    started_at: datetime
+    ends_at: datetime | None = None
+    notes: str | None = None
+
+
+class UpdateBackofficeSubscriptionRequest(ApiModel):
+    version: int = Field(ge=1)
+    status: Literal["trial", "active", "cancelled", "expired"]
+    started_at: AwareDatetime
+    ends_at: AwareDatetime | None = None
+    notes: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_period(self) -> UpdateBackofficeSubscriptionRequest:
+        if self.ends_at is not None and self.ends_at < self.started_at:
+            raise ValueError("La fecha final no puede ser anterior a la inicial.")
+        return self
+
+
 class BackofficeOwnerResponse(ApiModel):
     user_id: UUID
     email: EmailStr
@@ -131,6 +155,8 @@ class BackofficeWorkspaceSummaryResponse(ApiModel):
     plan_label: str | None = None
     subscription_status: str | None = None
     enabled_modules: list[str] = Field(default_factory=list)
+    configured_modules: list[str] = Field(default_factory=list)
+    subscription: BackofficeSubscriptionResponse | None = None
     plan_customized: bool = False
 
 
@@ -174,6 +200,7 @@ class UpdateBackofficeWorkspaceRequest(ApiModel):
 class BackofficeModuleResponse(ApiModel):
     code: str
     name: str
+    dependency_codes: list[str] = Field(default_factory=list)
 
 
 class BackofficeModuleListResponse(ApiModel):
@@ -226,6 +253,8 @@ class BackofficeOverviewResponse(ApiModel):
     total_users: int
     active_users: int
     disabled_users: int
+    active_memberships: int = 0
+    inactive_memberships: int = 0
     workspaces_by_plan: list[BackofficePlanCountResponse]
 
 
@@ -241,6 +270,8 @@ class BackofficeUserResponse(ApiModel):
     platform_status: Literal["active", "disabled"]
     role_name: str | None = None
     version: int
+    membership_version: int = 1
+    role_assignments: list[UserRoleAssignmentResponse] = Field(default_factory=list)
     is_platform_operator: bool = False
 
 
@@ -250,14 +281,18 @@ class BackofficeUserListResponse(ApiModel):
     page_size: int
     total_items: int
     total_pages: int
+    total_users: int = 0
 
 
 class CreateBackofficeUserRequest(ApiModel):
     workspace_id: UUID
     email: EmailStr
     display_name: str = Field(min_length=2, max_length=160)
-    password: NewPassword
+    password: NewPassword | None = None
     role_code: str = Field(default="seller", min_length=2, max_length=48)
+    role_assignments: list[RoleAssignmentInput] | None = Field(
+        default=None, min_length=1, max_length=100
+    )
 
     @field_validator("display_name")
     @classmethod
@@ -276,3 +311,33 @@ class CreateBackofficeUserRequest(ApiModel):
 class UpdateBackofficeUserRequest(ApiModel):
     version: int = Field(ge=1)
     status: Literal["active", "disabled"]
+
+
+class UpdateBackofficeMembershipRequest(UpdateUserRequest):
+    @model_validator(mode="after")
+    def require_change(self) -> UpdateBackofficeMembershipRequest:
+        if self.status is None and self.role_assignments is None:
+            raise ValueError("Indica un estado o asignaciones de rol.")
+        return self
+
+
+class BackofficeAuditResponse(ApiModel):
+    id: UUID
+    workspace_id: UUID | None
+    actor_platform_user_id: UUID | None
+    actor_name: str | None
+    actor_type: str
+    action: str
+    target_type: str
+    target_id: UUID | None
+    occurred_at: datetime
+    request_id: str | None
+    details: dict[str, object]
+
+
+class BackofficeAuditListResponse(ApiModel):
+    items: list[BackofficeAuditResponse]
+    page: int
+    page_size: int
+    total_items: int
+    total_pages: int

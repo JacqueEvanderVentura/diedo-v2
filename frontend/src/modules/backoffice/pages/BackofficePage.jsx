@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Building2, Users, Layers } from 'lucide-react'
 import { backofficeApi } from '@/services/backofficeApi'
 import { Card } from '@/components/ui/Card'
+import { AuditPanel } from '../components/AuditPanel'
 
 function StatCard({ icon: Icon, label, value, to }) {
   const body = (
@@ -61,22 +62,32 @@ export default function BackofficePage() {
               icon={Building2}
               label="Compañías activas"
               value={overview.activeWorkspaces}
-              to="/backoffice/companias"
+              to="/backoffice/companias?status=active"
             />
             <StatCard
               icon={Building2}
               label="Suspendidas"
               value={overview.suspendedWorkspaces}
-              to="/backoffice/companias"
+              to="/backoffice/companias?status=suspended"
             />
-            <StatCard icon={Users} label="Usuarios activos" value={overview.activeUsers} to="/backoffice/usuarios" />
-            <StatCard icon={Users} label="Usuarios inactivos" value={overview.disabledUsers} to="/backoffice/usuarios?status=disabled" />
+            <StatCard
+              icon={Users}
+              label="Cuentas globales activas"
+              value={overview.activeUsers}
+              to="/backoffice/usuarios?platformStatus=active"
+            />
+            <StatCard
+              icon={Users}
+              label="Cuentas globales deshabilitadas"
+              value={overview.disabledUsers}
+              to="/backoffice/usuarios?platformStatus=disabled"
+            />
           </div>
 
           <Card className="p-6">
             <div className="mb-4 flex items-center gap-2 text-slate-800">
               <Layers className="h-5 w-5" />
-              <h3 className="text-sm font-semibold">Compañías por plan</h3>
+              <h3 className="text-sm font-semibold">Compañías con suscripción vigente por plan</h3>
             </div>
             {overview.workspacesByPlan?.length ? (
               <ul className="grid gap-2 sm:grid-cols-3">
@@ -86,7 +97,9 @@ export default function BackofficePage() {
                     className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 text-sm"
                   >
                     <span className="font-medium text-slate-900">{item.planName}</span>
-                    <span className="mt-1 block text-slate-600">{item.workspaceCount} compañías</span>
+                    <span className="mt-1 block text-slate-600">
+                      {item.workspaceCount} compañías
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -96,6 +109,7 @@ export default function BackofficePage() {
           </Card>
         </div>
       ) : null}
+      <AuditPanel />
     </div>
   )
 }

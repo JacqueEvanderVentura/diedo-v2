@@ -28,6 +28,7 @@ from app.repositories.auth import (
     PrincipalRecord,
     WorkspaceContextRecord,
 )
+from app.repositories.modules import ModuleAccessRepository
 from app.services.authorization import AuthorizationService, EffectiveScope
 from app.services.errors import (
     AuthenticationError,
@@ -37,6 +38,7 @@ from app.services.errors import (
     ResourceNotFoundError,
 )
 from app.services.modules import ModuleAccessService
+from app.services.subscription_access import effective_subscription_status
 
 
 @dataclass(frozen=True)
@@ -73,6 +75,7 @@ class CurrentSessionContext:
     permission_codes: tuple[str, ...]
     workspace_permission_codes: tuple[str, ...]
     enabled_modules: tuple[str, ...]
+    subscription_status: str | None = None
     elevation: SessionElevationContext | None = None
 
 
@@ -303,7 +306,13 @@ class AuthService:
             if elevation_record is not None
             else None
         )
+        subscription = ModuleAccessRepository(self._session).customer_subscription(
+            principal.workspace_id
+        )
         return CurrentSessionContext(
+            subscription_status=effective_subscription_status(subscription, now=now)
+            if subscription
+            else None,
             workspace=workspace,
             assignments=assignments,
             visible_branches=branches,
