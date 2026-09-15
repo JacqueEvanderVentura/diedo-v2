@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     mail_from: str = "onboarding@resend.dev"
     mail_reply_to: str | None = None
     public_app_url: str = "http://localhost:5173"
+    email_from: str = "Helios 360 ERP <onboarding@resend.dev>"
+    email_enabled: bool = False
+    resend_request_timeout_seconds: int = Field(default=10, ge=1, le=120)
     attachment_storage_backend: Literal["local", "s3"] = "local"
     attachment_storage_root: Path = _BACKEND_ROOT / ".local" / "attachments"
     s3_bucket: str | None = None
