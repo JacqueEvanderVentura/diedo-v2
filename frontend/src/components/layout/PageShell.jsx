@@ -12,6 +12,7 @@ import { useFinanzasStore } from '@/stores/finanzasStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { requiresFinanceData } from '@/services/moduleAvailability'
 import { ElevationBanner } from '@/components/auth/ElevationBanner'
+import { DataSourceNotice } from '@/components/ui/DataSourceNotice'
 
 const CRM_SECTION_BY_PATH = Object.freeze({
   '/crm': 'overview',
@@ -45,6 +46,10 @@ export function PageShell() {
   const { pathname } = useLocation()
   const { title, subtitle } = getPageMeta(pathname)
   const sessionStatus = useSessionStore((state) => state.status)
+  const canReadCrm = useSessionStore((s) => s.hasPermission('crm.read'))
+  const canReadCustomers = useSessionStore((s) => s.hasPermission('customer.read'))
+  const canReadCatalog = useSessionStore((s) => s.hasPermission('catalog.read'))
+  const crmDataState = useCrmStore((s) => s.dataState)
   const canReadFinance = useSessionStore((state) => (
     state.hasModule('finance') && state.hasPermission('finance.read')
   ))
@@ -57,18 +62,18 @@ export function PageShell() {
 
   useEffect(() => {
     if (!crmSection || !['online', 'demo'].includes(sessionStatus)) return
-    const requests = [hydrateCrmSection(crmSection)]
-    if (CRM_SECTIONS_REQUIRING_CUSTOMERS.has(crmSection)) {
+    const requests = canReadCrm || sessionStatus === 'demo' ? [hydrateCrmSection(crmSection)] : []
+    if (CRM_SECTIONS_REQUIRING_CUSTOMERS.has(crmSection) && (canReadCustomers || sessionStatus === 'demo')) {
       requests.push(hydrateCustomers({ force: true }))
     }
-    if (crmSection === 'quotes' && sessionStatus === 'online') {
+    if (['quotes', 'pipeline', 'customers'].includes(crmSection) && sessionStatus === 'online' && canReadCatalog) {
       requests.push(hydrateCatalog(useConfigStore.getState().branches))
     }
     Promise.allSettled(requests)
       .then(() => {
         useCustomersStore.getState().mergeCrmProfiles(useCrmStore.getState().customers)
       })
-  }, [crmSection, hydrateCatalog, hydrateCrmSection, hydrateCustomers, sessionStatus])
+  }, [crmSection, hydrateCatalog, hydrateCrmSection, hydrateCustomers, sessionStatus, canReadCrm, canReadCustomers, canReadCatalog])
 
   useEffect(() => {
     if (!shouldHydrateFinance || sessionStatus !== 'online' || !canReadFinance) return
@@ -81,7 +86,10 @@ export function PageShell() {
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
       <Navbar title={title} subtitle={subtitle} />
       <main className="relative z-0 flex min-h-0 flex-1 flex-col overflow-x-clip overflow-y-auto scrollbar-thin [scrollbar-gutter:stable]">
-        <AnimatedOutlet className="flex min-h-0 flex-1 flex-col" />
+        {crmSection && canReadCrm && ['loading', 'error'].includes(crmDataState.status) && (
+          <DataSourceNotice state={crmDataState} onRetry={() => hydrateCrmSection(crmSection)} className="m-4" />
+        )}
+        {!(crmSection && canReadCrm && crmDataState.status === 'error') && <AnimatedOutlet className="flex min-h-0 flex-1 flex-col" />}
       </main>
     </div>
   )

@@ -1,7 +1,9 @@
+import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { List, Search, ScanSearch, SlidersHorizontal, MapPin, Phone, Globe, Import, UserCheck, Briefcase, Plus } from 'lucide-react'
+import { useSessionStore } from '@/stores/sessionStore'
 import { useCrmStore } from '@/stores/crmStore'
 import { searchBusinesses } from '@/services/leadSearch'
 import {
@@ -35,6 +37,7 @@ const TABS = [
 ]
 
 function LeadsListaTab() {
+  const can = useCrmCapabilities()
   const leads = useCrmStore((s) => s.leads)
   const branches = useConfigStore((s) => s.branches)
   const setManualScore = useCrmStore((s) => s.setManualScore)
@@ -166,7 +169,7 @@ function LeadsListaTab() {
                       data-testid={`lead-wa-${lead.id}`}
                     />
                   )}
-                  {lead.status !== 'convertido' && (
+                  {can.manage && lead.status !== 'convertido' && (
                     <>
                       <Button size="sm" variant="secondary" onClick={() => { setEditingScore(lead.id); setManualVal(lead.scoreManual ?? ''); setManualNotes(lead.scoreNotes || '') }}>
                         Score
@@ -180,12 +183,13 @@ function LeadsListaTab() {
                           <Briefcase className="h-3.5 w-3.5" /> Pipeline
                         </Button>
                       )}
-                      <Button size="sm" onClick={() => convertLead(lead.id)}>
+                      <Button size="sm" disabled={!can.convert} onClick={() => convertLead(lead.id)}>
                         <UserCheck className="h-3.5 w-3.5" /> Convertir
                       </Button>
                     </>
                   )}
                   <Select
+                    disabled={!can.manage}
                     value={lead.status}
                     onChange={(v) => updateLead(lead.id, { status: v })}
                     options={LEAD_STATUSES.map((s) => ({ value: s, label: LEAD_STATUS_META[s].label }))}
@@ -321,15 +325,22 @@ function LeadsDescubrirTab() {
 }
 
 function LeadsCriteriosTab() {
+  const canManage = useSessionStore((s) => s.hasWorkspacePermission('crm.manage'))
+  const [saving, setSaving] = useState(false)
   const scoringWeights = useCrmStore((s) => s.scoringWeights)
   const updateScoringWeights = useCrmStore((s) => s.updateScoringWeights)
   const [local, setLocal] = useState({ ...scoringWeights })
 
   const setWeight = (mod, val) => setLocal((p) => ({ ...p, [mod]: Number(val) }))
 
-  const save = () => {
-    updateScoringWeights(local)
-    toast.success('Pesos actualizados — scores recalculados')
+  const save = async () => {
+    if (!canManage || saving) return
+    setSaving(true)
+    try {
+      await updateScoringWeights(local)
+      toast.success('Pesos actualizados — scores recalculados')
+    } catch (error) { toast.error(error.message) }
+    finally { setSaving(false) }
   }
 
   return (
@@ -355,7 +366,8 @@ function LeadsCriteriosTab() {
           </div>
         ))}
       </div>
-      <Button className="mt-6" onClick={save}>Guardar criterios</Button>
+      <Button className="mt-6" onClick={save} disabled={!canManage || saving}>{saving ? 'Guardando…' : 'Guardar criterios'}</Button>
+      {!canManage && <p className="mt-2 text-sm text-slate-500">La edición de criterios requiere permiso CRM con alcance global.</p>}
     </Card>
   )
 }
@@ -365,6 +377,7 @@ const LEADS_SUBTITLE = FEATURES.crmDiscovery
   : 'Registra leads, puntúalos y conviértelos en clientes u oportunidades sin salir del flujo.'
 
 export default function LeadsPage() {
+  const can = useCrmCapabilities()
   const [params, setParams] = useSearchParams()
   const [formOpen, setFormOpen] = useState(false)
   const tabParam = params.get('tab') || 'lista'
@@ -378,7 +391,7 @@ export default function LeadsPage() {
           <h2 className="font-heading text-2xl font-bold text-slate-900">Leads</h2>
           <p className="text-sm text-slate-500">{LEADS_SUBTITLE}</p>
         </div>
-        <Button onClick={() => setFormOpen(true)} data-testid="lead-new">
+        <Button onClick={() => setFormOpen(true)} data-testid="lead-new" disabled={!can.manage}>
           <Plus className="h-4 w-4" /> Nuevo lead
         </Button>
       </div>

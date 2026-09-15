@@ -22,6 +22,7 @@ node_modules/
 .playwright-cli/
 test-results/
 playwright-report/
+/output/playwright/
 
 # Next.js
 /.next/

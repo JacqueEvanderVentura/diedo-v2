@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   createLeadOpportunity: vi.fn(),
+  getLead: vi.fn(),
+  getSale: vi.fn(),
+  updateScoring: vi.fn(),
   createOpportunity: vi.fn(),
   updateOpportunity: vi.fn(),
   createActivity: vi.fn(),
@@ -89,6 +92,7 @@ describe('flujo conectado del store CRM', () => {
     expect(useCrmStore.getState().opportunities).toEqual([])
     expect(useCrmStore.getState().leads[0].opportunityId).toBeNull()
 
+    mocks.getLead.mockResolvedValue({ id: leadId, branchId, opportunityId, status: 'contactado', version: 2 })
     resolveRequest(opportunity())
     const saved = await mutation
 
@@ -98,7 +102,8 @@ describe('flujo conectado del store CRM', () => {
     ])
     expect(useCrmStore.getState().leads[0]).toMatchObject({
       opportunityId,
-      status: 'calificado',
+      status: 'contactado',
+      version: 2,
     })
   })
 
@@ -239,4 +244,28 @@ describe('flujo conectado del store CRM', () => {
     })
     expect(useCrmStore.getState().quotes[0].opportunityId).toBe(newOppId)
   })
+  it('no cambia pesos locales cuando el servidor rechaza scoring', async () => {
+    useCrmStore.setState({ scoringWeights: { crm: 1 }, scoringVersion: 3 })
+    mocks.updateScoring.mockRejectedValue(new Error('Sin permiso'))
+    await expect(useCrmStore.getState().updateScoringWeights({ crm: 2 })).rejects.toThrow('Sin permiso')
+    expect(useCrmStore.getState().scoringWeights).toEqual({ crm: 1 })
+    expect(useCrmStore.getState().scoringVersion).toBe(3)
+  })
+
+  it('cierra una oportunidad facturada sin volver a emitir la venta', async () => {
+    customerStore.customers = [{ id: customerId, name: 'Cliente' }]
+    useCrmStore.setState({ opportunities: [opportunity({ customerId })], quotes: [{
+      id: 'quote', opportunityId, customerId, status: 'aceptada', convertedSaleId: 'sale',
+      items: [{ name: 'Servicio', price: 900, qty: 1 }],
+    }] })
+    mocks.getSale.mockResolvedValue({ id: 'sale', number: 'VTA-001', total: '955.80', lines: [] })
+    mocks.updateOpportunity.mockResolvedValue(opportunity({ customerId, stage: 'cerrado', version: 2 }))
+    const invoice = vi.spyOn(useCrmStore.getState(), 'invoiceQuote')
+    const sale = await useCrmStore.getState().closeOpportunityWithInvoice(opportunityId)
+    expect(sale.id).toBe('sale')
+    expect(invoice).not.toHaveBeenCalled()
+    expect(useCrmStore.getState().opportunities[0].stage).toBe('cerrado')
+    invoice.mockRestore()
+  })
+
 })

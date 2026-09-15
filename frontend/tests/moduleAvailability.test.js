@@ -115,7 +115,7 @@ describe('moduleAvailability', () => {
       module: 'pos',
       permission: 'pos.receivables.read',
     })
-    expect(routeRequirement('/crm/pipeline')).toBeNull()
+    expect(routeRequirement('/crm/pipeline')).toEqual({ module: 'crm', permission: 'crm.read' })
     expect(routeRequirement('/finanzas')).toEqual({ module: 'finance', permission: 'finance.read' })
     expect(routeRequirement('/reportes/generales')).toEqual({
       module: 'reporting',

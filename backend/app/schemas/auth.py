@@ -73,6 +73,7 @@ class SessionElevationResponse(ApiModel):
 
 
 class CurrentSessionResponse(ApiModel):
+    employee_id: UUID | None = None
     user_id: UUID
     membership_id: UUID
     workspace_id: UUID

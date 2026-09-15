@@ -528,7 +528,7 @@ export const usePosStore = create(
             ] = await Promise.all([
               posApi.state({ branchId }),
               posApi.paymentMethods().catch(() => null),
-              optionalRead(posApi.listRegisters({ branchId, page: 1, pageSize: POS_PAGE_SIZE })),
+              useSessionStore.getState().hasPermission('pos.cash.read') ? optionalRead(posApi.listRegisters({ branchId, page: 1, pageSize: POS_PAGE_SIZE })) : Promise.resolve(null),
               optionalRead(posApi.listReceivables({ branchId, page: 1, pageSize: POS_PAGE_SIZE })),
               optionalRead(posApi.receivablesSummary({ branchId })),
               optionalRead(posApi.listQuotes({
@@ -948,7 +948,7 @@ export const usePosStore = create(
           try {
             const [response, registersResponse] = await Promise.all([
               posApi.state({ branchId }),
-              optionalRead(posApi.listRegisters({ branchId, page: 1, pageSize: POS_PAGE_SIZE })),
+              useSessionStore.getState().hasPermission('pos.cash.read') ? optionalRead(posApi.listRegisters({ branchId, page: 1, pageSize: POS_PAGE_SIZE })) : Promise.resolve(null),
             ])
             if (requestGeneration !== posGeneration || get().cajaBranchId !== branchId) return null
 

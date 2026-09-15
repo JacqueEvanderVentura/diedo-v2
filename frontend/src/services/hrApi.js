@@ -147,7 +147,7 @@ export const hrApi = {
       can('hr.profile.read')
         ? apiClient.get('/api/v1/hr/profiles', { pageSize: 100 })
         : Promise.resolve({ items: [] }),
-      can('hr.leave.request')
+      can('hr.leave.request') && session.user?.employeeId
         ? apiClient.get('/api/v1/hr/leave-requests/me').catch((error) => {
             if (error.status === 404) return { items: [] }
             throw error

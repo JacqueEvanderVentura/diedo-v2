@@ -24,7 +24,7 @@ from app.services.local_bootstrap import bootstrap_local_foundation
 from app.services.workspace_provisioning import ProvisionedOwner, ProvisionedWorkspace
 from fastapi.testclient import TestClient
 from pydantic import SecretStr, ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 _BACKOFFICE_KEY = "test-backoffice-key-with-at-least-32-characters"
 _OWNER_PASSWORD = "Owner!password-not-a-production-secret"
@@ -262,6 +262,80 @@ def test_provisioning_creates_an_isolated_ready_workspace(
             .where(Permission.is_platform_only.is_(False))
         )
         assert admin_permission_count == global_permission_count
+        for role in database.scalars(select(Role).where(Role.workspace_id == workspace_id)):
+            if role.code == "workspace_admin":
+                continue
+            codes = set(
+                database.scalars(
+                    select(Permission.code)
+                    .join(
+                        RolePermission,
+                        RolePermission.permission_id == Permission.id,
+                    )
+                    .where(
+                        RolePermission.workspace_id == workspace_id,
+                        RolePermission.role_id == role.id,
+                    )
+                )
+            )
+            assert {
+                "customer.read",
+                "catalog.read",
+                "inventory.read",
+                "branch.read",
+                "workspace.read",
+            } <= codes
+            if "crm.manage" in codes:
+                assert "customer.manage" in codes
+            if role.code == "supervisor":
+                assert "sales.quote.manage" not in codes
+
+        # A customized role is never silently granted a permission it explicitly removed.
+        from app.scripts.reconcile_crm_roles import reconcile
+        from app.services.role_templates import LEGACY_ROLE_PERMISSIONS, ROLE_PERMISSIONS
+
+        seller = database.scalar(
+            select(Role).where(Role.workspace_id == workspace_id, Role.code == "seller")
+        )
+        assert seller is not None
+        with database.begin_nested() as trial:
+            read_id = database.scalar(
+                select(Permission.id).where(Permission.code == "customer.read")
+            )
+            database.execute(
+                delete(RolePermission).where(
+                    RolePermission.role_id == seller.id, RolePermission.permission_id == read_id
+                )
+            )
+            diff = reconcile(database, workspace_id, apply=True)
+            assert (
+                next(row for row in diff if row["role"] == "seller")["status"]
+                == "customized-skipped"
+            )
+            assert (
+                database.scalar(
+                    select(RolePermission.id).where(
+                        RolePermission.role_id == seller.id, RolePermission.permission_id == read_id
+                    )
+                )
+                is None
+            )
+            trial.rollback()
+        with database.begin_nested() as trial:
+            dependency_ids = select(Permission.id).where(
+                Permission.code.in_(ROLE_PERMISSIONS["seller"] - LEGACY_ROLE_PERMISSIONS["seller"])
+            )
+            database.execute(
+                delete(RolePermission).where(
+                    RolePermission.role_id == seller.id,
+                    RolePermission.permission_id.in_(dependency_ids),
+                )
+            )
+            diff = reconcile(database, workspace_id, apply=True)
+            assert next(row for row in diff if row["role"] == "seller")["applied"] is True
+            database.flush()
+            assert all(not row["add"] for row in reconcile(database, workspace_id))
+            trial.rollback()
         assert database.scalar(
             select(func.count())
             .select_from(ModuleEntitlement)

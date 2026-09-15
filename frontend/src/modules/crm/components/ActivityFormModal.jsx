@@ -1,3 +1,4 @@
+import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Save, X } from 'lucide-react'
@@ -42,6 +43,7 @@ export function ActivityFormModal({ open, onClose, activity, defaultOpportunityI
   const sessionUser = useSessionStore((s) => s.user)
 
   const [form, setForm] = useState(empty())
+  const can = useCrmCapabilities()
   const [saving, setSaving] = useState(false)
   const editing = !!activity
 
@@ -207,7 +209,7 @@ export function ActivityFormModal({ open, onClose, activity, defaultOpportunityI
           <Button variant="secondary" className="flex-1" onClick={onClose}>
             <X className="h-4 w-4" /> Cancelar
           </Button>
-          <Button className="flex-1" onClick={submit} disabled={saving} data-testid="activity-save">
+          <Button className="flex-1" onClick={submit} disabled={saving || !can.manage} data-testid="activity-save">
             <Save className="h-4 w-4" /> {saving ? 'Guardando...' : 'Guardar'}
           </Button>
         </div>

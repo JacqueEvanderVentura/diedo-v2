@@ -71,7 +71,7 @@ test('batch real persiste dos roles sucios con una sola llamada tras reload', as
 })
 
 test('categoría real se crea por POST y persiste tras reload', async ({ page }) => {
-  const categoryName = 'Categoría Full Stack Scope'
+  const categoryName = `Categoria Full Stack Scope ${Date.now()}`
   const createRequests = []
   page.on('request', (request) => {
     const pathname = new URL(request.url()).pathname
@@ -100,6 +100,7 @@ test('categoría real se crea por POST y persiste tras reload', async ({ page })
   await expect(page.getByText(categoryName, { exact: true })).toBeVisible()
   expect(createRequests).toEqual([{
     name: categoryName,
+    categoryKind: 'product',
     description: 'Creada contra API y PostgreSQL reales',
     status: 'active',
   }])
@@ -109,6 +110,7 @@ test('categoría real se crea por POST y persiste tras reload', async ({ page })
 })
 
 test('usuario real crea y edita múltiples roleAssignments/scopes persistentes', async ({ page }) => {
+  const userEmail = `persona.full.stack.iam.${Date.now()}@example.com`
   const createRequests = []
   const updateRequests = []
   page.on('request', (request) => {
@@ -127,7 +129,7 @@ test('usuario real crea y edita múltiples roleAssignments/scopes persistentes',
   await page.getByTestId('usuario-new-btn').click()
 
   await page.getByTestId('usuario-name').fill('Persona Full Stack IAM')
-  await page.getByTestId('usuario-email').fill('persona.full.stack.iam@example.com')
+  await page.getByTestId('usuario-email').fill(userEmail)
   await page.getByTestId('usuario-password-input').fill('Password!full-stack-iam-2026')
   await choose(page, 'usuario-assignment-role-0', 'Vendedor')
   await choose(page, 'usuario-assignment-target-0', 'Sucursal Norte')
@@ -137,7 +139,7 @@ test('usuario real crea y edita múltiples roleAssignments/scopes persistentes',
   await page.getByTestId('usuario-submit').click()
 
   await expect(page.getByTestId('usuario-modal')).toHaveCount(0)
-  const createdRow = page.locator('[data-testid^="usuario-row-"]').filter({ hasText: 'persona.full.stack.iam@example.com' })
+  const createdRow = page.locator('[data-testid^="usuario-row-"]').filter({ hasText: userEmail })
   await expect(createdRow).toContainText('Vendedor · Sucursal: Sucursal Norte')
   await expect(createdRow).toContainText('Supervisor · Workspace completo')
   expect(createRequests).toHaveLength(1)
@@ -145,7 +147,7 @@ test('usuario real crea y edita múltiples roleAssignments/scopes persistentes',
   expect(createRequests[0].roleAssignments.map((assignment) => assignment.scopeType)).toEqual(['branch', 'workspace'])
 
   await page.reload()
-  const persistedRow = page.locator('[data-testid^="usuario-row-"]').filter({ hasText: 'persona.full.stack.iam@example.com' })
+  const persistedRow = page.locator('[data-testid^="usuario-row-"]').filter({ hasText: userEmail })
   await expect(persistedRow).toContainText('Vendedor · Sucursal: Sucursal Norte')
   await expect(persistedRow).toContainText('Supervisor · Workspace completo')
   await persistedRow.locator('[data-testid^="usuario-edit-"]').click()
@@ -164,7 +166,7 @@ test('usuario real crea y edita múltiples roleAssignments/scopes persistentes',
   expect(updateRequests[0].roleAssignments.map((assignment) => assignment.scopeType)).toEqual(['legalEntity', 'branch'])
 
   await page.reload()
-  const editedRow = page.locator('[data-testid^="usuario-row-"]').filter({ hasText: 'persona.full.stack.iam@example.com' })
+  const editedRow = page.locator('[data-testid^="usuario-row-"]').filter({ hasText: userEmail })
   await expect(editedRow).toContainText('Vendedor · Sucursal: Sucursal Norte')
   await expect(editedRow).toContainText('Supervisor · Entidad legal: Local ERP')
 })

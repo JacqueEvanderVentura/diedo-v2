@@ -886,8 +886,11 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize("discount_type, discount_value", [("percent", "10"), ("fixed", "75.25")])
 def test_crm_quote_accepted_does_not_auto_invoice_and_crm_invoice_works_without_register(
     client: TestClient,
+    discount_type: str,
+    discount_value: str,
 ) -> None:
     with session_scope() as session:
         seeded = bootstrap_local_foundation(session, hash_password(_PASSWORD))
@@ -990,6 +993,8 @@ def test_crm_quote_accepted_does_not_auto_invoice_and_crm_invoice_works_without_
             "branchId": branch_id_text,
             "lines": [{"itemId": str(item_id), "quantity": "1"}],
             "status": "enviada",
+            "discountType": discount_type,
+            "discountValue": discount_value,
         },
     )
     assert quote.status_code == 201, quote.text
@@ -1043,6 +1048,9 @@ def test_crm_quote_accepted_does_not_auto_invoice_and_crm_invoice_works_without_
     )
     assert paid_invoice.status_code == 201, paid_invoice.text
     assert paid_invoice.json()["status"] == "completed"
+    assert Decimal(accepted.json()["quote"]["discountAmount"]) > 0
+    assert paid_invoice.json()["total"] == accepted.json()["quote"]["total"]
+    assert paid_invoice.json()["discountAmount"] == accepted.json()["quote"]["discountAmount"]
 
     quote_list = client.get(
         "/api/v1/crm/quotes",
@@ -1064,6 +1072,17 @@ def test_crm_quote_accepted_does_not_auto_invoice_and_crm_invoice_works_without_
         },
     )
     assert duplicate.status_code == 409, duplicate.text
+    replay = client.post(
+        f"/api/v1/crm/quotes/{quote_id}/invoice",
+        headers={**headers, "Idempotency-Key": f"crm-inv-paid-{suffix}"},
+        json={
+            "version": accepted.json()["quote"]["version"],
+            "paymentMethodId": cash_method["id"],
+            "collectionMode": "now",
+        },
+    )
+    assert replay.status_code == 201, replay.text
+    assert replay.json()["id"] == paid_invoice.json()["id"]
 
     quote_receivable = client.post(
         "/api/v1/crm/quotes",
@@ -1094,3 +1113,22 @@ def test_crm_quote_accepted_does_not_auto_invoice_and_crm_invoice_works_without_
 def session_scalar_count(model: type[object]) -> int:
     with session_scope() as session:
         return int(session.scalar(select(func.count()).select_from(model)) or 0)
+
+
+def test_scoring_rejects_scoped_permission_before_mutating() -> None:
+    from unittest.mock import Mock
+
+    from app.services.errors import AuthorizationError
+
+    session = Mock()
+    grant = PermissionGrant("crm.manage", uuid7(), uuid7(), frozenset(), frozenset({uuid7()}))
+    with pytest.raises(AuthorizationError):
+        CrmService(session).update_scoring_settings(
+            principal=Mock(),
+            grant=grant,
+            expected_version=1,
+            weights=DEFAULT_SCORING_WEIGHTS,
+        )
+    session.execute.assert_not_called()
+    session.scalar.assert_not_called()
+    session.commit.assert_not_called()

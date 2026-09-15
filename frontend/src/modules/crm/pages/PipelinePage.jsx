@@ -1,3 +1,4 @@
+import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -67,12 +68,13 @@ function DealCard({
   onConvert,
   onLinkCustomer,
 }) {
+  const can = useCrmCapabilities()
   const meta = STAGE_META[opp.stage]
   const stopDrag = (event) => event.stopPropagation()
 
   return (
     <div
-      onPointerDown={(event) => onPointerDown(event, { id: opp.id, stage: opp.stage, label: opp.title })}
+      onPointerDown={(event) => can.manage && onPointerDown(event, { id: opp.id, stage: opp.stage, label: opp.title })}
       className={cn(
         'touch-none cursor-grab rounded-xl border border-slate-100 bg-white p-3 shadow-sm transition-all duration-200 hover:scale-[1.02] hover:shadow-md active:cursor-grabbing',
         dragging && 'scale-[1.03] opacity-60',
@@ -96,6 +98,7 @@ function DealCard({
           type="button"
           onPointerDown={stopDrag}
           disabled={busy}
+          disabled={!can.manage}
           onClick={() => onFollowUp(opp)}
           className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-50 disabled:opacity-50"
         >
@@ -105,6 +108,7 @@ function DealCard({
           type="button"
           onPointerDown={stopDrag}
           disabled={busy}
+          disabled={!can.quote}
           onClick={() => onQuote(opp)}
           className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-purple-600 hover:bg-purple-50 disabled:opacity-50"
         >
@@ -115,7 +119,8 @@ function DealCard({
             type="button"
             onPointerDown={stopDrag}
             disabled={busy}
-            onClick={() => onConvert(opp)}
+            disabled={!can.convert}
+          onClick={() => onConvert(opp)}
             className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
           >
             <UserCheck className="h-3.5 w-3.5" /> Convertir
@@ -126,7 +131,8 @@ function DealCard({
             type="button"
             onPointerDown={stopDrag}
             disabled={busy}
-            onClick={() => onLinkCustomer(opp)}
+            disabled={!can.manage}
+          onClick={() => onLinkCustomer(opp)}
             className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50"
           >
             <Link2 className="h-3.5 w-3.5" /> Cliente
@@ -138,6 +144,7 @@ function DealCard({
 }
 
 export default function PipelinePage() {
+  const can = useCrmCapabilities()
   const navigate = useNavigate()
   const opportunities = useCrmStore((state) => state.opportunities)
   const branches = useConfigStore((state) => state.branches)
@@ -605,7 +612,7 @@ export default function PipelinePage() {
               className={CRM_BRANCH_FILTER_CLASS}
               testId="pipeline-branch-filter"
             />
-            <Button onClick={openCreate}>
+            <Button onClick={openCreate} disabled={!can.manage}>
               <Plus className="h-4 w-4" /> Nueva oportunidad
             </Button>
           </div>

@@ -12,6 +12,7 @@ from app.db.models import (
     AuthSession,
     AuthSessionElevation,
     Branch,
+    Employee,
     LegalEntity,
     PlatformUser,
     Role,
@@ -118,6 +119,15 @@ class SessionElevationRecord:
 class AuthRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
+
+    def linked_employee_id(self, workspace_id: UUID, platform_user_id: UUID) -> UUID | None:
+        return self._session.scalar(
+            select(Employee.id).where(
+                Employee.workspace_id == workspace_id,
+                Employee.platform_user_id == platform_user_id,
+                Employee.status == "active",
+            )
+        )
 
     def get_login_user(self, normalized_email: str) -> LoginUserRecord | None:
         row = self._session.execute(

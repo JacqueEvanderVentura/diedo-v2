@@ -66,6 +66,7 @@ export default function CotizacionesPage() {
   const markReceivablePaid = usePosStore((s) => s.markReceivablePaid)
   const attachReceivableProof = usePosStore((s) => s.attachReceivableProof)
   const isOnline = useSessionStore((state) => state.isOnline())
+  const canManage = useSessionStore((s) => s.status === 'demo' || (s.hasPermission('crm.manage') && s.hasPermission('sales.quote.manage')))
   const canInvoice = useSessionStore((state) => state.hasPermission(QUOTE_INVOICE_PERMISSION))
   const canCollectReceivables = useSessionStore((state) => state.hasPermission('pos.receivables.collect'))
 
@@ -461,6 +462,7 @@ export default function CotizacionesPage() {
             onClick={openCreate}
             className="shrink-0 whitespace-nowrap"
             data-testid="cotizaciones-new-quote"
+            disabled={!canManage}
           >
             <Plus className="h-4 w-4 shrink-0" />
             Nueva cotización
@@ -576,7 +578,7 @@ export default function CotizacionesPage() {
                         )}
                       </>
                     )}
-                    {isQuoteEditable(q) && (
+                    {canManage && isQuoteEditable(q) && (
                       <button
                         type="button"
                         onClick={() => openEdit(q)}
@@ -605,7 +607,7 @@ export default function CotizacionesPage() {
                     >
                       <Download className="h-4 w-4" />
                     </button>
-                    {!isQuoteInvoiced(q) && (
+                    {canManage && !isQuoteInvoiced(q) && (
                       <Select
                         value={q.status}
                         onChange={(status) => changeStatus(q.id, status)}
@@ -613,7 +615,7 @@ export default function CotizacionesPage() {
                         className="w-36"
                       />
                     )}
-                    {!isQuoteInvoiced(q) && (
+                    {canManage && !isQuoteInvoiced(q) && (
                       <button
                         type="button"
                         onClick={() => cancelQuote(q.id)}

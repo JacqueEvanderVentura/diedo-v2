@@ -1,3 +1,4 @@
+import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import {
@@ -52,6 +53,7 @@ export function CustomerDetailModal({
   onNewOpportunity,
   onOpenSale,
 }) {
+  const can = useCrmCapabilities()
   const posSales = usePosStore((s) => s.sales)
   const crmSales = useCrmStore((s) => s.sales)
   const opportunities = useCrmStore((s) => s.opportunities)
@@ -74,7 +76,8 @@ export function CustomerDetailModal({
     () => (customer ? mergeSalesForCustomer(posSales, crmSales, customer.id) : []),
     [posSales, crmSales, customer],
   )
-  const totalSpent = useMemo(() => purchases.reduce((a, s) => a + (s.total || 0), 0), [purchases])
+  const activePurchases = purchases.filter((sale) => sale.status !== 'voided')
+  const totalSpent = activePurchases.reduce((sum, sale) => sum + (sale.total || 0), 0)
   const openOpportunities = useMemo(
     () => (customer ? filterOpenOpportunities(opportunities, customer.id) : []),
     [opportunities, customer],
@@ -127,23 +130,23 @@ export function CustomerDetailModal({
                   data-testid="customer-detail-wa"
                 />
               )}
-              <Button size="sm" variant="secondary" onClick={() => onEdit(customer)} data-testid="customer-detail-edit">
+              <Button size="sm" variant="secondary" disabled={!can.customer} onClick={() => onEdit(customer)} data-testid="customer-detail-edit">
                 <Pencil className="h-3.5 w-3.5" /> Editar
               </Button>
             </div>
           </div>
 
           <div className="flex flex-wrap gap-2" data-testid="customer-detail-actions">
-            <Button size="sm" variant="secondary" onClick={() => onQuote?.(customer)}>
+            <Button size="sm" variant="secondary" disabled={!can.quote} onClick={() => onQuote?.(customer)}>
               <FileText className="h-3.5 w-3.5" /> Cotizar
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => onNewOpportunity?.(customer)}>
+            <Button size="sm" variant="secondary" disabled={!can.manage} onClick={() => onNewOpportunity?.(customer)}>
               <Briefcase className="h-3.5 w-3.5" /> Oportunidad
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => onNewTask?.(customer)}>
+            <Button size="sm" variant="secondary" disabled={!can.manage} onClick={() => onNewTask?.(customer)}>
               <CheckSquare className="h-3.5 w-3.5" /> Tarea
             </Button>
-            <Button size="sm" onClick={() => onSchedule(customer)} data-testid="customer-detail-schedule">
+            <Button size="sm" disabled={!can.schedule} onClick={() => onSchedule(customer)} data-testid="customer-detail-schedule">
               <CalendarPlus className="h-3.5 w-3.5" /> Cita
             </Button>
           </div>
@@ -155,7 +158,7 @@ export function CustomerDetailModal({
             </div>
             <div className="rounded-xl border border-slate-100 p-3">
               <p className="text-xs font-medium text-slate-400">Compras</p>
-              <p className="font-heading text-xl font-bold text-slate-800">{purchases.length}</p>
+              <p className="font-heading text-xl font-bold text-slate-800">{activePurchases.length}</p>
             </div>
             <div className="rounded-xl border border-slate-100 p-3">
               <p className="text-xs font-medium text-slate-400">Pipeline</p>
@@ -318,6 +321,7 @@ export function CustomerDetailModal({
                       <span className="mt-1 inline-block text-[11px] font-medium text-slate-400">
                         {METHOD_LABELS[s.method] || s.method}
                         {s.origin === 'pipeline' ? ' · Pipeline' : ''}
+                        {s.status === 'voided' && ' · Anulada'}
                       </span>
                     </button>
                   </li>

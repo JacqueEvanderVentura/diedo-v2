@@ -1,3 +1,4 @@
+import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Save } from 'lucide-react'
@@ -25,6 +26,7 @@ export function LeadFormModal({ open, onClose }) {
   const branches = useConfigStore((state) => state.branches)
   const addLead = useCrmStore((state) => state.addLead)
   const [form, setForm] = useState(emptyForm())
+  const can = useCrmCapabilities()
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -126,7 +128,7 @@ export function LeadFormModal({ open, onClose }) {
       </div>
       <div className="mt-6 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose} disabled={submitting}>Cancelar</Button>
-        <Button onClick={submit} disabled={submitting} data-testid="lead-submit">
+        <Button onClick={submit} disabled={submitting || !can.manage} data-testid="lead-submit">
           <Save className="h-4 w-4" /> {submitting ? 'Guardando…' : 'Crear lead'}
         </Button>
       </div>

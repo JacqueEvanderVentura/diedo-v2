@@ -57,7 +57,8 @@ export function QuoteFormModal({
   const [customerModalOpen, setCustomerModalOpen] = useState(false)
 
   const editing = Boolean(quote)
-  const editable = isQuoteEditable(quote)
+  const canManage = useSessionStore((s) => s.status === 'demo' || (s.hasPermission('crm.manage') && s.hasPermission('sales.quote.manage')))
+  const editable = canManage && isQuoteEditable(quote)
 
   useEffect(() => {
     if (!open) return
@@ -480,7 +481,7 @@ export function QuoteFormModal({
                 </Button>
               )}
               <p className="text-right font-heading text-lg font-bold text-emerald-600">
-                Total {formatDOP(total)}
+                Subtotal {formatDOP(total)}<span className="block text-xs font-normal text-slate-500">Impuestos y descuentos se calculan al guardar.</span>
               </p>
             </div>
           )}

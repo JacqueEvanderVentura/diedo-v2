@@ -1,10 +1,11 @@
 import { apiClient } from './apiClient'
+import { readAllPages } from './pagination'
 import { createModuleGateway } from './dataGateway'
 import { demoRepository, DEMO_SEED_ENABLED } from './demoRepository'
 import { useSessionStore } from '@/stores/sessionStore'
 
 export const masterDataApi = {
-  customers: async (params = {}) => (await apiClient.get('/api/v1/customers', { pageSize: 100, ...params })).items,
+  customers: async (params = {}) => (await readAllPages((query) => apiClient.get('/api/v1/customers', query), { pageSize: 100, ...params })).items,
   createCustomer: (payload) => apiClient.post('/api/v1/customers', payload),
   updateCustomer: (id, payload) => apiClient.patch(`/api/v1/customers/${id}`, payload),
   customerTimeline: (id) => apiClient.get(`/api/v1/customers/${id}/timeline`),

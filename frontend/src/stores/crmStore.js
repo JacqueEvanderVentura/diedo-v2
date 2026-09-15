@@ -9,6 +9,7 @@ import { DEFAULT_SCORING_WEIGHTS } from '@/data/crm'
 import { useCustomersStore } from '@/stores/customersStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { crmApi } from '@/services/crmApi'
+import { readAllPages } from '@/services/pagination'
 import {
   mapActivityFromApi,
   mapActivitiesPageFromApi,
@@ -26,7 +27,6 @@ import {
 } from '@/services/adapters/crm'
 import {
   buildDemoSaleFromPipeline,
-  buildPipelineCheckoutPayload,
   findBillableQuote,
   sumQuoteLines,
   validatePipelineClose,
@@ -51,13 +51,12 @@ import {
   mapCheckoutFromApi,
   mapReceivablesPageFromApi,
   mapSaleFromApi,
-  mapSaleMutationResponse,
 } from '@/services/adapters/pos'
-import { posApi } from '@/services/posApi'
 import { useConfigStore } from '@/stores/configStore'
 import { syncWorkspacePaymentMethods } from '@/lib/paymentMethodsSync'
 
 const saleDetailRequests = new Map()
+let crmGeneration = 0
 
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const now = () => new Date().toISOString()
@@ -101,7 +100,7 @@ async function loadOnlineSection(section) {
     }
     case 'leads': {
       const [page, settings, discoveryCapabilities] = await Promise.all([
-        crmApi.leads({ page: 1, pageSize: 200 }),
+        readAllPages(crmApi.leads),
         crmApi.scoring(),
         crmApi.discoveryCapabilities(),
       ])
@@ -113,19 +112,22 @@ async function loadOnlineSection(section) {
       }
     }
     case 'pipeline': {
-      const [opportunities, leads] = await Promise.all([
-        crmApi.opportunities({ page: 1, pageSize: 200 }),
-        crmApi.leads({ page: 1, pageSize: 200 }),
+      const [opportunities, leads, quotes] = await Promise.all([
+        readAllPages(crmApi.opportunities),
+        readAllPages(crmApi.leads),
+        readAllPages(crmApi.quotes),
+        syncWorkspacePaymentMethods(),
       ])
       return {
+        quotes: mapCrmQuotesPageFromApi(quotes),
         opportunities: mapOpportunitiesPageFromApi(opportunities),
         leads: mapLeadsPageFromApi(leads),
       }
     }
     case 'activities': {
       const [activities, opportunities] = await Promise.all([
-        crmApi.activities({ page: 1, pageSize: 200 }),
-        crmApi.opportunities({ page: 1, pageSize: 200 }),
+        readAllPages(crmApi.activities),
+        readAllPages(crmApi.opportunities),
       ])
       return {
         activities: mapActivitiesPageFromApi(activities),
@@ -133,14 +135,20 @@ async function loadOnlineSection(section) {
       }
     }
     case 'customers': {
-      const customers = await crmApi.customers({ page: 1, pageSize: 200 })
-      return { customers: mapCrmCustomersPageFromApi(customers) }
+      const [customers, sales, quotes, opportunities, activities] = await Promise.all([
+        readAllPages(crmApi.customers), readAllPages(crmApi.sales),
+        readAllPages(crmApi.quotes), readAllPages(crmApi.opportunities),
+        readAllPages(crmApi.activities),
+      ])
+      return { customers: mapCrmCustomersPageFromApi(customers), sales: mapCrmSalesPageFromApi(sales),
+        quotes: mapCrmQuotesPageFromApi(quotes), opportunities: mapOpportunitiesPageFromApi(opportunities),
+        activities: mapActivitiesPageFromApi(activities) }
     }
     case 'quotes': {
       const [quotes, opportunities, customers] = await Promise.all([
-        crmApi.quotes({ page: 1, pageSize: 200 }),
-        crmApi.opportunities({ page: 1, pageSize: 200 }),
-        crmApi.customers({ page: 1, pageSize: 200 }),
+        readAllPages(crmApi.quotes),
+        readAllPages(crmApi.opportunities),
+        readAllPages(crmApi.customers),
         syncWorkspacePaymentMethods().catch(() => []),
       ])
       return {
@@ -151,8 +159,8 @@ async function loadOnlineSection(section) {
     }
     case 'purchases': {
       const [sales, customers] = await Promise.all([
-        crmApi.sales({ page: 1, pageSize: 200 }),
-        crmApi.customers({ page: 1, pageSize: 200 }),
+        readAllPages(crmApi.sales),
+        readAllPages(crmApi.customers),
       ])
       return {
         sales: mapCrmSalesPageFromApi(sales),
@@ -160,7 +168,7 @@ async function loadOnlineSection(section) {
       }
     }
     case 'sales': {
-      const sales = await crmApi.sales({ page: 1, pageSize: 200 })
+      const sales = await readAllPages(crmApi.sales)
       return { sales: mapCrmSalesPageFromApi(sales) }
     }
     default:
@@ -296,8 +304,8 @@ export const useCrmStore = create(
         try {
           const [stateResponse, customerResponse, salesResponse, overview] = await Promise.all([
             crmApi.state(),
-            crmApi.customers({ page: 1, pageSize: 200 }),
-            crmApi.sales({ page: 1, pageSize: 200 }),
+            readAllPages(crmApi.customers),
+            readAllPages(crmApi.sales),
             crmApi.overview(),
           ])
           const mapped = mapCrmStateFromApi(stateResponse)
@@ -312,7 +320,6 @@ export const useCrmStore = create(
             dataState: { status: 'ready', source: 'api', error: null },
           })
           useCustomersStore.getState().mergeCrmProfiles?.(customers)
-          await get().syncLeadsToPipeline()
           return get()
         } catch (error) {
           set({ hydrating: false, error, dataState: { status: 'error', source: null, error } })
@@ -322,6 +329,7 @@ export const useCrmStore = create(
 
       hydrateSection: async (section) => {
         if (!isOnline()) return get().hydrate({ force: true })
+        const generation = crmGeneration
         set({
           hydrating: true,
           error: null,
@@ -329,6 +337,7 @@ export const useCrmStore = create(
         })
         try {
           const updates = await loadOnlineSection(section)
+          if (generation !== crmGeneration) return {}
           if (updates.quotes) {
             const previous = get().quotes
             updates.quotes = updates.quotes.map((quote) => {
@@ -361,11 +370,10 @@ export const useCrmStore = create(
           if (updates.customers) {
             useCustomersStore.getState().mergeCrmProfiles?.(updates.customers)
           }
-          if (section === 'pipeline' || section === 'leads') {
-            await get().syncLeadsToPipeline()
-          }
+
           return updates
         } catch (error) {
+          if (generation !== crmGeneration) return {}
           set({ hydrating: false, error, dataState: { status: 'error', source: null, error } })
           throw error
         }
@@ -374,18 +382,19 @@ export const useCrmStore = create(
       recordSerpSearch: () =>
         set((state) => recordSerpUsage(state)),
 
-      updateScoringWeights: (weights) => {
-        set((s) => {
-          const merged = { ...s.scoringWeights, ...weights }
-          return { scoringWeights: merged, leads: recomputeLeads(s.leads, merged) }
-        })
-        if (isOnline()) {
-          crmApi.updateScoring({ version: get().scoringVersion, weights })
-            .then((result) => {
-              set({ scoringWeights: result.weights, scoringVersion: result.version })
-              return get().hydrateSection('leads')
-            })
-            .catch((error) => reportMutationError(set, error))
+      updateScoringWeights: async (weights) => {
+        if (!isOnline()) {
+          set((s) => ({ scoringWeights: { ...s.scoringWeights, ...weights },
+            leads: recomputeLeads(s.leads, { ...s.scoringWeights, ...weights }) }))
+          return
+        }
+        try {
+          const result = await crmApi.updateScoring({ version: get().scoringVersion, weights })
+          set({ scoringWeights: result.weights, scoringVersion: result.version })
+          await get().hydrateSection('leads')
+        } catch (error) {
+          reportMutationError(set, error)
+          throw error
         }
       },
 
@@ -532,11 +541,12 @@ export const useCrmStore = create(
               notes: opp.notes || null,
             })
             const saved = mapOpportunityFromApi(response)
+            const updatedLead = mapLeadFromApi(await crmApi.getLead(leadId))
             set((s) => ({
               opportunities: [saved, ...s.opportunities.filter((item) => item.id !== saved.id)],
               leads: s.leads.map((item) => (
                 item.id === leadId
-                  ? { ...item, opportunityId: saved.id, updatedAt: saved.updatedAt }
+                  ? updatedLead
                   : item
               )),
             }))
@@ -634,38 +644,15 @@ export const useCrmStore = create(
         let sale
         if (isOnline()) {
           let billableQuote = quote
-          if (billableQuote.status !== 'aceptada') {
+          if (!billableQuote.convertedSaleId && billableQuote.status !== 'aceptada') {
             billableQuote = await get().updateQuote(billableQuote.id, { status: 'aceptada' }) || billableQuote
           }
-          const registerResponse = await posApi.listRegisters({
-            branchId: opportunity.branchId,
-            status: 'open',
-            pageSize: 1,
-          })
-          const register = registerResponse?.items?.[0]
-          const payload = buildPipelineCheckoutPayload({
-            quote: billableQuote,
-            opportunity,
-            customer,
-            branchId: opportunity.branchId,
-            registerId: register?.id,
-            paymentMethods: useConfigStore.getState().paymentMethods,
-            method: paymentMethod,
-          })
-          const response = await posApi.checkout(payload, {
-            idempotencyKey: `crm-pipeline-${opportunityId}`,
-          })
-          sale = mapSaleMutationResponse(response)
-          if (sale?.id) {
-            const detail = await crmApi.getSale(sale.id)
-            sale = mapSaleFromApi(detail)
+          if (billableQuote.convertedSaleId) {
+            sale = mapSaleFromApi(await crmApi.getSale(billableQuote.convertedSaleId))
+          } else {
+            sale = (await get().invoiceQuote(billableQuote.id, { paymentMethod })).sale
           }
-          if (sale) {
-            const { usePosStore } = await import('@/stores/posStore')
-            usePosStore.setState((state) => ({
-              sales: [sale, ...state.sales.filter((item) => item.id !== sale.id)],
-            }))
-          }
+
         } else {
           sale = buildDemoSaleFromPipeline({
             opportunity,
@@ -1100,7 +1087,10 @@ export const useCrmStore = create(
         return current || null
       },
 
-      clearSensitive: () => set({
+      clearSensitive: () => {
+        crmGeneration += 1
+        saleDetailRequests.clear()
+        set({
         leads: [],
         opportunities: [],
         activities: [],
@@ -1112,7 +1102,8 @@ export const useCrmStore = create(
         hydrating: false,
         error: null,
         dataState: { status: 'loading', source: null, error: null },
-      }),
+        })
+      },
 
       getOverviewStats: () => {
         const { leads, opportunities } = get()

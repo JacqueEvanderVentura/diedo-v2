@@ -25,7 +25,11 @@ export function summarizeActiveSales(sales = []) {
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 
 export function fmtDate(iso) {
+  if (!iso) return '—'
+  const calendar = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  if (calendar) return `${calendar[3]} ${MONTHS[Number(calendar[2]) - 1]} ${calendar[1]}`
   const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
   const p = (n) => String(n).padStart(2, '0')
   return `${p(d.getDate())} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`
 }

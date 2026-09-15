@@ -17,6 +17,7 @@ export const crmApi = {
   state: (params) => apiClient.get(`${CRM_BASE}/state`, params),
   overview: (params) => apiClient.get(`${CRM_BASE}/overview`, params),
   leads: (params) => apiClient.get(`${CRM_BASE}/leads`, params),
+  getLead: (id) => apiClient.get(`${CRM_BASE}/leads/${id}`),
   opportunities: (params) => apiClient.get(`${CRM_BASE}/opportunities`, params),
   activities: (params) => apiClient.get(`${CRM_BASE}/activities`, params),
   customers: (params) => apiClient.get(`${CRM_BASE}/customers`, params),

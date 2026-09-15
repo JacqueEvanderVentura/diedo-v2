@@ -74,6 +74,9 @@ export function routeRequirement(pathname) {
   if (pathname.startsWith('/crm/clientes')) {
     return { module: 'crm', permission: 'customer.read' }
   }
+  if (pathname === '/crm' || pathname.startsWith('/crm/')) {
+    return { module: 'crm', permission: 'crm.read' }
+  }
   if (pathname.startsWith('/rrhh/directorio')) {
     return { module: 'hr', permission: 'employee.read' }
   }

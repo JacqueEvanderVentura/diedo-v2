@@ -359,7 +359,7 @@ export function CloseOpportunityInvoiceModal({
     <Modal
       open={open}
       onClose={() => { if (!loading && !quoteBusy) onClose() }}
-      title="Cerrar oportunidad y facturar"
+      title={quote?.convertedSaleId ? "Cerrar oportunidad" : "Cerrar oportunidad y facturar"}
       testId="pipeline-close-invoice-modal"
       wide
       bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
@@ -373,8 +373,8 @@ export function CloseOpportunityInvoiceModal({
 
             <p className="text-sm text-emerald-800">
 
-              Se generará la factura{' '}
-              <span className="font-semibold">{invoicePreview}</span>
+              {quote?.convertedSaleId ? 'Se vinculará la factura existente' : 'Se generará la factura'}{' '}
+              <span className="font-semibold">{quote?.convertedSaleId ? (quote.invoiceNumber || quote.number) : invoicePreview}</span>
               {branch ? ` de ${branch.name}` : ''}.
 
             </p>
@@ -824,6 +824,7 @@ export function CloseOpportunityInvoiceModal({
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Método de pago</label>
             <Select
+              disabled={Boolean(quote?.convertedSaleId)}
               value={paymentMethod}
               onChange={onPaymentMethodChange}
               options={PAYMENT_OPTIONS}
@@ -847,7 +848,7 @@ export function CloseOpportunityInvoiceModal({
               disabled={loading || quoteBusy || missingCustomer || missingQuote}
               data-testid="pipeline-close-confirm"
             >
-              {loading ? 'Facturando…' : 'Generar factura'}
+              {loading ? 'Procesando…' : quote?.convertedSaleId ? 'Cerrar oportunidad' : 'Generar factura'}
             </Button>
           </div>
         </div>

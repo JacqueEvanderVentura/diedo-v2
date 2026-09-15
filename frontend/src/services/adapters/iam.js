@@ -130,6 +130,7 @@ export function mapSessionUser(me) {
     id: me.membershipId || me.userId,
     userId: me.userId,
     membershipId: me.membershipId,
+    employeeId: me.employeeId || null,
     workspaceId: me.workspaceId,
     name: me.displayName,
     email: me.email,

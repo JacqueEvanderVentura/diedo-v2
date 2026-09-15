@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Plus, Search, Users, Phone, Mail, ChevronLeft, ChevronRight, Building2 } from 'lucide-react'
@@ -67,7 +68,9 @@ export default function ClientesPage() {
   const sessionUser = useSessionStore((s) => s.user)
 
   useEffect(() => {
-    hydrateAppointments({ params: {} }).catch(() => {})
+    if (useSessionStore.getState().hasPermission('appointment.read') || useSessionStore.getState().status === 'demo') {
+      hydrateAppointments({ params: {} }).catch(() => {})
+    }
   }, [hydrateAppointments])
   const scopedCustomers = useMemo(
     () => customersVisibleToSession(customers, sessionUser),
@@ -98,21 +101,21 @@ export default function ClientesPage() {
   const requestedCustomerId = searchParams.get('customerId') || ''
 
   useEffect(() => {
-    if (!requestedCustomerId) return
+    if (!requestedCustomerId || dataState.status === 'loading' || dataState.status === 'error') return
     const customer = scopedCustomers.find((item) => item.id === requestedCustomerId)
     if (customer) setDetail(customer)
+    else toast.error('Cliente no encontrado o sin acceso.')
     const nextParams = new URLSearchParams(searchParams)
     nextParams.delete('customerId')
     setSearchParams(nextParams, { replace: true })
-  }, [requestedCustomerId, scopedCustomers, searchParams, setSearchParams])
+  }, [requestedCustomerId, scopedCustomers, searchParams, setSearchParams, dataState.status])
 
   // Total gastado por cliente (una sola pasada).
   const spentByCustomer = useMemo(() => {
     const map = {}
-    const seen = new Set()
-    for (const sale of [...sales, ...crmSales]) {
-      if (seen.has(sale.id)) continue
-      seen.add(sale.id)
+    const latest = new Map([...sales, ...crmSales].map((sale) => [sale.id, sale]))
+    for (const sale of latest.values()) {
+      if (sale.status === 'voided') continue
       const id = sale.customer?.id
       if (!id) continue
       map[id] = (map[id] || 0) + (sale.total || 0)
@@ -352,7 +355,7 @@ export default function ClientesPage() {
       <CustomerDetailModal
         open={!!detail}
         onClose={() => setDetail(null)}
-        customer={detail}
+        customer={scopedCustomers.find((item) => item.id === detail?.id) || detail}
         onEdit={openEdit}
         onSchedule={(c) => { setScheduling(c) }}
         onQuote={(c) => {
@@ -392,7 +395,7 @@ export default function ClientesPage() {
         onClose={() => setSaleDetail(null)}
         sale={saleDetail}
       />
-      <AppointmentFormModal open={!!scheduling} onClose={() => setScheduling(null)} defaultCustomerId={scheduling?.id} />
+      <AppointmentFormModal open={!!scheduling} onClose={() => setScheduling(null)} defaultCustomerId={scheduling?.id} defaultSlot={{ branchId: scheduling?.branchIds?.[0] || scheduling?.branchId }} />
     </div>
   )
 }

@@ -64,6 +64,7 @@ def _current_session_response(
 ) -> CurrentSessionResponse:
     primary = context.assignments[0] if context.assignments else None
     return CurrentSessionResponse(
+        employee_id=context.employee_id,
         user_id=principal.platform_user_id,
         membership_id=principal.membership_id,
         workspace_id=principal.workspace_id,

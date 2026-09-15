@@ -8,12 +8,14 @@ const BILLABLE_STATUSES = ['aceptada', 'enviada', 'borrador']
 export function findBillableQuote(quotes, opportunityId) {
   const scoped = (quotes || []).filter((quote) => quote.opportunityId === opportunityId && quote.items?.length)
   if (!scoped.length) return null
+  const invoiced = scoped.find((quote) => quote.convertedSaleId)
+  if (invoiced) return invoiced
   const ranked = [...scoped].sort((left, right) => {
     const leftRank = BILLABLE_STATUSES.indexOf(left.status)
     const rightRank = BILLABLE_STATUSES.indexOf(right.status)
     return (leftRank === -1 ? 99 : leftRank) - (rightRank === -1 ? 99 : rightRank)
   })
-  return ranked.find((quote) => quote.status !== 'rechazada' && quote.status !== 'vencida') || ranked[0]
+  return ranked.find((quote) => BILLABLE_STATUSES.includes(quote.status)) || null
 }
 
 export function validatePipelineClose({ opportunity, quotes }) {

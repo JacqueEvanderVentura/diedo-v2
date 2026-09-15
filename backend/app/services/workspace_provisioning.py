@@ -32,6 +32,7 @@ from app.services.errors import (
     InvalidOperationError,
     ServiceUnavailableError,
 )
+from app.services.role_templates import ROLE_PERMISSIONS as _ROLE_PERMISSION_CODES
 from app.services.subscription_plans import (
     DEFAULT_PLAN_CODE,
     WorkspaceEntitlementService,
@@ -45,62 +46,6 @@ _ROLE_TEMPLATES = (
     ("seller", "Vendedor"),
 )
 
-_ROLE_PERMISSION_CODES = {
-    "manager": frozenset(
-        {
-            "dashboard.read",
-            "crm.read",
-            "crm.manage",
-            "finance.read",
-            "finance.manage",
-            "membership.read",
-            "membership.manage",
-            "report.read",
-        }
-    ),
-    "cashier": frozenset(
-        {
-            "dashboard.read",
-            "sales.read",
-            "pos.read",
-            "pos.sell",
-            "pos.register.manage",
-            "pos.cash.read",
-            "pos.cash.manage",
-            "pos.receivables.read",
-            "pos.receivables.collect",
-        }
-    ),
-    "supervisor": frozenset(
-        {
-            "dashboard.read",
-            "crm.read",
-            "crm.manage",
-            "finance.read",
-            "report.read",
-            "sales.read",
-            "pos.read",
-            "pos.cash.read",
-            "pos.receivables.read",
-            "pos.receivables.collect",
-            "pos.void",
-            "sales.invoice.void",
-        }
-    ),
-    "seller": frozenset(
-        {
-            "dashboard.read",
-            "crm.read",
-            "crm.manage",
-            "sales.read",
-            "sales.quote.manage",
-            "pos.read",
-            "pos.sell",
-            "pos.receivables.read",
-            "pos.receivables.collect",
-        }
-    ),
-}
 
 _PAYMENT_METHODS = (
     ("cash", "Efectivo", "Banknote", "cash", "immediate", True, False),

@@ -1,3 +1,4 @@
+import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -41,6 +42,7 @@ function ActivityIcon({ type }) {
 }
 
 function ActivityCard({ act, users, onToggle, onEdit }) {
+  const can = useCrmCapabilities()
   const meta = ACTIVITY_TYPE_META[act.type]
   const assignee = users.find((u) => u.id === act.assignedUserId)?.name
 
@@ -88,6 +90,7 @@ function ActivityCard({ act, users, onToggle, onEdit }) {
         <div className="flex shrink-0 flex-col gap-1">
           <button
             type="button"
+            disabled={!can.manage}
             onClick={() => onEdit(act)}
             className="rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50"
             data-testid={`activity-edit-${act.id}`}
@@ -96,6 +99,7 @@ function ActivityCard({ act, users, onToggle, onEdit }) {
           </button>
           <button
             type="button"
+            disabled={!can.manage}
             onClick={() => onToggle(act.id)}
             className="rounded-lg px-3 py-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-50"
           >
@@ -144,6 +148,7 @@ function OpportunityRow({ opportunity, onNewTask, onNavigate }) {
 }
 
 export default function SeguimientoPage() {
+  const can = useCrmCapabilities()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const activities = useCrmStore((s) => s.activities)
@@ -274,7 +279,7 @@ export default function SeguimientoPage() {
           <p className="text-sm text-slate-500">Actividades y oportunidades organizadas cronológicamente.</p>
         </div>
         {view === 'actividades' && (
-          <Button onClick={openNew} data-testid="activity-new">
+          <Button onClick={openNew} data-testid="activity-new" disabled={!can.manage}>
             <Plus className="h-4 w-4" /> Nueva tarea
           </Button>
         )}

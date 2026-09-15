@@ -90,6 +90,8 @@ class CrmService:
         expected_version: int,
         weights: dict[str, float],
     ) -> ScoringSettingsRecord:
+        if not grant.workspace_wide:
+            raise AuthorizationError("Administrar el scoring global requiere alcance de workspace.")
         settings = self._repository.settings(grant.workspace_id, lock=True)
         if settings is None:
             settings = self._new_settings(grant.workspace_id, principal.platform_user_id)
@@ -1134,13 +1136,22 @@ class CrmService:
             raise ResourceNotFoundError("La cotización CRM no existe.", "quoteId")
         if record.quote.crm_status != "aceptada":
             raise InvalidOperationError("Solo puedes facturar cotizaciones aceptadas.", "status")
-        if record.converted_sale_id is not None:
+        replay = (
+            PosService(self._session)._repository.sale_by_key(
+                crm_grant.workspace_id, idempotency_key
+            )
+            if record.converted_sale_id is not None
+            else None
+        )
+        replaying = replay is not None and replay.id == record.converted_sale_id
+        if record.converted_sale_id is not None and not replaying:
             raise ConflictError("La cotización ya fue facturada.", "quoteId")
-        if record.quote.status != "open":
+        if record.quote.status != "open" and not replaying:
             raise ConflictError("La cotización ya fue procesada.", "quoteId")
         if not record.lines:
             raise InvalidOperationError("La cotización debe incluir al menos un ítem.", "lines")
-        self._require_version(record.quote.version, expected_version)
+        if not replaying:
+            self._require_version(record.quote.version, expected_version)
         method = PosService(self._session)._require_payment_method(
             sell_grant.workspace_id, payment_method_id
         )
@@ -1167,6 +1178,9 @@ class CrmService:
             "payment_method_id": payment_method_id,
             "quote_id": quote_id,
             "quote_version": expected_version,
+            "discount_type": "fixed" if record.quote.discount_mode == "amount" else "percent",
+            "discount_value": record.quote.discount_value,
+            "notes": record.quote.notes,
             "reference": payment_reference,
             "lines": lines,
             "crm_relaxed_register": True,

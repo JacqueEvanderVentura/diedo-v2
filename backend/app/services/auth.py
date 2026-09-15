@@ -77,6 +77,7 @@ class CurrentSessionContext:
     enabled_modules: tuple[str, ...]
     subscription_status: str | None = None
     elevation: SessionElevationContext | None = None
+    employee_id: UUID | None = None
 
 
 class AuthService:
@@ -310,6 +311,9 @@ class AuthService:
             principal.workspace_id
         )
         return CurrentSessionContext(
+            employee_id=self._repository.linked_employee_id(
+                principal.workspace_id, principal.platform_user_id
+            ),
             subscription_status=effective_subscription_status(subscription, now=now)
             if subscription
             else None,
