@@ -25,12 +25,14 @@ else:
     try:
         from resend.exceptions import (
             ApplicationError as _ResendApplicationError,
+        )
+        from resend.exceptions import (
             InvalidApiKeyError,
             MissingApiKeyError,
+            MissingRequiredFieldsError,
             RateLimitError,
             ResendError,
             ValidationError,
-            MissingRequiredFieldsError,
         )
     except Exception:  # pragma: no cover
         ValidationError = InvalidApiKeyError = MissingApiKeyError = RateLimitError = ResendError = (
@@ -156,7 +158,9 @@ def send_email(
     except RateLimitError as exc:
         raise EmailRateLimitError("Límite de envío de Resend alcanzado.") from exc
     except (_ResendApplicationError, ResendError, TimeoutError, RuntimeError) as exc:
-        raise EmailTransportError("No se pudo completar el envío con el proveedor de correo.") from exc
+        raise EmailTransportError(
+            "No se pudo completar el envío con el proveedor de correo."
+        ) from exc
     finally:
         resend.default_http_client = previous_client
         resend.api_key = previous_api_key

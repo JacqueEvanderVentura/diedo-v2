@@ -91,3 +91,6 @@ android-sdk/
 credentials.json
 *.key
 .credentials
+
+# Cloudflare local state
+.wrangler/

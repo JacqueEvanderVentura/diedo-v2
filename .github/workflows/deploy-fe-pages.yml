@@ -40,9 +40,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run frontend tests
-        run: npm test
-
       - name: Build production bundle
         env:
           VITE_API_BASE_URL: https://api-production-b1fb.up.railway.app
@@ -56,6 +53,20 @@ jobs:
           VITE_FEATURE_CALENDAR_SCHEDULES: "false"
           VITE_FEATURE_REGIONAL_MODULES: "false"
         run: npm run build
+
+      - name: Run frontend tests
+        run: npm test
+
+      - name: Verify static hosting in Wrangler
+        run: |
+          npx wrangler dev --env preview --port 8787 > /tmp/wrangler.log 2>&1 &
+          worker_pid=$!
+          trap 'kill "$worker_pid"' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://localhost:8787/health > /dev/null; then break; fi
+            sleep 1
+          done
+          node scripts/check-hosting.mjs http://localhost:8787
 
       - name: Validate Wrangler plan
         env:
@@ -71,7 +82,7 @@ jobs:
         run: npx wrangler deploy --config wrangler.jsonc --env preview
 
       - name: Deploy to Cloudflare (production)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/full-stack'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/full-stack'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
