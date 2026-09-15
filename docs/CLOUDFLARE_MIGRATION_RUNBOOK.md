@@ -85,3 +85,16 @@ Para recuperar una versión anterior de Cloudflare, consultar `npx wrangler vers
 - Publicación, CORS real, sesión en Cloudflare, prueba real de correo y retirada de servicios: pendientes.
 
 Referencias: [workers.dev](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/), [limitación del remitente de Resend](https://resend.com/docs/knowledge-base/403-error-resend-dev-domain).
+
+## Publicación de prueba realizada
+
+- Copia actualizada: C:/Users/jeanp/Code/erp-cloudflare-free, rama codex/cloudflare-free.
+- Base remota: 362e775; commit publicado: 8ec37e5.
+- URL: https://diedo-frontend-preview.helios360erp.workers.dev
+- Versión Cloudflare: 132b3634-6d02-4511-a275-3dcbb0eeea93.
+- 82 archivos y 297 pruebas pasan; build y dry-run pasan.
+- HTTPS, health, SPA, MIME de JS/CSS, cabeceras y caché comprobados.
+- check-hosting.mjs detectó un fallo: un JS inexistente devuelve HTML con 200 en modo SPA puro. Pendiente resolver antes de producción; un Worker mínimo exige revisar la decisión original de no añadir lógica de servidor.
+- CORS_ORIGINS guardado en Railway conservando ambos orígenes anteriores y añadiendo preview, con skipDeploys=true. Aún no está activo en el proceso de API; OPTIONS devuelve 400.
+- Resolver la migración fallida de la API antes de redesplegar y comprobar login/refresh/logout. Railway sigue activo.
+- Resend sigue preparado en erp-back; pendiente integrar sobre la base actual y hacer el envío real.
