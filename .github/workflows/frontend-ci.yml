@@ -46,5 +46,16 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Verify static hosting in Wrangler
+        run: |
+          npx wrangler dev --env preview --port 8787 > /tmp/wrangler.log 2>&1 &
+          worker_pid=$!
+          trap 'kill "$worker_pid"' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://localhost:8787/health > /dev/null; then break; fi
+            sleep 1
+          done
+          node scripts/check-hosting.mjs http://localhost:8787
+
       - name: Validate Wrangler deploy plan
         run: npx wrangler deploy --dry-run --config wrangler.jsonc --env production

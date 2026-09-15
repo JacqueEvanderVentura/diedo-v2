@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 
 const base = process.argv[2]
 assert.ok(base, 'Provide the deployment URL')
@@ -12,9 +13,11 @@ assert.equal(page.headers.get('x-content-type-options'), 'nosniff')
 assert.equal(page.headers.get('x-frame-options'), 'DENY')
 assert.match(page.headers.get('cache-control'), /must-revalidate/)
 const html = await page.text()
-const deep = await fetch(`${base}/login`, { headers: { 'Sec-Fetch-Mode': 'navigate' } })
-assert.equal(deep.status, 200)
-assert.equal(await deep.text(), html)
+// Node fetch overwrites Sec-Fetch-Mode with cors. curl preserves the browser
+// navigation header, so this checks the intended SPA request rather than a fetch.
+const deep = execFileSync('curl', ['--silent', '--show-error', '--fail',
+  '-H', 'Sec-Fetch-Mode: navigate', `${base}/login`], { encoding: 'utf8' })
+assert.equal(deep, html)
 const assets = [...html.matchAll(/(?:src|href)="(\/assets\/[^\"]+\.(?:js|css))"/g)].map(m => m[1])
 assert.ok(assets.length >= 2)
 for (const asset of assets) {
