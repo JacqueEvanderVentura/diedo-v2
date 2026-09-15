@@ -7,6 +7,7 @@ from urllib.parse import urlencode
 
 from app.config import settings
 from app.db.models import Appointment
+from app.services.email import EmailServiceError, send_email
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,53 @@ def _booking_url(appointment: Appointment) -> str:
     return f"{base}/agendar?branch={appointment.branch_id}"
 
 
+def render_appointment_email(
+    *,
+    event: str,
+    to: str,
+    appointment: Appointment,
+    branch_name: str,
+    workspace_name: str,
+    management_token: str,
+    timezone: str | None = None,
+) -> dict[str, Any]:
+    subject_template, text_template = _TEMPLATES[event]
+    context = {
+        "customer_name": appointment.customer_name,
+        "service_name": appointment.service_name,
+        "date": appointment.scheduled_date.isoformat(),
+        "time": appointment.scheduled_time.strftime("%H:%M"),
+        "branch_name": f"{branch_name}, {workspace_name}",
+        "workspace_name": workspace_name,
+        "manage_url": _profile_url(appointment, management_token),
+        "booking_url": _booking_url(appointment),
+    }
+    subject = subject_template.format(**context)
+    text = text_template.format(**context)
+    text += f"\nDuración: {appointment.duration_minutes} minutos.\n"
+    if timezone:
+        text += f"Hora del establecimiento ({timezone}).\n"
+    html = (
+        f"<p>{escape(text).replace(chr(10), '<br/>')}</p>"
+        f'<p><a href="{escape(context["manage_url"])}">Gestionar cita</a></p>'
+    )
+    return {"to": to, "subject": f"{subject} — {workspace_name}", "html": html, "text": text}
+
+
+def render_booking_link_email(
+    *, to: str, name: str, branch_name: str, workspace_name: str, branch_id: object
+) -> dict[str, str]:
+    url = f"{settings.public_app_url.rstrip('/')}/agendar?{urlencode({'branch': str(branch_id)})}"
+    text = f"Hola {name},\n\nAgenda tu cita en {branch_name}, {workspace_name}:\n{url}\n"
+    return {
+        "to": to,
+        "subject": f"Agenda tu cita — {workspace_name}",
+        "text": text,
+        "html": f"<p>{escape(text).replace(chr(10), '<br/>')}</p>"
+        f'<p><a href="{escape(url)}">Agendar cita</a></p>',
+    }
+
+
 def send_appointment_email(
     *,
     event: str,
@@ -60,43 +108,21 @@ def send_appointment_email(
     workspace_name: str,
     management_token: str,
 ) -> dict[str, Any]:
-    if not settings.mail_enabled or not to:
+    """Compatibility entrypoint for the existing, unscheduled reminder command."""
+    if not settings.email_enabled or not to:
         return {"sent": False, "mode": "dry-run", "event": event}
-    subject_template, text_template = _TEMPLATES[event]
-    context = {
-        "customer_name": appointment.customer_name,
-        "service_name": appointment.service_name,
-        "date": appointment.scheduled_date.isoformat(),
-        "time": appointment.scheduled_time.strftime("%H:%M"),
-        "branch_name": branch_name,
-        "workspace_name": workspace_name,
-        "manage_url": _profile_url(appointment, management_token),
-        "booking_url": _booking_url(appointment),
-    }
-    subject = subject_template.format(**context)
-    text = text_template.format(**context)
-    html = (
-        f"<p>{escape(text).replace(chr(10), '<br/>')}</p>"
-        f'<p><a href="{escape(context["manage_url"])}">Gestionar cita</a></p>'
+    content = render_appointment_email(
+        event=event,
+        to=to,
+        appointment=appointment,
+        branch_name=branch_name,
+        workspace_name=workspace_name,
+        management_token=management_token,
     )
     try:
-        import resend
-    except ModuleNotFoundError:
-        logger.warning("Paquete resend no instalado; ejecuta pip install -r requirements.txt")
-        return {"sent": False, "mode": "missing-resend-package", "event": event}
-    api_key = settings.resend_api_key.get_secret_value() if settings.resend_api_key else ""
-    if not api_key:
-        logger.warning("RESEND_API_KEY ausente; omitiendo envío.")
-        return {"sent": False, "mode": "missing-api-key", "event": event}
-    resend.api_key = api_key
-    payload: dict[str, Any] = {
-        "from": settings.mail_from,
-        "to": [to],
-        "subject": subject,
-        "html": html,
-        "text": text,
-    }
-    if settings.mail_reply_to:
-        payload["reply_to"] = settings.mail_reply_to
-    response = resend.Emails.send(payload)  # type: ignore[arg-type]
-    return {"sent": True, "mode": "resend", "event": event, "id": response.get("id")}
+        result = send_email(
+            **content, idempotency_key=f"{event}/{appointment.id}/{appointment.version}"
+        )
+        return {"sent": True, "mode": "resend", "event": event, "id": result.provider_id}
+    except EmailServiceError:
+        return {"sent": False, "mode": "failed", "event": event}

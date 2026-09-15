@@ -187,7 +187,6 @@ class Appointment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
         ),
         ExcludeConstraint(
             ("workspace_id", "="),
-            ("branch_id", "="),
             ("employee_id", "="),
             ("scheduled_period", "&&"),
             where=text(
@@ -283,6 +282,7 @@ class Appointment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     )
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    public_request_fingerprint: Mapped[str | None] = mapped_column(String(64))
     created_by_platform_user_id: Mapped[UUID] = mapped_column(
         ForeignKey("platform_users.id", ondelete="RESTRICT"), nullable=False
     )

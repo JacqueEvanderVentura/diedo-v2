@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from threading import RLock
 from types import ModuleType
 from typing import TYPE_CHECKING
 
 from app.config import Settings, settings
 from app.services.errors import ServiceUnavailableError
+
+_SDK_LOCK = RLock()
 
 if TYPE_CHECKING:
     from resend import Emails
@@ -115,7 +118,7 @@ def _deliver(
     return resend.Emails.send(payload)
 
 
-def send_email(
+def _send_email(
     *,
     to: str,
     subject: str,
@@ -146,6 +149,8 @@ def send_email(
     }
 
     previous_client = getattr(resend, "default_http_client", None)
+    if config.email_reply_to:
+        payload["reply_to"] = config.email_reply_to
     previous_api_key = getattr(resend, "api_key", None)
 
     if RequestsClient is not None:
@@ -169,6 +174,33 @@ def send_email(
         raise EmailTransportError(
             "No se pudo completar el envío con el proveedor de correo."
         ) from exc
+    except EmailServiceError:
+        raise
+    except Exception as exc:
+        raise EmailTransportError("No se pudo conectar con el proveedor de correo.") from exc
     finally:
         setattr(resend, "default_http_client", previous_client)
         setattr(resend, "api_key", previous_api_key)
+
+
+def send_email(
+    *,
+    to: str,
+    subject: str,
+    html: str,
+    text: str,
+    idempotency_key: str | None,
+    config: Settings = settings,
+    force_send: bool = False,
+) -> EmailDeliveryResult:
+    # The SDK stores credentials/client globally. Serialize setup, send and restore.
+    with _SDK_LOCK:
+        return _send_email(
+            to=to,
+            subject=subject,
+            html=html,
+            text=text,
+            idempotency_key=idempotency_key,
+            config=config,
+            force_send=force_send,
+        )

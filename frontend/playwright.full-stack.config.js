@@ -11,6 +11,8 @@ const databaseUrl = process.env.FULL_STACK_DATABASE_URL
   || 'postgresql+psycopg://erp:erp@127.0.0.1:5434/erp_test'
 const adminPassword = process.env.FULL_STACK_ADMIN_PASSWORD
   || 'full-stack-test-password-not-a-secret-2026'
+const apiPort = process.env.FULL_STACK_API_PORT || '8200'
+const webPort = process.env.FULL_STACK_WEB_PORT || '3200'
 
 export default defineConfig({
   testDir: './e2e/full-stack',
@@ -20,7 +22,7 @@ export default defineConfig({
   workers: 1,
   reporter: 'line',
   use: {
-    baseURL: 'http://127.0.0.1:3200',
+    baseURL: `http://127.0.0.1:${webPort}`,
     browserName: 'chromium',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
@@ -29,12 +31,15 @@ export default defineConfig({
     {
       command: `"${python}" -m app.scripts.run_full_stack_test_server`,
       cwd: backendDir,
-      url: 'http://127.0.0.1:8200/health/ready',
+      url: `http://127.0.0.1:${apiPort}/health/ready`,
       env: {
         APP_ENV: 'test',
         DATABASE_URL: databaseUrl,
         JWT_SECRET_KEY: 'full-stack-test-jwt-secret-with-at-least-32-characters',
-        CORS_ORIGINS: 'http://127.0.0.1:3200',
+        CORS_ORIGINS: `http://127.0.0.1:${webPort}`,
+        FULL_STACK_API_PORT: apiPort,
+        PUBLIC_APP_URL: `http://127.0.0.1:${webPort}`,
+        EMAIL_ENABLED: 'false',
         DEMO_SEED_ENABLED: 'true',
         LOCAL_BOOTSTRAP_ADMIN_PASSWORD: adminPassword,
       },
@@ -42,11 +47,11 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: 'npx vite --host 127.0.0.1 --port 3200 --strictPort',
+      command: `npx vite --host 127.0.0.1 --port ${webPort} --strictPort`,
       cwd: frontendDir,
-      url: 'http://127.0.0.1:3200',
+      url: `http://127.0.0.1:${webPort}`,
       env: {
-        API_PROXY_TARGET: 'http://127.0.0.1:8200',
+        API_PROXY_TARGET: `http://127.0.0.1:${apiPort}`,
         VITE_API_BASE_URL: '/api-backend',
         VITE_DEMO_SEED_ENABLED: 'false',
       },

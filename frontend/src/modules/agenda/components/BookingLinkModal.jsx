@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Copy, ExternalLink, MessageCircle } from 'lucide-react'
+import { Copy, ExternalLink, MessageCircle, Mail } from 'lucide-react'
+import { publicBookingApi } from '@/services/publicBookingApi'
+import { useSessionStore } from '@/stores/sessionStore'
 import { Modal } from '@/components/ui/Modal'
 import { WhatsAppPreviewPanel } from '@/components/ui/WhatsAppPreviewPanel'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { InlineSetupCard } from '@/components/ui/InlineSetupCard'
 import { Select } from '@/components/ui/Select'
 import { CustomerPicker } from '@/components/customers/CustomerPicker'
 import { useSelfBookingStore } from '@/stores/selfBookingStore'
@@ -45,6 +48,13 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
 
   const [customer, setCustomer] = useState(null)
   const [recipient, setRecipient] = useState(emptyRecipient)
+  const isDemo = useSessionStore((s) => s.status) === 'demo'
+  const [sendingEmail, setSendingEmail] = useState(false)
+  const [emailMessage, setEmailMessage] = useState('')
+  const [setup, setSetup] = useState(null)
+  const [setupRevision, setSetupRevision] = useState(0)
+  const sendAttempt = useRef(null)
+  const emailBusy = useRef(false)
 
   const bookingUrl = buildBookingUrl(branchId)
 
@@ -52,7 +62,57 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
     if (!open) return
     setCustomer(null)
     setRecipient(emptyRecipient())
+    setEmailMessage('')
+    sendAttempt.current = null
   }, [open])
+
+  useEffect(() => {
+    if (!open || isDemo || !branchId) return
+    let active = true
+    setSetup(null)
+    publicBookingApi.getContext(branchId).then((context) => {
+      if (active) setSetup(context)
+    }).catch(() => { if (active) setSetup({ unavailable: true }) })
+    return () => { active = false }
+  }, [open, branchId, isDemo, setupRevision])
+
+  useEffect(() => {
+    if (!open) return
+    const refresh = () => setSetupRevision((value) => value + 1)
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [open])
+
+  const sendEmail = async () => {
+    if (emailBusy.current) return
+    const name = recipient.name.trim()
+    const email = recipient.email.trim()
+    if (name.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailMessage('Ingresa un nombre y correo válidos para enviar el enlace.')
+      return
+    }
+    if (isDemo) {
+      setEmailMessage('Modo demo: no se envían correos reales.')
+      return
+    }
+    const payload = { branchId, name, email }
+    const fingerprint = JSON.stringify(payload)
+    if (sendAttempt.current?.fingerprint !== fingerprint) sendAttempt.current = { fingerprint, key: crypto.randomUUID() }
+    emailBusy.current = true
+    setSendingEmail(true)
+    setEmailMessage('Enviando correo…')
+    try {
+      const result = await publicBookingApi.sendBookingLink(payload, sendAttempt.current.key)
+      setEmailMessage(result.status === 'sent'
+        ? 'Correo aceptado por el proveedor. El destinatario puede revisar su bandeja y spam.'
+        : result.message || 'El correo quedó pendiente. No se ha confirmado el envío.')
+    } catch (error) {
+      setEmailMessage(error.message || 'No se pudo enviar el correo. Puedes reintentar.')
+    } finally {
+      emailBusy.current = false
+      setSendingEmail(false)
+    }
+  }
 
   const applyCustomer = (nextCustomer) => {
     setCustomer(nextCustomer)
@@ -88,11 +148,11 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
     })
   }
 
-  const documentKey = normalizeDocumentId(recipient.documentId)
+  const documentKey = normalizeDocumentId(recipient.documentId, recipient.docType)
 
   useEffect(() => {
     if (!documentKey) return
-    const found = lookupByDocument(documentKey)
+    const found = lookupByDocument(documentKey, recipient.docType)
     if (!found) return
     setRecipient((current) => {
       const merged = mergeProfileIntoRecipient(current, found)
@@ -106,11 +166,11 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
       }
       return merged
     })
-  }, [documentKey, lookupByDocument])
+  }, [documentKey, recipient.docType, lookupByDocument])
 
   const tryAutofillFromDocument = () => {
     if (!documentKey) return
-    const found = lookupByDocument(documentKey)
+    const found = lookupByDocument(documentKey, recipient.docType)
     if (!found) return
     setRecipient((current) => mergeProfileIntoRecipient(current, found))
     toast.message('Datos cargados del perfil de agendación')
@@ -167,7 +227,7 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={() => { if (!sendingEmail) onClose() }}
       title="Enviar enlace de agendación"
       testId="booking-link-modal"
       xlarge
@@ -225,9 +285,10 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-500">Correo (perfil)</label>
+                <label className="mb-1 block text-xs font-medium text-slate-500">Correo para enviar el enlace</label>
                 <Input
                   type="email"
+                  data-testid="booking-link-email"
                   value={recipient.email}
                   onChange={(e) => setRecipientField('email', e.target.value)}
                   placeholder="opcional"
@@ -235,7 +296,7 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-500">
-                  Teléfono <span className="text-red-500">*</span>
+                  Teléfono (para WhatsApp)
                 </label>
                 <Input
                   value={recipient.phone}
@@ -263,7 +324,10 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
               data-testid="booking-link-send"
               className="w-full bg-emerald-600 hover:bg-emerald-700 sm:w-auto"
             >
-              <MessageCircle className="h-4 w-4" /> Enviar WhatsApp
+              <MessageCircle className="h-4 w-4" /> Abrir WhatsApp
+            </Button>
+            <Button onClick={sendEmail} disabled={sendingEmail} data-testid="booking-link-send-email">
+              <Mail className="h-4 w-4" /> {sendingEmail ? 'Enviando…' : 'Enviar por correo'}
             </Button>
             <a
               href={bookingUrl}
@@ -274,6 +338,22 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
               <ExternalLink className="h-4 w-4" /> Abrir enlace
             </a>
           </div>
+          {emailMessage && <p role="status" data-testid="booking-link-email-result" className="text-sm text-slate-600">{emailMessage}</p>}
+          {setup && (setup.unavailable || !setup.specialists?.length || !setup.hasResources) && (
+            <InlineSetupCard
+              testId="booking-link-setup"
+              title="Revisar configuración de agendación"
+              message={setup.unavailable ? 'No se pudo comprobar la configuración de la sucursal.' : !setup.specialists?.length
+                ? 'Esta sucursal no tiene especialistas habilitados. En RR. HH., edita el empleado, verifica su sucursal y activa “Seleccionable como especialista”.'
+                : 'Esta sucursal no tiene cabinas activas. Solicita al administrador configurar una cabina y vuelve a comprobar.'}
+              actionLabel={!setup.unavailable && !setup.specialists?.length ? 'Configurar especialistas de esta sucursal' : 'Comprobar configuración'}
+              onAction={() => {
+                if (!setup.unavailable && !setup.specialists?.length) {
+                  window.open(`/rrhh/directorio?branch=${encodeURIComponent(branchId)}&booking=1`, '_blank', 'noopener,noreferrer')
+                } else setSetupRevision((value) => value + 1)
+              }}
+            />
+          )}
         </div>
 
         <div className="xl:sticky xl:top-0">
@@ -282,7 +362,7 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
             emptyHint="Escribe el nombre del destinatario para ver el mensaje."
           />
           <p className="mt-3 text-xs leading-relaxed text-slate-500">
-            Los correos se reservan para confirmación de citas y gestión (cancelar o reagendar) desde el perfil del cliente.
+            Puedes compartir el enlace por correo, WhatsApp o ambos. El cliente recibirá los avisos de su cita si proporciona un correo.
           </p>
         </div>
       </div>

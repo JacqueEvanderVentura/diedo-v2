@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { FileText, Phone, MapPin, Calendar, CheckCircle2, ChevronRight, ChevronLeft } from 'lucide-react'
@@ -27,6 +27,9 @@ import {
 } from '../lib/selfBooking'
 import { todayKey } from '@/stores/agendaStore'
 import { cn } from '@/lib/utils'
+
+import { DURATION_OPTIONS } from '@/data/agenda'
+import { branchDateKey, emailResultMessage, managementUrl } from '../lib/notification'
 
 const STEPS = ['Identificación', 'Datos', 'Cita', 'Confirmación']
 
@@ -67,8 +70,17 @@ export default function AgendarPage() {
     employeeId: '',
     date: todayKey(),
     time: '',
+    duration: 30,
   })
   const [done, setDone] = useState(false)
+  const [savedAppointment, setSavedAppointment] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false)
+  const attemptRef = useRef(null)
+  const [slotLoading, setSlotLoading] = useState(false)
+  const [slotError, setSlotError] = useState('')
+  const [slotRevision, setSlotRevision] = useState(0)
+  const [hasResources, setHasResources] = useState(true)
   const [remoteServices, setRemoteServices] = useState(null)
   const [remoteSpecialists, setRemoteSpecialists] = useState(null)
   const [remoteSlots, setRemoteSlots] = useState(null)
@@ -91,7 +103,7 @@ export default function AgendarPage() {
   }, [isDemo, localBookableStaff, remoteSpecialists])
   const service = services.find((s) => s.id === form.serviceId)
   const selectedEmployee = employees.find((e) => e.id === form.employeeId)
-  const appointmentDuration = service?.durationMinutes || service?.duration || 30
+  const appointmentDuration = form.duration
 
   const appointments = useAvailabilityAppointments(isDemo ? form.date : null, isDemo ? form.employeeId : null)
 
@@ -110,7 +122,9 @@ export default function AgendarPage() {
     publicBookingApi.getContext(branchId)
       .then((context) => {
         if (!active) return
-        setRemoteBranch({ id: context.branch.branchId, name: context.branch.branchName })
+        setRemoteBranch({ id: context.branch.branchId, name: context.branch.branchName, timezone: context.branch.timezone })
+        setForm((current) => ({ ...current, date: branchDateKey(context.branch.timezone), time: '' }))
+        setHasResources(context.hasResources !== false)
         setRemoteServices(
           (context.services || []).map((item) => ({
             id: item.id,
@@ -129,18 +143,26 @@ export default function AgendarPage() {
   }, [branchId, isDemo])
 
   useEffect(() => {
-    if (isDemo || !branch?.id || !form.employeeId || !form.date) return
-    fetchRemoteSlots({
-      branchId: branch.id,
-      date: form.date,
-      employeeId: form.employeeId,
-      duration: appointmentDuration,
-    })
-      .then((slots) => setRemoteSlots(slots))
-      .catch(() => setRemoteSlots([]))
-  }, [appointmentDuration, branch?.id, fetchRemoteSlots, form.date, form.employeeId, isDemo])
+    let active = true
+    setRemoteSlots(null)
+    setSlotError('')
+    if (isDemo || !branch?.id || !form.employeeId || !form.date) {
+      setSlotLoading(false)
+      return
+    }
+    setSlotLoading(true)
+    fetchRemoteSlots({ branchId: branch.id, date: form.date, employeeId: form.employeeId, duration: appointmentDuration })
+      .then((slots) => { if (active) setRemoteSlots(slots) })
+      .catch((error) => { if (active) setSlotError(error.message || 'No se pudieron consultar los horarios.') })
+      .finally(() => { if (active) setSlotLoading(false) })
+    return () => { active = false }
+  }, [appointmentDuration, branch?.id, fetchRemoteSlots, form.date, form.employeeId, form.serviceId, isDemo, slotRevision])
 
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+  const set = (k, v) => {
+    const changesAvailability = ['serviceId', 'employeeId', 'date', 'duration'].includes(k)
+    if (changesAvailability) setRemoteSlots(null)
+    setForm((f) => ({ ...f, [k]: v, ...(changesAvailability ? { time: '' } : {}) }))
+  }
 
   useEffect(() => {
     if (!form.employeeId) return
@@ -163,14 +185,16 @@ export default function AgendarPage() {
   }, [form.employeeId, form.date, appointments, selectedEmployee, vacationRequests, appointmentDuration, isDemo, remoteSlots])
 
   const lookupDoc = async () => {
-    const key = normalizeDocumentId(lookup)
+    const key = normalizeDocumentId(lookup, lookupDocType)
     if (lookupDocType === 'cedula' && key.length !== 11) {
       return toast.error('Ingresa una cédula válida (11 dígitos)')
     }
     if (lookupDocType === 'pasaporte' && key.length < 5) {
       return toast.error('Ingresa un documento válido')
     }
-    const found = isDemo ? lookupByDocument(key) : await identifyRemote(branch?.id || branchId, lookupDocType, key)
+    let found
+    try { found = isDemo ? lookupByDocument(key, lookupDocType) : await identifyRemote(branch?.id || branchId, lookupDocType, key) }
+    catch (error) { return toast.error(error.message || 'No se pudo consultar el documento. Intenta nuevamente.') }
     if (found) {
       setForm((f) => ({
         ...f,
@@ -198,7 +222,8 @@ export default function AgendarPage() {
 
   const saveProfile = () => {
     if (!form.name.trim()) return toast.error('Ingresa tu nombre')
-    const docKey = normalizeDocumentId(form.documentId)
+    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return toast.error('Ingresa un correo válido')
+    const docKey = normalizeDocumentId(form.documentId, form.docType)
     if (!docKey) return toast.error('Ingresa tu documento')
     if (form.docType === 'cedula' && docKey.length !== 11) {
       return toast.error('La cédula debe tener 11 dígitos')
@@ -216,7 +241,8 @@ export default function AgendarPage() {
   }
 
   const confirm = async () => {
-    if (!service || !form.time) return toast.error('Completa la cita')
+    if (savingRef.current) return
+    if (!service || !form.time || !form.employeeId) return toast.error('Completa la cita')
     const stillAvailable = isSlotAvailable({
       date: form.date,
       employeeId: form.employeeId,
@@ -227,12 +253,16 @@ export default function AgendarPage() {
       vacationRequests,
     })
     if (isDemo && !stillAvailable) return toast.error('Ese horario ya no está disponible. Elige otro cupo.')
-    if (!isDemo && remoteSlots && !remoteSlots.includes(form.time)) {
+    if (!isDemo && (slotLoading || !remoteSlots?.includes(form.time))) {
       return toast.error('Ese horario ya no está disponible. Elige otro cupo.')
     }
     const profile = upsertProfile(form)
+    const fingerprint = JSON.stringify({ branchId: branch.id, serviceId: service.id, ...form })
+    if (attemptRef.current?.fingerprint !== fingerprint) attemptRef.current = { fingerprint, key: crypto.randomUUID() }
+    savingRef.current = true
+    setSaving(true)
     try {
-      await bookAppointment({
+      const appointment = await bookAppointment({
         profile,
         branchId: branch.id,
         service,
@@ -240,13 +270,20 @@ export default function AgendarPage() {
         time: form.time,
         employeeId: form.employeeId,
         duration: appointmentDuration,
+        idempotencyKey: attemptRef.current.key,
       })
+      setSavedAppointment(appointment)
       rememberDocument(profile.documentId)
       setDone(true)
       toast.success('¡Cita agendada!')
     } catch (error) {
       toast.error(error.message || 'No se pudo agendar la cita')
-    }
+      if (error.status === 409) {
+        set('time', '')
+        setStep(2)
+        setSlotRevision((v) => v + 1)
+      }
+    } finally { savingRef.current = false; setSaving(false) }
   }
 
   const goBack = () => setStep((current) => Math.max(0, current - 1))
@@ -271,13 +308,13 @@ export default function AgendarPage() {
             {service?.name} · {formatLongDate(form.date)} · {form.time}
           </p>
           <p className="mt-4 text-sm text-slate-500">
-            {isDemo ? 'Recibirás un correo de confirmación (simulado).' : 'Recibirás un correo de confirmación si indicaste email.'}
+            {isDemo ? 'Modo demo: no se enviaron correos reales.' : emailResultMessage(savedAppointment?.notification)}
           </p>
           <Link
-            to={`/agendar/perfil?doc=${normalizeDocumentId(form.documentId)}`}
+            to={isDemo ? `/agendar/perfil?doc=${normalizeDocumentId(form.documentId, form.docType)}` : managementUrl(branch.id, savedAppointment)}
             className="mt-6 inline-flex rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
           >
-            Gestionar mi perfil
+            Gestionar mi cita
           </Link>
         </div>
       </PublicShell>
@@ -362,16 +399,16 @@ export default function AgendarPage() {
               />
             </div>
 
-            {form.wantsInvoice && (
+            {(
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-500">Correo electrónico</label>
-                <Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="tu@email.com" />
+                <Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="tu@email.com (opcional)" data-testid="self-email" />
               </div>
             )}
-            {form.wantsContact && (
+            {(
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-500">Teléfono</label>
-                <Input value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="809-555-0000" />
+                <Input value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="809-555-0000" data-testid="self-phone" />
               </div>
             )}
 
@@ -396,7 +433,7 @@ export default function AgendarPage() {
         {step === 2 && (
           <section className="space-y-4 rounded-2xl border border-slate-100 bg-white p-6 shadow-soft">
             <h2 className="font-heading text-xl font-bold text-slate-900">Elige tu cita</h2>
-            <p className="text-xs text-slate-500">Los horarios se actualizan según el horario del especialista y las citas ya reservadas.</p>
+            <p className="text-xs text-slate-500">Los horarios se actualizan según el horario del especialista y las citas ya reservadas. {branch?.timezone && `Hora del establecimiento (${branch.timezone}).`}</p>
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-500">Servicio</label>
               <Select
@@ -407,6 +444,13 @@ export default function AgendarPage() {
                 data-testid="self-service"
               />
             </div>
+            {!bookableStaff.length && <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900" data-testid="self-no-specialists">Esta sucursal todavía no tiene especialistas habilitados para agendar en línea. Contacta al establecimiento.</p>}
+            {!services.length && <p role="status">Esta sucursal no tiene servicios disponibles.</p>}
+            {!isDemo && !hasResources && <p role="status">La sucursal todavía no tiene cabinas disponibles para recibir reservas.</p>}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Duración</label>
+              <Select value={form.duration} onChange={(v) => set('duration', Number(v))} options={DURATION_OPTIONS} data-testid="self-duration" />
+            </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-500">Fecha</label>
@@ -416,7 +460,7 @@ export default function AgendarPage() {
                     set('date', date)
                     set('time', '')
                   }}
-                  minDate={todayKey()}
+                  minDate={branchDateKey(branch?.timezone)}
                   testId="self-booking-date"
                 />
               </div>
@@ -428,6 +472,7 @@ export default function AgendarPage() {
                     set('employeeId', v)
                     set('time', '')
                   }}
+                  data-testid="self-specialist"
                   placeholder="Seleccionar especialista"
                   options={bookableStaff.map((e) => ({ value: e.id, label: e.name.split(' ').slice(0, 2).join(' ') }))}
                 />
@@ -435,7 +480,9 @@ export default function AgendarPage() {
             </div>
             <div>
               <label className="mb-2 block text-xs font-medium text-slate-500">Horarios disponibles</label>
-              {!form.employeeId ? (
+              {slotLoading ? <p role="status">Consultando horarios…</p> : slotError ? (
+                <div role="alert"><p>{slotError}</p><Button onClick={() => setSlotRevision((v) => v + 1)} data-testid="self-slots-retry">Reintentar</Button></div>
+              ) : !form.employeeId ? (
                 <p className="text-sm text-slate-400">Selecciona un especialista.</p>
               ) : slots.length === 0 ? (
                 <p className="text-sm text-slate-400">No hay cupos para esta fecha.</p>
@@ -477,10 +524,10 @@ export default function AgendarPage() {
               </p>
               <p><span className="text-slate-400">Sucursal:</span> {branch?.name}</p>
             </div>
-            <Button className="w-full" onClick={confirm} data-testid="self-confirm">
-              Confirmar cita
+            <Button className="w-full" onClick={confirm} disabled={saving || (!isDemo && (slotLoading || !remoteSlots?.includes(form.time)))} data-testid="self-confirm">
+              {saving ? 'Guardando cita…' : 'Confirmar cita'}
             </Button>
-            <button type="button" onClick={() => setStep(2)} className="w-full text-sm text-slate-500 hover:text-slate-700">
+            <button type="button" disabled={saving} data-testid="self-change-time" onClick={() => setStep(2)} className="w-full text-sm text-slate-500 hover:text-slate-700 disabled:opacity-50">
               Cambiar horario
             </button>
           </section>

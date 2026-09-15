@@ -1,40 +1,47 @@
 from __future__ import annotations
 
 import json
-from datetime import date, time
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
+from hashlib import sha256
 from typing import Any, cast
 from uuid import UUID, uuid7
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
     Appointment,
     Branch,
+    CustomerBranchAssignment,
     Employee,
     EmployeeBranchAssignment,
+    InventoryItemProfile,
+    Item,
+    ItemBranchAssignment,
     PlatformUser,
     Workspace,
     WorkspaceMembership,
 )
+from app.db.models.email_notifications import EmailNotification
 from app.repositories.agenda import AgendaRepository
 from app.repositories.master_data import MasterDataRepository
 from app.services.agenda import AgendaService
 from app.services.auth import AuthPrincipal
 from app.services.authorization import PermissionGrant
-from app.services.booking_availability import get_available_slots, is_slot_available
+from app.services.booking_availability import get_available_slots
 from app.services.booking_tokens import (
     issue_appointment_management_token,
     verify_appointment_management_token,
 )
-from app.services.catalog import CatalogService
 from app.services.customer_documents import (
     normalize_document_id,
     prepare_customer_document_fields,
 )
+from app.services.email_notifications import deliver_email, enqueue_email, notification_result
 from app.services.errors import ConflictError, InvalidOperationError, ResourceNotFoundError
-from app.services.mailer import send_appointment_email
+from app.services.mailer import render_appointment_email, send_appointment_email
 from app.services.master_data import normalize_name
 
 
@@ -54,7 +61,9 @@ class PublicBookingService:
                 "branch_id": branch.id,
                 "branch_name": branch.name,
                 "workspace_name": workspace.name,
+                "timezone": branch.timezone,
             },
+            "has_resources": bool(self._active_resources(branch)),
             "services": services,
             "specialists": specialists,
         }
@@ -96,23 +105,97 @@ class PublicBookingService:
         employee_id: UUID,
         duration_minutes: int,
     ) -> list[str]:
-        branch, _workspace = self._resolve_branch(branch_id)
+        return sorted(
+            self._slot_resources(branch_id, scheduled_date, employee_id, duration_minutes)
+        )
+
+    def _active_resources(self, branch: Branch) -> list[Any]:
+        return [
+            resource
+            for resource in self._agenda.list_resources(
+                workspace_id=branch.workspace_id,
+                branch_id=branch.id,
+            )
+            if resource.status == "active"
+        ]
+
+    def _lock(self, value: str) -> None:
+        key = int.from_bytes(sha256(value.encode()).digest()[:8], "big", signed=True)
+        self._session.execute(select(func.pg_advisory_xact_lock(key)))
+
+    def _slot_resources(
+        self,
+        branch_id: UUID,
+        scheduled_date: date,
+        employee_id: UUID,
+        duration: int,
+        exclude_appointment_id: UUID | None = None,
+    ) -> dict[str, list[UUID]]:
+        branch, _ = self._resolve_branch(branch_id)
         employee = self._require_specialist(branch.workspace_id, branch.id, employee_id)
+        resources = self._active_resources(branch)
+        if not resources:
+            return {}
         schedule = self._agenda.employee_schedule(branch.workspace_id, employee.id)
-        weekly = schedule.weekly_schedule if schedule else None
-        on_leave = self._agenda.employee_on_approved_leave(
-            branch.workspace_id, employee.id, scheduled_date
-        )
-        appointments = self._employee_appointments(
-            branch.workspace_id, branch.id, employee.id, scheduled_date
-        )
-        return get_available_slots(
-            scheduled_date=scheduled_date,
-            duration_minutes=duration_minutes,
-            weekly_schedule=weekly,
-            appointments=appointments,
-            on_approved_vacation=on_leave,
-        )
+        branch_zone = ZoneInfo(branch.timezone)
+        schedule_zone = ZoneInfo(schedule.timezone) if schedule else branch_zone
+        day_start = datetime.combine(scheduled_date, time.min, branch_zone).astimezone(UTC)
+        day_end = datetime.combine(
+            scheduled_date + timedelta(days=1), time.min, branch_zone
+        ).astimezone(UTC)
+        conflicts = self._session.scalars(
+            select(Appointment).where(
+                Appointment.workspace_id == branch.workspace_id,
+                Appointment.record_status == "active",
+                Appointment.status == "confirmed",
+                Appointment.starts_at < day_end + timedelta(minutes=duration),
+                Appointment.ends_at > day_start,
+                or_(
+                    Appointment.employee_id == employee_id,
+                    Appointment.resource_id.in_([resource.id for resource in resources]),
+                ),
+            )
+        ).all()
+        now = datetime.now(UTC)
+        result: dict[str, list[UUID]] = {}
+        for offset in (-1, 0, 1):
+            schedule_date = scheduled_date + timedelta(days=offset)
+            on_leave = self._agenda.employee_on_approved_leave(
+                branch.workspace_id, employee_id, schedule_date
+            )
+            candidates = get_available_slots(
+                scheduled_date=schedule_date,
+                duration_minutes=duration,
+                weekly_schedule=schedule.weekly_schedule if schedule else None,
+                appointments=[],
+                on_approved_vacation=on_leave,
+            )
+            for slot in candidates:
+                local = datetime.combine(schedule_date, time.fromisoformat(slot), schedule_zone)
+                start = local.astimezone(UTC)
+                if start.astimezone(schedule_zone).replace(tzinfo=None) != local.replace(
+                    tzinfo=None
+                ):
+                    continue
+                branch_start = start.astimezone(branch_zone)
+                if branch_start.date() != scheduled_date or start <= now:
+                    continue
+                end = start + timedelta(minutes=duration)
+                if end.astimezone(branch_zone).date() != scheduled_date:
+                    continue
+                overlapping = [
+                    a
+                    for a in conflicts
+                    if a.id != exclude_appointment_id and a.starts_at < end and a.ends_at > start
+                ]
+                if any(a.employee_id == employee_id for a in overlapping):
+                    continue
+                free = [
+                    r.id for r in resources if not any(a.resource_id == r.id for a in overlapping)
+                ]
+                if free:
+                    result[branch_start.strftime("%H:%M")] = free
+        return result
 
     def book(
         self,
@@ -123,44 +206,47 @@ class PublicBookingService:
     ) -> dict[str, Any]:
         branch, workspace = self._resolve_branch(branch_id)
         principal, grant = self._system_access(branch.workspace_id)
-        normalized = self._normalized_document(
-            cast(str, payload["document_type"]), cast(str, payload["document_id"])
+        fingerprint = sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+        key = "public:" + sha256(f"{branch.id}:{idempotency_key}".encode()).hexdigest()
+        self._lock(key)
+        existing = self._agenda.records_for_idempotency_key(branch.workspace_id, key)
+        if existing:
+            appointment = existing[0].appointment
+            if (
+                appointment.public_request_fingerprint != fingerprint
+                or appointment.record_status != "active"
+            ):
+                raise ConflictError(
+                    "La clave de reserva ya se utilizó con otros datos.", "Idempotency-Key"
+                )
+            return self._summary_with_notification(appointment)
+        service = self._require_service(grant, branch.id, cast(UUID, payload["service_id"]))
+        employee = self._require_specialist(
+            branch.workspace_id, branch.id, cast(UUID, payload["employee_id"])
         )
+        self._lock(f"booking-branch:{branch.id}")
+        self._lock(f"booking-employee:{employee.id}")
+        scheduled_date = cast(date, payload["date"])
+        scheduled_time = cast(time, payload["time"])
+        duration = int(payload.get("duration") or 30)
+        available = self._slot_resources(branch.id, scheduled_date, employee.id, duration)
+        free = available.get(scheduled_time.strftime("%H:%M"), [])
+        if not free:
+            raise ConflictError("Ese horario ya no está disponible. Elige otro cupo.", "time")
+        resource_id = free[0]
+        normalized = self._normalized_document(
+            str(payload["document_type"]), str(payload["document_id"])
+        )
+        self._lock(f"booking-customer:{branch.workspace_id}:{normalized}")
         is_new = self._master_data.customer_by_document(branch.workspace_id, normalized) is None
         customer = self._upsert_customer(
             workspace_id=branch.workspace_id,
             branch_id=branch.id,
             actor_id=principal.platform_user_id,
-            payload={**payload, "is_new": is_new},
+            payload=payload,
+            commit=False,
+            ensure_branch=True,
         )
-        service = self._require_service(grant, branch.id, cast(UUID, payload["service_id"]))
-        employee = self._require_specialist(
-            branch.workspace_id, branch.id, cast(UUID, payload["employee_id"])
-        )
-        scheduled_date = cast(date, payload["date"])
-        scheduled_time = cast(time, payload["time"])
-        duration = int(payload.get("duration") or service.get("duration_minutes") or 30)
-        schedule = self._agenda.employee_schedule(branch.workspace_id, employee.id)
-        if not is_slot_available(
-            scheduled_date=scheduled_date,
-            slot_time=scheduled_time.strftime("%H:%M"),
-            duration_minutes=duration,
-            weekly_schedule=schedule.weekly_schedule if schedule else None,
-            appointments=self._employee_appointments(
-                branch.workspace_id, branch.id, employee.id, scheduled_date
-            ),
-            on_approved_vacation=self._agenda.employee_on_approved_leave(
-                branch.workspace_id, employee.id, scheduled_date
-            ),
-        ):
-            raise ConflictError("Ese horario ya no está disponible.", "time")
-
-        resources = self._agenda.list_resources(
-            workspace_id=branch.workspace_id, branch_id=branch.id
-        )
-        if not resources:
-            raise InvalidOperationError("La sucursal no tiene cabinas configuradas.", "branchId")
-        resource_id = resources[0].id
         values = {
             "branch_id": branch.id,
             "resource_id": resource_id,
@@ -176,7 +262,8 @@ class PublicBookingService:
             "price": service["price"],
             "status": "confirmed",
             "source": "self",
-            "first_time": bool(payload.get("is_new")),
+            "first_time": is_new,
+            "free_trial": False,
             "pending_payment": False,
             "pending_amount": Decimal("0"),
             "reminder_sent": False,
@@ -187,21 +274,94 @@ class PublicBookingService:
             principal=principal,
             grant=grant,
             values=values,
-            idempotency_key=idempotency_key,
+            idempotency_key=key,
+            commit=False,
         )
         record = records[0]
         appointment = record.appointment
-        token = issue_appointment_management_token(appointment.id)
-        if payload.get("email"):
-            send_appointment_email(
-                event="appointment.confirmed",
-                to=str(payload["email"]),
-                appointment=appointment,
-                branch_name=branch.name,
-                workspace_name=workspace.name,
-                management_token=token,
+        appointment.public_request_fingerprint = fingerprint
+        notification = self._enqueue_appointment(
+            appointment, branch, workspace, "appointment.confirmed"
+        )
+        self._session.commit()
+        return self._finish_notification(appointment, notification)
+
+    def _enqueue_appointment(
+        self, appointment: Appointment, branch: Branch, workspace: Workspace, event: str
+    ) -> EmailNotification | None:
+        email = self._customer_email(appointment.customer_id)
+        if not email:
+            return None
+        content = render_appointment_email(
+            event=event,
+            to=email,
+            appointment=appointment,
+            branch_name=branch.name,
+            workspace_name=workspace.name,
+            management_token=issue_appointment_management_token(appointment.id),
+            timezone=branch.timezone,
+        )
+        return enqueue_email(
+            self._session,
+            workspace_id=branch.workspace_id,
+            appointment_id=appointment.id,
+            event_key=f"{event}/{appointment.id}/{appointment.version}",
+            **content,
+        )
+
+    def _summary_with_notification(self, appointment: Appointment) -> dict[str, Any]:
+        result = self._appointment_summary(
+            appointment, issue_appointment_management_token(appointment.id)
+        )
+        notification = self._session.scalar(
+            select(EmailNotification)
+            .where(
+                EmailNotification.appointment_id == appointment.id,
+                EmailNotification.workspace_id == appointment.workspace_id,
             )
-        return self._appointment_summary(appointment, token)
+            .order_by(EmailNotification.created_at.desc())
+            .limit(1)
+        )
+        result["notification"] = notification_result(notification) if notification else None
+        return result
+
+    def _finish_notification(
+        self, appointment: Appointment, notification: EmailNotification | None
+    ) -> dict[str, Any]:
+        result = self._appointment_summary(
+            appointment, issue_appointment_management_token(appointment.id)
+        )
+        result["notification"] = (
+            deliver_email(self._session, notification.id) if notification else None
+        )
+        return result
+
+    def get_appointment(self, branch_id: UUID, appointment_id: UUID, token: str) -> dict[str, Any]:
+        appointment, branch, workspace, _, _ = self._authorized_appointment(
+            branch_id, appointment_id, token
+        )
+        return {
+            **self._appointment_summary(appointment, token),
+            "branch_name": branch.name,
+            "workspace_name": workspace.name,
+            "timezone": branch.timezone,
+        }
+
+    def management_slots(
+        self, branch_id: UUID, appointment_id: UUID, token: str, scheduled_date: date, duration: int
+    ) -> list[str]:
+        appointment, _, _, _, _ = self._authorized_appointment(branch_id, appointment_id, token)
+        if appointment.employee_id is None:
+            return []
+        return sorted(
+            self._slot_resources(
+                branch_id,
+                scheduled_date,
+                appointment.employee_id,
+                duration,
+                exclude_appointment_id=appointment.id,
+            )
+        )
 
     def profile_for_document(
         self, branch_id: UUID, document_type: str, document_id: str
@@ -241,13 +401,14 @@ class PublicBookingService:
             select(Appointment).where(
                 Appointment.workspace_id == branch.workspace_id,
                 Appointment.customer_id == customer.id,
+                Appointment.branch_id == branch.id,
                 Appointment.record_status == "active",
             )
         ).all()
         return [
             self._appointment_summary(
                 row,
-                issue_appointment_management_token(row.id),
+                "",
             )
             for row in sorted(rows, key=lambda item: (item.scheduled_date, item.scheduled_time))
         ]
@@ -261,25 +422,29 @@ class PublicBookingService:
         appointment, branch, workspace, principal, grant = self._authorized_appointment(
             branch_id, appointment_id, management_token
         )
+        if appointment.status == "cancelled":
+            return self._summary_with_notification(appointment)
+        self._require_manageable(appointment)
         record = AgendaService(self._session).update_appointment(
             principal=principal,
             grant=grant,
             appointment_id=appointment.id,
             expected_version=appointment.version,
             changes={"status": "cancelled"},
+            commit=False,
         )
-        updated = record.appointment
-        customer_email = self._customer_email(updated.customer_id)
-        if customer_email:
-            send_appointment_email(
-                event="appointment.cancelled",
-                to=customer_email,
-                appointment=updated,
-                branch_name=branch.name,
-                workspace_name=workspace.name,
-                management_token=management_token,
+        notification = self._enqueue_appointment(
+            record.appointment, branch, workspace, "appointment.cancelled"
+        )
+        self._session.commit()
+        return self._finish_notification(record.appointment, notification)
+
+    @staticmethod
+    def _require_manageable(appointment: Appointment) -> None:
+        if appointment.status != "confirmed" or appointment.starts_at <= datetime.now(UTC):
+            raise ConflictError(
+                "Solo puedes modificar citas confirmadas que todavía no han comenzado."
             )
-        return self._appointment_summary(updated, management_token)
 
     def reschedule_appointment(
         self,
@@ -294,7 +459,23 @@ class PublicBookingService:
         appointment, branch, workspace, principal, grant = self._authorized_appointment(
             branch_id, appointment_id, management_token
         )
+        self._require_manageable(appointment)
         duration_minutes = duration or appointment.duration_minutes
+        if (
+            appointment.scheduled_date,
+            appointment.scheduled_time,
+            appointment.duration_minutes,
+        ) == (scheduled_date, scheduled_time, duration_minutes):
+            return self._summary_with_notification(appointment)
+        if appointment.employee_id is None:
+            raise ConflictError("La cita no tiene un especialista asignado.")
+        self._lock(f"booking-branch:{branch.id}")
+        self._lock(f"booking-employee:{appointment.employee_id}")
+        free = self._slot_resources(
+            branch.id, scheduled_date, appointment.employee_id, duration_minutes, appointment.id
+        ).get(scheduled_time.strftime("%H:%M"), [])
+        if not free:
+            raise ConflictError("Ese horario ya no está disponible. Elige otro cupo.", "time")
         record = AgendaService(self._session).update_appointment(
             principal=principal,
             grant=grant,
@@ -304,21 +485,17 @@ class PublicBookingService:
                 "date": scheduled_date,
                 "time": scheduled_time,
                 "duration": duration_minutes,
-                "status": "confirmed",
+                "resource_id": appointment.resource_id
+                if appointment.resource_id in free
+                else free[0],
             },
+            commit=False,
         )
-        updated = record.appointment
-        customer_email = self._customer_email(updated.customer_id)
-        if customer_email:
-            send_appointment_email(
-                event="appointment.rescheduled",
-                to=customer_email,
-                appointment=updated,
-                branch_name=branch.name,
-                workspace_name=workspace.name,
-                management_token=management_token,
-            )
-        return self._appointment_summary(updated, management_token)
+        notification = self._enqueue_appointment(
+            record.appointment, branch, workspace, "appointment.rescheduled"
+        )
+        self._session.commit()
+        return self._finish_notification(record.appointment, notification)
 
     def send_due_reminders(self, workspace_id: UUID | None = None) -> int:
         from datetime import UTC, datetime, timedelta
@@ -366,11 +543,15 @@ class PublicBookingService:
             raise AuthorizationErrorPublic("El enlace de gestión no es válido.")
         branch, workspace = self._resolve_branch(branch_id)
         appointment = self._session.scalar(
-            select(Appointment).where(
+            select(Appointment)
+            .where(
                 Appointment.workspace_id == branch.workspace_id,
                 Appointment.id == appointment_id,
                 Appointment.branch_id == branch.id,
+                Appointment.record_status == "active",
             )
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         if appointment is None:
             raise ResourceNotFoundError("La cita no existe.", "appointmentId")
@@ -439,6 +620,8 @@ class PublicBookingService:
         branch_id: UUID,
         actor_id: UUID,
         payload: dict[str, Any],
+        commit: bool = True,
+        ensure_branch: bool = False,
     ) -> Any:
         document_type = cast(str, payload["document_type"])
         document_id = cast(str, payload["document_id"])
@@ -476,7 +659,10 @@ class PublicBookingService:
                 request_id=f"public-booking:{uuid7()}",
             )
             self._save_profile_extras(record.id, payload)
-            self._session.commit()
+            if commit:
+                self._session.commit()
+            else:
+                self._session.flush()
             return self._master_data.customer_by_document(workspace_id, document_key)
         changes = {
             "display_name": values["display_name"],
@@ -489,43 +675,58 @@ class PublicBookingService:
             "document_id": display_id,
             "normalized_document_id": normalized_id,
         }
+        branch_ids = None
+        if ensure_branch:
+            branch_ids = set(
+                self._session.scalars(
+                    select(CustomerBranchAssignment.branch_id).where(
+                        CustomerBranchAssignment.workspace_id == workspace_id,
+                        CustomerBranchAssignment.customer_id == existing.id,
+                        CustomerBranchAssignment.status == "active",
+                    )
+                ).all()
+            ) | {branch_id}
         self._master_data.update_customer(
             customer=existing,
             changes=changes,
-            branch_ids=None,
+            branch_ids=branch_ids,
             actor_platform_user_id=actor_id,
             request_id=f"public-booking:{uuid7()}",
         )
         self._save_profile_extras(existing.id, payload)
-        self._session.commit()
+        if commit:
+            self._session.commit()
+        else:
+            self._session.flush()
         return self._master_data.customer_by_document(workspace_id, document_key)
 
     def _list_services(self, grant: PermissionGrant, branch_id: UUID) -> list[dict[str, Any]]:
-        catalog = CatalogService(self._session)
-        result = catalog.list_products(
-            grant=grant,
-            search=None,
-            status="active",
-            category_id=None,
-            branch_id=branch_id,
-            page=1,
-            page_size=50,
-            sort_by="name",
-            sort_direction="asc",
-        )
-        services: list[dict[str, Any]] = []
-        for product in result.items:
-            if product.item_type != "service":
-                continue
-            services.append(
-                {
-                    "id": product.id,
-                    "name": product.name,
-                    "price": Decimal("0"),
-                    "duration_minutes": 30,
-                }
+        rows = self._session.execute(
+            select(Item, InventoryItemProfile.sale_price)
+            .join(
+                ItemBranchAssignment,
+                (ItemBranchAssignment.workspace_id == Item.workspace_id)
+                & (ItemBranchAssignment.item_id == Item.id),
             )
-        return services
+            .join(
+                InventoryItemProfile,
+                (InventoryItemProfile.workspace_id == Item.workspace_id)
+                & (InventoryItemProfile.item_id == Item.id),
+            )
+            .where(
+                Item.workspace_id == grant.workspace_id,
+                Item.status == "active",
+                Item.item_type == "service",
+                ItemBranchAssignment.branch_id == branch_id,
+                ItemBranchAssignment.status == "active",
+                InventoryItemProfile.sale_price.is_not(None),
+            )
+            .order_by(Item.name, Item.id)
+        ).all()
+        return [
+            {"id": item.id, "name": item.name, "price": price, "duration_minutes": 30}
+            for item, price in rows
+        ]
 
     def _require_service(
         self, grant: PermissionGrant, branch_id: UUID, service_id: UUID
@@ -575,31 +776,6 @@ class PublicBookingService:
         if employee is None:
             raise ResourceNotFoundError("El especialista no existe.", "employeeId")
         return employee
-
-    def _employee_appointments(
-        self,
-        workspace_id: UUID,
-        branch_id: UUID,
-        employee_id: UUID,
-        scheduled_date: date,
-    ) -> list[dict[str, Any]]:
-        rows = self._session.scalars(
-            select(Appointment).where(
-                Appointment.workspace_id == workspace_id,
-                Appointment.branch_id == branch_id,
-                Appointment.employee_id == employee_id,
-                Appointment.scheduled_date == scheduled_date,
-                Appointment.record_status == "active",
-            )
-        ).all()
-        return [
-            {
-                "time": row.scheduled_time.strftime("%H:%M"),
-                "duration": row.duration_minutes,
-                "status": row.status,
-            }
-            for row in rows
-        ]
 
     def _appointment_summary(self, appointment: Appointment, token: str) -> dict[str, Any]:
         return {

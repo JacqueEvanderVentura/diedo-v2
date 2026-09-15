@@ -2,13 +2,14 @@ from datetime import date
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Header, Query, status
+from fastapi import APIRouter, Depends, Header, Query, Response, status
 
 from app.api.deps import DatabaseSession
 from app.api.routers.backoffice import BackofficeAccess
 from app.core.errors import raise_api_error
 from app.schemas.common import ErrorResponse
 from app.schemas.public_booking import (
+    ManagedAppointmentResponse,
     PublicAppointmentsListResponse,
     PublicAppointmentSummary,
     PublicBookAppointmentRequest,
@@ -25,7 +26,52 @@ from app.schemas.public_booking import (
 from app.services.errors import ResourceNotFoundError
 from app.services.public_booking import AuthorizationErrorPublic, PublicBookingService
 
-router = APIRouter(prefix="/api/v1/public/booking", tags=["public-booking"])
+
+def _no_store(response: Response) -> None:
+    response.headers["Cache-Control"] = "private, no-store"
+
+
+router = APIRouter(
+    prefix="/api/v1/public/booking", tags=["public-booking"], dependencies=[Depends(_no_store)]
+)
+
+
+@router.get("/branches/{branch_id}/appointments/{appointment_id}")
+def get_managed_appointment(
+    branch_id: UUID,
+    appointment_id: UUID,
+    database: DatabaseSession,
+    token: Annotated[str, Query(min_length=8, max_length=64)],
+) -> ManagedAppointmentResponse:
+    try:
+        result = PublicBookingService(database).get_appointment(branch_id, appointment_id, token)
+        return ManagedAppointmentResponse.model_validate(result)
+    except AuthorizationErrorPublic as exc:
+        raise_api_error(403, str(exc))
+
+
+@router.get("/branches/{branch_id}/appointments/{appointment_id}/slots")
+def get_management_slots(
+    branch_id: UUID,
+    appointment_id: UUID,
+    database: DatabaseSession,
+    token: Annotated[str, Query(min_length=8, max_length=64)],
+    scheduled_date: Annotated[date, Query(alias="date")],
+    duration: Annotated[int, Query(ge=5, le=480)] = 30,
+) -> dict[str, list[str]]:
+    try:
+        return {
+            "slots": PublicBookingService(database).management_slots(
+                branch_id,
+                appointment_id,
+                token,
+                scheduled_date,
+                duration,
+            )
+        }
+    except AuthorizationErrorPublic as exc:
+        raise_api_error(403, str(exc))
+
 
 _SECURITY: dict[int | str, dict[str, Any]] = {
     400: {"model": ErrorResponse},
@@ -109,7 +155,9 @@ def book_appointment(
     branch_id: UUID,
     payload: PublicBookAppointmentRequest,
     database: DatabaseSession,
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    idempotency_key: Annotated[
+        str | None, Header(alias="Idempotency-Key", min_length=8, max_length=128)
+    ] = None,
 ) -> PublicBookAppointmentResponse:
     key = idempotency_key or (
         f"public-booking:{branch_id}:{payload.document_id}:{payload.date}:{payload.time}"
@@ -171,10 +219,12 @@ def cancel_appointment(
     appointment_id: UUID,
     payload: PublicCancelAppointmentRequest,
     database: DatabaseSession,
-) -> dict[str, Any]:
+) -> PublicAppointmentSummary:
     try:
-        return PublicBookingService(database).cancel_appointment(
-            branch_id, appointment_id, payload.management_token
+        return PublicAppointmentSummary.model_validate(
+            PublicBookingService(database).cancel_appointment(
+                branch_id, appointment_id, payload.management_token
+            )
         )
     except Exception as exc:
         _handle_public_errors(exc)
@@ -191,15 +241,17 @@ def reschedule_appointment(
     appointment_id: UUID,
     payload: PublicRescheduleAppointmentRequest,
     database: DatabaseSession,
-) -> dict[str, Any]:
+) -> PublicAppointmentSummary:
     try:
-        return PublicBookingService(database).reschedule_appointment(
-            branch_id,
-            appointment_id,
-            management_token=payload.management_token,
-            scheduled_date=payload.date,
-            scheduled_time=payload.time,
-            duration=payload.duration,
+        return PublicAppointmentSummary.model_validate(
+            PublicBookingService(database).reschedule_appointment(
+                branch_id,
+                appointment_id,
+                management_token=payload.management_token,
+                scheduled_date=payload.date,
+                scheduled_time=payload.time,
+                duration=payload.duration,
+            )
         )
     except Exception as exc:
         _handle_public_errors(exc)

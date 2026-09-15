@@ -31,9 +31,31 @@ from app.schemas.agenda import (
     UpdateAppointmentRequest,
 )
 from app.schemas.common import ErrorResponse
+from app.schemas.public_booking import BookingLinkEmailRequest, EmailNotificationResponse
 from app.services.agenda import AgendaService
+from app.services.booking_links import send_booking_link
 
 router = APIRouter(prefix="/api/v1", tags=["agenda"])
+
+
+@router.post("/agenda/booking-links/email")
+def email_booking_link(
+    payload: BookingLinkEmailRequest,
+    database: DatabaseSession,
+    grant: AppointmentManageGrant,
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=128)],
+) -> EmailNotificationResponse:
+    return EmailNotificationResponse.model_validate(
+        send_booking_link(
+            database,
+            grant=grant,
+            branch_id=payload.branch_id,
+            name=payload.name,
+            email=str(payload.email),
+            idempotency_key=idempotency_key,
+        )
+    )
+
 
 _SECURITY_RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {"model": ErrorResponse},

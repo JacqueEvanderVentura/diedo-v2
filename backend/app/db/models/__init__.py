@@ -12,6 +12,7 @@ from app.db.models.crm import (
     CustomerCrmProfile,
 )
 from app.db.models.dashboard import Task
+from app.db.models.email_notifications import EmailNotification
 from app.db.models.finance import (
     FinanceAccount,
     FinanceBudget,
@@ -125,6 +126,7 @@ __all__ = [
     "CustomerReceivable",
     "CustomerReceivableLine",
     "DemoSeedRegistry",
+    "EmailNotification",
     "Employee",
     "EmployeeBranchAssignment",
     "EmployeeDebt",

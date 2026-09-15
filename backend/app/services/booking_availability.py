@@ -76,6 +76,23 @@ def _schedule_slots(weekly_schedule: dict[str, Any] | None, scheduled_date: date
     return slots
 
 
+def fits_schedule(
+    slot: str, duration: int, weekly_schedule: dict[str, Any] | None, scheduled_date: date
+) -> bool:
+    blocks = (
+        weekly_schedule.get(_weekday_key(scheduled_date), [])
+        if weekly_schedule
+        else [{"start": "08:00", "end": "20:00"}]
+    )
+    start = _to_minutes(slot)
+    return any(
+        isinstance(block, dict)
+        and _to_minutes(block.get("start", "")) <= start
+        and start + duration <= _to_minutes(block.get("end", ""))
+        for block in blocks
+    )
+
+
 def get_available_slots(
     *,
     scheduled_date: date,
@@ -103,8 +120,7 @@ def get_available_slots(
             for appointment in appointments
         ):
             continue
-        end_minutes = _to_minutes(slot) + duration
-        if end_minutes > _to_minutes(base_slots[-1]) + 30:
+        if not fits_schedule(slot, duration, weekly_schedule, scheduled_date):
             continue
         available.append(slot)
     return available

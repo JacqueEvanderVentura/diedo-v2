@@ -119,6 +119,7 @@ class AgendaService:
         grant: PermissionGrant,
         values: dict[str, Any],
         idempotency_key: str,
+        commit: bool = True,
     ) -> tuple[AppointmentRecord, ...]:
         branch_id = cast(UUID, values["branch_id"])
         self._require_branch_access(grant, branch_id)
@@ -265,7 +266,10 @@ class AgendaService:
                         appointment=appointment,
                     )
                 appointments.append(appointment)
-            self._session.commit()
+            if commit:
+                self._session.commit()
+            else:
+                self._session.flush()
         except ConflictError:
             self._session.rollback()
             raise
@@ -310,6 +314,7 @@ class AgendaService:
         appointment_id: UUID,
         expected_version: int,
         changes: dict[str, Any],
+        commit: bool = True,
     ) -> AppointmentRecord:
         appointment = self._repository.get_appointment(
             workspace_id=grant.workspace_id,
@@ -466,7 +471,10 @@ class AgendaService:
                     principal=principal,
                     appointment=appointment,
                 )
-            self._session.commit()
+            if commit:
+                self._session.commit()
+            else:
+                self._session.flush()
         except ConflictError:
             self._session.rollback()
             raise

@@ -19,7 +19,7 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_HAS_SERPER': JSON.stringify(Boolean(env.SERPER_API_KEY)),
     },
     test: {
-      include: ['tests/**/*.test.js'],
+      include: ['tests/**/*.test.{js,jsx}'],
     },
     server: {
       host: '0.0.0.0',

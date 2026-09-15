@@ -49,7 +49,7 @@ const SEED_PROFILES = [
 function normalizeProfile(data) {
   return {
     docType: data.docType || 'cedula',
-    documentId: normalizeDocumentId(data.documentId),
+    documentId: normalizeDocumentId(data.documentId, data.docType),
     name: data.name || '',
     email: data.email || '',
     phone: data.phone || '',
@@ -67,14 +67,14 @@ export const useSelfBookingStore = create(
       claims: [],
       emails: [],
 
-      lookupByDocument: (documentId) => {
-        const key = normalizeDocumentId(documentId)
+      lookupByDocument: (documentId, docType = 'cedula') => {
+        const key = normalizeDocumentId(documentId, docType)
         return get().profiles.find((p) => p.documentId === key) || null
       },
 
       upsertProfile: (data) => {
         const normalized = normalizeProfile(data)
-        const existing = get().lookupByDocument(normalized.documentId)
+        const existing = get().lookupByDocument(normalized.documentId, normalized.docType)
         if (existing) {
           const updated = { ...existing, ...normalized, updatedAt: now() }
           set((s) => ({
@@ -114,7 +114,7 @@ export const useSelfBookingStore = create(
           profiles: s.profiles.map((p) => (p.id === profileId ? { ...p, customerId } : p)),
         })),
 
-      bookAppointment: async ({ profile, branchId, service, date, time, employeeId, duration }) => {
+      bookAppointment: async ({ profile, branchId, service, date, time, employeeId, duration, idempotencyKey }) => {
         if (useSessionStore.getState().status !== 'demo') {
           const response = await publicBookingApi.book(branchId, {
             documentType: profile.docType || 'cedula',
@@ -130,7 +130,7 @@ export const useSelfBookingStore = create(
             date,
             time,
             duration: duration || 30,
-          })
+          }, idempotencyKey)
           return response.appointment
         }
         const customer = await get().ensureCustomer(profile)
@@ -224,7 +224,7 @@ export const useSelfBookingStore = create(
         if (!result.customerId && result.isNew) return null
         return {
           docType: result.documentType,
-          documentId: normalizeDocumentId(result.documentId),
+          documentId: normalizeDocumentId(result.documentId, result.documentType),
           name: result.displayName || '',
           email: result.email || '',
           phone: result.phone || '',

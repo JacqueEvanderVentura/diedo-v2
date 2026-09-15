@@ -18,6 +18,7 @@ class PublicBranchContextResponse(ApiModel):
     branch_id: UUID
     branch_name: str
     workspace_name: str
+    timezone: str = "America/Santo_Domingo"
 
 
 class PublicServiceOption(ApiModel):
@@ -36,6 +37,28 @@ class PublicBookingContextResponse(ApiModel):
     branch: PublicBranchContextResponse
     services: list[PublicServiceOption]
     specialists: list[PublicSpecialistOption]
+    has_resources: bool = False
+
+
+class EmailNotificationResponse(ApiModel):
+    id: UUID
+    status: Literal["pending", "disabled", "sending", "sent", "failed", "review", "superseded"]
+    message: str | None = None
+    provider_id: str | None = None
+
+
+class BookingLinkEmailRequest(ApiModel):
+    branch_id: UUID
+    name: str = Field(min_length=2, max_length=200)
+    email: EmailStr
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value: str) -> str:
+        value = " ".join(value.split())
+        if len(value) < 2:
+            raise ValueError("Ingresa el nombre del destinatario.")
+        return value
 
 
 class PublicIdentifyRequest(ApiModel):
@@ -90,7 +113,24 @@ class PublicBookAppointmentRequest(ApiModel):
     @field_validator("display_name")
     @classmethod
     def normalize_name(cls, value: str) -> str:
-        return " ".join(value.split())
+        value = " ".join(value.split())
+        if len(value) < 2:
+            raise ValueError("Ingresa tu nombre completo.")
+        return value
+
+    @field_validator("time")
+    @classmethod
+    def local_time(cls, value: TimeValue) -> TimeValue:
+        if value.tzinfo is not None or value.second or value.microsecond:
+            raise ValueError("Selecciona una hora local en horas y minutos.")
+        return value
+
+    @model_validator(mode="after")
+    def valid_document(self) -> PublicBookAppointmentRequest:
+        from app.services.customer_documents import prepare_customer_document_fields
+
+        prepare_customer_document_fields(self.document_type, self.document_id)
+        return self
 
 
 class PublicAppointmentSummary(ApiModel):
@@ -105,6 +145,13 @@ class PublicAppointmentSummary(ApiModel):
     service_name: str
     status: str
     management_token: str
+    notification: EmailNotificationResponse | None = None
+
+
+class ManagedAppointmentResponse(PublicAppointmentSummary):
+    branch_name: str
+    workspace_name: str
+    timezone: str
 
 
 class PublicBookAppointmentResponse(ApiModel):
@@ -134,6 +181,7 @@ class PublicRescheduleAppointmentRequest(ApiModel):
 
     @model_validator(mode="after")
     def require_future_slot(self) -> PublicRescheduleAppointmentRequest:
+        PublicBookAppointmentRequest.local_time(self.time)
         return self
 
 

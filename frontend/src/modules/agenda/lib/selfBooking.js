@@ -51,7 +51,8 @@ export const DOC_TYPES = [
   { id: 'pasaporte', label: 'Pasaporte' },
 ]
 
-export function normalizeDocumentId(value) {
+export function normalizeDocumentId(value, docType = 'cedula') {
+  if (docType === 'pasaporte') return String(value || '').replace(/[^0-9a-z]/gi, '').toUpperCase()
   return String(value || '').replace(/\D/g, '')
 }
 

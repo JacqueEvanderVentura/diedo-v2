@@ -6,7 +6,7 @@ from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import ColumnElement, Select, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.db.models import (
@@ -308,12 +308,13 @@ class AgendaRepository:
         ends_at: datetime,
         exclude_appointment_id: UUID | None = None,
     ) -> Appointment | None:
-        resources = [Appointment.resource_id == resource_id]
+        resources: list[ColumnElement[bool]] = [
+            (Appointment.branch_id == branch_id) & (Appointment.resource_id == resource_id)
+        ]
         if employee_id is not None:
             resources.append(Appointment.employee_id == employee_id)
         statement = select(Appointment).where(
             Appointment.workspace_id == workspace_id,
-            Appointment.branch_id == branch_id,
             Appointment.record_status == "active",
             Appointment.status.in_(ACTIVE_APPOINTMENT_STATUSES),
             Appointment.starts_at < ends_at,

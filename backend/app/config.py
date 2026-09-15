@@ -49,9 +49,10 @@ class Settings(BaseSettings):
     resend_api_key: SecretStr | None = None
     mail_from: str = "onboarding@resend.dev"
     mail_reply_to: str | None = None
-    public_app_url: str = "http://localhost:5173"
+    public_app_url: str = "http://localhost:3000"
     email_from: str = "Helios 360 ERP <onboarding@resend.dev>"
     email_enabled: bool = False
+    email_reply_to: str | None = None
     resend_request_timeout_seconds: int = Field(default=10, ge=1, le=120)
     attachment_storage_backend: Literal["local", "s3"] = "local"
     attachment_storage_root: Path = _BACKEND_ROOT / ".local" / "attachments"
@@ -77,6 +78,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_deployment_jwt_secret(self) -> Settings:
+        # Explicit EMAIL_* values take precedence, including EMAIL_ENABLED=false.
+        for primary, legacy in (
+            ("email_enabled", "mail_enabled"),
+            ("email_from", "mail_from"),
+            ("email_reply_to", "mail_reply_to"),
+        ):
+            if primary not in self.model_fields_set and legacy in self.model_fields_set:
+                setattr(self, primary, getattr(self, legacy))
         secret = self.jwt_secret_key.get_secret_value()
         if len(secret) < 32:
             raise ValueError("JWT_SECRET_KEY must contain at least 32 characters.")

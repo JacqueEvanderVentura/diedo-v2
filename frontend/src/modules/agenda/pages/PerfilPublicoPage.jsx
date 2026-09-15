@@ -15,8 +15,15 @@ import { useConfigStore } from '@/stores/configStore'
 import { normalizeDocumentId } from '../lib/selfBooking'
 import { fmtDate } from '@/modules/crm/lib/crm'
 import { cn } from '@/lib/utils'
+import GestionCitaPage from './GestionCitaPage'
 
 export default function PerfilPublicoPage() {
+  const [params] = useSearchParams()
+  if (params.has('token') || params.has('appointment')) return <GestionCitaPage branchId={params.get('branch')} appointmentId={params.get('appointment')} token={params.get('token')} />
+  return <PerfilPorDocumento />
+}
+
+function PerfilPorDocumento() {
   const [params] = useSearchParams()
   const docParam = params.get('doc') || recallDocument()
   const branchId = params.get('branch') || useConfigStore.getState().branches[0]?.id

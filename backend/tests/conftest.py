@@ -32,11 +32,15 @@ def ensure_database_schema_at_head(request: pytest.FixtureRequest) -> Generator[
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     del config
     database_name = make_url(settings.database_url).database
-    safe_integration_target = settings.app_env == "test" and database_name == "erp_test"
+    safe_integration_target = settings.app_env == "test" and database_name in {
+        "erp_test",
+        "erp_booking_test",
+    }
     if safe_integration_target:
         return
     skip = pytest.mark.skip(
-        reason="Integration tests require APP_ENV=test and a disposable erp_test database."
+        reason="Integration tests require APP_ENV=test and a disposable "
+        "erp_test or erp_booking_test database."
     )
     for item in items:
         if "integration" in item.keywords:

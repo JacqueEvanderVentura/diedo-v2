@@ -81,6 +81,51 @@ def test_send_email_rejects_when_disabled_without_force() -> None:
         )
 
 
+def test_legacy_email_settings_and_explicit_precedence(monkeypatch):
+    for name in (
+        "EMAIL_ENABLED",
+        "MAIL_ENABLED",
+        "EMAIL_FROM",
+        "MAIL_FROM",
+        "EMAIL_REPLY_TO",
+        "MAIL_REPLY_TO",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    legacy = Settings(
+        mail_enabled=True,
+        mail_from="old@example.com",
+        mail_reply_to="reply@example.com",
+        _env_file=None,
+    )
+    assert legacy.email_enabled is True
+    assert legacy.email_from == "old@example.com"
+    assert legacy.email_reply_to == "reply@example.com"
+    current = Settings(
+        email_enabled=False,
+        mail_enabled=True,
+        email_from="new@example.com",
+        mail_from="old@example.com",
+        _env_file=None,
+    )
+    assert current.email_enabled is False
+    assert current.email_from == "new@example.com"
+
+
+def test_send_email_passes_reply_to(monkeypatch):
+    captured = _configure_resend_stub(monkeypatch, send_result={"id": "reply-test"})
+    config = _settings_for_test()
+    config.email_reply_to = "reply@example.com"
+    send_email(
+        to="client@example.com",
+        subject="Cita",
+        html="<p>Cita</p>",
+        text="Cita",
+        idempotency_key="reply-test",
+        config=config,
+    )
+    assert captured["payload"]["reply_to"] == "reply@example.com"
+
+
 def test_send_email_raises_if_api_key_missing_even_with_force(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

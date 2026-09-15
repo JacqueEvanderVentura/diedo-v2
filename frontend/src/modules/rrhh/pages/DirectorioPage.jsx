@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router-dom'
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, Search, Pencil, Mail, Phone, Users, Clock } from 'lucide-react'
 import { useRrhhStore } from '@/stores/rrhhStore'
@@ -41,7 +42,8 @@ export default function DirectorioPage() {
   const hasPermission = useSessionStore((s) => s.hasPermission)
 
   const [query, setQuery] = useState('')
-  const [branchFilter, setBranchFilter] = useState('all')
+  const [params] = useSearchParams()
+  const [branchFilter, setBranchFilter] = useState(() => params.get('branch') || 'all')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [platformUsers, setPlatformUsers] = useState([])
@@ -90,6 +92,7 @@ export default function DirectorioPage() {
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="rrhh-directorio">
+      {params.get('booking') === '1' && <p className="rounded-xl bg-blue-50 p-4 text-sm text-blue-900" data-testid="rrhh-booking-setup">Edita el empleado que atenderá citas en esta sucursal. Verifica que esté activo, asignado aquí y tenga marcada la opción “Seleccionable como especialista (agenda en línea)”. Guarda los cambios y vuelve al modal de enlace para comprobarlo.</p>}
       <DataSourceNotice state={dataState} onRetry={() => hydrateEmployees({ force: true })} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
         <StatChip label="Total empleados" value={counts.total} active={branchFilter === 'all'} onClick={() => setBranchFilter('all')} />
