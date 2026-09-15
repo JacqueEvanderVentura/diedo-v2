@@ -6,13 +6,13 @@
 - Frontend de preview: https://diedo-frontend-preview.helios360erp.workers.dev
 - Backend de Railway: https://api-production-b1fb.up.railway.app
 - Repositorio: https://github.com/JacqueEvanderVentura/diedo-v2, rama `full-stack`.
-- Dominio aprobado: `app.helios360erp.com`. Su activación queda pendiente del acceso al DNS; `workers.dev` permanece disponible.
+- Dominio aprobado: `app.helios360erp.com`. El usuario confirmó que `helios360erp.com` está en **la cuenta de Cloudflare de su compañero**, distinta de la cuenta del Worker actual. La conexión queda pendiente del acceso a esa cuenta; `workers.dev` permanece disponible.
 
 Esta guía sustituye los estados históricos de migración registrados en versiones anteriores del documento.
 
 ## Publicación automática
 
-GitHub Actions tiene el secreto `CLOUDFLARE_API_TOKEN` y la variable `CLOUDFLARE_ACCOUNT_ID` configurados. El token `diedo-github-actions` permite publicar Workers en la cuenta y gestionar rutas únicamente en la zona `helios360erp.com`. Nunca guardar su valor en el repositorio.
+GitHub Actions tiene el secreto `CLOUDFLARE_API_TOKEN` y la variable `CLOUDFLARE_ACCOUNT_ID` configurados para la cuenta del Worker actual. El token `diedo-github-actions` permite publicar allí; sus permisos sobre la zona pendiente de esa cuenta **no dan acceso al dominio en la cuenta del compañero**. Nunca guardar su valor en el repositorio.
 
 Los cambios de frontend en `full-stack` ejecutan `Deploy frontend to Cloudflare Workers`: instalación, build, pruebas, validación de Wrangler, publicación y comprobaciones HTTP. Los pull requests del mismo repositorio publican en el Worker de preview compartido. `Frontend CI` también valida build, pruebas y configuración.
 
@@ -22,23 +22,19 @@ La web usa `VITE_API_BASE_URL=/api-backend`. El Worker envía esas peticiones al
 
 ## Activar app.helios360erp.com cuando haya acceso al dominio
 
-1. En Cloudflare, revisar la zona `helios360erp.com` y conservar todos los registros DNS necesarios, especialmente correo (MX, SPF, DKIM y DMARC). No borrar registros existentes al trasladar DNS.
-2. En el registrador del dominio, sustituir los servidores de nombres actuales (`ns67.worldnic.com` y `ns68.worldnic.com`) por los asignados por Cloudflare:
-   - `fish.ns.cloudflare.com`
-   - `santino.ns.cloudflare.com`
-3. Esperar a que Cloudflare muestre la zona como **Active**. La zona estaba **pending** al preparar esta integración. Si los servidores asignados cambian, usar los que muestre Cloudflare en ese momento.
-4. Revisar que `app` no apunte a otro servicio. Resolver cualquier conflicto existente antes de activar el Worker en ese nombre.
-5. Crear la variable de repositorio de GitHub `CLOUDFLARE_CUSTOM_DOMAIN` con el valor exacto `app.helios360erp.com`:
+**No seguir las instrucciones anteriores de cambiar nameservers a la cuenta actual.** La zona pendiente observada allí no es la zona de la cuenta del compañero. No transferir el dominio ni cambiar su DNS por esta suposición.
 
-   ```powershell
-   gh variable set CLOUDFLARE_CUSTOM_DOMAIN --body app.helios360erp.com --repo JacqueEvanderVentura/diedo-v2
-   gh workflow run deploy-fe-pages.yml --ref full-stack --repo JacqueEvanderVentura/diedo-v2
-   ```
+La vía recomendada, pendiente de acceso y de confirmar la cuenta de destino, es publicar el frontend en la misma cuenta que administra el dominio y asociar allí su Custom Domain. Se conserva el backend en Railway.
 
-6. El workflow genera la ruta `custom_domain` para producción y verifica tanto `workers.dev` como el dominio. Cloudflare administra el registro y certificado del Custom Domain. Esperar a que el certificado esté activo si la emisión aún está en curso.
-7. Verificar https://app.helios360erp.com/login y probar acceso, recarga de página, renovación de sesión y logout con una cuenta de producción. Las credenciales locales de prueba no son credenciales de producción.
+1. Obtener acceso autorizado a la cuenta del compañero y verificar el Account ID, la zona `helios360erp.com`, su estado y el registro `app`. No asumir que la zona está activa sin comprobarlo.
+2. Preparar la publicación del Worker en esa cuenta. Configurar las credenciales de GitHub para la cuenta elegida y ajustar las URLs de comprobación del workflow: actualmente apuntan al `workers.dev` de la cuenta original. Cambiar únicamente `CLOUDFLARE_ACCOUNT_ID` no completa esta adaptación.
+3. Publicar y comprobar la web y su conexión con Railway en la nueva cuenta antes de asociar el dominio. Mantener disponible el Worker original durante la transición.
+4. Con la zona activa y el Worker en la cuenta correcta, resolver cualquier conflicto de `app` y habilitar `CLOUDFLARE_CUSTOM_DOMAIN=app.helios360erp.com`. El script ya prepara esa ruta; no habilitar la variable con la conexión actual a la otra cuenta.
+5. Ejecutar el workflow adaptado y verificar DNS, certificado y https://app.helios360erp.com/login. Cloudflare administra el registro y certificado del Custom Domain. Probar acceso, recarga de página, renovación de sesión y logout con una cuenta de producción.
 
-No hace falta crear `api.helios360erp.com`, cambiar Railway ni reconstruir con una URL diferente: el proxy sigue usando el origen de Railway. Preview conserva su dirección `workers.dev`.
+No hace falta crear `api.helios360erp.com` ni cambiar Railway: el proxy sigue usando su origen actual. La cuenta del compañero y sus registros aún no se han inspeccionado. Cualquier traslado del dominio sería una alternativa separada que requiere decidirlo expresamente con el usuario.
+
+Referencia: [Custom Domains de Cloudflare Workers](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/).
 
 ## Validación y diagnóstico
 
