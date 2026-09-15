@@ -1,4 +1,6 @@
+import { useEffect } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { SubscriptionAccessNotice } from './SubscriptionAccessNotice'
 import { useSessionStore } from '@/stores/sessionStore'
 import { isModuleAvailable, routeRequirement } from '@/services/moduleAvailability'
 
@@ -9,6 +11,15 @@ export function AuthGate() {
   const user = useSessionStore((s) => s.user)
   const bootstrap = useSessionStore((s) => s.bootstrap)
   const isAuthenticated = useSessionStore((s) => s.isAuthenticated())
+
+  useEffect(() => {
+    if (status !== 'online' || !user?.workspaceId) return
+    const refresh = () => {
+      useSessionStore.getState().refreshCurrentUser().catch(() => {})
+    }
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [status, user?.workspaceId])
 
   if (!initialized) {
     return (
@@ -46,6 +57,9 @@ export function AuthGate() {
   }
 
   if (status === 'online' && user) {
+    if (!user.isPlatformOperator && ['expired', 'cancelled', 'scheduled'].includes(user.subscriptionStatus)) {
+      return <SubscriptionAccessNotice />
+    }
     if (location.pathname.startsWith('/backoffice')) {
       if (!user.isPlatformOperator) {
         return <Navigate to="/dashboard" replace />
@@ -55,13 +69,11 @@ export function AuthGate() {
     }
 
     const requirement = routeRequirement(location.pathname)
-    if (requirement?.module && !isModuleAvailable(requirement.module, user.enabledModules)) {
-      return <Navigate to="/dashboard" replace />
-    }
     if (
-      requirement?.permission &&
-      !user.effectivePermissionCodes?.includes(requirement.permission)
+      (requirement?.module && !isModuleAvailable(requirement.module, user.enabledModules)) ||
+      (requirement?.permission && !user.effectivePermissionCodes?.includes(requirement.permission))
     ) {
+      if (location.pathname.startsWith('/dashboard')) return <SubscriptionAccessNotice moduleUnavailable />
       return <Navigate to="/dashboard" replace />
     }
   }

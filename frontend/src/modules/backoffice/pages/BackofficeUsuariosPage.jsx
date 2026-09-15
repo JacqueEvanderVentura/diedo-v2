@@ -1,301 +1,317 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Search } from 'lucide-react'
 import { backofficeApi } from '@/services/backofficeApi'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
-import { Select } from '@/components/ui/Select'
-import {
-  ResponsiveList,
-  ResponsiveTable,
-  ResponsiveCards,
-  MobileCard,
-  MobileField,
-  MobileCardHeader,
-} from '@/components/ui/ResponsiveList'
-import { EmptyState } from '@/components/ui/EmptyState'
-import { newPasswordError } from '@/lib/passwordPolicy'
-
-const ROLE_OPTIONS = [
-  { value: 'seller', label: 'Vendedor' },
-  { value: 'cashier', label: 'Cajero' },
-  { value: 'supervisor', label: 'Supervisor' },
-  { value: 'manager', label: 'Gerente' },
-  { value: 'workspace_admin', label: 'Administrador' },
-]
-
-const emptyForm = () => ({
-  workspaceId: '',
-  displayName: '',
-  email: '',
-  password: '',
-  roleCode: 'seller',
-})
-
-function userActive(row) {
-  return row.platformStatus === 'active' && row.membershipStatus === 'active'
-}
+import { Card } from '@/components/ui/Card'
+import { BackofficeSelect as Select } from '../components/BackofficeSelect'
+import { Pagination } from '../components/Pagination'
+import { MemberFormModal } from '../components/MemberFormModal'
+import { positivePage } from '../backofficeForm'
 
 export default function BackofficeUsuariosPage() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const workspaceFilter = searchParams.get('workspaceId') || ''
-
-  const [rows, setRows] = useState([])
+  const [params, setParams] = useSearchParams()
+  const workspaceId = params.get('workspaceId') || ''
+  const search = params.get('search') || ''
+  const status = params.get('status') || ''
+  const platformStatus = params.get('platformStatus') || ''
+  const page = positivePage(params.get('page'))
+  const pageSize = [25, 50, 100].includes(Number(params.get('pageSize')))
+    ? Number(params.get('pageSize'))
+    : 25
+  const [data, setData] = useState({ items: [], totalItems: 0, totalPages: 0, totalUsers: 0 })
   const [workspaces, setWorkspaces] = useState([])
   const [loading, setLoading] = useState(true)
-  const [query, setQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [modalOpen, setModalOpen] = useState(false)
+  const [revision, setRevision] = useState(0)
+  const [error, setError] = useState('')
+  const [form, setForm] = useState(null)
+  const [globalAction, setGlobalAction] = useState(null)
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState(emptyForm)
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    let active = true
+    backofficeApi
+      .listWorkspaces()
+      .then((result) => {
+        if (active) setWorkspaces(result.items || [])
+      })
+      .catch((err) => {
+        if (active) setError(err.message)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
     setLoading(true)
-    try {
-      const [userData, workspaceData] = await Promise.all([
-        backofficeApi.listUsers({
-          search: query || undefined,
-          workspaceId: workspaceFilter || undefined,
-          status: statusFilter || undefined,
-        }),
-        backofficeApi.listWorkspaces(),
-      ])
-      setRows(userData.items || [])
-      setWorkspaces(workspaceData.items || [])
-    } catch (err) {
-      toast.error(err.message || 'No se pudieron cargar los usuarios.')
-    } finally {
-      setLoading(false)
+    setError('')
+    backofficeApi
+      .listUsers({ workspaceId, search, status, platformStatus, page, pageSize })
+      .then((result) => {
+        if (active) setData(result)
+      })
+      .catch((err) => {
+        if (active) setError(err.message)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
     }
-  }, [query, workspaceFilter, statusFilter])
+  }, [workspaceId, search, status, platformStatus, page, pageSize, revision])
 
-  useEffect(() => {
-    load()
-  }, [load])
-
-  useEffect(() => {
-    if (workspaceFilter) {
-      setForm((current) => ({ ...current, workspaceId: workspaceFilter }))
-    }
-  }, [workspaceFilter])
-
-  const workspaceOptions = useMemo(
-    () => workspaces.map((item) => ({ value: item.workspaceId, label: item.name })),
-    [workspaces],
-  )
-
-  const submitCreate = async (event) => {
-    event.preventDefault()
-    const passwordError = newPasswordError(form.password)
-    if (passwordError) {
-      toast.error(passwordError)
-      return
-    }
+  const filter = (key, value) =>
+    setParams((current) => {
+      const next = new URLSearchParams(current)
+      if (value) next.set(key, String(value))
+      else next.delete(key)
+      if (key !== 'page') next.delete('page')
+      return next
+    })
+  const reload = () => setRevision((value) => value + 1)
+  const toggleMembership = async (row) => {
     setSaving(true)
     try {
-      await backofficeApi.createUser({
-        workspaceId: form.workspaceId,
-        displayName: form.displayName,
-        email: form.email,
-        password: form.password,
-        roleCode: form.roleCode,
+      await backofficeApi.updateMember(row.workspaceId, row.membershipId, {
+        version: row.membershipVersion,
+        status: row.membershipStatus === 'active' ? 'suspended' : 'active',
       })
-      toast.success('Usuario registrado')
-      setModalOpen(false)
-      setForm(emptyForm())
-      load()
+      toast.success('Acceso a la compañía actualizado')
+      reload()
     } catch (err) {
-      toast.error(err.message || 'No se pudo registrar el usuario.')
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+  const toggleGlobal = async () => {
+    setSaving(true)
+    try {
+      await backofficeApi.updateUser(globalAction.userId, {
+        version: globalAction.version,
+        status: globalAction.platformStatus === 'active' ? 'disabled' : 'active',
+      })
+      setGlobalAction(null)
+      toast.success('Cuenta global actualizada')
+      reload()
+    } catch (err) {
+      setGlobalAction(null)
+      setError(err.message)
     } finally {
       setSaving(false)
     }
   }
 
-  const toggleUser = async (row) => {
-    const nextStatus = userActive(row) ? 'disabled' : 'active'
-    try {
-      await backofficeApi.updateUser(row.userId, { version: row.version, status: nextStatus })
-      toast.success(nextStatus === 'disabled' ? 'Usuario inactivado' : 'Usuario reactivado')
-      load()
-    } catch (err) {
-      toast.error(err.message || 'No se pudo actualizar el usuario.')
-    }
-  }
-
   return (
     <div className="mx-auto max-w-[1400px] p-6 sm:p-8" data-testid="backoffice-usuarios-page">
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-heading text-xl font-semibold text-slate-900">Usuarios finales</h2>
-          <p className="mt-1 text-sm text-slate-600">Cuentas de clientes en todas las compañías.</p>
+          <p className="mt-1 text-sm text-slate-600">
+            Cada fila representa el acceso de una cuenta a una compañía.
+          </p>
         </div>
-        <Button type="button" onClick={() => setModalOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Registrar usuario
-        </Button>
+        <Button onClick={() => setForm({})}>Registrar usuario</Button>
       </div>
-
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <div className="mb-4 grid gap-3 md:grid-cols-4">
+        <label className="text-sm">
+          Buscar
           <Input
-            className="pl-9"
-            placeholder="Buscar por nombre, email o compañía…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            value={search}
+            placeholder="Nombre, email o compañía"
+            onChange={(e) => filter('search', e.target.value)}
           />
-        </div>
-        <Select
-          className="sm:w-52"
-          value={workspaceFilter}
-          onChange={(e) => {
-            const value = e.target.value
-            if (value) setSearchParams({ workspaceId: value })
-            else setSearchParams({})
-          }}
-        >
-          <option value="">Todas las compañías</option>
-          {workspaceOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
-        <Select className="sm:w-40" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="">Todos</option>
-          <option value="active">Activos</option>
-          <option value="disabled">Inactivos</option>
-        </Select>
-      </div>
-
-      {loading ? (
-        <p className="text-sm text-slate-500">Cargando…</p>
-      ) : rows.length === 0 ? (
-        <EmptyState title="Sin usuarios" description="No hay resultados con los filtros actuales." />
-      ) : (
-        <ResponsiveList>
-          <ResponsiveTable>
-            <thead>
-              <tr>
-                <th>Usuario</th>
-                <th>Compañía</th>
-                <th>Rol</th>
-                <th>Estado</th>
-                <th className="text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.membershipId}>
-                  <td>
-                    <div className="font-medium text-slate-900">{row.displayName}</div>
-                    <div className="text-xs text-slate-500">{row.email}</div>
-                  </td>
-                  <td>
-                    <Link
-                      to={`/backoffice/companias/${row.workspaceId}`}
-                      className="text-sm text-blue-600 hover:underline"
-                    >
-                      {row.workspaceName}
-                    </Link>
-                  </td>
-                  <td className="text-sm text-slate-600">{row.roleName || '—'}</td>
-                  <td>
-                    <Badge tone={userActive(row) ? 'success' : 'warning'}>
-                      {userActive(row) ? 'Activo' : 'Inactivo'}
-                    </Badge>
-                  </td>
-                  <td className="text-right">
-                    <Button type="button" variant="secondary" size="sm" onClick={() => toggleUser(row)}>
-                      {userActive(row) ? 'Inactivar' : 'Activar'}
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </ResponsiveTable>
-          <ResponsiveCards>
-            {rows.map((row) => (
-              <MobileCard key={row.membershipId}>
-                <MobileCardHeader title={row.displayName} subtitle={row.email} />
-                <MobileField label="Compañía" value={row.workspaceName} />
-                <MobileField label="Rol" value={row.roleName || '—'} />
-                <Button type="button" variant="secondary" size="sm" className="mt-3" onClick={() => toggleUser(row)}>
-                  {userActive(row) ? 'Inactivar' : 'Activar'}
-                </Button>
-              </MobileCard>
+        </label>
+        <label className="text-sm">
+          Compañía
+          <Select value={workspaceId} onChange={(e) => filter('workspaceId', e.target.value)}>
+            <option value="">Todas las compañías</option>
+            {workspaces.map((item) => (
+              <option key={item.workspaceId} value={item.workspaceId}>
+                {item.name}
+              </option>
             ))}
-          </ResponsiveCards>
-        </ResponsiveList>
+          </Select>
+        </label>
+        <label className="text-sm">
+          Cuenta global
+          <Select value={platformStatus} onChange={(e) => filter('platformStatus', e.target.value)}>
+            <option value="">Todas las cuentas</option>
+            <option value="active">Activas</option>
+            <option value="disabled">Deshabilitadas</option>
+          </Select>
+        </label>
+        <label className="text-sm">
+          Acceso del usuario
+          <Select value={status} onChange={(e) => filter('status', e.target.value)}>
+            <option value="">Todos los accesos</option>
+            <option value="active">Activos</option>
+            <option value="disabled">Inactivos</option>
+          </Select>
+        </label>
+      </div>
+      {error && (
+        <div role="alert" className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
+          {error}
+          <Button variant="secondary" size="sm" className="ml-3" onClick={reload}>
+            Recargar datos actuales
+          </Button>
+        </div>
       )}
-
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Registrar usuario" size="lg">
-        <form onSubmit={submitCreate} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-600">Compañía</label>
-            <Select
-              value={form.workspaceId}
-              onChange={(e) => setForm({ ...form, workspaceId: e.target.value })}
-              required
-            >
-              <option value="">Selecciona…</option>
-              {workspaceOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-600">Nombre</label>
-              <Input
-                value={form.displayName}
-                onChange={(e) => setForm({ ...form, displayName: e.target.value })}
-                required
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-600">Email</label>
-              <Input
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                required
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-600">Contraseña</label>
-              <Input
-                type="password"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                required
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-600">Rol</label>
-              <Select value={form.roleCode} onChange={(e) => setForm({ ...form, roleCode: e.target.value })}>
-                {ROLE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? 'Guardando…' : 'Registrar'}
-            </Button>
-          </div>
-        </form>
+      {loading ? (
+        <p className="text-sm text-slate-500">Cargando usuarios…</p>
+      ) : (
+        !error && (
+          <>
+            <p className="mb-3 text-sm text-slate-500">
+              {data.totalUsers} cuentas distintas · {data.totalItems} accesos
+            </p>
+            <Card className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    {[
+                      'Usuario',
+                      'Compañía',
+                      'Roles',
+                      'Cuenta global',
+                      'Acceso a compañía',
+                      'Acciones',
+                    ].map((label) => (
+                      <th className="p-3" key={label}>
+                        {label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.items.map((row) => (
+                    <tr key={row.membershipId} className="border-t border-slate-100">
+                      <td className="p-3">
+                        <p className="font-medium">{row.displayName}</p>
+                        <p className="text-xs text-slate-500">{row.email}</p>
+                      </td>
+                      <td className="p-3">
+                        <Link
+                          className="text-blue-600"
+                          to={`/backoffice/companias/${row.workspaceId}`}
+                        >
+                          {row.workspaceName}
+                        </Link>
+                      </td>
+                      <td className="p-3">
+                        {[...new Set(row.roleAssignments?.map((item) => item.roleName))].join(
+                          ', '
+                        ) ||
+                          row.roleName ||
+                          '—'}
+                      </td>
+                      <td className="p-3">
+                        <Badge tone={row.platformStatus === 'active' ? 'success' : 'warning'}>
+                          {row.platformStatus === 'active' ? 'Activa' : 'Deshabilitada'}
+                        </Badge>
+                      </td>
+                      <td className="p-3">
+                        <Badge tone={row.membershipStatus === 'active' ? 'success' : 'warning'}>
+                          {{
+                            active: 'Activo',
+                            suspended: 'Suspendido',
+                            invited: 'Invitado',
+                            revoked: 'Revocado',
+                            expired: 'Expirado',
+                          }[row.membershipStatus] || row.membershipStatus}
+                        </Badge>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex flex-wrap gap-2">
+                          {['active', 'suspended'].includes(row.membershipStatus) && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                disabled={saving}
+                                onClick={() => toggleMembership(row)}
+                              >
+                                {row.membershipStatus === 'active'
+                                  ? 'Suspender acceso'
+                                  : 'Reactivar acceso'}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => setForm({ member: row })}
+                              >
+                                Editar roles
+                              </Button>
+                            </>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={saving}
+                            onClick={() => setGlobalAction(row)}
+                          >
+                            {row.platformStatus === 'active'
+                              ? 'Deshabilitar cuenta global'
+                              : 'Activar cuenta global'}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!data.items.length && (
+                <p className="p-6 text-sm text-slate-500">No hay usuarios con estos filtros.</p>
+              )}
+            </Card>
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              totalItems={data.totalItems}
+              totalPages={data.totalPages}
+              onPage={(value) => filter('page', value)}
+              onPageSize={(value) => filter('pageSize', value)}
+            />
+          </>
+        )
+      )}
+      {form && (
+        <MemberFormModal
+          member={form.member}
+          workspaceId={workspaceId}
+          workspaces={workspaces}
+          onClose={() => setForm(null)}
+          onSaved={() => {
+            setForm(null)
+            reload()
+          }}
+        />
+      )}
+      <Modal
+        open={!!globalAction}
+        onClose={() => !saving && setGlobalAction(null)}
+        title="Cambiar cuenta global"
+      >
+        <p className="text-sm text-slate-600">
+          Esta acción cambia la cuenta de <strong>{globalAction?.displayName}</strong> en todas sus
+          compañías. Al deshabilitarla se cierran sus sesiones. Activarla conserva los accesos que
+          estaban suspendidos.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="secondary" disabled={saving} onClick={() => setGlobalAction(null)}>
+            Cancelar
+          </Button>
+          <Button disabled={saving} onClick={toggleGlobal}>
+            {saving ? 'Guardando…' : 'Confirmar cambio global'}
+          </Button>
+        </div>
       </Modal>
     </div>
   )

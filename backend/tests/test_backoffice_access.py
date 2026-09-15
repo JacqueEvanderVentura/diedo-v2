@@ -219,7 +219,8 @@ def test_basico_plan_limits_enabled_modules(
     enabled = set(created.json()["enabledModules"])
     assert "crm" in enabled
     assert "finance" not in enabled
-    assert "hr" not in enabled
+    # Agenda requires HR; new plan assignments include module prerequisites.
+    assert "hr" in enabled
 
 
 @pytest.mark.integration

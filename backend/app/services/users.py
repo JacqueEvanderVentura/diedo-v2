@@ -541,6 +541,66 @@ class UsersService:
         grant: PermissionGrant,
         assignments: list[RoleAssignmentSpec],
     ) -> tuple[list[RoleAssignmentSpec], dict[UUID, RoleRecord]]:
+        validated, roles = self._validate_assignment_targets(principal.workspace_id, assignments)
+        authorization = AuthorizationService(self._session)
+        for assignment in validated:
+            if assignment.scope_type == "workspace" and not grant.workspace_wide:
+                raise AuthorizationError(
+                    "Solo un actor con alcance workspace puede asignar ese alcance."
+                )
+            if assignment.scope_type == "legal_entity" and (
+                grant.allowed_legal_entity_ids is not None
+                and assignment.legal_entity_id not in grant.allowed_legal_entity_ids
+            ):
+                raise AuthorizationError("No puedes asignar una entidad legal fuera de tu alcance.")
+            if assignment.scope_type == "branch" and (
+                grant.allowed_branch_ids is not None
+                and assignment.branch_id not in grant.allowed_branch_ids
+            ):
+                raise AuthorizationError("No puedes asignar una sucursal fuera de tu alcance.")
+            role_permissions = self._repository.role_permission_codes(
+                principal.workspace_id, assignment.role_id
+            )
+            actor_permissions = authorization.assigned_permission_codes_for_scope(
+                principal,
+                scope_type=assignment.scope_type,
+                legal_entity_id=assignment.legal_entity_id,
+                branch_id=assignment.branch_id,
+            )
+            if not role_permissions.issubset(actor_permissions):
+                raise AuthorizationError(
+                    "No puedes asignar un rol con permisos superiores a los tuyos."
+                )
+        self._validate_role_scopes(validated, roles)
+        return validated, roles
+
+    def validate_workspace_assignments(
+        self,
+        workspace_id: UUID,
+        assignments: list[RoleAssignmentSpec],
+    ) -> tuple[list[RoleAssignmentSpec], dict[UUID, RoleRecord]]:
+        validated, roles = self._validate_assignment_targets(workspace_id, assignments)
+        self._validate_role_scopes(validated, roles)
+        return validated, roles
+
+    @staticmethod
+    def _validate_role_scopes(
+        assignments: list[RoleAssignmentSpec], roles: dict[UUID, RoleRecord]
+    ) -> None:
+        for assignment in assignments:
+            if (
+                roles[assignment.role_id].code == "workspace_admin"
+                and assignment.scope_type != "workspace"
+            ):
+                raise ConflictError(
+                    "El rol Administrador solo admite alcance workspace.", "roleAssignments"
+                )
+
+    def _validate_assignment_targets(
+        self,
+        workspace_id: UUID,
+        assignments: list[RoleAssignmentSpec],
+    ) -> tuple[list[RoleAssignmentSpec], dict[UUID, RoleRecord]]:
         if not assignments:
             raise ConflictError("El usuario debe conservar al menos una asignación de rol.")
         if len(assignments) != len({assignment.key for assignment in assignments}):
@@ -550,7 +610,7 @@ class UsersService:
         roles_by_id = {
             role_id: role
             for role_id in role_ids
-            if (role := self._repository.get_role(principal.workspace_id, role_id)) is not None
+            if (role := self._repository.get_role(workspace_id, role_id)) is not None
         }
         if len(roles_by_id) != len(role_ids):
             raise ResourceNotFoundError(
@@ -566,7 +626,7 @@ class UsersService:
         legal_entities_by_id = {
             entity.id: entity
             for entity in self._repository.get_legal_entities(
-                principal.workspace_id,
+                workspace_id,
                 requested_legal_entity_ids,
             )
         }
@@ -584,7 +644,7 @@ class UsersService:
         branches_by_id = {
             branch.id: branch
             for branch in self._repository.get_branches(
-                principal.workspace_id,
+                workspace_id,
                 requested_branch_ids,
             )
         }
@@ -594,10 +654,8 @@ class UsersService:
                 "roleAssignments",
             )
 
-        authorization = AuthorizationService(self._session)
         validated: list[RoleAssignmentSpec] = []
         for assignment in assignments:
-            role = roles_by_id[assignment.role_id]
             legal_entity_id: UUID | None = None
             branch_id: UUID | None = None
             if assignment.scope_type == "workspace":
@@ -606,10 +664,6 @@ class UsersService:
                         "Una asignación workspace no acepta IDs de alcance.",
                         "roleAssignments",
                     )
-                if not grant.workspace_wide:
-                    raise AuthorizationError(
-                        "Solo un actor con alcance workspace puede asignar ese alcance."
-                    )
             elif assignment.scope_type == "legal_entity":
                 if assignment.legal_entity_id is None or assignment.branch_id is not None:
                     raise ConflictError(
@@ -617,13 +671,6 @@ class UsersService:
                         "roleAssignments",
                     )
                 legal_entity_id = assignment.legal_entity_id
-                if (
-                    grant.allowed_legal_entity_ids is not None
-                    and legal_entity_id not in grant.allowed_legal_entity_ids
-                ):
-                    raise AuthorizationError(
-                        "No puedes asignar una entidad legal fuera de tu alcance."
-                    )
             elif assignment.scope_type == "branch":
                 if assignment.branch_id is None or assignment.legal_entity_id is not None:
                     raise ConflictError(
@@ -633,33 +680,9 @@ class UsersService:
                 branch = branches_by_id[assignment.branch_id]
                 legal_entity_id = branch.legal_entity_id
                 branch_id = branch.id
-                if (
-                    grant.allowed_branch_ids is not None
-                    and branch_id not in grant.allowed_branch_ids
-                ):
-                    raise AuthorizationError("No puedes asignar una sucursal fuera de tu alcance.")
             else:
                 raise ConflictError("El tipo de alcance no es válido.", "roleAssignments")
 
-            role_permissions = self._repository.role_permission_codes(
-                principal.workspace_id,
-                assignment.role_id,
-            )
-            actor_permissions = authorization.assigned_permission_codes_for_scope(
-                principal,
-                scope_type=assignment.scope_type,
-                legal_entity_id=legal_entity_id,
-                branch_id=branch_id,
-            )
-            if not role_permissions.issubset(actor_permissions):
-                raise AuthorizationError(
-                    "No puedes asignar un rol con permisos superiores a los tuyos."
-                )
-            if role.code == "workspace_admin" and assignment.scope_type != "workspace":
-                raise ConflictError(
-                    "El rol Administrador solo admite alcance workspace.",
-                    "roleAssignments",
-                )
             validated.append(
                 RoleAssignmentSpec(
                     role_id=assignment.role_id,

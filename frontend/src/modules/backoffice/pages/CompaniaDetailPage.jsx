@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ArrowLeft } from 'lucide-react'
@@ -6,16 +6,19 @@ import { backofficeApi } from '@/services/backofficeApi'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Card } from '@/components/ui/Card'
+import { Pagination } from '../components/Pagination'
+import { ModulePicker } from '../components/ModulePicker'
+import { SubscriptionForm } from '../components/SubscriptionForm'
+import { AuditPanel } from '../components/AuditPanel'
+import { workspacePlanPayload } from '../backofficeForm'
 
-import { Select } from '@/components/ui/Select'
+import { BackofficeSelect as Select } from '../components/BackofficeSelect'
 
 const STATUS_TONE = {
   active: 'success',
   suspended: 'warning',
   onboarding: 'neutral',
 }
-
-const CORE_MODULES = new Set(['foundation', 'iam'])
 
 function statusLabel(status) {
   if (status === 'active') return 'Activa'
@@ -31,60 +34,94 @@ export default function CompaniaDetailPage() {
   const [selectedModules, setSelectedModules] = useState([])
   const [planCode, setPlanCode] = useState('completo')
   const [members, setMembers] = useState([])
+  const [memberPage, setMemberPage] = useState(1)
+  const [memberPagination, setMemberPagination] = useState({ totalItems: 0, totalPages: 0 })
+  const [memberLoading, setMemberLoading] = useState(false)
+  const [revision, setRevision] = useState(0)
+  const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const loadSequence = useRef(0)
 
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current
     setLoading(true)
+    setError('')
     try {
-      const [data, planData, moduleData, memberData] = await Promise.all([
+      const [data, planData, moduleData] = await Promise.all([
         backofficeApi.getWorkspace(workspaceId),
         backofficeApi.listPlans(),
         backofficeApi.listModules(),
-        backofficeApi.listWorkspaceMembers(workspaceId),
       ])
+      if (sequence !== loadSequence.current) return
       setWorkspace(data)
       setPlans(planData.items || [])
       setModules(moduleData.items || [])
-      setMembers(memberData.items || [])
-      setSelectedModules(data.enabledModules || [])
-      setPlanCode(data.planCode || 'completo')
+      setSelectedModules(data.configuredModules || data.enabledModules || [])
+      setPlanCode(data.planCode || '')
     } catch (err) {
-      toast.error(err.message || 'No se pudo cargar la compañía.')
+      if (sequence === loadSequence.current)
+        setError(err.message || 'No se pudo cargar la compañía.')
     } finally {
-      setLoading(false)
+      if (sequence === loadSequence.current) setLoading(false)
     }
   }, [workspaceId])
 
   useEffect(() => {
+    setWorkspace(null)
     load()
+    return () => {
+      loadSequence.current += 1
+    }
   }, [load])
 
+  useEffect(() => {
+    setMemberPage(1)
+  }, [workspaceId])
+  useEffect(() => {
+    let active = true
+    setMemberLoading(true)
+    backofficeApi
+      .listWorkspaceMembers(workspaceId, { page: memberPage, pageSize: 25 })
+      .then((data) => {
+        if (active) {
+          setMembers(data.items || [])
+          setMemberPagination(data)
+        }
+      })
+      .catch((err) => {
+        if (active) setError(err.message)
+      })
+      .finally(() => {
+        if (active) setMemberLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [workspaceId, memberPage, revision])
+
+  const saved = (updated) => {
+    setWorkspace(updated)
+    setSelectedModules(updated.configuredModules || [])
+    setPlanCode(updated.planCode || '')
+    setRevision((n) => n + 1)
+    setError('')
+  }
   const saveSubscription = async () => {
     if (!workspace) return
     setSaving(true)
     try {
-      const updated = await backofficeApi.updateWorkspace(workspaceId, {
-        version: workspace.version,
-        planCode,
-        enabledModules: selectedModules,
-      })
-      setWorkspace(updated)
-      setSelectedModules(updated.enabledModules || [])
-      setPlanCode(updated.planCode || planCode)
+      const updated = await backofficeApi.updateWorkspace(
+        workspaceId,
+        workspacePlanPayload(workspace, planCode, selectedModules)
+      )
+      saved(updated)
       toast.success('Plan y módulos actualizados')
     } catch (err) {
-      toast.error(err.message || 'No se pudo actualizar la suscripción.')
+      setError(err.message || 'No se pudo actualizar el plan.')
     } finally {
       setSaving(false)
     }
-  }
-
-  const toggleModule = (code) => {
-    if (CORE_MODULES.has(code)) return
-    setSelectedModules((current) =>
-      current.includes(code) ? current.filter((item) => item !== code) : [...current, code].sort(),
-    )
   }
 
   const toggleStatus = async () => {
@@ -96,10 +133,10 @@ export default function CompaniaDetailPage() {
         version: workspace.version,
         status: nextStatus,
       })
-      setWorkspace(updated)
+      saved(updated)
       toast.success(nextStatus === 'suspended' ? 'Compañía suspendida' : 'Compañía reactivada')
     } catch (err) {
-      toast.error(err.message || 'No se pudo actualizar la compañía.')
+      setError(err.message || 'No se pudo actualizar la compañía.')
     } finally {
       setSaving(false)
     }
@@ -116,7 +153,12 @@ export default function CompaniaDetailPage() {
   if (!workspace) {
     return (
       <div className="mx-auto max-w-[1400px] p-6 sm:p-8">
-        <Card className="p-8 text-sm text-slate-500">Compañía no encontrada.</Card>
+        <Card className="p-8 text-sm text-slate-500">
+          <p role="alert">{error || 'Compañía no encontrada.'}</p>
+          <Button variant="secondary" className="mt-3" onClick={load}>
+            Reintentar
+          </Button>
+        </Card>
       </div>
     )
   }
@@ -135,14 +177,13 @@ export default function CompaniaDetailPage() {
         <div>
           <div className="flex flex-wrap items-center gap-3">
             <h2 className="font-heading text-xl font-semibold text-slate-900">{workspace.name}</h2>
-            <Badge tone={STATUS_TONE[workspace.status] || 'neutral'}>{statusLabel(workspace.status)}</Badge>
+            <Badge tone={STATUS_TONE[workspace.status] || 'neutral'}>
+              {statusLabel(workspace.status)}
+            </Badge>
           </div>
           <p className="mt-1 font-mono text-sm text-slate-500">{workspace.slug}</p>
           {workspace.planLabel && (
-            <p className="mt-1 text-sm text-slate-600">
-              Plan: {workspace.planLabel}
-              {workspace.planCustomized ? ' · personalizado' : ''}
-            </p>
+            <p className="mt-1 text-sm text-slate-600">Plan: {workspace.planLabel}</p>
           )}
         </div>
         <Button
@@ -156,6 +197,14 @@ export default function CompaniaDetailPage() {
         </Button>
       </div>
 
+      {error && (
+        <div role="alert" className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
+          {error}
+          <Button variant="secondary" size="sm" className="ml-3" onClick={load}>
+            Recargar datos actuales
+          </Button>
+        </div>
+      )}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="p-6">
           <h3 className="text-sm font-semibold text-slate-800">Datos generales</h3>
@@ -197,8 +246,24 @@ export default function CompaniaDetailPage() {
           <h3 className="text-sm font-semibold text-slate-800">Plan y módulos</h3>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-600">Plan comercial</label>
-              <Select value={planCode} onChange={(e) => setPlanCode(e.target.value)}>
+              <label className="mb-1 block text-sm font-medium text-slate-600">
+                Plan comercial
+              </label>
+              <Select
+                aria-label="Plan comercial"
+                value={planCode}
+                onChange={(e) => {
+                  const code = e.target.value
+                  setPlanCode(code)
+                  setSelectedModules(plans.find((item) => item.code === code)?.moduleCodes || [])
+                }}
+              >
+                <option value="" disabled>
+                  Sin plan asignado
+                </option>
+                {workspace.planCode && !plans.some((item) => item.code === workspace.planCode) && (
+                  <option value={workspace.planCode}>{workspace.planName} (archivado)</option>
+                )}
                 {plans.map((plan) => (
                   <option key={plan.planId} value={plan.code}>
                     {plan.name}
@@ -207,28 +272,59 @@ export default function CompaniaDetailPage() {
               </Select>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {modules.map((module) => {
-              const selected = selectedModules.includes(module.code)
-              const locked = CORE_MODULES.has(module.code)
-              return (
-                <button
-                  key={module.code}
-                  type="button"
-                  disabled={locked}
-                  onClick={() => toggleModule(module.code)}
-                  className={`rounded-full px-3 py-1 text-xs font-medium ${
-                    selected ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
-                  } ${locked ? 'opacity-70' : ''}`}
-                >
-                  {module.name}
-                </button>
-              )
-            })}
-          </div>
+          <ModulePicker
+            modules={modules}
+            selected={selectedModules}
+            onChange={setSelectedModules}
+            disabled={saving}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="mt-3"
+            disabled={!plans.some((plan) => plan.code === planCode)}
+            onClick={() =>
+              setSelectedModules(plans.find((plan) => plan.code === planCode)?.moduleCodes || [])
+            }
+          >
+            Restaurar módulos del plan
+          </Button>
+          <p className="mt-3 text-sm text-slate-500">
+            Módulos efectivos:{' '}
+            {workspace.enabledModules
+              ?.map((code) => modules.find((item) => item.code === code)?.name || code)
+              .join(', ') || 'Ninguno'}
+            .
+          </p>
+          {workspace.planCustomized && (
+            <p className="mt-2 text-xs text-slate-500">
+              La configuración difiere del catálogo actual del plan.
+            </p>
+          )}
           <Button type="button" className="mt-4" disabled={saving} onClick={saveSubscription}>
             Guardar plan y módulos
           </Button>
+        </Card>
+
+        <Card className="p-6 lg:col-span-2">
+          <h3 className="mb-4 text-sm font-semibold text-slate-800">Vigencia de la suscripción</h3>
+          {workspace.subscription ? (
+            <SubscriptionForm
+              key={`${workspaceId}-${workspace.subscription.version}`}
+              workspaceId={workspaceId}
+              subscription={workspace.subscription}
+              onSaved={(data) => {
+                saved(data)
+                toast.success('Vigencia actualizada')
+              }}
+              onReload={load}
+            />
+          ) : (
+            <p className="text-sm text-slate-500">
+              Sin plan asignado. Asigna un plan para gestionar su vigencia.
+            </p>
+          )}
         </Card>
 
         <Card className="p-6 lg:col-span-2">
@@ -241,18 +337,25 @@ export default function CompaniaDetailPage() {
               Gestionar usuarios
             </Link>
           </div>
+          {memberLoading && <p className="mt-3 text-sm text-slate-500">Cargando miembros…</p>}
           <ul className="mt-4 divide-y divide-slate-100">
             {members.length === 0 ? (
               <li className="py-3 text-sm text-slate-500">Sin miembros registrados.</li>
             ) : (
               members.map((member) => (
-                <li key={member.membershipId} className="flex items-center justify-between py-3 text-sm">
+                <li
+                  key={member.membershipId}
+                  className="flex items-center justify-between py-3 text-sm"
+                >
                   <div>
                     <p className="font-medium text-slate-900">{member.displayName}</p>
                     <p className="text-xs text-slate-500">{member.email}</p>
                   </div>
                   <Badge tone={member.platformStatus === 'active' ? 'success' : 'warning'}>
-                    {member.roleName || member.platformStatus}
+                    {member.roleName || 'Miembro'} ·{' '}
+                    {member.platformStatus === 'active' && member.membershipStatus === 'active'
+                      ? 'Activo'
+                      : 'Inactivo'}
                   </Badge>
                 </li>
               ))
@@ -260,6 +363,15 @@ export default function CompaniaDetailPage() {
           </ul>
         </Card>
 
+        <div className="lg:col-span-2">
+          <Pagination
+            page={memberPage}
+            totalItems={memberPagination.totalItems}
+            totalPages={memberPagination.totalPages}
+            onPage={setMemberPage}
+            disabled={memberLoading}
+          />
+        </div>
         <Card className="p-6 lg:col-span-2">
           <h3 className="text-sm font-semibold text-slate-800">Sucursales</h3>
           <ul className="mt-4 divide-y divide-slate-100">
@@ -269,12 +381,15 @@ export default function CompaniaDetailPage() {
                   <p className="font-medium text-slate-900">{branch.name}</p>
                   <p className="font-mono text-xs text-slate-500">{branch.code}</p>
                 </div>
-                <Badge tone={branch.status === 'active' ? 'success' : 'neutral'}>{branch.status}</Badge>
+                <Badge tone={branch.status === 'active' ? 'success' : 'neutral'}>
+                  {branch.status}
+                </Badge>
               </li>
             ))}
           </ul>
         </Card>
       </div>
+      <AuditPanel workspaceId={workspaceId} revision={revision} />
     </div>
   )
 }

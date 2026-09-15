@@ -1,3 +1,42 @@
+## Republicación solicitada desde full-stack
+
+Frontend reconstruido desde 159520977214271a5132fc069ba59814b6b648b8 en erp-cloudflare-release, conservando exclusivamente worker.js y su entrada main para el 404 autorizado. npm ci, build, 297 pruebas y dry-run aprobados. Publicado en producción: versión 14742d49-8400-4bda-8ec2-08ce417e8d5b. Cloudflare confirmó que los assets son idénticos a la publicación anterior. Comprobación HTTP posterior aprobada.
+
+## Verificación posterior: CORS de producción activo
+
+Comprobado el 2026-09-15 02:29 UTC: el despliegue API 9e3083ed-8a94-4e3c-894a-21fc26ed0cc4 terminó SUCCESS y ya incluye CORS de producción. No fue necesario volver a desplegar.
+
+- OPTIONS desde https://diedo-frontend-production.helios360erp.workers.dev: 200 con allow-origin exacto y allow-credentials=true.
+- Origen no autorizado: 400 sin allow-origin.
+- API ready, base de datos OK; comprobación completa de alojamiento de producción PASS.
+- El CI de frontend figura SUCCESS; los últimos resultados consultados de backend y despliegue automático todavía figuran FAILURE. La sesión real del usuario sigue pendiente de verificar.
+
+Esta actualización sustituye el estado anterior de CORS pendiente.
+
+# Estado actual de la migración gratuita
+
+- Web que ya conecta con la API: https://diedo-frontend-preview.helios360erp.workers.dev
+- Dirección definitiva publicada: https://diedo-frontend-production.helios360erp.workers.dev (CORS pendiente de aplicar en Railway).
+- API saludable, base de datos OK, revisión 20260912_0031. Código remoto integrado: 1595209.
+- Worker mínimo autorizado por el usuario: devuelve 404 para solicitudes no navegacionales sin archivo. Archivos existentes y navegación SPA siguen servidos directamente por Cloudflare.
+- Prueba real antes del arreglo: 200 al pedir JS inexistente. Después: PASS en preview, producción y Wrangler local (health, SPA, cabeceras, caché, MIME y 404).
+- La prueba de navegación usa curl porque fetch de Node sobrescribe Sec-Fetch-Mode; no se cambió el resultado esperado.
+- Versión preview: c2a6d2fd-1fa3-4628-a8cc-2382d3b744c7.
+- Versión producción: bfff7d32-85c3-4b1a-b98c-620d578e23ae.
+- Código de Worker y pruebas: commit 68d377e en codex/cloudflare-free. Mismo bundle React que el preview validado; los commits remotos nuevos no cambiaron src/public salvo health y headers ya presentes.
+- CORS conserva Railway, Pages y preview, y añade producción. El servicio activo aún devuelve 400 al origen producción; Railway omitió el intento por CI fallido. La llamada de redeploy fue rechazada porque el intento SKIPPED no tiene imagen. Queda un cambio CORS en el panel para aplicar tras arreglar CI.
+- CI backend reproducido: fallaba Ruff en los archivos de correo; corregido formato/imports. Ruff completo pasa y 27 pruebas de correo/configuración/CORS pasan. No se afirma que todo el CI remoto pase.
+- GitHub todavía no tiene CLOUDFLARE_API_TOKEN ni CLOUDFLARE_ACCOUNT_ID. Se requiere acceso de administración para configurarlos; la cuenta conectada tiene WRITE.
+- Pendiente: login real, renovación, logout y archivos con sesión del usuario; credenciales de Resend y recepción de un correo de prueba; CI completo y retiro de alojamientos anteriores tras las 48 horas de validación.
+
+## Siguiente paso para probar tú
+
+Abre la dirección preview e inicia sesión con tu usuario habitual. No envíes tu contraseña por el chat. La pantalla de acceso ya carga en el navegador.
+
+## Historial y guía anterior
+
+Las secciones siguientes son el registro de fases previas; ante diferencias prevalece este estado actual.
+
 # Publicar la web gratis, paso a paso
 
 ## Qué vamos a usar

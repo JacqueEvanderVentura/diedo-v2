@@ -39,6 +39,16 @@ async function loadSessionStore({ ready, demoEnabled, refreshed = false, me = nu
 afterEach(() => vi.clearAllMocks())
 
 describe('session bootstrap', () => {
+  it('conserva la identidad del contexto si no cambió para evitar recargas repetidas', async () => {
+    const loaded = await loadSessionStore({ ready: null, demoEnabled: false, me: {
+      userId: 'user-a', workspaceId: 'workspace-a', membershipId: 'member-a', displayName: 'Usuario', visibleBranches: [], enabledModules: ['foundation'],
+    } })
+    loaded.store.setState({ accessToken: 'access' })
+    await loaded.store.getState().refreshCurrentUser()
+    const user = loaded.store.getState().user
+    await loaded.store.getState().refreshCurrentUser()
+    expect(loaded.store.getState().user).toBe(user)
+  })
   it('queda online sin inventar identidad cuando refresh responde 401', async () => {
     const { store } = await loadSessionStore({
       ready: { status: 'ready', schemaRevision: '20260829_0006' },

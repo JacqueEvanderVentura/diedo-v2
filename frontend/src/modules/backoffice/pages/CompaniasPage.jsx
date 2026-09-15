@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Plus, Search } from 'lucide-react'
 import { backofficeApi } from '@/services/backofficeApi'
 import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
-import { Select } from '@/components/ui/Select'
+import { BackofficeSelect as Select } from '../components/BackofficeSelect'
 import {
   ResponsiveList,
   ResponsiveTable,
@@ -44,6 +45,7 @@ const emptyForm = () => ({
   ownerEmail: '',
   ownerName: '',
   ownerPassword: '',
+  identityMode: 'new',
   planCode: 'completo',
 })
 
@@ -63,6 +65,8 @@ function mapWorkspace(item) {
 
 export default function CompaniasPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const statusFilter = searchParams.get('status') || ''
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
@@ -93,22 +97,28 @@ export default function CompaniasPage() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter(
+    const candidates = statusFilter ? rows.filter((row) => row.status === statusFilter) : rows
+    if (!q) return candidates
+    return candidates.filter(
       (row) =>
         row.name.toLowerCase().includes(q) ||
         row.slug.toLowerCase().includes(q) ||
-        row.ownerEmail.toLowerCase().includes(q),
+        row.ownerEmail.toLowerCase().includes(q)
     )
-  }, [query, rows])
+  }, [query, rows, statusFilter])
 
-  const { rows: sorted, sortKey, sortDir, toggleSort } = useSortedRows(filtered, {
+  const {
+    rows: sorted,
+    sortKey,
+    sortDir,
+    toggleSort,
+  } = useSortedRows(filtered, {
     defaultSort: { key: 'name', dir: 'asc' },
   })
 
   const submitCreate = async (event) => {
     event.preventDefault()
-    const passwordError = newPasswordError(form.ownerPassword)
+    const passwordError = form.identityMode === 'new' ? newPasswordError(form.ownerPassword) : null
     if (passwordError) {
       toast.error(passwordError)
       return
@@ -125,8 +135,8 @@ export default function CompaniasPage() {
         planCode: form.planCode,
         owner: {
           email: form.ownerEmail.trim(),
-          displayName: form.ownerName.trim(),
-          password: form.ownerPassword,
+          displayName: form.identityMode === 'new' ? form.ownerName.trim() : form.ownerEmail.trim(),
+          ...(form.identityMode === 'new' ? { password: form.ownerPassword } : {}),
         },
       })
       toast.success('Compañía creada')
@@ -167,6 +177,17 @@ export default function CompaniasPage() {
         </div>
       </Card>
 
+      <label className="mb-4 block max-w-xs text-sm">
+        Estado de compañía
+        <Select
+          value={statusFilter}
+          onChange={(e) => setSearchParams(e.target.value ? { status: e.target.value } : {})}
+        >
+          <option value="">Todas</option>
+          <option value="active">Activas</option>
+          <option value="suspended">Suspendidas</option>
+        </Select>
+      </label>
       {loading ? (
         <Card className="p-8 text-sm text-slate-500">Cargando compañías…</Card>
       ) : sorted.length === 0 ? (
@@ -204,7 +225,9 @@ export default function CompaniasPage() {
                     </td>
                     <td className="text-sm text-slate-600">{row.planLabel}</td>
                     <td>
-                      <Badge tone={STATUS_TONE[row.status] || 'neutral'}>{statusLabel(row.status)}</Badge>
+                      <Badge tone={STATUS_TONE[row.status] || 'neutral'}>
+                        {statusLabel(row.status)}
+                      </Badge>
                     </td>
                     <td className="text-right text-sm text-slate-600">{row.branchCount}</td>
                   </tr>
@@ -213,12 +236,17 @@ export default function CompaniasPage() {
             </ResponsiveTable>
             <ResponsiveCards>
               {sorted.map((row) => (
-                <MobileCard key={row.id} onClick={() => navigate(`/backoffice/companias/${row.id}`)}>
+                <MobileCard
+                  key={row.id}
+                  onClick={() => navigate(`/backoffice/companias/${row.id}`)}
+                >
                   <MobileCardHeader title={row.name} subtitle={row.slug} />
                   <MobileField label="Owner" value={`${row.ownerName} · ${row.ownerEmail}`} />
                   <MobileField label="Estado" value={statusLabel(row.status)} />
                   <MobileCardFooter>
-                    <Badge tone={STATUS_TONE[row.status] || 'neutral'}>{statusLabel(row.status)}</Badge>
+                    <Badge tone={STATUS_TONE[row.status] || 'neutral'}>
+                      {statusLabel(row.status)}
+                    </Badge>
                   </MobileCardFooter>
                 </MobileCard>
               ))}
@@ -227,28 +255,63 @@ export default function CompaniasPage() {
         </SortableTableProvider>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Nueva compañía" size="lg">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Nueva compañía" wide>
         <form onSubmit={submitCreate} className="space-y-4">
+          <label className="block text-sm">
+            Tipo de cuenta del propietario
+            <Select
+              value={form.identityMode}
+              onChange={(e) =>
+                setForm({ ...form, identityMode: e.target.value, ownerPassword: '' })
+              }
+            >
+              <option value="new">Cuenta nueva</option>
+              <option value="existing">Cuenta existente</option>
+            </Select>
+          </label>
+          {form.identityMode === 'existing' && (
+            <p className="text-sm text-slate-500">
+              Indica el correo de la cuenta existente. Su nombre y contraseña se conservan.
+            </p>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-600">Nombre</label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+              <Input
+                aria-label="Nombre de compañía"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                required
+              />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-600">Slug</label>
-              <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} required />
+              <Input
+                aria-label="Slug"
+                value={form.slug}
+                onChange={(e) => setForm({ ...form, slug: e.target.value })}
+                required
+              />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-600">Moneda</label>
-              <Input value={form.defaultCurrency} onChange={(e) => setForm({ ...form, defaultCurrency: e.target.value })} />
+              <Input
+                value={form.defaultCurrency}
+                onChange={(e) => setForm({ ...form, defaultCurrency: e.target.value })}
+              />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-600">Zona horaria</label>
-              <Input value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} />
+              <Input
+                value={form.timezone}
+                onChange={(e) => setForm({ ...form, timezone: e.target.value })}
+              />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-600">Plan</label>
               <Select
+                aria-label="Plan de la compañía"
                 value={form.planCode}
                 onChange={(e) => setForm({ ...form, planCode: e.target.value })}
               >
@@ -261,19 +324,42 @@ export default function CompaniasPage() {
             </div>
           </div>
           <div className="border-t border-slate-100 pt-4">
-            <p className="mb-3 text-sm font-semibold text-slate-800">Usuario administrador (owner)</p>
+            <p className="mb-3 text-sm font-semibold text-slate-800">
+              Usuario administrador (owner)
+            </p>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-600">Nombre</label>
-                <Input value={form.ownerName} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} required />
+                <Input
+                  aria-label="Nombre del propietario"
+                  disabled={form.identityMode === 'existing'}
+                  value={form.ownerName}
+                  onChange={(e) => setForm({ ...form, ownerName: e.target.value })}
+                  required
+                />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-600">Email</label>
-                <Input type="email" value={form.ownerEmail} onChange={(e) => setForm({ ...form, ownerEmail: e.target.value })} required />
+                <Input
+                  type="email"
+                  aria-label="Email del propietario"
+                  value={form.ownerEmail}
+                  onChange={(e) => setForm({ ...form, ownerEmail: e.target.value })}
+                  required
+                />
               </div>
               <div className="sm:col-span-2">
-                <label className="mb-1 block text-sm font-medium text-slate-600">Contraseña inicial</label>
-                <Input type="password" value={form.ownerPassword} onChange={(e) => setForm({ ...form, ownerPassword: e.target.value })} required />
+                <label className="mb-1 block text-sm font-medium text-slate-600">
+                  Contraseña inicial
+                </label>
+                <Input
+                  type="password"
+                  aria-label="Contraseña inicial"
+                  value={form.ownerPassword}
+                  disabled={form.identityMode === 'existing'}
+                  onChange={(e) => setForm({ ...form, ownerPassword: e.target.value })}
+                  required
+                />
               </div>
             </div>
           </div>

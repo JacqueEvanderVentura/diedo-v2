@@ -16,13 +16,22 @@ export const backofficeApi = {
     if (params.search) query.set('search', params.search)
     if (params.workspaceId) query.set('workspaceId', params.workspaceId)
     if (params.status) query.set('status', params.status)
+    if (params.platformStatus) query.set('platformStatus', params.platformStatus)
     if (params.page) query.set('page', String(params.page))
     if (params.pageSize) query.set('pageSize', String(params.pageSize))
     const suffix = query.toString() ? `?${query.toString()}` : ''
     return apiClient.get(`/api/v1/backoffice/users${suffix}`)
   },
-  listWorkspaceMembers: (workspaceId) =>
-    apiClient.get(`/api/v1/backoffice/workspaces/${workspaceId}/members`),
+  listWorkspaceMembers: (workspaceId, params = {}) =>
+    apiClient.get(`/api/v1/backoffice/workspaces/${workspaceId}/members`, params),
+  getMember: (workspaceId, membershipId) =>
+    apiClient.get(`/api/v1/backoffice/workspaces/${workspaceId}/members/${membershipId}`),
+  memberOptions: (workspaceId) => apiClient.get(`/api/v1/backoffice/workspaces/${workspaceId}/member-options`),
+  updateMember: (workspaceId, membershipId, payload) =>
+    apiClient.patch(`/api/v1/backoffice/workspaces/${workspaceId}/members/${membershipId}`, payload),
+  updateSubscription: (workspaceId, payload) =>
+    apiClient.patch(`/api/v1/backoffice/workspaces/${workspaceId}/subscription`, payload),
+  listAudit: (params = {}) => apiClient.get('/api/v1/backoffice/audit', params),
   createUser: (payload) => apiClient.post('/api/v1/backoffice/users', payload),
   updateUser: (userId, payload) => apiClient.patch(`/api/v1/backoffice/users/${userId}`, payload),
 }

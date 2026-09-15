@@ -145,8 +145,11 @@ export const useSessionStore = create((set, get) => ({
   },
 
   refreshCurrentUser: async () => {
+    const token = get().accessToken
     const me = await authApi.me()
+    if (get().accessToken !== token) return get().user
     const user = mapSessionUser(me)
+    if (JSON.stringify(user) === JSON.stringify(get().user)) return get().user
     set(applySessionUser(user))
     return user
   },
@@ -215,4 +218,8 @@ bindSessionHandlers({
   getAccessToken: () => useSessionStore.getState().accessToken,
   setTokens: (tokens) => useSessionStore.getState().setTokens(tokens),
   clearSession: () => useSessionStore.getState().clearSession(),
+  refreshContext: async () => {
+    const state = useSessionStore.getState()
+    if (!state.user?.isPlatformOperator) await state.refreshCurrentUser()
+  },
 })

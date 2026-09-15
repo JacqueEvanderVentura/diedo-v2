@@ -194,6 +194,7 @@ class WorkspaceProvisioningService:
         owner_password: str | None,
         plan_code: str = DEFAULT_PLAN_CODE,
         enabled_module_codes: frozenset[str] | None = None,
+        actor_platform_user_id: UUID | None = None,
     ) -> ProvisionedWorkspace:
         if self._repository.workspace_by_slug(slug) is not None:
             raise ConflictError("Ya existe un workspace con este slug.", "slug")
@@ -201,6 +202,10 @@ class WorkspaceProvisioningService:
         normalized_email = normalize_email(owner_email)
         owner = self._repository.platform_user_by_email(normalized_email)
         existing_identity = owner is not None
+        if owner is not None and owner.is_platform_operator:
+            raise InvalidOperationError(
+                "Un operador no puede ser propietario de una compañía cliente.", "owner.email"
+            )
         if owner is None and owner_password is None:
             raise InvalidOperationError(
                 "Una identidad nueva debe recibir una contraseña inicial.",
@@ -317,10 +322,11 @@ class WorkspaceProvisioningService:
             entitlement_service = WorkspaceEntitlementService(self._session)
             plan = entitlement_service.require_plan_code(plan_code)
             enabled_module_set = (
-                entitlement_service.resolve_enabled_modules(enabled_module_codes)
+                entitlement_service.validate_module_codes(enabled_module_codes)
                 if enabled_module_codes is not None
                 else entitlement_service.plan_module_codes(plan)
             )
+            entitlement_service.validate_module_codes(enabled_module_set)
             entitlement_service.sync_entitlements(
                 workspace.id,
                 enabled_module_set,
@@ -412,13 +418,14 @@ class WorkspaceProvisioningService:
             self._session.add(
                 AuditEntry(
                     workspace_id=workspace.id,
-                    actor_platform_user_id=None,
+                    actor_platform_user_id=actor_platform_user_id,
                     action="workspace.provision",
                     target_type="workspace",
                     target_id=workspace.id,
                     outcome="success",
                     request_id=get_request_id() or None,
                     details={
+                        "actorType": "operator" if actor_platform_user_id else "api_key",
                         "ownerPlatformUserId": str(owner.id),
                         "existingIdentity": existing_identity,
                         "enabledModules": sorted(enabled_module_set),

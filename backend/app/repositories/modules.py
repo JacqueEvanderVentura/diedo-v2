@@ -5,7 +5,14 @@ from uuid import UUID
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
-from app.db.models import ModuleDefinition, ModuleEntitlement, Permission
+from app.db.models import (
+    ModuleDefinition,
+    ModuleEntitlement,
+    Permission,
+    Workspace,
+    WorkspaceSubscription,
+)
+from app.services.platform_workspace import PLATFORM_WORKSPACE_SLUG
 
 
 @dataclass(frozen=True)
@@ -21,6 +28,13 @@ class ModuleAccessRecord:
 class ModuleAccessRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
+
+    def customer_subscription(self, workspace_id: UUID) -> WorkspaceSubscription | None:
+        return self._session.scalar(
+            select(WorkspaceSubscription)
+            .join(Workspace, Workspace.id == WorkspaceSubscription.workspace_id)
+            .where(Workspace.id == workspace_id, Workspace.slug != PLATFORM_WORKSPACE_SLUG)
+        )
 
     def list_access_records(self, workspace_id: UUID) -> list[ModuleAccessRecord]:
         rows = self._session.execute(

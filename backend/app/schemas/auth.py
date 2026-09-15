@@ -86,6 +86,7 @@ class CurrentSessionResponse(ApiModel):
     effective_permission_codes: list[str]
     workspace_permission_codes: list[str]
     enabled_modules: list[str]
+    subscription_status: str | None = None
     is_platform_operator: bool = False
     elevation: SessionElevationResponse | None = None
 

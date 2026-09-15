@@ -55,15 +55,16 @@ class SubscriptionPlanRepository:
             select(WorkspaceSubscription).where(WorkspaceSubscription.workspace_id == workspace_id)
         )
 
-    @staticmethod
-    def _plan_record(plan: SubscriptionPlan) -> PlanRecord:
+    def _plan_record(self, plan: SubscriptionPlan) -> PlanRecord:
         return PlanRecord(
             id=plan.id,
             code=plan.code,
             name=plan.name,
             description=plan.description,
             status=plan.status,
-            module_codes=tuple(plan.module_codes or ()),
+            module_codes=tuple(
+                sorted(WorkspaceEntitlementService(self._session).plan_module_codes(plan))
+            ),
             sort_order=plan.sort_order,
             version=plan.version,
         )
@@ -89,8 +90,35 @@ class WorkspaceEntitlementService:
         enabled = (set(module_codes) | CORE_MODULE_CODES) & available
         return frozenset(enabled)
 
+    def validate_module_codes(self, module_codes: frozenset[str] | set[str]) -> frozenset[str]:
+        modules = self._session.scalars(
+            select(ModuleDefinition).where(ModuleDefinition.status == "available")
+        ).all()
+        dependencies = {module.code: set(module.dependency_codes or ()) for module in modules}
+        enabled = set(module_codes) | CORE_MODULE_CODES
+        unknown = enabled - dependencies.keys()
+        if unknown:
+            raise InvalidOperationError(
+                f"Módulos no disponibles: {', '.join(sorted(unknown))}.", "enabledModules"
+            )
+        missing = set().union(*(dependencies[code] for code in enabled)) - enabled
+        if missing:
+            raise InvalidOperationError(
+                f"Incluye los módulos requeridos: {', '.join(sorted(missing))}.", "enabledModules"
+            )
+        return frozenset(enabled)
+
     def plan_module_codes(self, plan: SubscriptionPlan) -> frozenset[str]:
-        return self.resolve_enabled_modules(frozenset(plan.module_codes or ()))
+        enabled = set(self.resolve_enabled_modules(frozenset(plan.module_codes or ())))
+        modules = self._session.scalars(
+            select(ModuleDefinition).where(ModuleDefinition.status == "available")
+        ).all()
+        dependencies = {module.code: set(module.dependency_codes or ()) for module in modules}
+        while True:
+            required = set().union(*(dependencies.get(code, set()) for code in enabled))
+            if required <= enabled:
+                return frozenset(enabled)
+            enabled |= required
 
     def enabled_module_codes_for_workspace(self, workspace_id: UUID) -> frozenset[str]:
         rows = self._session.execute(
@@ -161,7 +189,6 @@ class WorkspaceEntitlementService:
             self._session.add(subscription)
         else:
             subscription.plan_id = plan.id
-            subscription.status = "active"
             subscription.version += 1
         self._session.flush()
         return subscription
@@ -187,7 +214,9 @@ class WorkspaceEntitlementService:
         status: str | None,
         expected_version: int,
     ) -> PlanRecord:
-        plan = self._plans.get_plan(plan_id)
+        plan = self._session.scalar(
+            select(SubscriptionPlan).where(SubscriptionPlan.id == plan_id).with_for_update()
+        )
         if plan is None:
             raise ResourceNotFoundError("El plan no existe.", "planId")
         if plan.version != expected_version:
@@ -200,12 +229,11 @@ class WorkspaceEntitlementService:
         if description is not None:
             plan.description = description
         if module_codes is not None:
-            self.resolve_enabled_modules(frozenset(module_codes))
-            plan.module_codes = sorted(set(module_codes) | CORE_MODULE_CODES)
+            plan.module_codes = sorted(self.validate_module_codes(frozenset(module_codes)))
         if status is not None:
             if status not in {"active", "archived"}:
                 raise InvalidOperationError("Estado de plan inválido.", "status")
             plan.status = status
         plan.version += 1
         self._session.flush()
-        return SubscriptionPlanRepository._plan_record(plan)
+        return self._plans._plan_record(plan)

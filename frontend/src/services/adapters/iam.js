@@ -142,6 +142,7 @@ export function mapSessionUser(me) {
     effectivePermissionCodes: me.effectivePermissionCodes || [],
     workspacePermissionCodes: me.workspacePermissionCodes || [],
     enabledModules: me.enabledModules || [],
+    subscriptionStatus: me.subscriptionStatus || null,
     isPlatformOperator: Boolean(me.isPlatformOperator),
     elevation: me.elevation
       ? {
