@@ -24,10 +24,7 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Optional idempotency key to avoid duplicate sends.",
     )
-    parser.add_argument(
-        "--text",
-        default="Mensaje de prueba del script administrativo de correo."
-    )
+    parser.add_argument("--text", default="Mensaje de prueba del script administrativo de correo.")
     parser.add_argument(
         "--html",
         default="<p>Mensaje de prueba del script administrativo de correo.</p>",

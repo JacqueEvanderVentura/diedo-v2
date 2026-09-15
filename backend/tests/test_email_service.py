@@ -3,8 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-
 from app.config import Settings
+from app.scripts import send_resend_test
 from app.services import email as email_service
 from app.services.email import (
     EmailAuthenticationError,
@@ -16,7 +16,6 @@ from app.services.email import (
     EmailValidationError,
     send_email,
 )
-from app.scripts import send_resend_test
 
 
 def _settings_for_test(*, enabled: bool = True) -> Settings:
@@ -29,8 +28,11 @@ def _settings_for_test(*, enabled: bool = True) -> Settings:
     )
 
 
-def _configure_resend_stub(monkeypatch: pytest.MonkeyPatch, *, send_result: object) -> dict[str, object]:
+def _configure_resend_stub(
+    monkeypatch: pytest.MonkeyPatch, *, send_result: object
+) -> dict[str, object]:
     captured: dict[str, object] = {}
+
     class _SdkError(Exception):
         pass
 
@@ -54,6 +56,7 @@ def _configure_resend_stub(monkeypatch: pytest.MonkeyPatch, *, send_result: obje
     monkeypatch.setattr(email_service, "RequestsClient", lambda timeout: f"http-client:{timeout}")
     monkeypatch.setattr(email_service, "MissingApiKeyError", _AuthError)
     monkeypatch.setattr(email_service, "InvalidApiKeyError", _AuthError)
+
     class _ValidationError(_SdkError):
         pass
 
@@ -77,7 +80,9 @@ def test_send_email_rejects_when_disabled_without_force() -> None:
         )
 
 
-def test_send_email_raises_if_api_key_missing_even_with_force(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_send_email_raises_if_api_key_missing_even_with_force(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _configure_resend_stub(monkeypatch, send_result={"id": "ignored"})
 
     with pytest.raises(EmailConfigurationError, match="no está configurada"):
@@ -212,17 +217,20 @@ def test_send_resend_test_command_outputs_only_status_and_provider_id(
         "send_email",
         lambda **_kwargs: EmailDeliveryResult(provider_id="provider-123"),
     )
-    monkeypatch.setattr("sys.argv", [
-        "send_resend_test.py",
-        "--to",
-        "owner@erp.dev",
-        "--subject",
-        "Mensaje de prueba",
-        "--text",
-        "Contenido secreto",
-        "--html",
-        "<p>Contenido secreto</p>",
-    ])
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "send_resend_test.py",
+            "--to",
+            "owner@erp.dev",
+            "--subject",
+            "Mensaje de prueba",
+            "--text",
+            "Contenido secreto",
+            "--html",
+            "<p>Contenido secreto</p>",
+        ],
+    )
 
     send_resend_test.main()
 
