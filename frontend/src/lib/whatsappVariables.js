@@ -8,6 +8,7 @@ export const WHATSAPP_VARIABLE_CHIPS = {
     { key: 'fecha', label: 'FECHA' },
     { key: 'hora', label: 'HORA' },
     { key: 'servicio', label: 'SERVICIO' },
+    { key: 'enlace', label: 'ENLACE' },
     { key: 'cita_fecha', label: 'CITA FECHA' },
     { key: 'cita_hora', label: 'CITA HORA' },
     { key: 'cita_servicio', label: 'CITA SERVICIO' },

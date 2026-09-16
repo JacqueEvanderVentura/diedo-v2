@@ -17,6 +17,7 @@ import { DeleteAppointmentModal } from '../components/DeleteAppointmentModal'
 import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
 import { appointmentWhatsAppFields, buildWhatsAppVariables } from '@/lib/whatsappVariables'
 import { formatShortDate, endTime } from '../lib/calendar'
+import { buildBookingUrl } from '../lib/selfBooking'
 import { isProximoAppointment } from '../lib/appointments'
 import { ResponsiveList, ResponsiveTable, ResponsiveCards } from '@/components/ui/ResponsiveList'
 import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
@@ -69,6 +70,7 @@ function ActionButtons({ apt, onEdit, onDelete, onShare, canManage, canDelete, o
         variables={{
           ...buildWhatsAppVariables({ name: apt.customerName, phone: apt.customerPhone }),
           ...appointmentWhatsAppFields(apt),
+          enlace: buildBookingUrl(apt.branchId),
         }}
         data-testid={`gestion-wa-${apt.id}`}
       />

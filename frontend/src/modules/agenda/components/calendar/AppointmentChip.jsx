@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
 import { aptTone } from '../../lib/calendar'
 import { appointmentWhatsAppFields, buildWhatsAppVariables } from '@/lib/whatsappVariables'
+import { buildBookingUrl } from '../../lib/selfBooking'
 
 const TONES = {
   default: 'bg-blue-50 border-blue-100 text-blue-900 hover:bg-blue-100',
@@ -45,6 +46,7 @@ export function AppointmentChip({ apt, onClick, compact }) {
           variables={{
             ...buildWhatsAppVariables({ name: apt.customerName, phone: apt.customerPhone }),
             ...appointmentWhatsAppFields(apt),
+            enlace: buildBookingUrl(apt.branchId),
           }}
           data-testid={`calendar-apt-wa-${apt.id}`}
         />
