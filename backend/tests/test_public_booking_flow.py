@@ -8,6 +8,7 @@ from app.db.models import Appointment, Branch, CustomerBranchAssignment, Employe
 from app.db.models.email_notifications import EmailNotification
 from app.db.session import get_session_factory
 from app.services import email_notifications
+from app.services.appointment_reminders import REMINDER_EVENT, AppointmentReminderService
 from app.services.email import EmailDeliveryResult, EmailTransportError
 from sqlalchemy import select
 
@@ -321,6 +322,118 @@ def test_booking_price_idempotency_and_token_management(client, booking_setup):
             ).all()
         )
         assert assigned == {UUID(branch), other_branch}
+
+
+@pytest.mark.integration
+def test_admin_appointment_responses_include_notification(client, booking_setup):
+    headers, _, branch, employee, service = booking_setup
+    body = payload_for(employee, service)
+    base = f"/api/v1/public/booking/branches/{branch}"
+    public = client.post(
+        f"{base}/appointments",
+        json=body,
+        headers={"Idempotency-Key": str(uuid7())},
+    )
+    assert public.status_code == 201, public.text
+    public_appointment = public.json()["appointment"]
+    resources = client.get(
+        "/api/v1/appointment-resources", headers=headers, params={"branchId": branch}
+    ).json()["items"]
+    created = client.post(
+        "/api/v1/appointments",
+        headers={**headers, "Idempotency-Key": str(uuid7())},
+        json={
+            "branchId": branch,
+            "resourceId": resources[0]["id"],
+            "customerId": public_appointment["customerId"],
+            "employeeId": employee,
+            "serviceId": service,
+            "date": body["date"],
+            "time": "14:00",
+            "duration": 45,
+            "customerName": body["displayName"],
+            "customerPhone": body["phone"],
+            "serviceName": "Servicio administrativo",
+            "price": "1250.00",
+        },
+    )
+    assert created.status_code == 201, created.text
+    appointment = created.json()["items"][0]
+    assert appointment["notification"]["status"] == "disabled"
+    cancelled = client.patch(
+        f"/api/v1/appointments/{appointment['id']}",
+        headers=headers,
+        json={"version": appointment["version"], "status": "cancelled"},
+    )
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["notification"]["status"] == "disabled"
+
+
+@pytest.mark.integration
+def test_persisted_appointment_reminders_send_once_and_omit_short_notice(
+    client, booking_setup, monkeypatch
+):
+    _, _, branch, employee, service = booking_setup
+    monkeypatch.setattr(settings, "email_enabled", True)
+    deliveries = []
+
+    def success(**kwargs):
+        deliveries.append(kwargs)
+        return EmailDeliveryResult(provider_id=f"provider-{len(deliveries)}")
+
+    monkeypatch.setattr(email_notifications, "send_email", success)
+    base = f"/api/v1/public/booking/branches/{branch}"
+    first = client.post(
+        f"{base}/appointments",
+        json=payload_for(employee, service),
+        headers={"Idempotency-Key": str(uuid7())},
+    )
+    assert first.status_code == 201, first.text
+    second_body = {**payload_for(employee, service), "time": "13:00"}
+    second = client.post(
+        f"{base}/appointments",
+        json=second_body,
+        headers={"Idempotency-Key": str(uuid7())},
+    )
+    assert second.status_code == 201, second.text
+    now = datetime.now(UTC).replace(microsecond=0)
+    with get_session_factory()() as session:
+        first_appointment = session.get(Appointment, UUID(first.json()["appointment"]["id"]))
+        second_appointment = session.get(Appointment, UUID(second.json()["appointment"]["id"]))
+        for appointment in (first_appointment, second_appointment):
+            appointment.starts_at = now + timedelta(hours=24) - timedelta(minutes=5)
+            appointment.ends_at = appointment.starts_at + timedelta(
+                minutes=appointment.duration_minutes
+            )
+            appointment.reminder_sent = False
+        first_appointment.schedule_changed_at = now - timedelta(days=2)
+        second_appointment.schedule_changed_at = now
+        session.commit()
+
+        summary = AppointmentReminderService(session).process_due(
+            recipient_email="booking-test@example.com",
+            now=now,
+        )
+        assert summary.sent == 1
+        assert summary.omitted == 1
+        assert session.get(Appointment, first_appointment.id).reminder_sent is True
+        notices = session.scalars(
+            select(EmailNotification).where(
+                EmailNotification.event_type == REMINDER_EVENT,
+                EmailNotification.appointment_id.in_([first_appointment.id, second_appointment.id]),
+            )
+        ).all()
+        assert len(notices) == 2
+        assert {notice.status for notice in notices} == {"sent", "superseded"}
+        repeat = AppointmentReminderService(session).process_due(
+            recipient_email="booking-test@example.com",
+            now=now + timedelta(minutes=5),
+        )
+        assert repeat.sent == 0
+    reminder_deliveries = [
+        item for item in deliveries if item["idempotency_key"].startswith("notification/")
+    ]
+    assert len(reminder_deliveries) >= 1
 
 
 @pytest.mark.integration

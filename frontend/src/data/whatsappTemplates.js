@@ -3,12 +3,12 @@ export const DEFAULT_WHATSAPP_TEMPLATES = {
     {
       id: 'recordatorio',
       name: 'Recordatorio de Cita',
-      body: 'Hola {{nombre_cliente}}, te recordamos tu cita programada para el {{fecha}} a las {{hora}} para {{servicio}}. ¡Te esperamos!',
+      body: 'Hola {{nombre_cliente}}, te recordamos tu cita programada para el {{fecha}} a las {{hora}} para {{servicio}} en {{sucursal}}. ¡Te esperamos!',
     },
     {
       id: 'confirmacion',
       name: 'Confirmación de Cita',
-      body: 'Hola {{nombre_cliente}}, tu cita para el {{fecha}} a las {{hora}} ha sido confirmada.',
+      body: 'Hola {{nombre_cliente}}, tu cita para {{servicio}} el {{fecha}} a las {{hora}} en {{sucursal}} ha sido confirmada.',
     },
     {
       id: 'enlace-agendacion',
@@ -43,7 +43,7 @@ export const DEFAULT_WHATSAPP_TEMPLATES = {
 }
 
 export const WHATSAPP_VARIABLES = {
-  agenda: ['nombre_cliente', 'fecha', 'hora', 'servicio', 'enlace'],
+  agenda: ['nombre_cliente', 'fecha', 'hora', 'servicio', 'sucursal', 'enlace'],
   oportunidades: ['nombre_cliente', 'empresa', 'ubicacion'],
   clientes: ['nombre_cliente', 'empresa'],
 }

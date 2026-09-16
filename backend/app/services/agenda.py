@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
 from calendar import monthrange
+from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from hashlib import sha256
@@ -16,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.core.request_context import get_request_id
 from app.db.models import Appointment, Branch, Customer, Workspace
 from app.db.models.agenda import ACTIVE_APPOINTMENT_STATUSES
+from app.db.models.email_notifications import EmailNotification
 from app.repositories.agenda import (
     AgendaRepository,
     AppointmentListResult,
@@ -35,6 +38,7 @@ from app.services.mailer import render_appointment_email
 from app.services.pos import PosService
 
 _WEEKDAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+logger = logging.getLogger(__name__)
 _FIELD_META = {
     "scheduled_date": ("date", "Fecha"),
     "scheduled_time": ("time", "Hora"),
@@ -67,7 +71,7 @@ class AgendaService:
 
     def _enqueue_notification(
         self, appointment: Appointment, event: str, branch: Branch, workspace: Workspace
-    ) -> Any | None:
+    ) -> EmailNotification | None:
         if appointment.customer_id is None:
             return None
         email = self._session.scalar(
@@ -93,16 +97,29 @@ class AgendaService:
             workspace_id=appointment.workspace_id,
             appointment_id=appointment.id,
             event_key=f"{event}/{appointment.id}/{appointment.version}",
+            event_type=event,
             **content,
         )
 
-    def _deliver_after_commit(self, notifications: list[Any]) -> None:
+    def _deliver_after_commit(self, notifications: list[EmailNotification]) -> None:
         for notification in notifications:
             try:
                 deliver_email(self._session, notification.id)
             except Exception:
                 # The appointment operation has already succeeded; delivery is retryable.
+                logger.exception("Unexpected appointment email delivery failure.")
                 self._session.rollback()
+
+    @staticmethod
+    def _records_with_notifications(
+        records: tuple[AppointmentRecord, ...],
+        notifications: list[EmailNotification],
+    ) -> tuple[AppointmentRecord, ...]:
+        by_appointment = {notice.appointment_id: notice for notice in notifications}
+        return tuple(
+            replace(record, notification=by_appointment.get(record.appointment.id))
+            for record in records
+        )
 
     def list_resources(self, grant: PermissionGrant, branch_id: UUID) -> tuple[Any, ...]:
         self._require_branch_access(grant, branch_id)
@@ -208,7 +225,7 @@ class AgendaService:
         )
         recurrence_group_id = uuid7() if len(scheduled_dates) > 1 else None
         appointments: list[Appointment] = []
-        notifications: list[Any] = []
+        notifications: list[EmailNotification] = []
         workspace = self._session.scalar(
             select(Workspace).where(Workspace.id == grant.workspace_id)
         )
@@ -268,7 +285,7 @@ class AgendaService:
                     ),
                     first_time=cast(bool, values["first_time"]),
                     free_trial=cast(bool, values["free_trial"]),
-                    reminder_sent=cast(bool, values["reminder_sent"]),
+                    reminder_sent=False,
                     source=cast(str, values["source"]),
                     recurrence=recurrence,
                     recurrence_group_id=recurrence_group_id,
@@ -357,9 +374,10 @@ class AgendaService:
 
         if commit:
             self._deliver_after_commit(notifications)
-        return self._repository.records_for_ids(
+        records = self._repository.records_for_ids(
             grant.workspace_id, [appointment.id for appointment in appointments]
         )
+        return self._records_with_notifications(records, notifications)
 
     def update_appointment(
         self,
@@ -410,14 +428,13 @@ class AgendaService:
             timezone=branch.timezone,
         )
         status = cast(str, changes.get("status", appointment.status))
-        schedule_changed = (
+        reminder_schedule_changed = (
             scheduled_date != appointment.scheduled_date
             or scheduled_time != appointment.scheduled_time
             or duration != appointment.duration_minutes
             or branch_id != appointment.branch_id
             or employee_id != appointment.employee_id
-            or service_id != appointment.service_id
-            or customer_id != appointment.customer_id
+            or resource_id != appointment.resource_id
         )
         completion_fields = self._resolve_completion_fields(
             appointment=appointment,
@@ -505,18 +522,23 @@ class AgendaService:
             # A changed schedule must be eligible for a new 24-hour reminder.
             # The client cannot force this flag through the administrative API.
             "reminder_sent": (
-                False if status == "confirmed" and schedule_changed else appointment.reminder_sent
+                False
+                if status == "confirmed" and reminder_schedule_changed
+                else appointment.reminder_sent
             ),
         }
         for field, value in field_mapping.items():
             setattr(appointment, field, value)
         appointment.updated_by_platform_user_id = principal.platform_user_id
+        if reminder_schedule_changed:
+            appointment.schedule_revision += 1
+            appointment.schedule_changed_at = datetime.now(UTC)
         appointment.version += 1
         after = self._public_values(appointment)
         event_changes = self._diff_changes(before, after)
         action = "status_change" if set(changes) == {"status"} else "update"
 
-        notifications: list[Any] = []
+        notifications: list[EmailNotification] = []
         workspace = self._session.scalar(
             select(Workspace).where(Workspace.id == grant.workspace_id)
         )
@@ -550,7 +572,7 @@ class AgendaService:
                     event = "appointment.cancelled"
                 elif status == "confirmed" and previous_status != "confirmed":
                     event = "appointment.confirmed"
-                elif status == "confirmed" and schedule_changed:
+                elif status == "confirmed" and reminder_schedule_changed:
                     event = "appointment.rescheduled"
                 if event:
                     queued = self._enqueue_notification(appointment, event, branch, workspace)
@@ -576,7 +598,7 @@ class AgendaService:
         records = self._repository.records_for_ids(grant.workspace_id, [appointment.id])
         if not records:
             raise RuntimeError("Updated appointment could not be reloaded.")
-        return records[0]
+        return self._records_with_notifications(tuple(records), notifications)[0]
 
     def deactivate_appointment(
         self,

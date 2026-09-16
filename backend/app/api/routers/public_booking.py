@@ -23,6 +23,7 @@ from app.schemas.public_booking import (
     PublicRescheduleAppointmentRequest,
     PublicSlotsResponse,
 )
+from app.services.appointment_reminders import AppointmentReminderService
 from app.services.errors import ResourceNotFoundError
 from app.services.public_booking import AuthorizationErrorPublic, PublicBookingService
 
@@ -267,6 +268,15 @@ def send_appointment_reminders(
     database: DatabaseSession,
     _access: BackofficeAccess,
     workspace_id: Annotated[UUID | None, Query(alias="workspaceId")] = None,
-) -> dict[str, int]:
-    sent = PublicBookingService(database).send_due_reminders(workspace_id)
-    return {"sent": sent}
+    dry_run: Annotated[bool, Query(alias="dryRun")] = False,
+    recipient_email: Annotated[str | None, Query(alias="recipientEmail", max_length=320)] = None,
+) -> dict[str, int | bool]:
+    return (
+        AppointmentReminderService(database)
+        .process_due(
+            workspace_id=workspace_id,
+            recipient_email=recipient_email,
+            dry_run=dry_run,
+        )
+        .as_dict()
+    )

@@ -34,6 +34,7 @@ from app.schemas.common import ErrorResponse
 from app.schemas.public_booking import BookingLinkEmailRequest, EmailNotificationResponse
 from app.services.agenda import AgendaService
 from app.services.booking_links import send_booking_link
+from app.services.email_notifications import notification_result
 
 router = APIRouter(prefix="/api/v1", tags=["agenda"])
 
@@ -141,6 +142,11 @@ def _appointment_response(record: AppointmentRecord) -> AppointmentResponse:
         updated_at=appointment.updated_at,
         version=appointment.version,
         history=history,
+        notification=(
+            EmailNotificationResponse.model_validate(notification_result(record.notification))
+            if record.notification is not None
+            else None
+        ),
     )
 
 

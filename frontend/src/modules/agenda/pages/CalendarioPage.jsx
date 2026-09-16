@@ -81,8 +81,8 @@ export default function CalendarioPage() {
       if (!showCancelled && a.status === 'cancelada') return false
       if (!q) return true
       return a.customerName.toLowerCase().includes(q) || (a.serviceName || '').toLowerCase().includes(q)
-    })
-  }, [appointments, search, showCancelled, branchId])
+    }).map((a) => ({ ...a, branchName: branches.find((b) => b.id === a.branchId)?.name || '' }))
+  }, [appointments, search, showCancelled, branchId, branches])
 
   const step = (dir) => {
     if (view === 'month') setCursor((c) => addMonthsKey(c, dir))

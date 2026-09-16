@@ -127,6 +127,8 @@ def _send_email(
     idempotency_key: str | None,
     config: Settings = settings,
     force_send: bool = False,
+    sender: str | None = None,
+    reply_to: str | None = None,
 ) -> EmailDeliveryResult:
     """Send one transactional email and return the provider identifier."""
 
@@ -142,15 +144,16 @@ def _send_email(
 
     payload: Emails.SendParams = {
         "to": _normalize_recipient(to),
-        "from": config.email_from,
+        "from": sender or config.email_from,
         "subject": subject,
         "html": html,
         "text": text,
     }
 
     previous_client = getattr(resend, "default_http_client", None)
-    if config.email_reply_to:
-        payload["reply_to"] = config.email_reply_to
+    effective_reply_to = reply_to if reply_to is not None else config.email_reply_to
+    if effective_reply_to:
+        payload["reply_to"] = effective_reply_to
     previous_api_key = getattr(resend, "api_key", None)
 
     if RequestsClient is not None:
@@ -192,6 +195,8 @@ def send_email(
     idempotency_key: str | None,
     config: Settings = settings,
     force_send: bool = False,
+    sender: str | None = None,
+    reply_to: str | None = None,
 ) -> EmailDeliveryResult:
     # The SDK stores credentials/client globally. Serialize setup, send and restore.
     with _SDK_LOCK:
@@ -203,4 +208,6 @@ def send_email(
             idempotency_key=idempotency_key,
             config=config,
             force_send=force_send,
+            sender=sender,
+            reply_to=reply_to,
         )

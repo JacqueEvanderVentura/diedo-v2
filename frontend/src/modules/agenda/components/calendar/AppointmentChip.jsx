@@ -23,6 +23,7 @@ export function AppointmentChip({ apt, onClick, compact }) {
         onClick?.(apt)
       }}
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           e.stopPropagation()

@@ -32,6 +32,10 @@ const DEFAULT_NEW_TEMPLATE_BODY = {
   clientes: 'Hola {{firstName}}, ',
 }
 
+const unresolvedVariables = (message) => (
+  Array.from(String(message || '').matchAll(/\{\{(\w+)\}\}/g)).map((match) => match[1])
+)
+
 export function WhatsAppMenuButton({
   phone,
   context = 'clientes',
@@ -69,8 +73,15 @@ export function WhatsAppMenuButton({
       if (anchorRef.current?.contains(e.target) || menuRef.current?.contains(e.target)) return
       setOpen(false)
     }
+    const onKey = (e) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
     document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [open])
 
   const openCreateModal = () => {
@@ -92,15 +103,21 @@ export function WhatsAppMenuButton({
       toast.error('Este contacto no tiene teléfono')
       return
     }
+    const message = fillTemplate(tpl.body, resolvedVariables)
     setPreview({
       template: tpl,
-      message: fillTemplate(tpl.body, resolvedVariables),
+      message,
+      missing: unresolvedVariables(message),
     })
     setOpen(false)
   }
 
   const sendPreview = () => {
     if (!preview) return
+    if (preview.missing?.length) {
+      toast.error(`Faltan variables: ${preview.missing.join(', ')}`)
+      return
+    }
     const url = waMeUrl(phone, preview.message)
     if (!url) {
       toast.error('Teléfono no válido para WhatsApp')
@@ -232,8 +249,17 @@ export function WhatsAppMenuButton({
             </p>
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={() => setPreview(null)}>Cancelar</Button>
-              <Button onClick={sendPreview} data-testid={testId ? `${testId}-send` : 'wa-preview-send'}>
-                Enviar por WhatsApp
+              {preview?.missing?.length > 0 && (
+                <p className="mr-auto text-sm font-medium text-amber-600">
+                  Faltan variables: {preview.missing.join(', ')}
+                </p>
+              )}
+              <Button
+                onClick={sendPreview}
+                disabled={preview?.missing?.length > 0}
+                data-testid={testId ? `${testId}-send` : 'wa-preview-send'}
+              >
+                Abrir WhatsApp
               </Button>
             </div>
           </div>

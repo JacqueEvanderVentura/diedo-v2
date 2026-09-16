@@ -28,6 +28,7 @@ from app.db.models.email_notifications import EmailNotification
 from app.repositories.agenda import AgendaRepository
 from app.repositories.master_data import MasterDataRepository
 from app.services.agenda import AgendaService
+from app.services.appointment_reminders import AppointmentReminderService
 from app.services.auth import AuthPrincipal
 from app.services.authorization import PermissionGrant
 from app.services.booking_availability import get_available_slots
@@ -41,7 +42,7 @@ from app.services.customer_documents import (
 )
 from app.services.email_notifications import deliver_email, enqueue_email, notification_result
 from app.services.errors import ConflictError, InvalidOperationError, ResourceNotFoundError
-from app.services.mailer import render_appointment_email, send_appointment_email
+from app.services.mailer import render_appointment_email
 from app.services.master_data import normalize_name
 
 
@@ -498,43 +499,8 @@ class PublicBookingService:
         return self._finish_notification(record.appointment, notification)
 
     def send_due_reminders(self, workspace_id: UUID | None = None) -> int:
-        from datetime import UTC, datetime, timedelta
-
-        now = datetime.now(UTC)
-        window_start = now + timedelta(hours=23)
-        window_end = now + timedelta(hours=25)
-        query = select(Appointment).where(
-            Appointment.status == "confirmed",
-            Appointment.record_status == "active",
-            Appointment.reminder_sent.is_(False),
-            Appointment.starts_at >= window_start,
-            Appointment.starts_at <= window_end,
-        )
-        if workspace_id is not None:
-            query = query.where(Appointment.workspace_id == workspace_id)
-        sent = 0
-        for appointment in self._session.scalars(query).all():
-            email = self._customer_email(appointment.customer_id)
-            branch = self._agenda.branch(appointment.workspace_id, appointment.branch_id)
-            workspace = self._session.scalar(
-                select(Workspace).where(Workspace.id == appointment.workspace_id)
-            )
-            if not email or branch is None or workspace is None:
-                continue
-            token = issue_appointment_management_token(appointment.id)
-            result = send_appointment_email(
-                event="appointment.reminder",
-                to=email,
-                appointment=appointment,
-                branch_name=branch.name,
-                workspace_name=workspace.name,
-                management_token=token,
-            )
-            if result.get("sent"):
-                appointment.reminder_sent = True
-                sent += 1
-        self._session.commit()
-        return sent
+        result = AppointmentReminderService(self._session).process_due(workspace_id=workspace_id)
+        return int(result.sent)
 
     def _authorized_appointment(
         self, branch_id: UUID, appointment_id: UUID, management_token: str

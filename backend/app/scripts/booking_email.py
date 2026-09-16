@@ -11,6 +11,7 @@ from app.config import settings
 from app.db.models import Employee, EmployeeBranchAssignment
 from app.db.models.email_notifications import EmailNotification
 from app.db.session import get_session_factory
+from app.services.appointment_reminders import AppointmentReminderService
 from app.services.email_notifications import deliver_email
 from app.services.public_booking import PublicBookingService
 
@@ -24,11 +25,25 @@ def main() -> None:
     listing.add_argument("--workspace", required=True, type=UUID)
     retry = commands.add_parser("retry")
     retry.add_argument("--id", required=True, type=UUID)
+    reminders = commands.add_parser("reminders")
+    reminders.add_argument("--workspace", type=UUID)
+    reminders.add_argument("--recipient")
+    reminders.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     result: Any
     with get_session_factory()() as session:
         if args.command == "retry":
             result = deliver_email(session, args.id)
+        elif args.command == "reminders":
+            result = (
+                AppointmentReminderService(session)
+                .process_due(
+                    workspace_id=args.workspace,
+                    recipient_email=args.recipient,
+                    dry_run=args.dry_run,
+                )
+                .as_dict()
+            )
         elif args.command == "list":
             rows = session.scalars(
                 select(EmailNotification)

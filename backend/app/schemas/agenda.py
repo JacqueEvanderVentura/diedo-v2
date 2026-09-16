@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import Field, field_validator, model_validator
 
 from app.schemas.common import ApiModel
+from app.schemas.public_booking import EmailNotificationResponse
 
 AppointmentStatus = Literal["confirmed", "fulfilled", "no_show", "cancelled"]
 CreateAppointmentStatus = Literal["confirmed"]
@@ -105,6 +106,7 @@ class AppointmentResponse(ApiModel):
     updated_at: datetime
     version: int
     history: list[AppointmentHistoryResponse]
+    notification: EmailNotificationResponse | None = None
 
 
 class PaginatedAppointmentsResponse(ApiModel):

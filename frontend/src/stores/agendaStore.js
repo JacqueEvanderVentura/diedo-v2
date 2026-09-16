@@ -85,7 +85,7 @@ function normalizeAppointment(data) {
     completionNote: data.completionNote || null,
     recurrence: data.recurrence || 'none',
     repeatCount: Number(data.repeatCount) || 1,
-    reminderSent: data.reminderSent !== false,
+    reminderSent: data.reminderSent === true,
     source: data.source || 'staff',
     date: data.date,
     time: data.time,

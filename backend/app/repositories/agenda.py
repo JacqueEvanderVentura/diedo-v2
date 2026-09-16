@@ -26,6 +26,7 @@ from app.db.models import (
     PlatformUser,
 )
 from app.db.models.agenda import ACTIVE_APPOINTMENT_STATUSES
+from app.db.models.email_notifications import EmailNotification
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,7 @@ class AppointmentRecord:
     created_by_name: str
     updated_by_name: str
     history: tuple[AppointmentHistoryRecord, ...]
+    notification: EmailNotification | None = None
 
 
 @dataclass(frozen=True)

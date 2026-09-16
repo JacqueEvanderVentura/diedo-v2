@@ -25,6 +25,7 @@ import { getAvailableSlots, fitsInSchedule, isSlotAvailable } from '../lib/selfB
 import { useAvailabilityAppointments } from '../hooks/useAvailabilityAppointments'
 import { formatDOP } from '@/lib/format'
 import { isAppointmentConflict } from '@/services/adapters/appointments'
+import { emailResultMessage } from '../lib/notification'
 import { useSessionStore } from '@/stores/sessionStore'
 import { servicesForBranch } from '../lib/serviceAvailability'
 import {
@@ -252,12 +253,15 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     setErr('')
     try {
       if (editing) {
-        await updateAppointment(appointment.id, payload)
-        toast.success('Cita actualizada')
+        const updated = await updateAppointment(appointment.id, payload)
+        toast.success(`Cita actualizada. ${emailResultMessage(updated.notification)}`)
       } else {
         const created = await addAppointment(payload)
         const count = Array.isArray(created) ? created.length : 1
-        toast.success(count > 1 ? `${count} citas agendadas` : 'Cita agendada')
+        const first = Array.isArray(created) ? created[0] : created
+        toast.success(
+          `${count > 1 ? `${count} citas agendadas` : 'Cita agendada'}. ${emailResultMessage(first?.notification)}`
+        )
       }
       onClose()
     } catch (error) {

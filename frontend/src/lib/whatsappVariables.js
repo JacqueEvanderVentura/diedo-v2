@@ -8,6 +8,7 @@ export const WHATSAPP_VARIABLE_CHIPS = {
     { key: 'fecha', label: 'FECHA' },
     { key: 'hora', label: 'HORA' },
     { key: 'servicio', label: 'SERVICIO' },
+    { key: 'sucursal', label: 'SUCURSAL' },
     { key: 'enlace', label: 'ENLACE' },
     { key: 'cita_fecha', label: 'CITA FECHA' },
     { key: 'cita_hora', label: 'CITA HORA' },
@@ -80,6 +81,7 @@ export function appointmentWhatsAppFields(appointment, resources = []) {
   const fecha = appointment.date ? formatShortDate(appointment.date) : ''
   const hora = appointment.time || ''
   const servicio = appointment.serviceName || ''
+  const sucursal = appointment.branchName || ''
   const resourceId = appointment.cabinaId || appointment.resourceId
   const cabina = appointment.resourceName
     || (resourceId ? resources.find((item) => item.id === resourceId)?.name : '')
@@ -92,6 +94,7 @@ export function appointmentWhatsAppFields(appointment, resources = []) {
     fecha,
     hora,
     servicio,
+    sucursal,
   }
 }
 

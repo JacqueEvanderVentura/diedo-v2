@@ -74,7 +74,8 @@ export function mapAppointmentFromApi(item) {
     freeTrial: item.freeTrial === true,
     recurrence: item.recurrence || 'none',
     repeatCount: Number(item.repeatCount) || 1,
-    reminderSent: item.reminderSent !== false,
+    reminderSent: item.reminderSent === true,
+    notification: item.notification || null,
     source: item.source || 'staff',
     createdBy: actorName(item.createdBy, item.createdByName),
     updatedBy: actorName(item.updatedBy, item.updatedByName),
@@ -122,7 +123,6 @@ export function appointmentToApiPayload(data) {
     freeTrial: data.freeTrial === true,
     recurrence: data.recurrence || 'none',
     repeatCount: data.recurrence === 'none' ? 1 : Number(data.repeatCount) || 1,
-    reminderSent: data.reminderSent !== false,
     source: data.source || 'staff',
   }
   if (status === 'cumplida') {
@@ -161,7 +161,6 @@ export function appointmentPatchToApiPayload(data, version) {
     pendingAmount: payload.pendingAmount,
     firstTime: payload.firstTime,
     freeTrial: payload.freeTrial,
-    reminderSent: payload.reminderSent,
     version,
   }
 }

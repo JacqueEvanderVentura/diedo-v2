@@ -267,6 +267,12 @@ class Appointment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     reminder_sent: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
+    schedule_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default=text("1")
+    )
+    schedule_changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
     source: Mapped[str] = mapped_column(
         String(16), nullable=False, default="staff", server_default=text("'staff'")
     )

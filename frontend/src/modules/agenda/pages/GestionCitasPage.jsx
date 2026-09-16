@@ -26,6 +26,7 @@ import { DataSourceNotice } from '@/components/ui/DataSourceNotice'
 import { useAgendaPolling } from '../hooks/useAgendaPolling'
 import { useSessionStore } from '@/stores/sessionStore'
 import { getAppointmentReceivablePolicy } from '../lib/receivablePermissions'
+import { emailResultMessage } from '../lib/notification'
 
 function AppointmentStatusControl({ apt, canManage, changing, onChange, online, canManageReceivables }) {
   const currentStatus = statusMeta(apt.status)
@@ -59,7 +60,7 @@ function AppointmentStatusControl({ apt, canManage, changing, onChange, online, 
   )
 }
 
-function ActionButtons({ apt, onEdit, onDelete, onShare, canManage, canDelete, online, canManageReceivables }) {
+function ActionButtons({ apt, branchName, onEdit, onDelete, onShare, canManage, canDelete, online, canManageReceivables }) {
   const deletion = getAppointmentReceivablePolicy({ appointment: apt, online, canManageReceivables })
   return (
     <div className="flex items-center justify-end gap-1">
@@ -69,7 +70,7 @@ function ActionButtons({ apt, onEdit, onDelete, onShare, canManage, canDelete, o
         size="sm"
         variables={{
           ...buildWhatsAppVariables({ name: apt.customerName, phone: apt.customerPhone }),
-          ...appointmentWhatsAppFields(apt),
+          ...appointmentWhatsAppFields({ ...apt, branchName }),
           enlace: buildBookingUrl(apt.branchId),
         }}
         data-testid={`gestion-wa-${apt.id}`}
@@ -149,7 +150,7 @@ function AppointmentMobileCard({ apt, branchName, staffName, onEdit, onDelete, o
         </div>
       </div>
       <div className="mt-3 flex items-center justify-end border-t border-slate-50 pt-3">
-        <ActionButtons apt={apt} onEdit={onEdit} onDelete={onDelete} onShare={onShare} canManage={canManage} canDelete={canDelete} online={online} canManageReceivables={canManageReceivables} />
+        <ActionButtons apt={apt} branchName={branchName} onEdit={onEdit} onDelete={onDelete} onShare={onShare} canManage={canManage} canDelete={canDelete} online={online} canManageReceivables={canManageReceivables} />
       </div>
     </div>
   )
@@ -279,8 +280,8 @@ export default function GestionCitasPage() {
     }
     setStatusUpdatingId(apt.id)
     try {
-      await setAppointmentStatus(apt.id, nextStatus)
-      toast.success('Estado de la cita actualizado')
+      const updated = await setAppointmentStatus(apt.id, nextStatus)
+      toast.success(`Estado de la cita actualizado. ${emailResultMessage(updated.notification)}`)
     } catch (error) {
       toast.error(error.message || 'No se pudo actualizar el estado')
     } finally {
@@ -396,7 +397,7 @@ export default function GestionCitasPage() {
                           />
                         </td>
                         <td className="px-6 py-4">
-                          <ActionButtons apt={apt} onEdit={openEdit} onDelete={requestDelete} onShare={setShareTarget} canManage={canManage} canDelete={canDelete} online={online} canManageReceivables={canManageReceivables} />
+                          <ActionButtons apt={apt} branchName={branchMap[apt.branchId] || ''} onEdit={openEdit} onDelete={requestDelete} onShare={setShareTarget} canManage={canManage} canDelete={canDelete} online={online} canManageReceivables={canManageReceivables} />
                         </td>
                       </tr>
                     )

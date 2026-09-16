@@ -11,6 +11,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -36,6 +37,11 @@ class EmailNotification(UuidPrimaryKeyMixin, TimestampMixin, Base):
     subject: Mapped[str] = mapped_column(String(300), nullable=False)
     html_body: Mapped[str] = mapped_column(Text, nullable=False)
     text_body: Mapped[str] = mapped_column(Text, nullable=False)
+    event_type: Mapped[str | None] = mapped_column(String(80))
+    sender: Mapped[str | None] = mapped_column(String(320))
+    reply_to: Mapped[str | None] = mapped_column(String(320))
+    scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(
         String(24), default="pending", server_default=text("'pending'")
     )
@@ -43,3 +49,6 @@ class EmailNotification(UuidPrimaryKeyMixin, TimestampMixin, Base):
     first_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     provider_id: Mapped[str | None] = mapped_column(String(200))
     error: Mapped[str | None] = mapped_column(String(300))
+    extra: Mapped[dict[str, object]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
