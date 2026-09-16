@@ -55,7 +55,7 @@ const empty = (date, customerId, slot = {}) => ({
   completed: false,
   recurrence: 'none',
   repeatCount: 2,
-  reminderSent: true,
+  reminderSent: false,
 })
 
 export function AppointmentFormModal({ open, onClose, appointment, defaultDate, defaultCustomerId, defaultSlot = EMPTY_SLOT, wide = true }) {

@@ -9,11 +9,12 @@ from typing import Any, cast
 from uuid import UUID, uuid7
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.request_context import get_request_id
-from app.db.models import Appointment
+from app.db.models import Appointment, Branch, Customer, Workspace
 from app.db.models.agenda import ACTIVE_APPOINTMENT_STATUSES
 from app.repositories.agenda import (
     AgendaRepository,
@@ -22,12 +23,15 @@ from app.repositories.agenda import (
 )
 from app.services.auth import AuthPrincipal
 from app.services.authorization import AuthorizationService, PermissionGrant
+from app.services.booking_tokens import issue_appointment_management_token
+from app.services.email_notifications import deliver_email, enqueue_email
 from app.services.errors import (
     AuthorizationError,
     ConflictError,
     InvalidOperationError,
     ResourceNotFoundError,
 )
+from app.services.mailer import render_appointment_email
 from app.services.pos import PosService
 
 _WEEKDAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -60,6 +64,45 @@ class AgendaService:
     def __init__(self, session: Session) -> None:
         self._session = session
         self._repository = AgendaRepository(session)
+
+    def _enqueue_notification(
+        self, appointment: Appointment, event: str, branch: Branch, workspace: Workspace
+    ) -> Any | None:
+        if appointment.customer_id is None:
+            return None
+        email = self._session.scalar(
+            select(Customer.email).where(
+                Customer.workspace_id == appointment.workspace_id,
+                Customer.id == appointment.customer_id,
+                Customer.status == "active",
+            )
+        )
+        if not email:
+            return None
+        content = render_appointment_email(
+            event=event,
+            to=email,
+            appointment=appointment,
+            branch_name=branch.name,
+            workspace_name=workspace.name,
+            management_token=issue_appointment_management_token(appointment.id),
+            timezone=branch.timezone,
+        )
+        return enqueue_email(
+            self._session,
+            workspace_id=appointment.workspace_id,
+            appointment_id=appointment.id,
+            event_key=f"{event}/{appointment.id}/{appointment.version}",
+            **content,
+        )
+
+    def _deliver_after_commit(self, notifications: list[Any]) -> None:
+        for notification in notifications:
+            try:
+                deliver_email(self._session, notification.id)
+            except Exception:
+                # The appointment operation has already succeeded; delivery is retryable.
+                self._session.rollback()
 
     def list_resources(self, grant: PermissionGrant, branch_id: UUID) -> tuple[Any, ...]:
         self._require_branch_access(grant, branch_id)
@@ -165,6 +208,10 @@ class AgendaService:
         )
         recurrence_group_id = uuid7() if len(scheduled_dates) > 1 else None
         appointments: list[Appointment] = []
+        notifications: list[Any] = []
+        workspace = self._session.scalar(
+            select(Workspace).where(Workspace.id == grant.workspace_id)
+        )
 
         try:
             for occurrence_index, scheduled_date in enumerate(scheduled_dates):
@@ -233,6 +280,12 @@ class AgendaService:
                     updated_by_platform_user_id=principal.platform_user_id,
                 )
                 self._repository.add_appointment(appointment)
+                if workspace is not None and status == "confirmed":
+                    queued = self._enqueue_notification(
+                        appointment, "appointment.confirmed", branch, workspace
+                    )
+                    if queued is not None:
+                        notifications.append(queued)
                 changes = self._creation_changes(appointment)
                 self._repository.add_event(
                     workspace_id=grant.workspace_id,
@@ -302,6 +355,8 @@ class AgendaService:
                 raise self._slot_conflict() from exc
             raise ConflictError("No fue posible crear la cita por un conflicto de datos.") from exc
 
+        if commit:
+            self._deliver_after_commit(notifications)
         return self._repository.records_for_ids(
             grant.workspace_id, [appointment.id for appointment in appointments]
         )
@@ -355,6 +410,15 @@ class AgendaService:
             timezone=branch.timezone,
         )
         status = cast(str, changes.get("status", appointment.status))
+        schedule_changed = (
+            scheduled_date != appointment.scheduled_date
+            or scheduled_time != appointment.scheduled_time
+            or duration != appointment.duration_minutes
+            or branch_id != appointment.branch_id
+            or employee_id != appointment.employee_id
+            or service_id != appointment.service_id
+            or customer_id != appointment.customer_id
+        )
         completion_fields = self._resolve_completion_fields(
             appointment=appointment,
             status=status,
@@ -411,6 +475,7 @@ class AgendaService:
                 {appointment.branch_id, branch_id},
             )
         before = self._public_values(appointment)
+        previous_status = appointment.status
         field_mapping = {
             "branch_id": branch_id,
             "resource_id": resource_id,
@@ -437,7 +502,14 @@ class AgendaService:
             "pending_amount": final_money["pending_amount"],
             "first_time": changes.get("first_time", appointment.first_time),
             "free_trial": changes.get("free_trial", appointment.free_trial),
-            "reminder_sent": changes.get("reminder_sent", appointment.reminder_sent),
+            # A changed schedule must be eligible for a new 24-hour reminder.
+            # The client cannot force this flag through the administrative API.
+            "reminder_sent": (
+                False
+                if status == "confirmed"
+                and schedule_changed
+                else appointment.reminder_sent
+            ),
         }
         for field, value in field_mapping.items():
             setattr(appointment, field, value)
@@ -447,6 +519,10 @@ class AgendaService:
         event_changes = self._diff_changes(before, after)
         action = "status_change" if set(changes) == {"status"} else "update"
 
+        notifications: list[Any] = []
+        workspace = self._session.scalar(
+            select(Workspace).where(Workspace.id == grant.workspace_id)
+        )
         try:
             self._session.flush()
             self._repository.add_event(
@@ -471,6 +547,18 @@ class AgendaService:
                     principal=principal,
                     appointment=appointment,
                 )
+            if workspace is not None:
+                event = None
+                if status == "cancelled" and previous_status != "cancelled":
+                    event = "appointment.cancelled"
+                elif status == "confirmed" and previous_status != "confirmed":
+                    event = "appointment.confirmed"
+                elif status == "confirmed" and schedule_changed:
+                    event = "appointment.rescheduled"
+                if event:
+                    queued = self._enqueue_notification(appointment, event, branch, workspace)
+                    if queued is not None:
+                        notifications.append(queued)
             if commit:
                 self._session.commit()
             else:
@@ -486,6 +574,8 @@ class AgendaService:
             }:
                 raise self._slot_conflict() from exc
             raise ConflictError("No fue posible actualizar la cita.") from exc
+        if commit:
+            self._deliver_after_commit(notifications)
         records = self._repository.records_for_ids(grant.workspace_id, [appointment.id])
         if not records:
             raise RuntimeError("Updated appointment could not be reloaded.")
