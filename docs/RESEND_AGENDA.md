@@ -2,9 +2,9 @@
 
 ## Estado de esta implementación
 
-La reserva, disponibilidad, gestión mediante token y notificaciones están implementadas en el código. La publicación desde `full-stack` ejecuta las comprobaciones y Railway aplica la migración `20260915_0032` antes de arrancar el backend. No se habilitan empleados automáticamente.
+La reserva, disponibilidad, gestión mediante token, notificaciones y recordatorios automáticos están implementados en el código. La publicación desde `full-stack` ejecuta las comprobaciones y Railway aplica las migraciones hasta `20260916_0033` antes de arrancar el backend. No se habilitan empleados automáticamente.
 
-La CLI oficial está instalada en el equipo de desarrollo (`resend-cli v2.21.0`). `resend doctor --json` confirma que falta autenticarla. No se envió ningún correo real. La API key también falta en la configuración local del backend y en los nombres de variables del servicio API de Railway. Para publicar esta versión se configuraron allí `PUBLIC_APP_URL` con el origen de producción, `EMAIL_FROM` con el remitente de prueba y `EMAIL_ENABLED=false`.
+La CLI oficial está instalada en el equipo de desarrollo (`resend-cli v2.21.0`). `resend doctor --json` sirve para confirmar la autenticación local de la CLI. La API key del backend se configura como secreto del servicio API de Railway. Para publicar sin enviar correos, mantener `EMAIL_ENABLED=false`; para enviar correos reales, usar `EMAIL_ENABLED=true`, `PUBLIC_APP_URL` con el origen de producción y `EMAIL_FROM` con el remitente verificado.
 
 El contexto público de Sede Principal devolvió cero especialistas. Eso confirma el síntoma, pero no cuál empleado tiene una asignación o habilitación incorrecta: queda pendiente revisar sus datos autenticados en producción. La opción incorporada por la migración `20260911_0026` se creó desactivada por defecto.
 
@@ -109,8 +109,8 @@ Muestra cantidades de servicios/especialistas, existencia de recursos, identific
 ## Notificaciones e idempotencia
 
 - `POST /api/v1/agenda/booking-links/email` exige sesión, `appointment.manage`, acceso a la sucursal e `Idempotency-Key`. Acepta sucursal, nombre y correo; el servidor construye la URL y el HTML.
-- Las operaciones públicas de reservar, cancelar y reagendar registran su notificación en la misma transacción que la cita. El envío ocurre después del commit. Los cambios administrativos existentes de citas no incorporan nuevos disparadores de correo en esta etapa.
-- Cada aviso de cita se identifica por evento/cita/versión. Cada invitación tiene su propia solicitud. El transporte usa `notification/<id>` como clave de Resend.
+- Las operaciones públicas y administrativas de reservar/crear, cancelar y reagendar registran su notificación en la misma transacción que la cita. El envío ocurre después del commit. La respuesta de la cita devuelve el resultado del correo por separado; un fallo de Resend no revierte la cita.
+- Cada aviso de cita se identifica por evento/cita/versión. Los recordatorios usan evento/cita/revisión de programación. Cada invitación tiene su propia solicitud. El transporte usa `notification/<id>` como clave de Resend.
 - Repetir una reserva completada con la misma clave y datos devuelve la misma cita. Cambiar los datos conservando la clave devuelve conflicto. El frontend conserva la clave ante una respuesta perdida y evita dobles envíos.
 - Si el cliente ya existe en otra sucursal, reservar lo vincula también a la sucursal elegida, conservando sus asignaciones activas anteriores y el mismo perfil.
 - La API y PostgreSQL impiden solapamientos de cabinas y de empleados, incluso entre sucursales. La confirmación vuelve a consultar disponibilidad.
@@ -130,15 +130,44 @@ Estados guardados en `email_notifications`:
 
 Resend retiene claves de idempotencia durante 24 horas; el límite local de 23 horas deja margen para evitar duplicados al repetir un resultado incierto. [Idempotencia de Resend](https://resend.com/docs/dashboard/emails/idempotency-keys).
 
-Comandos administrativos, sin programador automático:
+Comandos administrativos:
 
 ```powershell
 .\.venv\Scripts\python.exe -m app.scripts.booking_email list --workspace UUID_DEL_WORKSPACE
 .\.venv\Scripts\python.exe -m app.scripts.booking_email retry --id UUID_DE_LA_NOTIFICACION
+.\.venv\Scripts\python.exe -m app.scripts.booking_email reminders --dry-run --recipient jeanpaulrodriguezb@gmail.com
 resend emails get ID_DEL_PROVEEDOR --json
 ```
 
-El comando de reintento no fuerza estados `sent`, `sending`, `review` o `superseded`. Ante `sending` abandonado o `review`, revisar los registros de Resend con el operador antes de reconciliar el registro; no cambiar su ID ni reenviar a ciegas. Mantener remitente y reply-to estables durante reintentos inciertos. No se añaden recordatorios automáticos.
+El comando de reintento no fuerza estados `sent`, `sending`, `review` o `superseded`. Ante `sending` abandonado o `review`, revisar los registros de Resend con el operador antes de reconciliar el registro; no cambiar su ID ni reenviar a ciegas. Mantener remitente y reply-to estables durante reintentos inciertos.
+
+## Recordatorios automáticos y cron de Railway
+
+El servicio de recordatorios ya está implementado, pero el cron de producción queda **pendiente de activación** hasta que se decida ejecutar la prueba controlada. No activar el programador como parte de un despliegue ordinario.
+
+Comando previsto para Railway Cron, ejecutado desde la imagen del backend:
+
+```bash
+python -m app.scripts.booking_email reminders
+```
+
+Railway debe ejecutarlo cada 5 minutos. Cada ejecución procesa los recordatorios cuyo objetivo ya venció dentro de la ventana válida, termina el proceso y cierra la sesión de base de datos. La plataforma puede demorar algunos minutos; por eso el servicio recupera recordatorios atrasados hasta una hora después del objetivo.
+
+Activación recomendada:
+
+1. Desplegar backend y frontend con migraciones aplicadas, manteniendo el cron desactivado.
+2. Crear una cita QA confirmada para `jeanpaulrodriguezb@gmail.com` cuyo recordatorio venza pocos minutos después.
+3. Ejecutar diagnóstico sin envío:
+
+```bash
+python -m app.scripts.booking_email reminders --dry-run --recipient jeanpaulrodriguezb@gmail.com
+```
+
+4. Activar temporalmente el cron con filtro de destinatario, o ejecutar una corrida manual con `--recipient jeanpaulrodriguezb@gmail.com`.
+5. Confirmar recepción en Gmail, estado `sent` en `email_notifications` y ausencia de duplicado en la siguiente ejecución.
+6. Quitar el filtro de destinatario para todos los clientes elegibles.
+
+Para pausar solo los recordatorios si aparece un fallo, desactivar el cron de Railway. Los correos transaccionales de crear, cancelar, reagendar e invitación pueden seguir funcionando con `EMAIL_ENABLED=true`.
 
 ## Migración y despliegue
 
