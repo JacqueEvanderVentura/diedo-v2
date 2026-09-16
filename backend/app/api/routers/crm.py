@@ -89,6 +89,7 @@ _RESPONSES: dict[int | str, dict[str, Any]] = {
     403: {"model": ErrorResponse},
     404: {"model": ErrorResponse},
     409: {"model": ErrorResponse},
+    429: {"model": ErrorResponse},
     503: {"model": ErrorResponse},
 }
 IdempotencyKey = Annotated[
@@ -100,35 +101,39 @@ IdempotencyKey = Annotated[
 @router.get("/discovery/capabilities", responses=_RESPONSES)
 def discovery_capabilities(
     response: Response,
+    database: DatabaseSession,
     grant: CrmReadGrant,
 ) -> LeadDiscoveryCapabilitiesResponse:
-    del grant
     response.headers["Cache-Control"] = "no-store"
-    capabilities = CrmDiscoveryService().capabilities()
+    capabilities = CrmDiscoveryService(database).capabilities(grant.workspace_id)
     return LeadDiscoveryCapabilitiesResponse(
         enabled=capabilities.enabled,
         provider=cast(Any, capabilities.provider),
         status=cast(Any, capabilities.status),
         hour_limit=capabilities.hour_limit,
         month_limit=capabilities.month_limit,
+        hour_used=capabilities.hour_used,
+        month_used=capabilities.month_used,
+        available_providers=list(cast(Any, capabilities.available_providers)),
     )
 
 
 @router.post("/discovery/search", responses=_RESPONSES)
 def discover_leads(
     payload: LeadDiscoverySearchRequest,
+    database: DatabaseSession,
     grant: CrmManageGrant,
 ) -> LeadDiscoverySearchResponse:
-    del grant
-    candidates = CrmDiscoveryService().search(
+    result = CrmDiscoveryService(database).search(
+        grant.workspace_id,
         LeadDiscoveryQuery(
             query=payload.query,
             location=payload.location,
             limit=payload.limit,
-        )
+        ),
     )
     return LeadDiscoverySearchResponse(
-        provider="serpapi",
+        provider=result.provider,
         items=[
             LeadDiscoveryCandidateResponse(
                 name=candidate.name,
@@ -138,9 +143,15 @@ def discover_leads(
                 location=candidate.location,
                 source_url=candidate.source_url,
                 raw_snippet=candidate.raw_snippet,
+                rating=candidate.rating,
+                reviews=candidate.reviews,
             )
-            for candidate in candidates
+            for candidate in result.items
         ],
+        hour_used=result.hour_used,
+        month_used=result.month_used,
+        hour_limit=result.hour_limit,
+        month_limit=result.month_limit,
     )
 
 

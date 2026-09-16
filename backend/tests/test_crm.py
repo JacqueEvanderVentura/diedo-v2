@@ -7,6 +7,7 @@ from app.core.security import hash_password
 from app.db.models import (
     Branch,
     CrmActivity,
+    CrmDiscoveryUsage,
     CrmLead,
     CrmOpportunity,
     InventoryItemProfile,
@@ -20,8 +21,14 @@ from app.db.models import (
 from app.db.session import get_engine, session_scope
 from app.services.authorization import PermissionGrant
 from app.services.crm import CrmService
-from app.services.crm_scoring import DEFAULT_SCORING_WEIGHTS, compute_auto_score
+from app.services.crm_discovery import (
+    CrmDiscoveryService,
+    LeadDiscoveryCandidate,
+    LeadDiscoveryQuery,
+)
+from app.services.crm_scoring import DEFAULT_SCORING_WEIGHTS, SERP_HOUR_LIMIT, compute_auto_score
 from app.services.demo_seed import seed_demo_data
+from app.services.errors import RateLimitExceededError, ServiceUnavailableError
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
@@ -29,6 +36,30 @@ from sqlalchemy.orm import Session
 
 _PASSWORD = "crm-test-password-not-a-secret"
 _NOW = datetime(2026, 9, 1, 16, 0, tzinfo=UTC)
+
+
+class _DiscoveryProvider:
+    def __init__(
+        self,
+        name: str,
+        *,
+        items: tuple[LeadDiscoveryCandidate, ...] = (),
+        error: ServiceUnavailableError | None = None,
+    ) -> None:
+        self.name = name
+        self.items = items
+        self.error = error
+        self.calls = 0
+
+    def configured(self) -> bool:
+        return True
+
+    def search(self, query: LeadDiscoveryQuery) -> tuple[LeadDiscoveryCandidate, ...]:
+        self.calls += 1
+        assert query.query == "salones de belleza"
+        if self.error is not None:
+            raise self.error
+        return self.items
 
 
 def test_crm_scoring_detects_vertical_signals_and_respects_manual_boundaries() -> None:
@@ -48,6 +79,71 @@ def test_crm_scoring_detects_vertical_signals_and_respects_manual_boundaries() -
     assert "Vertical detectada: spa" in result.reasons
     assert "Tiene sitio web" in result.reasons
     assert "Teléfono disponible" in result.reasons
+
+
+@pytest.mark.integration
+def test_crm_discovery_uses_server_quota_and_falls_back_to_serper() -> None:
+    with session_scope() as session:
+        seeded = bootstrap_local_foundation(session, hash_password(_PASSWORD))
+        failing_primary = _DiscoveryProvider(
+            "serpapi",
+            error=ServiceUnavailableError("SerpAPI temporalmente no disponible."),
+        )
+        fallback = _DiscoveryProvider(
+            "serper",
+            items=(
+                LeadDiscoveryCandidate(
+                    name="Spa Azul",
+                    company="Spa Azul",
+                    phone="809-555-0101",
+                    website="https://spa.example.com",
+                    location="Santo Domingo",
+                    source_url="https://maps.example.com/spa",
+                    raw_snippet="Spa · Reservas",
+                    rating=4.8,
+                    reviews=120,
+                ),
+            ),
+        )
+        service = CrmDiscoveryService(
+            session,
+            providers=(failing_primary, fallback),  # type: ignore[arg-type]
+        )
+
+        capabilities = service.capabilities(seeded.workspace_id)
+        assert capabilities.enabled is True
+        assert capabilities.provider == "serpapi"
+        assert capabilities.available_providers == ("serpapi", "serper")
+        assert capabilities.hour_used == 0
+        assert capabilities.month_used == 0
+
+        result = service.search(
+            seeded.workspace_id,
+            LeadDiscoveryQuery("salones de belleza", "Santo Domingo", 10),
+        )
+
+        assert result.provider == "serper"
+        assert result.hour_used == 1
+        assert result.month_used == 1
+        assert result.items[0].name == "Spa Azul"
+        assert result.items[0].rating == 4.8
+        assert failing_primary.calls == 1
+        assert fallback.calls == 1
+        usage = session.scalar(
+            select(CrmDiscoveryUsage).where(CrmDiscoveryUsage.workspace_id == seeded.workspace_id)
+        )
+        assert usage is not None
+        assert usage.last_provider == "serper"
+        assert usage.last_status == "success"
+
+        usage.hour_count = SERP_HOUR_LIMIT
+        session.flush()
+        with pytest.raises(RateLimitExceededError) as exc:
+            service.search(
+                seeded.workspace_id,
+                LeadDiscoveryQuery("salones de belleza", "Santo Domingo", 10),
+            )
+        assert exc.value.parameter == "hourLimit"
 
 
 @pytest.mark.integration
@@ -213,10 +309,13 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
     assert discovery.status_code == 200, discovery.text
     assert discovery.json() == {
         "enabled": False,
-        "provider": "serpapi",
+        "provider": None,
         "status": "not_configured",
         "hourLimit": 50,
         "monthLimit": 250,
+        "hourUsed": 0,
+        "monthUsed": 0,
+        "availableProviders": [],
     }
     unavailable_search = client.post(
         "/api/v1/crm/discovery/search",

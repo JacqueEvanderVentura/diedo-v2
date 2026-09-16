@@ -16,6 +16,7 @@ from app.services.errors import (
     AuthorizationError,
     ConflictError,
     InvalidOperationError,
+    RateLimitExceededError,
     ResourceNotFoundError,
     ServiceUnavailableError,
 )
@@ -123,6 +124,8 @@ async def application_exception_handler(
         status_code = 409
     elif isinstance(exc, InvalidOperationError):
         status_code = 400
+    elif isinstance(exc, RateLimitExceededError):
+        status_code = 429
     elif isinstance(exc, ServiceUnavailableError):
         status_code = 503
     return JSONResponse(

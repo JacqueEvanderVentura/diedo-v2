@@ -27,5 +27,9 @@ class InvalidOperationError(ApplicationError):
     pass
 
 
+class RateLimitExceededError(ApplicationError):
+    pass
+
+
 class ServiceUnavailableError(ApplicationError):
     pass

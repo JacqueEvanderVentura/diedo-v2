@@ -47,8 +47,8 @@ Todos parten de `/api/v1/crm`.
 
 | Método y ruta | Resultado |
 |---|---|
-| `GET /discovery/capabilities` | Informa si el proveedor SERP está disponible y sus límites previstos. |
-| `POST /discovery/search` | Contrato futuro de búsqueda; actualmente responde `503` sin hacer llamadas externas. |
+| `GET /discovery/capabilities` | Informa disponibilidad, proveedor principal, respaldo y consumo de cuota SERP. |
+| `POST /discovery/search` | Busca leads externos desde el backend con SerpAPI y fallback Serper. |
 | `GET/PATCH /settings/scoring` | Consulta o actualiza pesos de scoring. |
 | `GET/POST /leads` | Lista o crea leads. |
 | `POST /leads/import` | Importa de 1 a 100 leads en una operación. |
@@ -97,21 +97,26 @@ y calificados, conversiones del mes, oportunidades abiertas y valor del pipeline
 pendientes/vencidos, cotizaciones CRM/aceptadas, clientes con compras y ventas/importe del mes. El
 mes y la marca `generatedAt` se calculan con la zona horaria del workspace.
 
-## Integración frontend y futura búsqueda SERP
+## Integración frontend y búsqueda SERP
 
 El frontend hidrata cada ruta con su recurso específico: Leads usa `/leads`, Pipeline usa
 `/opportunities`, Seguimientos usa `/activities`, Clientes usa `/customers`, Cotizaciones usa
 `/quotes`, Compras y Ventas usan `/sales`, y Overview usa exclusivamente `/overview`. Las pantallas
 relacionadas cargan en paralelo sus catálogos auxiliares.
 
-La búsqueda externa mantiene la integración existente del frontend: `leadSearch` usa SerpAPI como
-proveedor principal y Serper como respaldo, con selección según cuota. Las llamadas pasan por los
-proxies `/api/serp` y `/api/serper` de Vite; el servidor de desarrollo agrega las credenciales y
-elimina la cookie de sesión antes de salir al proveedor. Los resultados seleccionados se importan al
-backend CRM asociados a una sucursal.
+La búsqueda externa vive en el backend. `leadSearch` llama a `/crm/discovery/search`; el servidor
+mantiene SerpAPI como proveedor principal y Serper como respaldo, inyecta credenciales desde
+variables de entorno, aplica timeout y devuelve el proveedor efectivo usado. Si no hay credenciales
+configuradas, `/discovery/capabilities` responde `enabled=false` y `/discovery/search` responde
+`503`.
 
-`CrmDiscoveryService` y los endpoints `/discovery/*` permanecen como base para una migración futura
-de esa búsqueda al backend, pero no sustituyen el flujo SERP activo del frontend.
+La cuota inicial es compartida por ambos proveedores por workspace: 50 búsquedas por hora y 250 por
+mes. El respaldo no reinicia ni evita esos límites. Cuando se agota una ventana, la búsqueda responde
+`429` con `parameter=hourLimit` o `parameter=monthLimit`. La respuesta incluye `hourUsed`,
+`monthUsed`, `hourLimit`, `monthLimit`, `provider` e `items`; cada candidato conserva nombre,
+empresa, teléfono, web, ubicación, URL de origen, snippet, rating y cantidad de reseñas cuando el
+proveedor los entrega. Los resultados seleccionados se importan al backend CRM asociados a una
+sucursal.
 
 ## Datos demo
 

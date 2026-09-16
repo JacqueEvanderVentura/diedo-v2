@@ -13,15 +13,19 @@ from app.schemas.pos import QuoteDetailResponse
 LeadStatus = Literal["nuevo", "contactado", "calificado", "descartado", "convertido"]
 EditableLeadStatus = Literal["nuevo", "contactado", "calificado", "descartado"]
 LeadSource = Literal["manual", "serp", "serper", "referral", "import"]
+LeadDiscoveryProvider = Literal["serpapi", "serper"]
 AcquisitionSource = Literal["whatsapp", "instagram", "referral", "otros", "pos_walk_in", "app"]
 
 
 class LeadDiscoveryCapabilitiesResponse(ApiModel):
     enabled: bool
-    provider: Literal["serpapi"]
-    status: Literal["not_configured", "ready"]
+    provider: LeadDiscoveryProvider | None
+    status: Literal["not_configured", "ready", "quota_exhausted"]
     hour_limit: int
     month_limit: int
+    hour_used: int
+    month_used: int
+    available_providers: list[LeadDiscoveryProvider]
 
 
 class LeadDiscoverySearchRequest(ApiModel):
@@ -48,11 +52,17 @@ class LeadDiscoveryCandidateResponse(ApiModel):
     location: str | None
     source_url: str | None
     raw_snippet: str | None
+    rating: float | None = None
+    reviews: int | None = None
 
 
 class LeadDiscoverySearchResponse(ApiModel):
-    provider: Literal["serpapi"]
+    provider: LeadDiscoveryProvider
     items: list[LeadDiscoveryCandidateResponse]
+    hour_used: int
+    month_used: int
+    hour_limit: int
+    month_limit: int
 
 
 OpportunityStage = Literal["nuevo", "contactado", "propuesta", "negociacion", "cerrado", "perdido"]

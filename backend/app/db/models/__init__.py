@@ -6,6 +6,7 @@ from app.db.models.audit import AuditEntry
 from app.db.models.catalog import Item, ItemBranchAssignment, ItemCategory, UnitOfMeasure
 from app.db.models.crm import (
     CrmActivity,
+    CrmDiscoveryUsage,
     CrmLead,
     CrmOpportunity,
     CrmSettings,
@@ -116,6 +117,7 @@ __all__ = [
     "CashMovementLine",
     "CashRegister",
     "CrmActivity",
+    "CrmDiscoveryUsage",
     "CrmLead",
     "CrmOpportunity",
     "CrmSettings",

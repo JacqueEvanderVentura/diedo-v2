@@ -431,3 +431,25 @@ class CrmSettings(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     updated_by_platform_user_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("platform_users.id", ondelete="RESTRICT")
     )
+
+
+class CrmDiscoveryUsage(UuidPrimaryKeyMixin, TimestampMixin, Base):
+    """Workspace-scoped external lead discovery quota counters."""
+
+    __tablename__ = "crm_discovery_usage"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", name="uq_crm_discovery_usage_workspace"),
+        CheckConstraint("hour_count >= 0", name="crm_discovery_hour_count_non_negative"),
+        CheckConstraint("month_count >= 0", name="crm_discovery_month_count_non_negative"),
+        CheckConstraint("char_length(month_key) = 7", name="crm_discovery_month_key_length"),
+    )
+
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
+    )
+    hour_window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    hour_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    month_key: Mapped[str] = mapped_column(String(7), nullable=False)
+    month_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_provider: Mapped[str | None] = mapped_column(String(16))
+    last_status: Mapped[str | None] = mapped_column(String(32))
