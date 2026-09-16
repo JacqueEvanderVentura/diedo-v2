@@ -505,10 +505,7 @@ class AgendaService:
             # A changed schedule must be eligible for a new 24-hour reminder.
             # The client cannot force this flag through the administrative API.
             "reminder_sent": (
-                False
-                if status == "confirmed"
-                and schedule_changed
-                else appointment.reminder_sent
+                False if status == "confirmed" and schedule_changed else appointment.reminder_sent
             ),
         }
         for field, value in field_mapping.items():
