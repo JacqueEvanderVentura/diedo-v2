@@ -664,7 +664,7 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
     filtered_customers = client.get(
         "/api/v1/crm/customers",
         headers=headers,
-        params={"branchId": branch_id_text, "status": "activo", "search": "Empresa API"},
+        params={"branchId": branch_id_text, "status": "activo", "search": suffix},
     )
     assert filtered_customers.status_code == 200, filtered_customers.text
     assert filtered_customers.json()["totalItems"] == 1

@@ -28,6 +28,7 @@ run('ruff check', 'python', ['-m', 'ruff', 'check', 'app', 'tests'])
 run('ruff format --check', 'python', ['-m', 'ruff', 'format', '--check', 'app', 'tests'])
 run('mypy', 'python', ['-m', 'mypy', 'app'])
 run('validate migrations (same as Backend CI)', 'node', ['scripts/validate-migrations.mjs'])
+run('reset test database (fresh schema like CI)', 'python', ['-m', 'app.scripts.reset_test_database'])
 run('pytest', 'python', [
   '-m',
   'pytest',

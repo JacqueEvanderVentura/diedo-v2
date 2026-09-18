@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
+from pathlib import Path
 
 from sqlalchemy import create_engine, text
+
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> None:
@@ -17,6 +21,12 @@ def main() -> None:
         engine = create_engine(url, connect_args={"connect_timeout": 5})
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
+        subprocess.run(
+            [sys.executable, "-m", "app.scripts.release_test_database_backends"],
+            cwd=_BACKEND_ROOT,
+            env=os.environ,
+            check=True,
+        )
     except Exception as exc:
         print(
             "No se pudo conectar a Postgres para validate:migrations.\n"

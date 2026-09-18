@@ -7,6 +7,7 @@ from alembic.config import Config
 from app.config import settings
 from app.db.session import dispose_engine
 from app.main import app
+from app.scripts.release_test_database_backends import release_backends
 from fastapi.testclient import TestClient
 from sqlalchemy.engine import make_url
 
@@ -15,11 +16,21 @@ def _migration_config() -> Config:
     return Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
 
 
+def _release_other_test_database_backends() -> None:
+    release_backends(settings.database_url)
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    del session
+    _release_other_test_database_backends()
+
+
 @pytest.fixture(autouse=True)
 def ensure_database_schema_at_head(request: pytest.FixtureRequest) -> Generator[None]:
     if "integration" not in request.keywords:
         yield
         return
+    _release_other_test_database_backends()
     dispose_engine()
     command.upgrade(_migration_config(), "head")
     dispose_engine()

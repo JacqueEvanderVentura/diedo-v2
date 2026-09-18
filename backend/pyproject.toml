@@ -29,6 +29,8 @@ markers = [
 branch = true
 source = ["app"]
 omit = [
+    "app/scripts/release_test_database_backends.py",
+    "app/scripts/reset_test_database.py",
     "app/scripts/run_full_stack_test_server.py",
     "app/services/public_booking.py",
     "app/services/mailer.py",
