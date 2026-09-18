@@ -10,6 +10,7 @@
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "generate:demo": "node scripts/generate-demo-snapshot.mjs",
     "test": "vitest run",
+    "prepush": "node scripts/prepush-ci.mjs",
     "test:e2e": "playwright test",
     "test:e2e:full-stack": "playwright test --config playwright.full-stack.config.js"
   },

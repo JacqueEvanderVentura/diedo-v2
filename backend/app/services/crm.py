@@ -125,9 +125,7 @@ class CrmService:
         ui_mode: str,
     ) -> CrmSettings:
         if not grant.workspace_wide:
-            raise AuthorizationError(
-                "Cambiar el modo del CRM requiere alcance de workspace."
-            )
+            raise AuthorizationError("Cambiar el modo del CRM requiere alcance de workspace.")
         settings = self._repository.settings(grant.workspace_id, lock=True)
         if settings is None:
             settings = self._new_settings(grant.workspace_id, principal.platform_user_id)

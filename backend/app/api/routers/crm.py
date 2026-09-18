@@ -23,6 +23,7 @@ from app.api.routers.pos import (
     _sale_detail_response,
     _sale_list_response,
 )
+from app.db.models.crm import CrmSettings
 from app.repositories.crm import CustomerCrmRecord, LeadRecord, OpportunityRecord
 from app.repositories.pos import QuoteRecord
 from app.schemas.common import ErrorResponse
@@ -42,6 +43,7 @@ from app.schemas.crm import (
     CrmQuoteResponse,
     CrmQuoteStatus,
     CrmStateResponse,
+    CrmWorkspaceSettingsResponse,
     CustomerCrmResponse,
     CustomerLifecycleStatus,
     CustomerPurchaseResponse,
@@ -63,14 +65,13 @@ from app.schemas.crm import (
     PaginatedCrmQuotesResponse,
     PaginatedLeadsResponse,
     PaginatedOpportunitiesResponse,
-    CrmWorkspaceSettingsResponse,
     ScoringSettingsResponse,
     UpdateActivityRequest,
     UpdateCrmQuoteRequest,
+    UpdateCrmWorkspaceSettingsRequest,
     UpdateCustomerCrmProfileRequest,
     UpdateLeadRequest,
     UpdateOpportunityRequest,
-    UpdateCrmWorkspaceSettingsRequest,
     UpdateScoringSettingsRequest,
 )
 from app.schemas.pos import (
@@ -80,7 +81,6 @@ from app.schemas.pos import (
     SaleStatus,
     VoidRequest,
 )
-from app.db.models.crm import CrmSettings
 from app.services.crm import CrmService, ScoringSettingsRecord
 from app.services.crm_discovery import CrmDiscoveryService, LeadDiscoveryQuery
 
