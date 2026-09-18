@@ -32,6 +32,7 @@ import CategoriasPage from './CategoriasPage'
 import MetodosPagoPage from './MetodosPagoPage'
 import PlantillasWaPanel from '../components/PlantillasWaPanel'
 import BillingDocumentsPanel from '../components/BillingDocumentsPanel'
+import CrmModePanel from '../components/CrmModePanel'
 
 const EMBED_MAP = {
   usuarios: UsuariosPage,
@@ -41,6 +42,7 @@ const EMBED_MAP = {
   'metodos-pago': MetodosPagoPage,
   whatsapp: PlantillasWaPanel,
   'billing-documents': BillingDocumentsPanel,
+  'crm-mode': CrmModePanel,
 }
 
 const SECTIONS = [
@@ -54,6 +56,14 @@ const SECTIONS = [
         icon: Receipt,
         kind: 'embed',
         embed: 'billing-documents',
+      },
+      {
+        id: 'crm-mode',
+        title: 'Modo CRM',
+        subtitle: 'Standard con submódulos o Simplificado en una pantalla',
+        icon: Users,
+        kind: 'embed',
+        embed: 'crm-mode',
       },
     ],
   },

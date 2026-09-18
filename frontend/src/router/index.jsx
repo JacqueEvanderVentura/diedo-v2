@@ -42,6 +42,8 @@ import CrmComprasPage from '@/modules/crm/pages/ComprasPage'
 import ComprasPage from '@/modules/compras/pages/ComprasPage'
 
 import VentasPage from '@/modules/crm/pages/VentasPage'
+import SimplifiedWorkspacePage from '@/modules/crm/pages/SimplifiedWorkspacePage'
+import { CrmRoutingLayout } from '@/modules/crm/components/CrmRoutingLayout'
 
 import OverviewPage from '@/modules/finanzas/pages/OverviewPage'
 
@@ -151,21 +153,25 @@ export function AppRoutes() {
 
           <Route path="/agenda/gestion" element={<GestionCitasPage />} />
 
-          <Route path="/crm" element={<CrmOverviewPage />} />
+          <Route element={<CrmRoutingLayout />}>
+            <Route path="/crm/workspace" element={<SimplifiedWorkspacePage />} />
 
-          <Route path="/crm/clientes" element={<ClientesPage />} />
+            <Route path="/crm" element={<CrmOverviewPage />} />
 
-          <Route path="/crm/leads" element={<LeadsPage />} />
+            <Route path="/crm/clientes" element={<ClientesPage />} />
 
-          <Route path="/crm/pipeline" element={<PipelinePage />} />
+            <Route path="/crm/leads" element={<LeadsPage />} />
 
-          <Route path="/crm/seguimiento" element={<SeguimientoPage />} />
+            <Route path="/crm/pipeline" element={<PipelinePage />} />
 
-          <Route path="/crm/cotizaciones" element={<CotizacionesPage />} />
+            <Route path="/crm/seguimiento" element={<SeguimientoPage />} />
 
-          <Route path="/crm/compras" element={<CrmComprasPage />} />
+            <Route path="/crm/cotizaciones" element={<CotizacionesPage />} />
 
-          <Route path="/crm/ventas" element={<VentasPage />} />
+            <Route path="/crm/compras" element={<CrmComprasPage />} />
+
+            <Route path="/crm/ventas" element={<VentasPage />} />
+          </Route>
 
           <Route path="/rrhh" element={<RrhhOverviewPage />} />
           <Route path="/rrhh/directorio" element={<DirectorioPage />} />

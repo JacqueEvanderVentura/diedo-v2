@@ -22,7 +22,7 @@ const emptyForm = (branchId = '') => ({
   acquisitionSource: 'whatsapp',
 })
 
-export function LeadFormModal({ open, onClose }) {
+export function LeadFormModal({ open, onClose, onSaved }) {
   const branches = useConfigStore((state) => state.branches)
   const addLead = useCrmStore((state) => state.addLead)
   const [form, setForm] = useState(emptyForm())
@@ -58,6 +58,7 @@ export function LeadFormModal({ open, onClose }) {
         status: 'nuevo',
       })
       toast.success('Lead creado')
+      onSaved?.()
       onClose()
     } catch (error) {
       toast.error(error.message || 'No se pudo crear el lead')

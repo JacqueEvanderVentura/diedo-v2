@@ -324,27 +324,46 @@ class CrmRepository:
         workspace_id: UUID,
         allowed_branch_ids: frozenset[UUID] | None,
         branch_id: UUID | None,
+        branch_ids: tuple[UUID, ...] | None,
         stage: str | None,
         customer_id: UUID | None,
         search: str | None,
+        updated_after: datetime | None,
+        updated_before: datetime | None,
         page: int,
         page_size: int,
     ) -> EntityPage:
         query = select(CrmOpportunity).where(CrmOpportunity.workspace_id == workspace_id)
         if allowed_branch_ids is not None:
             query = query.where(CrmOpportunity.branch_id.in_(allowed_branch_ids))
-        if branch_id is not None:
+        if branch_ids:
+            query = query.where(CrmOpportunity.branch_id.in_(branch_ids))
+        elif branch_id is not None:
             query = query.where(CrmOpportunity.branch_id == branch_id)
         if stage is not None:
             query = query.where(CrmOpportunity.stage == stage)
         if customer_id is not None:
             query = query.where(CrmOpportunity.customer_id == customer_id)
+        if updated_after is not None:
+            query = query.where(CrmOpportunity.updated_at >= updated_after)
+        if updated_before is not None:
+            query = query.where(CrmOpportunity.updated_at <= updated_before)
         if search:
             pattern = f"%{search.casefold()}%"
-            query = query.where(
-                or_(
-                    func.lower(CrmOpportunity.title).like(pattern),
-                    func.lower(CrmOpportunity.customer_name).like(pattern),
+            query = (
+                query.join(
+                    CrmLead,
+                    (CrmLead.workspace_id == CrmOpportunity.workspace_id)
+                    & (CrmLead.id == CrmOpportunity.lead_id),
+                )
+                .where(
+                    or_(
+                        func.lower(CrmOpportunity.title).like(pattern),
+                        func.lower(CrmOpportunity.customer_name).like(pattern),
+                        func.lower(CrmLead.name).like(pattern),
+                        func.lower(CrmLead.company).like(pattern),
+                        func.lower(CrmLead.phone).like(pattern),
+                    )
                 )
             )
         total = int(self._session.scalar(select(func.count()).select_from(query.subquery())) or 0)

@@ -19,6 +19,15 @@ describe('datePeriod', () => {
     expect(inDateRange(toDateInputValue(lastMonth), range)).toBe(false)
   })
 
+  it('resuelve últimos 28 días', () => {
+    const now = new Date('2026-09-18T12:00:00')
+    const { start, end } = resolvePeriodRange({ period: 'last28' }, now)
+    expect(start.getFullYear()).toBe(2026)
+    expect(start.getMonth()).toBe(7)
+    expect(start.getDate()).toBe(22)
+    expect(end.getDate()).toBe(18)
+  })
+
   it('formatea etiqueta de día único', () => {
     const label = periodFilterLabel({
       period: 'custom',

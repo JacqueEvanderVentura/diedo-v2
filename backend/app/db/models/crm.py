@@ -428,6 +428,9 @@ class CrmSettings(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     scoring_weights: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
+    ui_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="standard", server_default=text("'standard'")
+    )
     updated_by_platform_user_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("platform_users.id", ondelete="RESTRICT")
     )

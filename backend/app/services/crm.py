@@ -113,6 +113,38 @@ class CrmService:
         self._session.commit()
         return ScoringSettingsRecord(settings)
 
+    def workspace_settings(self, grant: PermissionGrant) -> CrmSettings:
+        return self._required_settings(grant.workspace_id)
+
+    def update_workspace_settings(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        expected_version: int,
+        ui_mode: str,
+    ) -> CrmSettings:
+        if not grant.workspace_wide:
+            raise AuthorizationError(
+                "Cambiar el modo del CRM requiere alcance de workspace."
+            )
+        settings = self._repository.settings(grant.workspace_id, lock=True)
+        if settings is None:
+            settings = self._new_settings(grant.workspace_id, principal.platform_user_id)
+        self._require_version(settings.version, expected_version)
+        settings.ui_mode = ui_mode
+        settings.updated_by_platform_user_id = principal.platform_user_id
+        settings.version += 1
+        self._audit(
+            principal,
+            "crm.settings.ui_mode.update",
+            "crm_settings",
+            settings.id,
+            {"ui_mode": ui_mode, "version": settings.version},
+        )
+        self._session.commit()
+        return settings
+
     def list_leads(
         self,
         grant: PermissionGrant,
@@ -297,21 +329,38 @@ class CrmService:
         grant: PermissionGrant,
         *,
         branch_id: UUID | None,
+        branch_ids: list[UUID] | None,
         stage: str | None,
         customer_id: UUID | None,
         search: str | None,
+        updated_after: datetime | None,
+        updated_before: datetime | None,
         page: int,
         page_size: int,
     ) -> PageResult:
         self._require_optional_branch(grant, branch_id)
+        resolved_branch_ids: tuple[UUID, ...] | None = None
+        if branch_ids:
+            unique_ids = tuple(dict.fromkeys(branch_ids))
+            for item in unique_ids:
+                self._require_optional_branch(grant, item)
+            if grant.allowed_branch_ids is not None:
+                resolved_branch_ids = tuple(
+                    item for item in unique_ids if item in grant.allowed_branch_ids
+                )
+            else:
+                resolved_branch_ids = unique_ids
         return self._page(
             self._repository.list_opportunities(
                 workspace_id=grant.workspace_id,
                 allowed_branch_ids=grant.allowed_branch_ids,
-                branch_id=branch_id,
+                branch_id=branch_id if not resolved_branch_ids else None,
+                branch_ids=resolved_branch_ids,
                 stage=stage,
                 customer_id=customer_id,
                 search=self._optional_text(search),
+                updated_after=updated_after,
+                updated_before=updated_before,
                 page=page,
                 page_size=page_size,
             ),

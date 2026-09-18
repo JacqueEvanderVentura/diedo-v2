@@ -24,7 +24,15 @@ import {
   mapLeadsPageFromApi,
   mapOpportunityFromApi,
   mapOpportunitiesPageFromApi,
+  mapOpportunitiesPaginatedFromApi,
 } from '@/services/adapters/crm'
+import {
+  SIMPLIFIED_WORKSPACE_STAGES,
+  buildSimplifiedOpportunityQuery,
+} from '@/modules/crm/lib/simplifiedWorkspaceQuery'
+import { paginateSlice } from '@/modules/reportes/lib/pagination'
+import { matchesBranches } from '@/lib/branches'
+import { resolvePeriodRange } from '@/lib/datePeriod'
 import {
   buildDemoSaleFromPipeline,
   findBillableQuote,
@@ -65,6 +73,14 @@ const isOnline = () => useSessionStore.getState().status === 'online'
 
 function replaceById(items, entity) {
   return items.map((item) => (item.id === entity.id ? entity : item))
+}
+
+function upsertById(items, entities) {
+  const map = new Map(items.map((item) => [item.id, item]))
+  entities.forEach((entity) => {
+    if (entity?.id) map.set(entity.id, entity)
+  })
+  return [...map.values()]
 }
 
 function leadPayload(data) {
@@ -171,6 +187,15 @@ async function loadOnlineSection(section) {
       const sales = await readAllPages(crmApi.sales)
       return { sales: mapCrmSalesPageFromApi(sales) }
     }
+    case 'workspace': {
+      const workspace = await crmApi.workspaceSettings()
+      return {
+        uiMode: workspace.uiMode || 'standard',
+        uiModeVersion: workspace.version || 1,
+        workspaceSettingsLoaded: true,
+        workspaceSettingsSynced: true,
+      }
+    }
     default:
       throw new Error(`Sección CRM desconocida: ${section}`)
   }
@@ -271,6 +296,10 @@ export const useCrmStore = create(
       discoveryCapabilities: null,
       scoringWeights: { ...DEFAULT_SCORING_WEIGHTS },
       scoringVersion: 1,
+      uiMode: 'standard',
+      uiModeVersion: 1,
+      workspaceSettingsLoaded: false,
+      workspaceSettingsSynced: false,
       serpHourCount: 0,
       serpHourWindowStart: Date.now(),
       serpMonthCount: 0,
@@ -278,6 +307,18 @@ export const useCrmStore = create(
       dataState: { status: 'loading', source: null, error: null },
       hydrating: false,
       error: null,
+      simplifiedWorkspace: {
+        items: [],
+        page: 1,
+        pageSize: 25,
+        totalItems: 0,
+        totalPages: 1,
+        stageCounts: {},
+        loading: false,
+        countsLoading: false,
+        detailActivities: [],
+        detailActivitiesLoading: false,
+      },
       hydrate: async ({ force = false } = {}) => {
         const online = isOnline()
         const alreadyHydratedForSession = online
@@ -381,6 +422,283 @@ export const useCrmStore = create(
 
       recordSerpSearch: () =>
         set((state) => recordSerpUsage(state)),
+
+      ensureWorkspaceSettings: async ({ force = false } = {}) => {
+        if (!force && get().workspaceSettingsSynced) return get()
+        if (!isOnline()) {
+          set({ workspaceSettingsLoaded: true, workspaceSettingsSynced: true })
+          return get()
+        }
+        try {
+          const workspace = await crmApi.workspaceSettings()
+          set({
+            uiMode: workspace.uiMode || 'standard',
+            uiModeVersion: workspace.version || 1,
+            workspaceSettingsLoaded: true,
+            workspaceSettingsSynced: true,
+          })
+        } catch (error) {
+          set({ workspaceSettingsLoaded: true })
+          throw error
+        }
+        return get()
+      },
+
+      updateUiMode: async (uiMode) => {
+        if (!isOnline()) {
+          set({
+            uiMode,
+            uiModeVersion: get().uiModeVersion + 1,
+            workspaceSettingsLoaded: true,
+          })
+          return get()
+        }
+        const result = await crmApi.updateWorkspaceSettings({
+          version: get().uiModeVersion,
+          uiMode,
+        })
+        set({
+          uiMode: result.uiMode || uiMode,
+          uiModeVersion: result.version,
+          workspaceSettingsLoaded: true,
+          workspaceSettingsSynced: true,
+        })
+        return get()
+      },
+
+      fetchSimplifiedWorkspaceQueue: async ({
+        stage,
+        page = 1,
+        pageSize = 25,
+        search = '',
+        branchIds = [],
+        dateFilter,
+      }) => {
+        set((state) => ({
+          simplifiedWorkspace: {
+            ...state.simplifiedWorkspace,
+            loading: true,
+            page,
+            pageSize,
+          },
+        }))
+        try {
+          if (!isOnline()) {
+            const { start, end } = resolvePeriodRange(dateFilter)
+            const q = search.trim().toLowerCase()
+            const leads = get().leads.length ? get().leads : buildSeedLeads()
+            const opportunities = get().opportunities.length ? get().opportunities : SEED_OPPORTUNITIES
+            const filtered = opportunities
+              .filter((item) => !['perdido'].includes(item.stage))
+              .filter((item) => item.stage === stage)
+              .filter((item) => matchesBranches(item.branchId, branchIds))
+              .filter((item) => {
+                const updated = new Date(item.updatedAt || item.createdAt || 0)
+                return updated >= start && updated <= end
+              })
+              .filter((item) => {
+                if (!q) return true
+                const lead = leads.find((l) => l.id === item.leadId)
+                const title = (item.customerName || lead?.name || '').toLowerCase()
+                const phone = (lead?.phone || '').toLowerCase()
+                return title.includes(q) || phone.includes(q)
+              })
+            const slice = paginateSlice(filtered, { page, pageSize })
+            set((state) => ({
+              simplifiedWorkspace: {
+                ...state.simplifiedWorkspace,
+                items: slice.items,
+                page: slice.page,
+                pageSize: slice.pageSize,
+                totalItems: slice.total,
+                totalPages: slice.totalPages,
+                loading: false,
+              },
+              opportunities: upsertById(state.opportunities, slice.items),
+            }))
+            return get().simplifiedWorkspace
+          }
+
+          const params = buildSimplifiedOpportunityQuery({
+            stage,
+            page,
+            pageSize,
+            search,
+            branchIds,
+            dateFilter,
+          })
+          const response = await crmApi.opportunities(params)
+          const mapped = mapOpportunitiesPaginatedFromApi(response)
+          const leadIds = [...new Set(mapped.items.map((item) => item.leadId).filter(Boolean))]
+          const leadRecords = await Promise.all(
+            leadIds.map((leadId) => crmApi.getLead(leadId).then(mapLeadFromApi).catch(() => null))
+          )
+          const leadsFetched = leadRecords.filter(Boolean)
+          set((state) => ({
+            simplifiedWorkspace: {
+              ...state.simplifiedWorkspace,
+              items: mapped.items,
+              page: mapped.page,
+              pageSize: mapped.pageSize,
+              totalItems: mapped.totalItems,
+              totalPages: mapped.totalPages,
+              loading: false,
+            },
+            opportunities: upsertById(state.opportunities, mapped.items),
+            leads: upsertById(state.leads, leadsFetched),
+          }))
+          return get().simplifiedWorkspace
+        } catch (error) {
+          set((state) => ({
+            simplifiedWorkspace: { ...state.simplifiedWorkspace, loading: false },
+            error,
+          }))
+          throw error
+        }
+      },
+
+      fetchSimplifiedWorkspaceStageCounts: async ({ search = '', branchIds = [], dateFilter }) => {
+        set((state) => ({
+          simplifiedWorkspace: { ...state.simplifiedWorkspace, countsLoading: true },
+        }))
+        try {
+          if (!isOnline()) {
+            const { start, end } = resolvePeriodRange(dateFilter)
+            const q = search.trim().toLowerCase()
+            const leads = get().leads.length ? get().leads : buildSeedLeads()
+            const opportunities = get().opportunities.length ? get().opportunities : SEED_OPPORTUNITIES
+            const stageCounts = Object.fromEntries(SIMPLIFIED_WORKSPACE_STAGES.map((id) => [id, 0]))
+            opportunities
+              .filter((item) => !['perdido'].includes(item.stage))
+              .filter((item) => matchesBranches(item.branchId, branchIds))
+              .filter((item) => {
+                const updated = new Date(item.updatedAt || item.createdAt || 0)
+                return updated >= start && updated <= end
+              })
+              .filter((item) => {
+                if (!q) return true
+                const lead = leads.find((l) => l.id === item.leadId)
+                const title = (item.customerName || lead?.name || '').toLowerCase()
+                const phone = (lead?.phone || '').toLowerCase()
+                return title.includes(q) || phone.includes(q)
+              })
+              .forEach((item) => {
+                if (stageCounts[item.stage] !== undefined) stageCounts[item.stage] += 1
+              })
+            set((state) => ({
+              simplifiedWorkspace: { ...state.simplifiedWorkspace, stageCounts, countsLoading: false },
+            }))
+            return stageCounts
+          }
+
+          const base = buildSimplifiedOpportunityQuery({
+            stage: SIMPLIFIED_WORKSPACE_STAGES[0],
+            page: 1,
+            pageSize: 1,
+            search,
+            branchIds,
+            dateFilter,
+          })
+          const responses = await Promise.all(
+            SIMPLIFIED_WORKSPACE_STAGES.map((stageId) => crmApi.opportunities({ ...base, stage: stageId }))
+          )
+          const stageCounts = Object.fromEntries(
+            SIMPLIFIED_WORKSPACE_STAGES.map((stageId, index) => {
+              const mapped = mapOpportunitiesPaginatedFromApi(responses[index])
+              return [stageId, mapped.totalItems]
+            })
+          )
+          set((state) => ({
+            simplifiedWorkspace: { ...state.simplifiedWorkspace, stageCounts, countsLoading: false },
+          }))
+          return stageCounts
+        } catch (error) {
+          set((state) => ({
+            simplifiedWorkspace: { ...state.simplifiedWorkspace, countsLoading: false },
+          }))
+          throw error
+        }
+      },
+
+      fetchSimplifiedWorkspaceDetailActivities: async (opportunityId) => {
+        if (!opportunityId) {
+          set((state) => ({
+            simplifiedWorkspace: {
+              ...state.simplifiedWorkspace,
+              detailActivities: [],
+              detailActivitiesLoading: false,
+            },
+          }))
+          return []
+        }
+        set((state) => ({
+          simplifiedWorkspace: { ...state.simplifiedWorkspace, detailActivitiesLoading: true },
+        }))
+        try {
+          if (!isOnline()) {
+            const detailActivities = get()
+              .activities
+              .filter((item) => item.opportunityId === opportunityId)
+              .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+            set((state) => ({
+              simplifiedWorkspace: {
+                ...state.simplifiedWorkspace,
+                detailActivities,
+                detailActivitiesLoading: false,
+              },
+            }))
+            return detailActivities
+          }
+          const response = await crmApi.activities({
+            opportunityId,
+            page: 1,
+            pageSize: 50,
+          })
+          const detailActivities = mapActivitiesPageFromApi(response)
+            .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+          set((state) => ({
+            simplifiedWorkspace: {
+              ...state.simplifiedWorkspace,
+              detailActivities,
+              detailActivitiesLoading: false,
+            },
+            activities: upsertById(state.activities, detailActivities),
+          }))
+          return detailActivities
+        } catch (error) {
+          set((state) => ({
+            simplifiedWorkspace: { ...state.simplifiedWorkspace, detailActivitiesLoading: false },
+          }))
+          throw error
+        }
+      },
+
+      applySimplifiedFollowUp: async (opportunityId, { dueAt, title, description }) => {
+        const opportunity = get().opportunities.find((item) => item.id === opportunityId)
+          || get().simplifiedWorkspace.items.find((item) => item.id === opportunityId)
+        if (!opportunity) throw new Error('Oportunidad no encontrada.')
+        const dueIso = dueAt ? new Date(dueAt).toISOString() : null
+        await get().addActivity({
+          type: 'tarea',
+          title: title || 'Seguimiento programado',
+          description: description || null,
+          opportunityId: opportunity.id,
+          leadId: opportunity.leadId || null,
+          customerId: opportunity.customerId || null,
+          customerName: opportunity.customerName,
+          branchId: opportunity.branchId,
+          dueAt: dueIso,
+        })
+        if (opportunity.stage !== 'negociacion') {
+          await get().updateOpportunity(opportunityId, { stage: 'negociacion' })
+        }
+      },
+
+      applySimplifiedLost: async (opportunityId, lostReason) => {
+        const reason = String(lostReason || '').trim()
+        if (!reason) throw new Error('Selecciona un motivo de pérdida.')
+        await get().updateOpportunity(opportunityId, { stage: 'perdido', lostReason: reason })
+      },
 
       updateScoringWeights: async (weights) => {
         if (!isOnline()) {
@@ -1102,6 +1420,18 @@ export const useCrmStore = create(
         hydrating: false,
         error: null,
         dataState: { status: 'loading', source: null, error: null },
+        simplifiedWorkspace: {
+          items: [],
+          page: 1,
+          pageSize: 25,
+          totalItems: 0,
+          totalPages: 1,
+          stageCounts: {},
+          loading: false,
+          countsLoading: false,
+          detailActivities: [],
+          detailActivitiesLoading: false,
+        },
         })
       },
 
@@ -1129,13 +1459,21 @@ export const useCrmStore = create(
     {
       name: 'diedo-crm',
       storage: ephemeralJsonStorage,
-      version: 2,
+      version: 3,
       partialize: (state) => ({
         scoringWeights: state.scoringWeights,
+        uiMode: state.uiMode,
+        uiModeVersion: state.uiModeVersion,
         serpHourCount: state.serpHourCount,
         serpHourWindowStart: state.serpHourWindowStart,
         serpMonthCount: state.serpMonthCount,
         serpMonthKey: state.serpMonthKey,
+      }),
+      merge: (persisted, current) => ({
+        ...current,
+        ...(persisted || {}),
+        workspaceSettingsLoaded: false,
+        workspaceSettingsSynced: false,
       }),
     }
   )

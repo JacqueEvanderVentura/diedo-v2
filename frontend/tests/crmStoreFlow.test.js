@@ -252,6 +252,43 @@ describe('flujo conectado del store CRM', () => {
     expect(useCrmStore.getState().scoringVersion).toBe(3)
   })
 
+  it('programa seguimiento simplificado y mueve a negociación', async () => {
+    useCrmStore.setState({ opportunities: [opportunity({ stage: 'propuesta' })] })
+    mocks.createActivity.mockResolvedValue({
+      id: 'act-1',
+      type: 'tarea',
+      title: 'Seguimiento',
+      opportunityId,
+      dueAt: '2026-09-20T14:00:00Z',
+      version: 1,
+    })
+    mocks.updateOpportunity.mockResolvedValue(opportunity({ stage: 'negociacion', version: 2 }))
+
+    await useCrmStore.getState().applySimplifiedFollowUp(opportunityId, {
+      dueAt: '2026-09-20T14:00:00',
+      title: 'Seguimiento',
+      description: 'Llamar',
+    })
+
+    expect(mocks.createActivity).toHaveBeenCalled()
+    expect(mocks.updateOpportunity).toHaveBeenCalledWith(
+      opportunityId,
+      expect.objectContaining({ stage: 'negociacion' }),
+    )
+  })
+
+  it('marca perdido con motivo en modo simplificado', async () => {
+    useCrmStore.setState({ opportunities: [opportunity({ stage: 'propuesta' })] })
+    mocks.updateOpportunity.mockResolvedValue(opportunity({ stage: 'perdido', lostReason: 'Precio', version: 2 }))
+
+    await useCrmStore.getState().applySimplifiedLost(opportunityId, 'Precio alto')
+
+    expect(mocks.updateOpportunity).toHaveBeenCalledWith(
+      opportunityId,
+      expect.objectContaining({ stage: 'perdido', lostReason: 'Precio alto' }),
+    )
+  })
+
   it('cierra una oportunidad facturada sin volver a emitir la venta', async () => {
     customerStore.customers = [{ id: customerId, name: 'Cliente' }]
     useCrmStore.setState({ opportunities: [opportunity({ customerId })], quotes: [{

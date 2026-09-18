@@ -28,6 +28,8 @@ export const crmApi = {
   discoveryCapabilities: () => apiClient.get(`${CRM_BASE}/discovery/capabilities`),
   searchDiscovery: (payload) => apiClient.post(`${CRM_BASE}/discovery/search`, payload),
   updateScoring: (payload) => apiClient.patch(`${CRM_BASE}/settings/scoring`, payload),
+  workspaceSettings: () => apiClient.get(`${CRM_BASE}/settings/workspace`),
+  updateWorkspaceSettings: (payload) => apiClient.patch(`${CRM_BASE}/settings/workspace`, payload),
 
   createLead: (payload, key) => apiClient.post(
     `${CRM_BASE}/leads`,

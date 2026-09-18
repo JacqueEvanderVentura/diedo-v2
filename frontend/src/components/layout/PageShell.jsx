@@ -23,6 +23,7 @@ const CRM_SECTION_BY_PATH = Object.freeze({
   '/crm/cotizaciones': 'quotes',
   '/crm/compras': 'purchases',
   '/crm/ventas': 'sales',
+  '/crm/workspace': 'workspace',
 })
 
 const CRM_SECTIONS_REQUIRING_CUSTOMERS = new Set(['customers', 'pipeline', 'quotes', 'purchases'])
@@ -62,6 +63,7 @@ export function PageShell() {
 
   useEffect(() => {
     if (!crmSection || !['online', 'demo'].includes(sessionStatus)) return
+    useCrmStore.getState().ensureWorkspaceSettings().catch(() => {})
     const requests = canReadCrm || sessionStatus === 'demo' ? [hydrateCrmSection(crmSection)] : []
     if (CRM_SECTIONS_REQUIRING_CUSTOMERS.has(crmSection) && (canReadCustomers || sessionStatus === 'demo')) {
       requests.push(hydrateCustomers({ force: true }))

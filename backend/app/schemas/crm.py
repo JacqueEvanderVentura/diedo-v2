@@ -405,6 +405,20 @@ class ScoringSettingsResponse(ApiModel):
     updated_at: datetime
 
 
+CrmUiMode = Literal["standard", "simplified"]
+
+
+class CrmWorkspaceSettingsResponse(ApiModel):
+    ui_mode: CrmUiMode
+    version: int
+    updated_at: datetime
+
+
+class UpdateCrmWorkspaceSettingsRequest(ApiModel):
+    version: int = Field(ge=1)
+    ui_mode: CrmUiMode
+
+
 class UpdateScoringSettingsRequest(ApiModel):
     version: int = Field(ge=1)
     weights: dict[str, float] = Field(min_length=7, max_length=7)

@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { NAV_GROUPS, BACKOFFICE_NAV } from '@/data/navigation'
+import { resolveCrmNavGroup } from '@/modules/crm/lib/crmNavigation'
+import { useCrmStore } from '@/stores/crmStore'
 import { useUiStore } from '@/stores/uiStore'
 import { usePosStore } from '@/stores/posStore'
 import { useConfigStore } from '@/stores/configStore'
@@ -211,26 +213,36 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
   const logout = useSessionStore((s) => s.logout)
   const enabledModules = sessionUser?.enabledModules
   const effectivePermissionCodes = sessionUser?.effectivePermissionCodes
+  const crmUiMode = useCrmStore((state) => state.uiMode)
+  const ensureWorkspaceSettings = useCrmStore((state) => state.ensureWorkspaceSettings)
   const navigation = useMemo(() => {
-    if (sessionStatus === 'demo') return NAV_GROUPS
+    const withCrmMode = (groups) => groups.map((group) => resolveCrmNavGroup(group, crmUiMode))
+    if (sessionStatus === 'demo') return withCrmMode(NAV_GROUPS)
     if (sessionUser?.isPlatformOperator) {
       return [BACKOFFICE_NAV]
     }
     const modules = new Set(enabledModules || [])
     const permissions = new Set(effectivePermissionCodes || [])
-    return NAV_GROUPS.filter((group) => isModuleAvailable(group.module, modules))
-      .map((group) => ({
-        ...group,
-        children: group.children?.filter((child) => {
-          const moduleCode = child.module || group.module
-          return (
-            isModuleAvailable(moduleCode, modules) &&
-            (!child.permission || permissions.has(child.permission))
-          )
-        }),
-      }))
-      .filter((group) => !group.children || group.children.length > 0)
-  }, [effectivePermissionCodes, enabledModules, sessionStatus, sessionUser?.isPlatformOperator])
+    return withCrmMode(
+      NAV_GROUPS.filter((group) => isModuleAvailable(group.module, modules))
+        .map((group) => ({
+          ...group,
+          children: group.children?.filter((child) => {
+            const moduleCode = child.module || group.module
+            return (
+              isModuleAvailable(moduleCode, modules) &&
+              (!child.permission || permissions.has(child.permission))
+            )
+          }),
+        }))
+        .filter((group) => !group.children || group.children.length > 0)
+    )
+  }, [crmUiMode, effectivePermissionCodes, enabledModules, sessionStatus, sessionUser?.isPlatformOperator])
+
+  useEffect(() => {
+    if (sessionStatus !== 'online' && sessionStatus !== 'demo') return
+    ensureWorkspaceSettings().catch(() => {})
+  }, [ensureWorkspaceSettings, sessionStatus])
   const [open, setOpen] = useState(() => deriveOpenGroups(location.pathname))
   const navRef = useRef(null)
   const canAnimate = useRef(false)

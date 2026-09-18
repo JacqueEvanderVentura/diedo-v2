@@ -185,9 +185,12 @@ def test_seeded_crm_has_complete_commercial_trace_and_overview() -> None:
             opportunities = service.list_opportunities(
                 grant,
                 branch_id=None,
+                branch_ids=None,
                 stage=None,
                 customer_id=None,
                 search=None,
+                updated_after=None,
+                updated_before=None,
                 page=1,
                 page_size=100,
             )
@@ -1231,3 +1234,36 @@ def test_scoring_rejects_scoped_permission_before_mutating() -> None:
     session.execute.assert_not_called()
     session.scalar.assert_not_called()
     session.commit.assert_not_called()
+
+
+@pytest.mark.integration
+def test_crm_workspace_ui_mode_roundtrip(client: TestClient) -> None:
+    with session_scope() as session:
+        bootstrap_local_foundation(session, hash_password(_PASSWORD))
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@erp.dev", "password": _PASSWORD},
+    )
+    assert login.status_code == 200, login.text
+    headers = {"Authorization": f"Bearer {login.json()['accessToken']}"}
+
+    current = client.get("/api/v1/crm/settings/workspace", headers=headers)
+    assert current.status_code == 200, current.text
+    body = current.json()
+    assert body["uiMode"] == "standard"
+
+    updated = client.patch(
+        "/api/v1/crm/settings/workspace",
+        headers=headers,
+        json={"version": body["version"], "uiMode": "simplified"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["uiMode"] == "simplified"
+
+    restored = client.patch(
+        "/api/v1/crm/settings/workspace",
+        headers=headers,
+        json={"version": updated.json()["version"], "uiMode": "standard"},
+    )
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["uiMode"] == "standard"

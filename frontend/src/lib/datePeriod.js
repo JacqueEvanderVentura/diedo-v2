@@ -66,6 +66,11 @@ export function resolvePeriodRange({ period, dateFrom, dateTo } = {}, now = new 
     const end = new Date(today.getFullYear(), quarterMonth + 3, 0)
     return { start, end: endOfDay(end) }
   }
+  if (period === 'last28') {
+    const start = new Date(today)
+    start.setDate(start.getDate() - 27)
+    return { start, end: endOfDay(today) }
+  }
 
   const fallbackStart = new Date(today)
   fallbackStart.setDate(fallbackStart.getDate() - 6)

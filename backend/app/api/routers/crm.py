@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from math import ceil
 from typing import Annotated, Any, cast
 from uuid import UUID
@@ -63,12 +63,14 @@ from app.schemas.crm import (
     PaginatedCrmQuotesResponse,
     PaginatedLeadsResponse,
     PaginatedOpportunitiesResponse,
+    CrmWorkspaceSettingsResponse,
     ScoringSettingsResponse,
     UpdateActivityRequest,
     UpdateCrmQuoteRequest,
     UpdateCustomerCrmProfileRequest,
     UpdateLeadRequest,
     UpdateOpportunityRequest,
+    UpdateCrmWorkspaceSettingsRequest,
     UpdateScoringSettingsRequest,
 )
 from app.schemas.pos import (
@@ -78,6 +80,7 @@ from app.schemas.pos import (
     SaleStatus,
     VoidRequest,
 )
+from app.db.models.crm import CrmSettings
 from app.services.crm import CrmService, ScoringSettingsRecord
 from app.services.crm_discovery import CrmDiscoveryService, LeadDiscoveryQuery
 
@@ -241,6 +244,14 @@ def _settings_response(record: ScoringSettingsRecord) -> ScoringSettingsResponse
     )
 
 
+def _workspace_settings_response(settings: CrmSettings) -> CrmWorkspaceSettingsResponse:
+    return CrmWorkspaceSettingsResponse(
+        ui_mode=cast(Any, settings.ui_mode),
+        version=settings.version,
+        updated_at=settings.updated_at,
+    )
+
+
 def _customer_response(record: CustomerCrmRecord) -> CustomerCrmResponse:
     customer = record.customer
     return CustomerCrmResponse(
@@ -327,6 +338,33 @@ def update_scoring_settings(
             grant=grant,
             expected_version=payload.version,
             weights=payload.weights,
+        )
+    )
+
+
+@router.get("/settings/workspace", responses=_RESPONSES)
+def get_workspace_settings(
+    response: Response,
+    database: DatabaseSession,
+    grant: CrmReadGrant,
+) -> CrmWorkspaceSettingsResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return _workspace_settings_response(CrmService(database).workspace_settings(grant))
+
+
+@router.patch("/settings/workspace", responses=_RESPONSES)
+def update_workspace_settings(
+    payload: UpdateCrmWorkspaceSettingsRequest,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: CrmManageGrant,
+) -> CrmWorkspaceSettingsResponse:
+    return _workspace_settings_response(
+        CrmService(database).update_workspace_settings(
+            principal=principal,
+            grant=grant,
+            expected_version=payload.version,
+            ui_mode=payload.ui_mode,
         )
     )
 
@@ -477,9 +515,12 @@ def list_opportunities(
     database: DatabaseSession,
     grant: CrmReadGrant,
     branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
+    branch_ids: Annotated[list[UUID] | None, Query(alias="branchIds")] = None,
     stage_filter: Annotated[OpportunityStage | None, Query(alias="stage")] = None,
     customer_id: Annotated[UUID | None, Query(alias="customerId")] = None,
     search: Annotated[str | None, Query(max_length=200)] = None,
+    updated_after: Annotated[datetime | None, Query(alias="updatedAfter")] = None,
+    updated_before: Annotated[datetime | None, Query(alias="updatedBefore")] = None,
     page: Annotated[int, Query(ge=1, le=1_000_000)] = 1,
     page_size: Annotated[int, Query(alias="pageSize", ge=1, le=200)] = 50,
 ) -> PaginatedOpportunitiesResponse:
@@ -487,9 +528,12 @@ def list_opportunities(
     result = CrmService(database).list_opportunities(
         grant,
         branch_id=branch_id,
+        branch_ids=branch_ids,
         stage=stage_filter,
         customer_id=customer_id,
         search=search,
+        updated_after=updated_after,
+        updated_before=updated_before,
         page=page,
         page_size=page_size,
     )
@@ -966,9 +1010,12 @@ def get_crm_state(
     opportunities = service.list_opportunities(
         crm_grant,
         branch_id=branch_id,
+        branch_ids=None,
         stage=None,
         customer_id=None,
         search=None,
+        updated_after=None,
+        updated_before=None,
         page=1,
         page_size=200,
     )

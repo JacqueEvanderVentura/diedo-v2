@@ -129,6 +129,22 @@ export function mapOpportunitiesPageFromApi(response) {
   return items(response).map(mapOpportunityFromApi)
 }
 
+export function mapOpportunitiesPaginatedFromApi(response) {
+  const totalItems = Number(response?.totalItems ?? response?.total_items ?? 0)
+  const pageSize = Number(response?.pageSize ?? response?.page_size ?? 50)
+  const page = Number(response?.page ?? 1)
+  const totalPages = Number(
+    response?.totalPages ?? response?.total_pages ?? Math.max(1, Math.ceil(totalItems / pageSize))
+  )
+  return {
+    items: mapOpportunitiesPageFromApi(response),
+    page,
+    pageSize,
+    totalItems,
+    totalPages,
+  }
+}
+
 export function mapActivitiesPageFromApi(response) {
   return items(response).map(mapActivityFromApi)
 }
