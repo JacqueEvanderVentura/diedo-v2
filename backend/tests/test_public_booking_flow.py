@@ -427,9 +427,7 @@ def test_persisted_appointment_reminders_send_once_and_omit_short_notice(
         ).json()["items"]
         alternate_resource_id = UUID(
             next(
-                item["id"]
-                for item in resources
-                if item["id"] != str(first_appointment.resource_id)
+                item["id"] for item in resources if item["id"] != str(first_appointment.resource_id)
             )
         )
         second_appointment.resource_id = alternate_resource_id
@@ -454,9 +452,7 @@ def test_persisted_appointment_reminders_send_once_and_omit_short_notice(
         session.commit()
         session.execute(
             delete(EmailNotification).where(
-                EmailNotification.appointment_id.in_(
-                    [first_appointment.id, second_appointment.id]
-                )
+                EmailNotification.appointment_id.in_([first_appointment.id, second_appointment.id])
             )
         )
         session.commit()
