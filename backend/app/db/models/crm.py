@@ -420,7 +420,13 @@ class CrmSettings(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     """Workspace-scoped lead-scoring configuration."""
 
     __tablename__ = "crm_settings"
-    __table_args__ = (UniqueConstraint("workspace_id", name="uq_crm_settings_workspace"),)
+    __table_args__ = (
+        UniqueConstraint("workspace_id", name="uq_crm_settings_workspace"),
+        CheckConstraint(
+            "ui_mode IN ('standard', 'simplified')",
+            name="ui_mode_values",
+        ),
+    )
 
     workspace_id: Mapped[UUID] = mapped_column(
         ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False

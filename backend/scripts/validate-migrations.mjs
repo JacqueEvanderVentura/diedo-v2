@@ -11,8 +11,7 @@ const ciEnv = {
   DATABASE_URL: resolveTestDatabaseUrl(),
 }
 
-function run(label, command, args) {
-  console.log(`prepush: ${label}`)
+function run(command, args) {
   const result = spawnSync(command, args, {
     cwd: root,
     env: ciEnv,
@@ -24,16 +23,13 @@ function run(label, command, args) {
   }
 }
 
-run('ruff check', 'python', ['-m', 'ruff', 'check', 'app', 'tests'])
-run('ruff format --check', 'python', ['-m', 'ruff', 'format', '--check', 'app', 'tests'])
-run('mypy', 'python', ['-m', 'mypy', 'app'])
-run('validate migrations (same as Backend CI)', 'node', ['scripts/validate-migrations.mjs'])
-run('pytest', 'python', [
-  '-m',
-  'pytest',
-  '--cov=app',
-  '--cov-report=term-missing',
-  '--cov-fail-under=89',
-])
+console.log('Validate migrations: comprobando Postgres (timeout 5s)')
+run('python', ['scripts/check_test_database.py'])
 
-console.log('prepush: backend checks passed (sin docker build; ver reusable-backend-ci.yml)')
+console.log('Validate migrations (Backend CI): alembic upgrade head')
+run('python', ['-m', 'alembic', 'upgrade', 'head'])
+
+console.log('Validate migrations (Backend CI): alembic check')
+run('python', ['-m', 'alembic', 'check'])
+
+console.log('Validate migrations: OK')

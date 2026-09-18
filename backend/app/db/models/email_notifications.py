@@ -5,6 +5,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     String,
     Text,
@@ -27,6 +28,12 @@ class EmailNotification(UuidPrimaryKeyMixin, TimestampMixin, Base):
             ["appointments.workspace_id", "appointments.id"],
             name="fk_email_notifications_appointment",
             ondelete="RESTRICT",
+        ),
+        Index("ix_email_notifications_due", "status", "next_attempt_at"),
+        Index(
+            "ix_email_notifications_appointment_event",
+            "appointment_id",
+            "event_type",
         ),
     )
 

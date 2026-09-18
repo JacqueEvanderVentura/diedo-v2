@@ -4,6 +4,9 @@
   "description": "Scripts npm para alinear checks locales con Backend CI",
   "scripts": {
     "prepush": "node scripts/prepush-ci.mjs",
+    "validate:migrations": "node scripts/validate-migrations.mjs",
+    "db:test:up": "docker compose up postgres_test -d",
+    "prepush:static": "npm run lint && npm run format:check && npm run typecheck",
     "lint": "python -m ruff check app tests",
     "format:check": "python -m ruff format --check app tests",
     "format": "python -m ruff format app tests",
