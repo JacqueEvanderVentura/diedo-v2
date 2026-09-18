@@ -166,7 +166,7 @@ class AppointmentReminderService:
                 management_token=issue_appointment_management_token(appointment.id),
                 timezone=branch.timezone,
             )
-            enqueue_email(
+            notification = enqueue_email(
                 self._session,
                 workspace_id=appointment.workspace_id,
                 appointment_id=appointment.id,
@@ -176,6 +176,7 @@ class AppointmentReminderService:
                 extra={"timezone": branch.timezone},
                 **content,
             )
+            notification.next_attempt_at = now
         if not dry_run:
             self._session.commit()
         return {"omitted": omitted, "pending": pending}

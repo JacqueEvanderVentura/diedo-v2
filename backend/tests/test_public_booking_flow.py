@@ -7,7 +7,6 @@ from app.config import settings
 from app.db.models import Appointment, Branch, CustomerBranchAssignment, Employee
 from app.db.models.email_notifications import EmailNotification
 from app.db.session import get_session_factory
-from app.services import email as email_service
 from app.services import email_notifications
 from app.services.appointment_reminders import REMINDER_EVENT, AppointmentReminderService
 from app.services.email import EmailDeliveryResult, EmailTransportError
@@ -382,7 +381,7 @@ def test_persisted_appointment_reminders_send_once_and_omit_short_notice(
         deliveries.append(kwargs)
         return EmailDeliveryResult(provider_id=f"provider-{len(deliveries)}")
 
-    monkeypatch.setattr(email_service, "send_email", success)
+    monkeypatch.setattr(email_notifications, "send_email", success)
     suffix = uuid7().hex[-12:]
     backup_employee = client.post(
         "/api/v1/employees",
@@ -425,15 +424,38 @@ def test_persisted_appointment_reminders_send_once_and_omit_short_notice(
             headers=headers,
             params={"branchId": branch},
         ).json()["items"]
+        first_resource = first_appointment.resource_id
         alternate_resource_id = UUID(
+            next(item["id"] for item in resources if item["id"] != str(first_resource))
+        )
+        other_resource_id = UUID(
             next(
-                item["id"] for item in resources if item["id"] != str(first_appointment.resource_id)
+                item["id"]
+                for item in resources
+                if item["id"] not in {str(first_resource), str(alternate_resource_id)}
             )
         )
-        second_appointment.resource_id = alternate_resource_id
+        first_appointment.resource_id = alternate_resource_id
+        second_appointment.resource_id = other_resource_id
         second_appointment.employee_id = UUID(backup_employee.json()["id"])
+        session.flush()
+        assert first_appointment.resource_id != second_appointment.resource_id
         session.commit()
         reminder_starts = now + timedelta(hours=24) - timedelta(minutes=5)
+        reminder_window_end = reminder_starts + timedelta(hours=1)
+        for stray in session.scalars(
+            select(Appointment).where(
+                Appointment.workspace_id == first_appointment.workspace_id,
+                Appointment.branch_id == first_appointment.branch_id,
+                Appointment.record_status == "active",
+                Appointment.id.not_in([first_appointment.id, second_appointment.id]),
+                Appointment.starts_at < reminder_window_end,
+                Appointment.ends_at > reminder_starts - timedelta(minutes=30),
+            )
+        ).all():
+            stray.record_status = "inactive"
+            stray.deactivated_at = now
+        session.commit()
         first_appointment.starts_at = reminder_starts
         first_appointment.ends_at = reminder_starts + timedelta(
             minutes=first_appointment.duration_minutes
@@ -456,23 +478,26 @@ def test_persisted_appointment_reminders_send_once_and_omit_short_notice(
             )
         )
         session.commit()
+        first_id = first_appointment.id
+        second_id = second_appointment.id
 
-        summary = AppointmentReminderService(session).process_due(
+    with get_session_factory()() as reminder_session:
+        summary = AppointmentReminderService(reminder_session).process_due(
             recipient_email="booking-test@example.com",
             now=now,
         )
         assert summary.sent == 1
         assert summary.omitted == 1
-        assert session.get(Appointment, first_appointment.id).reminder_sent is True
-        notices = session.scalars(
+        assert reminder_session.get(Appointment, first_id).reminder_sent is True
+        notices = reminder_session.scalars(
             select(EmailNotification).where(
                 EmailNotification.event_type == REMINDER_EVENT,
-                EmailNotification.appointment_id.in_([first_appointment.id, second_appointment.id]),
+                EmailNotification.appointment_id.in_([first_id, second_id]),
             )
         ).all()
         assert len(notices) == 2
         assert {notice.status for notice in notices} == {"sent", "superseded"}
-        repeat = AppointmentReminderService(session).process_due(
+        repeat = AppointmentReminderService(reminder_session).process_due(
             recipient_email="booking-test@example.com",
             now=now + timedelta(minutes=5),
         )
@@ -493,7 +518,7 @@ def test_failed_email_keeps_booking_and_retries_once(client, booking_setup, monk
         calls.append(kwargs)
         raise EmailTransportError("Proveedor temporalmente no disponible.")
 
-    monkeypatch.setattr(email_service, "send_email", failure)
+    monkeypatch.setattr(email_notifications, "send_email", failure)
     body = payload_for(employee, service)
     response = client.post(
         f"/api/v1/public/booking/branches/{branch}/appointments",
@@ -508,7 +533,7 @@ def test_failed_email_keeps_booking_and_retries_once(client, booking_setup, monk
         calls.append(kwargs)
         return EmailDeliveryResult(provider_id="provider-test-id")
 
-    monkeypatch.setattr(email_service, "send_email", success)
+    monkeypatch.setattr(email_notifications, "send_email", success)
     with get_session_factory()() as session:
         notification_id = UUID(appointment["notification"]["id"])
         assert email_notifications.deliver_email(session, notification_id)["status"] == "sent"
