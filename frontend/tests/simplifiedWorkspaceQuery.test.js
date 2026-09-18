@@ -5,8 +5,9 @@ import {
 } from '@/modules/crm/lib/simplifiedWorkspaceQuery'
 
 describe('simplifiedWorkspaceQuery', () => {
-  it('defaults to last 28 days of updates', () => {
+  it('defaults to the current week of updates', () => {
     const filter = defaultSimplifiedDateFilter()
+    expect(filter.period).toBe('week')
     const params = buildSimplifiedOpportunityQuery({
       stage: 'propuesta',
       page: 2,
@@ -20,11 +21,6 @@ describe('simplifiedWorkspaceQuery', () => {
     expect(params.pageSize).toBe(25)
     expect(params.updatedAfter).toBeTruthy()
     expect(params.updatedBefore).toBeTruthy()
-    const start = new Date(params.updatedAfter)
-    const end = new Date(params.updatedBefore)
-    const diffDays = Math.round((end - start) / 86400000)
-    expect(diffDays).toBeGreaterThanOrEqual(27)
-    expect(diffDays).toBeLessThanOrEqual(28)
   })
 
   it('passes search and branch filters', () => {

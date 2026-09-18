@@ -14,16 +14,41 @@ export function Pagination({
   onPageSizeChange,
   noun = 'registros',
   testId = 'report-pagination',
+  compact = false,
 }) {
   const canPrev = page > 1
   const canNext = page < totalPages
+
+  if (compact) {
+    return (
+      <div className="space-y-2 border-t border-slate-100 pt-3" data-testid={testId}>
+        <p className="text-center text-xs text-slate-500">
+          {total === 0 ? `Sin ${noun}` : `${from}–${to} de ${total} · Pág. ${page}/${totalPages}`}
+        </p>
+        <div className="flex items-center justify-center gap-1">
+          <Button variant="secondary" size="sm" className="h-8 w-8 shrink-0 p-0" disabled={!canPrev} onClick={() => onPageChange(1)} aria-label="Primera página">
+            <ChevronsLeft className="h-4 w-4" />
+          </Button>
+          <Button variant="secondary" size="sm" className="h-8 w-8 shrink-0 p-0" disabled={!canPrev} onClick={() => onPageChange(page - 1)} aria-label="Página anterior">
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button variant="secondary" size="sm" className="h-8 w-8 shrink-0 p-0" disabled={!canNext} onClick={() => onPageChange(page + 1)} aria-label="Página siguiente">
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <Button variant="secondary" size="sm" className="h-8 w-8 shrink-0 p-0" disabled={!canNext} onClick={() => onPageChange(totalPages)} aria-label="Última página">
+            <ChevronsRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between" data-testid={testId}>
       <p className="text-sm text-slate-500">
         {total === 0 ? `Sin ${noun}` : `Mostrando ${from} – ${to} de ${total} ${noun}`}
       </p>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-nowrap items-center justify-end gap-2 overflow-x-auto">
         {onPageSizeChange && (
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-400">Por página</span>

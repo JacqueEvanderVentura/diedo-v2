@@ -93,7 +93,7 @@ export default function SimplifiedWorkspacePage() {
 
   const [leadModalOpen, setLeadModalOpen] = useState(false)
 
-  const [dateFilter, setDateFilter] = useState(defaultSimplifiedDateFilter)
+  const [dateFilter, setDateFilter] = useState(() => defaultSimplifiedDateFilter())
 
   const [page, setPage] = useState(1)
 
@@ -189,10 +189,10 @@ export default function SimplifiedWorkspacePage() {
 
   return (
 
-    <div className="mx-auto w-full max-w-[1600px] space-y-6 p-6 sm:p-8" data-testid="crm-simplified-workspace">
+    <div className="mx-auto w-full max-w-[1600px] space-y-4 p-4 sm:space-y-6 sm:p-8" data-testid="crm-simplified-workspace">
 
-      <div className="flex justify-end">
-        <Button onClick={() => setLeadModalOpen(true)} data-testid="crm-simplified-register-lead">
+      <div className="flex sm:justify-end">
+        <Button className="w-full sm:w-auto" onClick={() => setLeadModalOpen(true)} data-testid="crm-simplified-register-lead">
           <Plus className="h-4 w-4" />
           Registrar lead
         </Button>
@@ -200,7 +200,7 @@ export default function SimplifiedWorkspacePage() {
 
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
 
-        <div className="relative flex-1">
+        <div className="relative flex-1 min-w-72">
 
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
@@ -245,7 +245,6 @@ export default function SimplifiedWorkspacePage() {
           }}
 
           testId="crm-simplified-date-filter"
-
         />
 
         <BranchMultiSelect
@@ -320,11 +319,14 @@ export default function SimplifiedWorkspacePage() {
 
 
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(260px,320px)_1fr]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(260px,320px)_1fr] lg:items-stretch">
 
-        <Card className="overflow-hidden p-0" data-testid="crm-simplified-queue">
+        <Card
+          className="flex min-h-[min(32rem,70vh)] flex-col overflow-hidden p-0 lg:min-h-[32rem]"
+          data-testid="crm-simplified-queue"
+        >
 
-          <div className="border-b border-slate-100 px-4 py-3">
+          <div className="shrink-0 border-b border-slate-100 px-4 py-3">
 
             <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Por atender</p>
 
@@ -332,7 +334,7 @@ export default function SimplifiedWorkspacePage() {
 
           {loading ? (
 
-            <div className="flex flex-col items-center justify-center gap-2 px-4 py-16 text-sm text-slate-500">
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 py-16 text-sm text-slate-500">
 
               <Loader2 className="h-8 w-8 animate-spin text-blue-600" data-testid="crm-simplified-queue-loading" />
 
@@ -342,9 +344,9 @@ export default function SimplifiedWorkspacePage() {
 
           ) : (
 
-            <>
+            <div className="flex min-h-0 flex-1 flex-col">
 
-              <ul className="max-h-[520px] divide-y divide-slate-50 overflow-y-auto">
+              <ul className="min-h-0 flex-1 divide-y divide-slate-50 overflow-y-auto">
 
                 {queueItems.length === 0 ? (
 
@@ -404,7 +406,7 @@ export default function SimplifiedWorkspacePage() {
 
               </ul>
 
-              <div className="px-4 pb-4">
+              <div className="mt-auto shrink-0 bg-white px-2 pb-2">
 
                 <Pagination
 
@@ -421,16 +423,15 @@ export default function SimplifiedWorkspacePage() {
                   pageSize={pageSize}
 
                   onPageChange={setPage}
-
+                  compact
                   noun="prospectos"
-
                   testId="crm-simplified-pagination"
 
                 />
 
               </div>
 
-            </>
+            </div>
 
           )}
 

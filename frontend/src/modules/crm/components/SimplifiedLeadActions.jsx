@@ -144,11 +144,20 @@ export function SimplifiedLeadActions({ opportunity, lead, onActionComplete }) {
     if (!liveOpportunity?.customerId) return
     const match = resolveCustomerForOpportunity(liveOpportunity, activeCustomers)
     if (!match) return
+    const nextName = match.name || match.displayName || ''
+    const currentName = liveOpportunity.customerName || ''
+    if (liveOpportunity.customerId === match.id && currentName === nextName) return
     updateOpportunity(liveOpportunity.id, {
       customerId: match.id,
-      customerName: match.name,
+      customerName: nextName,
     }).catch(() => {})
-  }, [liveOpportunity, activeCustomers, updateOpportunity])
+  }, [
+    liveOpportunity?.id,
+    liveOpportunity?.customerId,
+    liveOpportunity?.customerName,
+    activeCustomers,
+    updateOpportunity,
+  ])
 
   if (!liveOpportunity) return null
 

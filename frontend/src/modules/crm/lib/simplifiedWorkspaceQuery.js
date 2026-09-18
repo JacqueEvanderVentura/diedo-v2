@@ -1,11 +1,9 @@
 import { resolvePeriodRange } from '@/lib/datePeriod'
 
 export const SIMPLIFIED_WORKSPACE_DATE_PERIODS = [
-  { id: 'last28', label: 'Últimos 28 días' },
   { id: 'week', label: 'Esta semana' },
   { id: 'month', label: 'Este mes' },
   { id: 'quarter', label: 'Este trimestre' },
-  { id: 'custom', label: 'Personalizado' },
 ]
 
 export const SIMPLIFIED_WORKSPACE_STAGES = [
@@ -17,7 +15,7 @@ export const SIMPLIFIED_WORKSPACE_STAGES = [
 ]
 
 export function defaultSimplifiedDateFilter() {
-  return { period: 'last28', dateFrom: null, dateTo: null }
+  return { period: 'week', dateFrom: null, dateTo: null }
 }
 
 export function buildSimplifiedOpportunityQuery({

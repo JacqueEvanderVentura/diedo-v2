@@ -119,7 +119,7 @@ export const PAGE_META = {
   '/agenda/calendario': { title: 'Agenda', subtitle: 'Calendario de citas por día, semana y mes.' },
   '/agenda/gestion': { title: 'Agenda', subtitle: 'Gestión de citas y estados.' },
   '/crm': { title: 'CRM', subtitle: 'Centro de gestión de relaciones con clientes.' },
-  '/crm/workspace': { title: 'Ventas', subtitle: 'Embudo comercial en una sola pantalla.' },
+  '/crm/workspace': { title: 'Ventas', subtitle: '' },
   '/crm/clientes': { title: 'Clientes', subtitle: 'Directorio de clientes, historial y próximas citas.' },
   '/crm/leads': { title: 'Leads', subtitle: 'Encuentra, puntúa y convierte leads potenciales.' },
   '/crm/pipeline': { title: 'Pipeline', subtitle: 'Embudo de ventas y oportunidades.' },

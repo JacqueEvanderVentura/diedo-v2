@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { AnimatePresence, motion } from 'framer-motion'
 
@@ -194,15 +194,90 @@ export function DatePeriodFilter({
 
     : 'Fecha personalizada'
 
+  const presetPeriods = useMemo(
+    () => periods.filter((item) => item.id !== 'custom'),
+    [periods]
+  )
 
+  const customPanel = (
+    <AnimatePresence>
+      {customOpen && (
+      <motion.div
+        initial={{ opacity: 0, y: -6, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -6, scale: 0.98 }}
+        transition={{ duration: 0.16, ease: 'easeOut' }}
+        className="absolute right-0 z-50 mt-2 w-[min(100vw-2rem,320px)] overflow-visible rounded-2xl border border-slate-100 bg-white p-4 shadow-2xl ring-1 ring-slate-900/5"
+        data-testid={`${testId}-custom-panel`}
+      >
+        <div className="mb-3 flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+            <CalendarRange className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold text-slate-900">Fecha personalizada</p>
+            <p className="text-xs text-slate-500">
+              {rangeMode ? 'Elige inicio y fin del período.' : 'Elige un día específico.'}
+            </p>
+          </div>
+        </div>
+
+        <RangeSwitch
+          enabled={rangeMode}
+          onChange={handleRangeModeChange}
+          testId={`${testId}-range-switch`}
+        />
+
+        <div className="mt-3 space-y-3">
+          {rangeMode ? (
+            <>
+              <div>
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Desde {dateFrom ? `· ${formatCompactDate(dateFrom)}` : ''}
+                </p>
+                <DateCalendar
+                  value={dateFrom}
+                  onChange={(value) => applyCustom(value, dateTo && dateTo < value ? value : dateTo)}
+                  testId={`${testId}-from`}
+                />
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Hasta {dateTo ? `· ${formatCompactDate(dateTo)}` : ''}
+                </p>
+                <DateCalendar
+                  value={dateTo || dateFrom}
+                  minDate={dateFrom || undefined}
+                  onChange={(value) => applyCustom(dateFrom || value, value, true)}
+                  testId={`${testId}-to`}
+                />
+              </div>
+            </>
+          ) : (
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Día {dateFrom ? `· ${formatCompactDate(dateFrom)}` : ''}
+              </p>
+              <DateCalendar
+                value={dateFrom}
+                onChange={(value) => applyCustom(value, value, true)}
+                testId={`${testId}-day`}
+              />
+            </div>
+          )}
+        </div>
+      </motion.div>
+      )}
+    </AnimatePresence>
+  )
 
   return (
 
     <div ref={rootRef} className="relative w-full min-w-0" data-testid={testId}>
 
-      <div className="flex flex-wrap items-center gap-1 rounded-xl border border-slate-100 bg-white p-1 shadow-soft">
+      <div className="flex items-center gap-1 overflow-x-auto rounded-xl border border-slate-100 bg-white p-1 shadow-soft scrollbar-thin">
 
-        {periods.map((item) => (
+        {presetPeriods.map((item) => (
 
           <button
 
@@ -234,181 +309,24 @@ export function DatePeriodFilter({
 
         ))}
 
-
-
-        <div className="relative ml-0.5 pl-0.5 before:absolute before:left-0 before:top-1/2 before:h-5 before:w-px before:-translate-y-1/2 before:bg-slate-200">
-
-          <button
-
-            type="button"
-
-            onClick={() => setCustomOpen((current) => !current)}
-
-            data-testid={`${testId}-custom-trigger`}
-
-            className={cn(
-
-              'flex items-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-semibold transition-[background-color,color,box-shadow] duration-200',
-
-              customActive || customOpen
-
-                ? 'bg-blue-600 text-white shadow-sm'
-
-                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-
-            )}
-
-          >
-
-            <CalendarRange className="h-4 w-4 shrink-0" />
-
-            <span className="max-w-[180px] truncate">{customLabel}</span>
-
-          </button>
-
-        </div>
+        <button
+          type="button"
+          onClick={() => setCustomOpen((current) => !current)}
+          data-testid={`${testId}-custom-trigger`}
+          className={cn(
+            'flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-semibold transition-[background-color,color] duration-200',
+            customActive || customOpen
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-slate-500 hover:text-slate-800'
+          )}
+        >
+          <CalendarRange className="h-4 w-4 shrink-0" />
+          <span className="max-w-[11rem] truncate">{customActive ? customLabel : 'Personalizado'}</span>
+        </button>
 
       </div>
 
-
-
-      <AnimatePresence>
-
-        {customOpen && (
-
-          <motion.div
-
-            initial={{ opacity: 0, y: -6, scale: 0.98 }}
-
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-
-            exit={{ opacity: 0, y: -6, scale: 0.98 }}
-
-            transition={{ duration: 0.16, ease: 'easeOut' }}
-
-            className="absolute right-0 z-50 mt-2 w-[min(100vw-2rem,320px)] overflow-visible rounded-2xl border border-slate-100 bg-white p-4 shadow-2xl ring-1 ring-slate-900/5"
-
-            data-testid={`${testId}-custom-panel`}
-
-          >
-
-            <div className="mb-3 flex items-start gap-3">
-
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-
-                <CalendarRange className="h-5 w-5" />
-
-              </div>
-
-              <div className="min-w-0">
-
-                <p className="font-semibold text-slate-900">Fecha personalizada</p>
-
-                <p className="text-xs text-slate-500">
-
-                  {rangeMode ? 'Elige inicio y fin del período.' : 'Elige un día específico.'}
-
-                </p>
-
-              </div>
-
-            </div>
-
-
-
-            <RangeSwitch
-
-              enabled={rangeMode}
-
-              onChange={handleRangeModeChange}
-
-              testId={`${testId}-range-switch`}
-
-            />
-
-
-
-            <div className="mt-3 space-y-3">
-
-              {rangeMode ? (
-
-                <>
-
-                  <div>
-
-                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
-
-                      Desde {dateFrom ? `· ${formatCompactDate(dateFrom)}` : ''}
-
-                    </p>
-
-                    <DateCalendar
-
-                      value={dateFrom}
-
-                      onChange={(value) => applyCustom(value, dateTo && dateTo < value ? value : dateTo)}
-
-                      testId={`${testId}-from`}
-
-                    />
-
-                  </div>
-
-                  <div>
-
-                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
-
-                      Hasta {dateTo ? `· ${formatCompactDate(dateTo)}` : ''}
-
-                    </p>
-
-                    <DateCalendar
-
-                      value={dateTo || dateFrom}
-
-                      minDate={dateFrom || undefined}
-
-                      onChange={(value) => applyCustom(dateFrom || value, value, true)}
-
-                      testId={`${testId}-to`}
-
-                    />
-
-                  </div>
-
-                </>
-
-              ) : (
-
-                <div>
-
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
-
-                    Fecha {dateFrom ? `· ${formatCompactDate(dateFrom)}` : ''}
-
-                  </p>
-
-                  <DateCalendar
-
-                    value={dateFrom}
-
-                    onChange={(value) => applyCustom(value, value, true)}
-
-                    testId={`${testId}-single`}
-
-                  />
-
-                </div>
-
-              )}
-
-            </div>
-
-          </motion.div>
-
-        )}
-
-      </AnimatePresence>
+      {customPanel}
 
     </div>
 
