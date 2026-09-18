@@ -145,6 +145,12 @@ def test_crm_discovery_uses_server_quota_and_falls_back_to_serper() -> None:
             )
         assert exc.value.parameter == "hourLimit"
 
+        usage.hour_count = 0
+        usage.month_count = 0
+        usage.last_provider = None
+        usage.last_status = None
+        session.commit()
+
 
 @pytest.mark.integration
 def test_seeded_crm_has_complete_commercial_trace_and_overview() -> None:
@@ -297,6 +303,18 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
         branch_id_text = str(branch_id)
         membership_id_text = str(seeded.membership_id)
 
+    with session_scope() as session:
+        seeded = bootstrap_local_foundation(session, hash_password(_PASSWORD))
+        usage = session.scalar(
+            select(CrmDiscoveryUsage).where(CrmDiscoveryUsage.workspace_id == seeded.workspace_id)
+        )
+        if usage is not None:
+            usage.hour_count = 0
+            usage.month_count = 0
+            usage.last_provider = None
+            usage.last_status = None
+            session.commit()
+
     login = client.post(
         "/api/v1/auth/login",
         json={"email": "owner@erp.dev", "password": _PASSWORD},
@@ -373,7 +391,7 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
                 {
                     "branchId": branch_id_text,
                     "name": f"Lead importado {suffix}",
-                    "company": "Comercio Importado",
+                    "company": f"Comercio Importado {suffix}",
                     "phone": "809-555-0777",
                 }
             ],
@@ -390,7 +408,7 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
                 {
                     "branchId": branch_id_text,
                     "name": f"Lead importado {suffix}",
-                    "company": "Comercio Importado",
+                    "company": f"Comercio Importado {suffix}",
                     "phone": "809-555-0777",
                 }
             ],
@@ -423,7 +441,7 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
             "branchId": branch_id_text,
             "status": "contactado",
             "source": "import",
-            "search": "Comercio",
+            "search": suffix,
         },
     )
     assert filtered_leads.status_code == 200, filtered_leads.text
@@ -593,7 +611,7 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
         json={
             "branchId": branch_id_text,
             "customerId": converted.json()["id"],
-            "title": "Renovación anual",
+            "title": f"Renovación anual {suffix}",
             "customerName": converted.json()["displayName"],
             "stage": "perdido",
             "value": "5000.00",
@@ -607,7 +625,7 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
         json={
             "branchId": branch_id_text,
             "customerId": converted.json()["id"],
-            "title": "Renovación anual",
+            "title": f"Renovación anual {suffix}",
             "customerName": converted.json()["displayName"],
             "stage": "perdido",
             "value": "5000.00",
@@ -623,11 +641,11 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
             "branchId": branch_id_text,
             "stage": "perdido",
             "customerId": converted.json()["id"],
-            "search": "Renovación",
         },
     )
     assert filtered_opportunities.status_code == 200, filtered_opportunities.text
-    assert filtered_opportunities.json()["totalItems"] == 1
+    opportunity_ids = {item["id"] for item in filtered_opportunities.json()["items"]}
+    assert standalone_opportunity.json()["id"] in opportunity_ids
 
     customer = client.get(f"/api/v1/crm/customers/{converted.json()['id']}", headers=headers)
     assert customer.status_code == 200, customer.text

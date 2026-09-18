@@ -1,4 +1,8 @@
+from pathlib import Path
+
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from app.api.routers.health import readiness
 from app.db.base import NAMING_CONVENTION, Base
 from app.db.session import get_engine, session_scope
@@ -6,6 +10,13 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
+
+
+def _alembic_head_revision() -> str:
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    head = ScriptDirectory.from_config(config).get_current_head()
+    assert head is not None
+    return head
 
 
 @pytest.mark.integration
@@ -25,7 +36,7 @@ def test_readiness_checks_postgres(client: TestClient) -> None:
         "status": "ready",
         "database": "ok",
         "schemaStatus": "compatible",
-        "schemaRevision": "20260915_0032",
+        "schemaRevision": _alembic_head_revision(),
     }
 
 
