@@ -21,6 +21,13 @@ import { demoSvgImage } from '@/lib/imageAttachments'
 import { ephemeralJsonStorage, registerSensitiveStateCleaner } from '@/services/storagePolicy'
 import { useSessionStore } from '@/stores/sessionStore'
 import { isRecognizedPosIncome, isThisMonth } from '@/modules/finanzas/lib/finanzas'
+import {
+  mergeExpenseAttachments,
+  mergeIncomeAttachments,
+  saveExpenseAttachments,
+  saveIncomeAttachments,
+} from '@/modules/finanzas/lib/financeAttachments'
+import { useConfigStore } from '@/stores/configStore'
 
 const genId = (prefix = 'fin') =>
   `${prefix}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
@@ -58,7 +65,11 @@ export const ACCOUNT_TYPES = [
   { id: 'accionistas', name: 'Accionistas' },
 ]
 
-export const catName = (id) => EXPENSE_CATEGORIES.find((category) => category.id === id)?.name || id
+export const catName = (id) => {
+  const fromConfig = (useConfigStore.getState().categories || []).find((category) => category.id === id)
+  if (fromConfig?.name) return fromConfig.name
+  return EXPENSE_CATEGORIES.find((category) => category.id === id)?.name || id
+}
 
 const financeFixture = DEMO_SNAPSHOT.finance || {}
 const budgetIdFor = (seedKey) => seedKey ? `budget:${seedKey}` : null
@@ -269,12 +280,16 @@ export const useFinanzasStore = create(
               financeApi.getAccountStats(),
               financeApi.listAllIncomes(),
             ])
-            const expenses = (expenseResponse.items || []).map(mapFinanceExpenseFromApi)
+            const expenses = (expenseResponse.items || [])
+              .map(mapFinanceExpenseFromApi)
+              .map(mergeExpenseAttachments)
             const fixedExpenses = (fixedResponse.items || []).map(mapFinanceFixedExpenseFromApi)
             const pasivos = (liabilityResponse.items || []).map(mapFinanceLiabilityFromApi)
             const budgets = (budgetResponse.items || []).map(mapFinanceBudgetFromApi)
             const accounts = (accountResponse.items || []).map(mapFinanceAccountFromApi)
-            const incomeEntries = (incomeResponse.items || []).map(mapFinanceIncomeFromApi)
+            const incomeEntries = (incomeResponse.items || [])
+              .map(mapFinanceIncomeFromApi)
+              .map(mergeIncomeAttachments)
             set({
               expenses,
               expensesProjected: true,
@@ -337,9 +352,16 @@ export const useFinanzasStore = create(
           return expense
         }
         if (!get().apiContext.hydrated) await get().hydrateFromApi()
-        const expense = mapFinanceExpenseFromApi(
+        const expense = mergeExpenseAttachments(mapFinanceExpenseFromApi(
           await financeApi.createExpense(expenseToApiPayload(data))
-        )
+        ))
+        saveExpenseAttachments(expense.id, data.attachments || [])
+        set((state) => ({
+          expenses: replaceById(state.expenses, {
+            ...expense,
+            attachments: data.attachments?.length ? data.attachments : expense.attachments,
+          }),
+        }))
         await get().hydrateFromApi({ force: true })
         return expense
       },
@@ -355,11 +377,15 @@ export const useFinanzasStore = create(
         }
         const current = get().expenses.find((item) => item.id === id)
         if (!current?.editable || !current.version) throw new Error('Este movimiento viene de Caja y no se edita aquí.')
-        const expense = mapFinanceExpenseFromApi(await financeApi.updateExpense(id, {
+        const expense = mergeExpenseAttachments(mapFinanceExpenseFromApi(await financeApi.updateExpense(id, {
           version: current.version,
           ...expenseToApiPayload({ ...current, ...data }),
+        })))
+        const attachments = data.attachments ?? current.attachments ?? []
+        saveExpenseAttachments(expense.id, attachments)
+        set((state) => ({
+          expenses: replaceById(state.expenses, { ...expense, attachments }),
         }))
-        set((state) => ({ expenses: replaceById(state.expenses, expense) }))
         await get().hydrateFromApi({ force: true })
         return expense
       },
@@ -587,9 +613,10 @@ export const useFinanzasStore = create(
           set((state) => ({ manualIncomes: [income, ...state.manualIncomes] }))
           return income
         }
-        const income = mapFinanceIncomeFromApi(
+        const income = mergeIncomeAttachments(mapFinanceIncomeFromApi(
           await financeApi.createManualIncome(manualIncomeToApiPayload(data))
-        )
+        ))
+        saveIncomeAttachments(income.id, data.attachments || [])
         await get().hydrateFromApi({ force: true })
         return income
       },
@@ -610,10 +637,12 @@ export const useFinanzasStore = create(
         const current = get().incomeEntries.find((item) => item.id === id)
           || get().manualIncomes.find((item) => item.id === id)
         if (!current?.version) throw new Error('Vuelve a cargar el ingreso antes de editarlo.')
-        const income = mapFinanceIncomeFromApi(await financeApi.updateIncome(id, {
+        const income = mergeIncomeAttachments(mapFinanceIncomeFromApi(await financeApi.updateIncome(id, {
           version: current.version,
           ...manualIncomeToApiPayload({ ...current, ...data }),
-        }))
+        })))
+        const attachments = data.attachments ?? current.attachments ?? []
+        saveIncomeAttachments(income.id, attachments)
         await get().hydrateFromApi({ force: true })
         return income
       },

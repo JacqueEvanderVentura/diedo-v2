@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Search, FileText, CheckCircle, Package, Clock } from 'lucide-react'
+import { Plus, Search, FileText, CheckCircle, Package, Clock, Upload, Eye } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -30,6 +30,10 @@ import { useSortedRows } from '@/hooks/useTableControls'
 import { cn } from '@/lib/utils'
 import { currentSessionActor } from '@/lib/sessionActor'
 import { useSessionStore } from '@/stores/sessionStore'
+import { PurchaseQuoteModal } from '@/modules/compras/components/PurchaseQuoteModal'
+import { mergePurchaseRequestExtras } from '@/modules/compras/lib/purchaseRequestExtras'
+import { AttachmentField } from '@/components/ui/AttachmentField'
+import { useCatalogStore } from '@/stores/catalogStore'
 
 const toneClass = {
   warning: 'bg-amber-100 text-amber-700',
@@ -58,8 +62,11 @@ export function SolicitudesTab() {
   const addPurchaseRequest = useComprasStore((s) => s.addPurchaseRequest)
   const reviewPurchaseRequest = useComprasStore((s) => s.reviewPurchaseRequest)
   const markRequestDelivered = useComprasStore((s) => s.markRequestDelivered)
+  const attachPurchaseQuote = useComprasStore((s) => s.attachPurchaseQuote)
   const getRequestStats = useComprasStore((s) => s.getRequestStats)
   const branches = useConfigStore((s) => s.branches)
+  const categories = useConfigStore((s) => s.categories)
+  const supplies = useCatalogStore((s) => s.getSupplies())
   const isOnline = useSessionStore((s) => s.isOnline())
 
   const [search, setSearch] = useState('')
@@ -67,6 +74,8 @@ export function SolicitudesTab() {
   const [selectedId, setSelectedId] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [busyAction, setBusyAction] = useState(null)
+  const [quoteModalRequest, setQuoteModalRequest] = useState(null)
+  const [quoteUpload, setQuoteUpload] = useState([])
 
   const stats = getRequestStats()
 
@@ -98,7 +107,12 @@ export function SolicitudesTab() {
     },
   })
 
-  const selected = purchaseRequests.find((r) => r.id === selectedId) || filtered[0] || null
+  const selected = mergePurchaseRequestExtras(
+    purchaseRequests.find((r) => r.id === selectedId) || filtered[0] || null
+  )
+
+  const supplyCategoryName = (id) => categories.find((category) => category.id === id)?.name || '—'
+  const supplyName = (id) => supplies.find((supply) => supply.id === id)?.name || null
 
   const handleApprove = async (id) => {
     setBusyAction(`approve:${id}`)
@@ -127,8 +141,12 @@ export function SolicitudesTab() {
   const handleDeliver = async (id) => {
     setBusyAction(`deliver:${id}`)
     try {
-      await markRequestDelivered(id, { isOnline })
-      toast.success('Marcada como entregada')
+      const { inventoryResult } = await markRequestDelivered(id, { isOnline })
+      if (inventoryResult?.received > 0) {
+        toast.success(`Entregada · ${inventoryResult.received} insumo(s) ingresados al inventario`)
+      } else {
+        toast.success('Marcada como entregada')
+      }
     } catch (error) {
       toast.error(error.message || 'No se pudo marcar la solicitud como entregada')
     } finally {
@@ -206,7 +224,16 @@ export function SolicitudesTab() {
                           <td className="px-4 py-3 font-medium text-slate-800">{formatDOP(requestTotal(req))}</td>
                           <td className="px-4 py-3 text-center">
                             {req.quoteFile ? (
-                              <span className="text-xs text-blue-600">{req.quoteFile.name}</span>
+                              <button
+                                type="button"
+                                className="text-xs font-medium text-blue-600 hover:underline"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setQuoteModalRequest(mergePurchaseRequestExtras(req))
+                                }}
+                              >
+                                {req.quoteFile.name}
+                              </button>
                             ) : (
                               <span className="text-xs text-slate-400">—</span>
                             )}
@@ -272,9 +299,17 @@ export function SolicitudesTab() {
                 <p className="mb-2 text-xs font-semibold uppercase text-slate-400">Artículos</p>
                 <ul className="space-y-1 text-sm text-slate-700">
                   {(selected.items || []).map((item, i) => (
-                    <li key={i} className="flex justify-between">
-                      <span>{item.name} × {item.qty} {item.unit}</span>
-                      <span>{formatDOP((item.qty || 0) * (item.price || 0))}</span>
+                    <li key={i} className="rounded-lg border border-slate-100 px-3 py-2">
+                      <div className="flex justify-between gap-2">
+                        <span className="font-medium text-slate-800">{item.name} × {item.qty} {item.unit}</span>
+                        <span>{formatDOP((item.qty || 0) * (item.price || 0))}</span>
+                      </div>
+                      {(item.supplyProductId || item.supplyCategoryId) && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          {item.supplyProductId ? `Inventario: ${supplyName(item.supplyProductId) || item.supplyProductId}` : ''}
+                          {item.supplyCategoryId ? ` · Categoría: ${supplyCategoryName(item.supplyCategoryId)}` : ''}
+                        </p>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -282,6 +317,49 @@ export function SolicitudesTab() {
                   Total: {formatDOP(requestTotal(selected))}
                 </p>
               </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Cotización</p>
+                  <div className="flex gap-2">
+                    {selected.quoteFile && (
+                      <Button size="sm" variant="secondary" onClick={() => setQuoteModalRequest(selected)}>
+                        <Eye className="h-3.5 w-3.5" /> Ver
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                {['pendiente', 'aprobada'].includes(selected.status) && (
+                  <div className="mt-3 space-y-2">
+                    <AttachmentField
+                      value={quoteUpload}
+                      onChange={setQuoteUpload}
+                      testId="purchase-quote-upload-detail"
+                    />
+                    {quoteUpload[0] && (
+                      <Button
+                        size="sm"
+                        disabled={Boolean(busyAction)}
+                        onClick={async () => {
+                          setBusyAction(`quote:${selected.id}`)
+                          try {
+                            await attachPurchaseQuote(selected.id, quoteUpload[0], { isOnline })
+                            setQuoteUpload([])
+                            toast.success('Cotización guardada')
+                          } catch (error) {
+                            toast.error(error.message || 'No se pudo guardar la cotización')
+                          } finally {
+                            setBusyAction(null)
+                          }
+                        }}
+                      >
+                        <Upload className="h-3.5 w-3.5" />
+                        {busyAction === `quote:${selected.id}` ? 'Guardando…' : 'Guardar cotización'}
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <div className="flex flex-wrap gap-2">
                 {selected.status === 'pendiente' && (
                   <>
@@ -310,6 +388,12 @@ export function SolicitudesTab() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onSubmit={(data) => addPurchaseRequest(data, { isOnline })}
+      />
+
+      <PurchaseQuoteModal
+        open={Boolean(quoteModalRequest)}
+        onClose={() => setQuoteModalRequest(null)}
+        request={quoteModalRequest}
       />
     </div>
   )

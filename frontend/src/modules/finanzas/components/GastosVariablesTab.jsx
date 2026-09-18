@@ -1,15 +1,16 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, Search } from 'lucide-react'
+import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { useFinanzasStore, catName } from '@/stores/finanzasStore'
 import { usePosStore } from '@/stores/posStore'
 import { useConfigStore } from '@/stores/configStore'
 import { formatDOP } from '@/lib/format'
-import { fmtWhen, isThisMonth } from '../lib/finanzas'
+import { fmtWhen, FINANCE_PERIODS } from '../lib/finanzas'
+import { DatePeriodFilter } from '@/components/ui/DatePeriodFilter'
+import { createPeriodFilterState, inDateRange, periodFilterLabel } from '@/lib/datePeriod'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import {
   ResponsiveList,
@@ -26,7 +27,9 @@ import { ExpenseFormModal } from './ExpenseFormModal'
 import { DataFilterBar } from '@/components/ui/DataFilterBar'
 import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
 import { useSortedRows } from '@/hooks/useTableControls'
-import { Receipt } from 'lucide-react'
+import { FileImage, Receipt } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { FinanceAttachmentsModal } from '@/modules/finanzas/components/FinanceAttachmentsModal'
 
 export function GastosVariablesTab() {
   const expenses = useFinanzasStore((s) => s.expenses)
@@ -36,9 +39,31 @@ export function GastosVariablesTab() {
   const branches = useConfigStore((s) => s.branches)
 
   const [branchFilter, setBranchFilter] = useState('all')
+  const [period, setPeriod] = useState('month')
+  const [dateFrom, setDateFrom] = useState(null)
+  const [dateTo, setDateTo] = useState(null)
   const [query, setQuery] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [proofExpense, setProofExpense] = useState(null)
+
+  const periodFilter = useMemo(
+    () => ({ period, dateFrom, dateTo }),
+    [period, dateFrom, dateTo]
+  )
+
+  const matchesDate = useCallback(
+    (v) => period === 'all' || inDateRange(v, periodFilter),
+    [period, periodFilter]
+  )
+
+  const setPeriodFilter = useCallback(({ period: nextPeriod, dateFrom: nextFrom, dateTo: nextTo }) => {
+    setPeriod(nextPeriod)
+    setDateFrom(nextFrom ?? null)
+    setDateTo(nextTo ?? null)
+  }, [])
+
+  const periodLabel = periodFilterLabel(periodFilter, FINANCE_PERIODS)
 
   const branchOptions = [{ value: 'all', label: 'Todas las sucursales' }, ...branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))]
 
@@ -46,9 +71,10 @@ export function GastosVariablesTab() {
     const caja = expensesProjected ? [] : cajaExpenses.map((e) => ({ id: e.id, concept: e.concept, amount: e.amount, category: 'otros', date: e.createdAt, branchId: null, status: 'pagado', source: 'caja', editable: false }))
     const q = query.trim().toLowerCase()
     return [...expenses.map((e) => ({ ...e, source: e.source || 'finanzas' })), ...caja]
+      .filter((e) => matchesDate(e.date))
       .filter((e) => branchFilter === 'all' || e.branchId === branchFilter || e.source === 'caja')
       .filter((e) => !q || e.concept.toLowerCase().includes(q) || catName(e.category).toLowerCase().includes(q))
-  }, [expenses, expensesProjected, cajaExpenses, branchFilter, query])
+  }, [expenses, expensesProjected, cajaExpenses, branchFilter, query, matchesDate])
 
   const branchNameFor = (branchId, source) => branches.find((b) => b.id === branchId)?.name || (source === 'caja' ? 'Caja' : '—')
 
@@ -64,7 +90,7 @@ export function GastosVariablesTab() {
     },
   })
 
-  const monthTotal = useMemo(() => list.filter((e) => isThisMonth(e.date)).reduce((a, e) => a + e.amount, 0), [list])
+  const periodTotal = useMemo(() => list.reduce((a, e) => a + e.amount, 0), [list])
 
   const exportCols = [
     { key: 'fecha', label: 'Fecha' },
@@ -98,8 +124,10 @@ export function GastosVariablesTab() {
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Card className="p-4">
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Gasto mensual total</p>
-          <p className="mt-1 font-heading text-2xl font-bold text-red-600">{formatDOP(monthTotal)}</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+            {period === 'all' ? 'Gasto total' : `Gasto — ${periodLabel}`}
+          </p>
+          <p className="mt-1 font-heading text-2xl font-bold text-red-600">{formatDOP(periodTotal)}</p>
         </Card>
         <Card className="p-4">
           <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Transacciones</p>
@@ -107,22 +135,47 @@ export function GastosVariablesTab() {
         </Card>
       </div>
 
-      <DataFilterBar
-        search={query}
-        onSearchChange={setQuery}
-        searchPlaceholder="Buscar gastos por descripción o categoría..."
-        filters={[
-          {
-            id: 'branch',
-            label: 'Sucursal',
-            value: branchFilter,
-            onChange: setBranchFilter,
-            options: branchOptions,
-          },
-        ]}
-        testId="gastos-filters"
-        className="border-0 shadow-none p-0"
-      />
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <DataFilterBar
+          search={query}
+          onSearchChange={setQuery}
+          searchPlaceholder="Buscar gastos por descripción o categoría..."
+          filters={[
+            {
+              id: 'branch',
+              label: 'Sucursal',
+              value: branchFilter,
+              onChange: setBranchFilter,
+              options: branchOptions,
+            },
+          ]}
+          testId="gastos-filters"
+          className="border-0 shadow-none p-0 flex-1"
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <DatePeriodFilter
+            period={period}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onChange={setPeriodFilter}
+            periods={FINANCE_PERIODS.filter((p) => p.id !== 'all')}
+            testId="gastos-period-filter"
+          />
+          <button
+            type="button"
+            onClick={() => setPeriodFilter(createPeriodFilterState('all'))}
+            data-testid="gastos-period-all"
+            className={cn(
+              'rounded-lg border px-3 py-2 text-sm font-semibold transition-colors',
+              period === 'all'
+                ? 'border-blue-200 bg-blue-50 text-blue-700'
+                : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+            )}
+          >
+            Todo
+          </button>
+        </div>
+      </div>
 
       <div className="flex flex-wrap items-center justify-end gap-3">
         <div className="flex gap-2">
@@ -168,6 +221,17 @@ export function GastosVariablesTab() {
                             <span className="text-xs text-slate-400">Desde caja</span>
                           ) : (
                             <>
+                              {(e.attachments || []).length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setProofExpense(e)}
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50"
+                                  title="Ver comprobante"
+                                  data-testid={`gastos-proof-${e.id}`}
+                                >
+                                  <FileImage className="h-4 w-4" />
+                                </button>
+                              )}
                               <button onClick={() => openEdit(e)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></button>
                               <button onClick={() => remove(e)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
                             </>
@@ -204,6 +268,11 @@ export function GastosVariablesTab() {
                     <MobileCardFooter>
                       <span className="text-xs text-slate-400">Acciones</span>
                       <div className="flex gap-1">
+                        {(e.attachments || []).length > 0 && (
+                          <button type="button" onClick={() => setProofExpense(e)} className="flex h-8 w-8 items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50" title="Ver comprobante">
+                            <FileImage className="h-4 w-4" />
+                          </button>
+                        )}
                         <button onClick={() => openEdit(e)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></button>
                         <button onClick={() => remove(e)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
                       </div>
@@ -217,6 +286,13 @@ export function GastosVariablesTab() {
       </Card>
 
       <ExpenseFormModal open={modalOpen} onClose={() => setModalOpen(false)} expense={editing} mode="variable" />
+
+      <FinanceAttachmentsModal
+        open={Boolean(proofExpense)}
+        onClose={() => setProofExpense(null)}
+        title={proofExpense ? `Comprobantes · ${proofExpense.concept}` : 'Comprobantes'}
+        attachments={proofExpense?.attachments}
+      />
     </div>
   )
 }

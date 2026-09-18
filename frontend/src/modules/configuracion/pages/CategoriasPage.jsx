@@ -109,14 +109,15 @@ export default function CategoriasPage({ embedded = false }) {
           setApiCategories((prev) => prev.map((c) => (c.id === mapped.id ? { ...c, ...mapped } : c)))
           setCategories(categories.map((c) => (c.id === mapped.id ? { ...c, ...mapped } : c)))
           toast.success('Categoría actualizada')
+        } else if (editing && isFinanceCategory(editing)) {
+          updateCategory(editing.id, data)
+          const next = useConfigStore.getState().categories
+          setCategories(next)
+          toast.success('Categoría de finanzas actualizada')
         } else {
           const created = await catalogApi.createCategory(mapCategoryCreatePayload(data))
           const mapped = mapCategoryFromApi(created, categories.length)
-          setApiCategories((prev) => {
-            const next = [...(prev || []), mapped]
-            setCategories(next)
-            return next
-          })
+          await loadCategories()
           toast.success('Categoría creada')
         }
       } catch (err) {
@@ -150,6 +151,12 @@ export default function CategoriasPage({ embedded = false }) {
       } catch (err) {
         toast.error(err.message || 'No se pudo eliminar la categoría.')
       }
+      return
+    }
+    if (isOnline && isFinanceCategory(c) && !c.api) {
+      deleteCategory(c.id)
+      setCategories(useConfigStore.getState().categories)
+      toast.success('Categoría de finanzas eliminada')
       return
     }
     deleteCategory(c.id)

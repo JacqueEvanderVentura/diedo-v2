@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   activeAppointmentsForResource,
   appointmentStartingAtSlot,
+  appointmentsOverlappingSlot,
+  assignAppointmentLanes,
   isSlotBlockedByAppointment,
   calendarRowSpan,
 } from '@/modules/agenda/lib/dayViewSlots'
@@ -55,5 +57,47 @@ describe('dayViewSlots', () => {
     expect(calendarRowSpan(60)).toBe(2)
     expect(calendarRowSpan(30)).toBe(1)
     expect(calendarRowSpan(90)).toBe(3)
+  })
+
+  it('lists every appointment that overlaps a slot', () => {
+    const active = activeAppointmentsForResource(appointments, DATE, CAB)
+    const overlapping = [
+      ...active,
+      {
+        id: 'a3',
+        date: DATE,
+        time: '10:30',
+        duration: 30,
+        cabinaId: CAB,
+        status: 'confirmada',
+        customerName: 'María',
+      },
+    ]
+    const at1030 = appointmentsOverlappingSlot(overlapping, '10:30')
+    expect(at1030.map((a) => a.id).sort()).toEqual(['a1', 'a3'])
+  })
+
+  it('assigns separate lanes for overlapping appointments', () => {
+    const overlapping = [
+      {
+        id: 'a1',
+        date: DATE,
+        time: '10:00',
+        duration: 60,
+        cabinaId: CAB,
+        status: 'confirmada',
+      },
+      {
+        id: 'a3',
+        date: DATE,
+        time: '10:30',
+        duration: 30,
+        cabinaId: CAB,
+        status: 'confirmada',
+      },
+    ]
+    const { assignment, laneCount } = assignAppointmentLanes(overlapping)
+    expect(laneCount).toBe(2)
+    expect(assignment.get('a1')).not.toBe(assignment.get('a3'))
   })
 })

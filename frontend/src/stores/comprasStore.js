@@ -10,6 +10,11 @@ import {
   purchasingSettingsToApiPayload,
   supplierToApiPayload,
 } from '@/services/adapters/purchasing'
+import {
+  mergePurchaseRequestExtras,
+  savePurchaseRequestExtras,
+} from '@/modules/compras/lib/purchaseRequestExtras'
+import { receivePurchaseRequestInventory } from '@/modules/compras/lib/receivePurchaseInventory'
 
 const genId = (prefix) => `${prefix}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const now = () => new Date().toISOString()
@@ -141,7 +146,9 @@ export const useComprasStore = create(
               purchasingApi.listApprovers(),
             ])
             const suppliers = (supplierResponse.items || []).map(mapSupplierFromApi)
-            const purchaseRequests = (requestResponse.items || []).map(mapPurchaseRequestFromApi)
+            const purchaseRequests = (requestResponse.items || [])
+              .map(mapPurchaseRequestFromApi)
+              .map(mergePurchaseRequestExtras)
             set({
               suppliers,
               purchaseRequests,
@@ -215,11 +222,18 @@ export const useComprasStore = create(
 
       addPurchaseRequest: async (data, { isOnline = false } = {}) => {
         if (isOnline && !get().apiContext.hydrated) await get().hydrateFromApi()
-        const request = isOnline
+        const request = mergePurchaseRequestExtras(isOnline
           ? mapPurchaseRequestFromApi(
               await purchasingApi.createRequest(purchaseRequestToApiPayload(data))
             )
-          : localRequest(data)
+          : localRequest({
+              ...data,
+              quoteFile: data.quoteFile?.name ? { name: data.quoteFile.name } : data.quoteFile,
+            }))
+        savePurchaseRequestExtras(request.id, {
+          quoteFile: data.quoteFile,
+          items: data.items,
+        })
         set((state) => {
           const purchaseRequests = [request, ...state.purchaseRequests]
           return { purchaseRequests, stats: deriveRequestStats(purchaseRequests), error: null }
@@ -229,9 +243,15 @@ export const useComprasStore = create(
 
       updatePurchaseRequest: async (id, data, { isOnline = false } = {}) => {
         if (!isOnline) {
+          savePurchaseRequestExtras(id, {
+            quoteFile: data.quoteFile,
+            items: data.items,
+          })
           set((state) => {
             const purchaseRequests = state.purchaseRequests.map((request) => (
-              request.id === id ? { ...request, ...data } : request
+              request.id === id
+                ? mergePurchaseRequestExtras({ ...request, ...data })
+                : request
             ))
             return { purchaseRequests, stats: deriveRequestStats(purchaseRequests) }
           })
@@ -240,17 +260,40 @@ export const useComprasStore = create(
         if (!get().apiContext.hydrated) await get().hydrateFromApi()
         const current = get().purchaseRequests.find((request) => request.id === id)
         if (!current?.version) throw new Error('Vuelve a cargar la solicitud antes de editarla.')
-        const request = mapPurchaseRequestFromApi(
+        const request = mergePurchaseRequestExtras(mapPurchaseRequestFromApi(
           await purchasingApi.updateRequest(id, {
             version: current.version,
             ...purchaseRequestToApiPayload({ ...current, ...data }),
           })
-        )
+        ))
+        savePurchaseRequestExtras(request.id, {
+          quoteFile: data.quoteFile ?? current.quoteFile,
+          items: data.items ?? current.items,
+        })
         set((state) => {
           const purchaseRequests = replaceById(state.purchaseRequests, request)
           return { purchaseRequests, stats: deriveRequestStats(purchaseRequests), error: null }
         })
         return request
+      },
+
+      attachPurchaseQuote: async (id, quoteFile, { isOnline = false } = {}) => {
+        const current = get().purchaseRequests.find((request) => request.id === id)
+        if (!current) throw new Error('Solicitud no encontrada.')
+        if (isOnline && current.version) {
+          return get().updatePurchaseRequest(id, { quoteFile }, { isOnline })
+        }
+        const nextQuote = quoteFile?.name ? { name: quoteFile.name } : quoteFile
+        savePurchaseRequestExtras(id, { quoteFile, items: current.items })
+        set((state) => {
+          const purchaseRequests = state.purchaseRequests.map((request) => (
+            request.id === id
+              ? mergePurchaseRequestExtras({ ...request, quoteFile: nextQuote })
+              : request
+          ))
+          return { purchaseRequests, stats: deriveRequestStats(purchaseRequests) }
+        })
+        return get().purchaseRequests.find((request) => request.id === id)
       },
 
       reviewPurchaseRequest: async (id, status, reviewerId, { isOnline = false } = {}) => {
@@ -279,6 +322,12 @@ export const useComprasStore = create(
       },
 
       markRequestDelivered: async (id, { isOnline = false } = {}) => {
+        const current = mergePurchaseRequestExtras(
+          get().purchaseRequests.find((request) => request.id === id) || null
+        )
+        if (!current) throw new Error('Solicitud no encontrada.')
+        const inventoryResult = await receivePurchaseRequestInventory(current, { isOnline })
+
         if (!isOnline) {
           set((state) => {
             const purchaseRequests = state.purchaseRequests.map((request) => (
@@ -286,19 +335,18 @@ export const useComprasStore = create(
             ))
             return { purchaseRequests, stats: deriveRequestStats(purchaseRequests) }
           })
-          return get().purchaseRequests.find((request) => request.id === id)
+          return { request: get().purchaseRequests.find((request) => request.id === id), inventoryResult }
         }
         if (!get().apiContext.hydrated) await get().hydrateFromApi()
-        const current = get().purchaseRequests.find((request) => request.id === id)
-        if (!current?.version) throw new Error('Vuelve a cargar la solicitud antes de entregarla.')
-        const request = mapPurchaseRequestFromApi(
+        if (!current.version) throw new Error('Vuelve a cargar la solicitud antes de entregarla.')
+        const request = mergePurchaseRequestExtras(mapPurchaseRequestFromApi(
           await purchasingApi.deliverRequest(id, { version: current.version })
-        )
+        ))
         set((state) => {
           const purchaseRequests = replaceById(state.purchaseRequests, request)
           return { purchaseRequests, stats: deriveRequestStats(purchaseRequests), error: null }
         })
-        return request
+        return { request, inventoryResult }
       },
 
       updateSettings: async (data, { isOnline = false } = {}) => {

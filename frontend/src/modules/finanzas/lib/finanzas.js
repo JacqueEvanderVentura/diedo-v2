@@ -1,5 +1,13 @@
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 
+export const FINANCE_PERIODS = [
+  { id: 'today', label: 'Hoy' },
+  { id: 'week', label: 'Esta semana' },
+  { id: 'month', label: 'Este mes' },
+  { id: 'quarter', label: 'Trimestre' },
+  { id: 'all', label: 'Todo' },
+]
+
 // Acepta 'YYYY-MM-DD' (input date) o ISO (createdAt) y devuelve un Date local.
 export function parseWhen(v) {
   if (!v) return null

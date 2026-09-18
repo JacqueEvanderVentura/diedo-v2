@@ -14,6 +14,8 @@ import { PermissionElevationModal } from '@/components/auth/PermissionElevationM
 import { formatDOP } from '@/lib/format'
 import { fmtDateTime, METHOD_LABELS, METHOD_ICON } from '../lib/crm'
 import { buildInvoiceDataFromSale, downloadSaleInvoicePdf, printSaleInvoice } from '../lib/sales'
+import { collectSalePaymentProofs } from '../lib/saleProofs'
+import { ProofImagePreview } from '@/modules/pos/components/ProofImagePreview'
 import { cn } from '@/lib/utils'
 
 const VOID_INVOICE_PERMISSION = 'sales.invoice.void'
@@ -37,6 +39,7 @@ export function SaleDetailModal({ open, onClose, sale }) {
   const customers = useCustomersStore((s) => s.customers)
   const ensureSaleDetail = useCrmStore((s) => s.ensureSaleDetail)
   const voidSale = usePosStore((s) => s.voidSale)
+  const downloadPaymentProof = usePosStore((s) => s.downloadPaymentProof)
   const mutating = usePosStore((s) => s.mutating)
   const canVoidInvoice = useSessionStore((s) => s.hasPermission(VOID_INVOICE_PERMISSION))
   const isOnline = useSessionStore((s) => s.status === 'online')
@@ -75,6 +78,21 @@ export function SaleDetailModal({ open, onClose, sale }) {
   const invoice = buildInvoiceDataFromSale(detail, ctx)
   const isVoided = detail.status === 'voided'
   const documentId = detail.number || detail.id.toUpperCase()
+  const paymentProofs = collectSalePaymentProofs(detail)
+
+  const handleDownloadProof = async (proof) => {
+    try {
+      const blob = proof instanceof Blob ? proof : await downloadPaymentProof(proof)
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = proof?.name || 'comprobante'
+      anchor.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      toast.error(error.message || 'No se pudo descargar el comprobante.')
+    }
+  }
 
   const print = () => {
     printSaleInvoice(detail, ctx)
@@ -184,6 +202,20 @@ export function SaleDetailModal({ open, onClose, sale }) {
             </tbody>
           </table>
         </div>
+
+        {paymentProofs.length > 0 && (
+          <div className="space-y-3" data-testid="sale-detail-proofs">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Comprobantes de pago</p>
+            {paymentProofs.map((proof, index) => (
+              <ProofImagePreview
+                key={proof.id || proof.downloadUrl || index}
+                proof={proof}
+                loadProof={downloadPaymentProof}
+                onDownload={handleDownloadProof}
+              />
+            ))}
+          </div>
+        )}
 
         <div className={cn('ml-auto max-w-xs space-y-1.5 text-sm text-slate-600')}>
           <div className="flex justify-between"><span>Subtotal</span><span>{formatDOP(invoice.subtotal)}</span></div>

@@ -17,6 +17,9 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/services/purchasingApi', () => ({ purchasingApi: mocks }))
+vi.mock('@/modules/compras/lib/receivePurchaseInventory', () => ({
+  receivePurchaseRequestInventory: vi.fn().mockResolvedValue({ received: 0, skipped: true }),
+}))
 
 import { useComprasStore } from '@/stores/comprasStore'
 
@@ -109,14 +112,14 @@ describe('store de Compras conectado a la API', () => {
       'membership-id',
       { isOnline: true }
     )
-    await useComprasStore.getState().markRequestDelivered('request-id', { isOnline: true })
+    const delivered = await useComprasStore.getState().markRequestDelivered('request-id', { isOnline: true })
 
     expect(mocks.reviewRequest).toHaveBeenCalledWith('request-id', {
       version: 1,
       status: 'aprobada',
     })
     expect(mocks.deliverRequest).toHaveBeenCalledWith('request-id', { version: 2 })
-    expect(useComprasStore.getState().purchaseRequests[0]).toMatchObject({
+    expect(delivered.request).toMatchObject({
       status: 'entregada',
       version: 3,
     })

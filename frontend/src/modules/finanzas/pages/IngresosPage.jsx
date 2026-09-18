@@ -1,13 +1,16 @@
 import { useState, useMemo, useCallback } from 'react'
 import * as Icons from 'lucide-react'
-import { TrendingUp, Receipt, Hash, Plus, Pencil, Trash2, Printer, Download } from 'lucide-react'
+import { TrendingUp, Receipt, Hash, Plus, Pencil, Trash2, Printer, Download, FileImage } from 'lucide-react'
+import { FinanceAttachmentsModal } from '@/modules/finanzas/components/FinanceAttachmentsModal'
 import { usePosStore } from '@/stores/posStore'
 import { useFinanzasStore } from '@/stores/finanzasStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { toast } from 'sonner'
 import { formatDOP } from '@/lib/format'
-import { fmtWhen, isRecognizedPosIncome, isThisMonth, parseWhen } from '../lib/finanzas'
+import { fmtWhen, FINANCE_PERIODS, isRecognizedPosIncome, parseWhen } from '../lib/finanzas'
+import { DatePeriodFilter } from '@/components/ui/DatePeriodFilter'
+import { createPeriodFilterState, inDateRange, periodFilterLabel } from '@/lib/datePeriod'
 import { downloadIncomeInvoice, isPosIncome, printIncomeInvoice } from '../lib/incomeInvoice'
 import { METHOD_LABELS, METHOD_ICON } from '@/modules/crm/lib/crm'
 import { Card } from '@/components/ui/Card'
@@ -47,15 +50,6 @@ function SummaryCard({ label, value, icon: Icon, tone }) {
   )
 }
 
-const PERIODS = [{ id: 'month', label: 'Mes actual' }, { id: 'all', label: 'Todo' }]
-
-function isToday(v) {
-  const d = parseWhen(v)
-  if (!d) return false
-  const now = new Date()
-  return d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
-}
-
 function incomeDayKey(v) {
   const d = parseWhen(v)
   if (!d) return null
@@ -80,15 +74,32 @@ export default function IngresosPage() {
   const canManageIncome = useSessionStore((s) => s.hasPermission('finance.manage'))
 
   const [period, setPeriod] = useState('month')
+  const [dateFrom, setDateFrom] = useState(null)
+  const [dateTo, setDateTo] = useState(null)
   const [query, setQuery] = useState('')
   const [branchFilter, setBranchFilter] = useState('all')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingIncome, setEditingIncome] = useState(null)
+  const [proofIncome, setProofIncome] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
 
-  const inPeriod = (v) => period === 'all' || isThisMonth(v)
+  const periodFilter = useMemo(
+    () => ({ period, dateFrom, dateTo }),
+    [period, dateFrom, dateTo]
+  )
+
+  const matchesDate = useCallback(
+    (v) => period === 'all' || inDateRange(v, periodFilter),
+    [period, periodFilter]
+  )
+
+  const setPeriodFilter = useCallback(({ period: nextPeriod, dateFrom: nextFrom, dateTo: nextTo }) => {
+    setPeriod(nextPeriod)
+    setDateFrom(nextFrom ?? null)
+    setDateTo(nextTo ?? null)
+  }, [])
 
   const allIncomes = useMemo(() => {
     const fromSales = incomesProjected ? [] : sales.filter(isRecognizedPosIncome).map((s) => ({
@@ -125,10 +136,10 @@ export default function IngresosPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return allIncomes
-      .filter((i) => inPeriod(i.date))
+      .filter((i) => matchesDate(i.date))
       .filter((i) => branchFilter === 'all' || i.branchId === branchFilter)
       .filter((i) => !q || i.customer.toLowerCase().includes(q) || String(i.id).toLowerCase().includes(q) || (METHOD_LABELS[i.category] || i.category).toLowerCase().includes(q))
-  }, [allIncomes, period, query, branchFilter])
+  }, [allIncomes, matchesDate, query, branchFilter])
 
   const branchNameFor = (branchId, source) => branches.find((b) => b.id === branchId)?.name || (source === 'POS' ? 'POS' : '—')
 
@@ -145,6 +156,8 @@ export default function IngresosPage() {
   })
 
   const total = useMemo(() => filtered.reduce((a, i) => a + (i.amount || 0), 0), [filtered])
+  const periodLabel = periodFilterLabel(periodFilter, FINANCE_PERIODS)
+
   const dailySummary = useMemo(() => {
     if (period === 'all') {
       const amount = allIncomes.reduce((sum, income) => sum + (income.amount || 0), 0)
@@ -154,11 +167,12 @@ export default function IngresosPage() {
         value: activeDays.size ? amount / activeDays.size : 0,
       }
     }
+    const activeDays = new Set(filtered.map((income) => incomeDayKey(income.date)).filter(Boolean))
     return {
-      label: 'Ingreso Diario Total',
-      value: allIncomes.filter((income) => isToday(income.date)).reduce((sum, income) => sum + income.amount, 0),
+      label: 'Promedio diario del período',
+      value: activeDays.size ? total / activeDays.size : 0,
     }
-  }, [allIncomes, period])
+  }, [allIncomes, filtered, period, total])
   const monthlySummary = useMemo(() => {
     if (period === 'all') {
       const amount = allIncomes.reduce((sum, income) => sum + (income.amount || 0), 0)
@@ -169,10 +183,10 @@ export default function IngresosPage() {
       }
     }
     return {
-      label: 'Ingresos Mensuales Total',
-      value: allIncomes.filter((income) => isThisMonth(income.date)).reduce((sum, income) => sum + income.amount, 0),
+      label: `Total — ${periodLabel}`,
+      value: total,
     }
-  }, [allIncomes, period])
+  }, [allIncomes, period, periodLabel, total])
   const ticket = filtered.length ? total / filtered.length : 0
 
   const byMethod = useMemo(() => {
@@ -272,15 +286,28 @@ export default function IngresosPage() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex rounded-xl bg-slate-100 p-1 w-fit">
-          {PERIODS.map((p) => (
-            <button key={p.id} onClick={() => setPeriod(p.id)} data-testid={`ingresos-period-${p.id}`}
-              className={cn('rounded-lg px-4 py-2 text-sm font-semibold transition-colors', period === p.id ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500')}>
-              {p.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-2">
+        <DatePeriodFilter
+          period={period}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onChange={setPeriodFilter}
+          periods={FINANCE_PERIODS.filter((p) => p.id !== 'all')}
+          testId="ingresos-period-filter"
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPeriodFilter(createPeriodFilterState('all'))}
+            data-testid="ingresos-period-all"
+            className={cn(
+              'rounded-lg border px-3 py-2 text-sm font-semibold transition-colors',
+              period === 'all'
+                ? 'border-blue-200 bg-blue-50 text-blue-700'
+                : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+            )}
+          >
+            Todo
+          </button>
           <ExportMenu title="Ingresos" columns={exportCols} rows={exportRows} filename="ingresos" />
           {canManageIncome && (
             <Button onClick={openNew} data-testid="ingresos-new-btn"><Plus className="h-4 w-4" /> Registrar Ingreso</Button>
@@ -355,6 +382,17 @@ export default function IngresosPage() {
                         <td className="whitespace-nowrap px-6 py-4 text-right font-heading font-bold text-emerald-600">+ {formatDOP(i.amount)}</td>
                         <td className="px-6 py-4">
                           <div className="flex justify-end gap-1">
+                            {(i.attachments || []).length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setProofIncome(i)}
+                                title="Ver comprobante"
+                                data-testid={`ingresos-proof-${i.id}`}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50"
+                              >
+                                <FileImage className="h-4 w-4" />
+                              </button>
+                            )}
                             {isPosIncome(i) && (
                               <>
                                 <button
@@ -500,6 +538,13 @@ export default function IngresosPage() {
           </div>
         )}
       </Card>
+
+      <FinanceAttachmentsModal
+        open={Boolean(proofIncome)}
+        onClose={() => setProofIncome(null)}
+        title={proofIncome ? `Comprobantes · ${proofIncome.customer}` : 'Comprobantes'}
+        attachments={proofIncome?.attachments}
+      />
 
       <IncomeFormModal open={modalOpen} onClose={closeForm} income={editingIncome} />
 

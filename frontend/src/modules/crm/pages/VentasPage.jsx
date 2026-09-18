@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import * as Icons from 'lucide-react'
-import { Search, ShoppingBag } from 'lucide-react'
+import { Search, ShoppingBag, Paperclip } from 'lucide-react'
+import { saleHasPaymentProof } from '../lib/saleProofs'
 import { useCrmStore } from '@/stores/crmStore'
 import { usePosStore } from '@/stores/posStore'
 import { useConfigStore } from '@/stores/configStore'
@@ -194,7 +195,14 @@ export default function VentasPage() {
                           {saleOriginKey(s) === 'pipeline' ? 'Pipeline' : 'POS'}
                         </Badge>
                       </td>
-                      <td className="px-6 py-4 text-slate-500">{saleDisplayReference(s)}</td>
+                      <td className="px-6 py-4 text-slate-500">
+                        <span className="inline-flex items-center gap-1.5">
+                          {saleDisplayReference(s)}
+                          {saleHasPaymentProof(s) && (
+                            <Paperclip className="h-3.5 w-3.5 text-blue-500" title="Tiene comprobante" data-testid={`ventas-proof-${s.id}`} />
+                          )}
+                        </span>
+                      </td>
                       <td className="px-6 py-4">
                         <Badge tone={isVoided ? 'danger' : 'success'}>{isVoided ? 'Anulada' : 'Completada'}</Badge>
                       </td>

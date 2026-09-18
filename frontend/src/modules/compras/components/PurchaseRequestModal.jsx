@@ -8,21 +8,35 @@ import { Select } from '@/components/ui/Select'
 import { useComprasStore } from '@/stores/comprasStore'
 import { useConfigStore } from '@/stores/configStore'
 import { usePosStore } from '@/stores/posStore'
+import { useCatalogStore } from '@/stores/catalogStore'
 import { REQUEST_PRIORITIES } from '@/data/compras'
 import { buildBranchFilterOptions } from '@/lib/branches'
+import { AttachmentField } from '@/components/ui/AttachmentField'
+import { filterCategoriesForSection } from '@/lib/categories'
 
-const emptyItem = () => ({ name: '', qty: 1, unit: 'unidad', price: 0 })
+const emptyItem = () => ({
+  name: '',
+  qty: 1,
+  unit: 'unidad',
+  price: 0,
+  supplyProductId: '',
+  supplyCategoryId: '',
+})
 
 export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 'Usuario actual' }) {
   const suppliers = useComprasStore((s) => s.suppliers)
   const branches = useConfigStore((s) => s.branches)
   const posBranchId = usePosStore((s) => s.branchId)
+  const supplies = useCatalogStore((s) => s.getSupplies())
+  const categories = useConfigStore((s) => s.categories)
+  const supplyCategories = filterCategoriesForSection(categories, 'catalog', 'insumo')
   const branchOptions = buildBranchFilterOptions(branches, { includeAll: false })
   const [supplierId, setSupplierId] = useState('')
   const [branchId, setBranchId] = useState('charm-dn')
   const [priority, setPriority] = useState('normal')
   const [notes, setNotes] = useState('')
   const [items, setItems] = useState([emptyItem()])
+  const [quoteAttachments, setQuoteAttachments] = useState([])
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -33,9 +47,25 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
     setPriority('normal')
     setNotes('')
     setItems([emptyItem()])
+    setQuoteAttachments([])
     setErr('')
     setSaving(false)
   }, [open, suppliers, posBranchId, branches])
+
+  const linkSupply = (idx, supplyProductId) => {
+    const supply = supplies.find((row) => row.id === supplyProductId)
+    setItems((list) => list.map((it, i) => (
+      i === idx
+        ? {
+            ...it,
+            supplyProductId,
+            name: supply?.name || it.name,
+            unit: supply?.unit || it.unit,
+            supplyCategoryId: supply?.category || it.supplyCategoryId,
+          }
+        : it
+    )))
+  }
 
   const updateItem = (idx, field, value) =>
     setItems((list) => list.map((it, i) => (i === idx ? { ...it, [field]: value } : it)))
@@ -50,13 +80,21 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
     setSaving(true)
     setErr('')
     try {
+      const quoteFile = quoteAttachments[0] || null
       await onSubmit({
         supplierId,
         branchId,
         requesterName,
-        items: validItems.map((i) => ({ ...i, qty: Number(i.qty) || 1, price: Number(i.price) || 0 })),
+        items: validItems.map((i) => ({
+          ...i,
+          qty: Number(i.qty) || 1,
+          price: Number(i.price) || 0,
+          supplyProductId: i.supplyProductId || null,
+          supplyCategoryId: i.supplyCategoryId || null,
+        })),
         priority,
         notes: notes.trim(),
+        quoteFile,
       })
       toast.success('Solicitud creada')
       onClose()
@@ -121,7 +159,33 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
                     </button>
                   )}
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_110px_140px_160px]">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="min-w-0 sm:col-span-2">
+                    <label className="mb-1.5 block text-xs font-semibold text-slate-500">Insumo de inventario</label>
+                    <Select
+                      value={item.supplyProductId || ''}
+                      onChange={(value) => linkSupply(idx, value)}
+                      placeholder="Vincular insumo (opcional)"
+                      options={[
+                        { value: '', label: 'Sin vínculo de inventario' },
+                        ...supplies.map((supply) => ({ value: supply.id, label: supply.name })),
+                      ]}
+                    />
+                  </div>
+                  <div className="min-w-0 sm:col-span-2">
+                    <label className="mb-1.5 block text-xs font-semibold text-slate-500">Categoría de insumo</label>
+                    <Select
+                      value={item.supplyCategoryId || ''}
+                      onChange={(value) => updateItem(idx, 'supplyCategoryId', value)}
+                      placeholder="Categoría"
+                      options={[
+                        { value: '', label: 'Sin categoría' },
+                        ...supplyCategories.map((category) => ({ value: category.id, label: category.name })),
+                      ]}
+                    />
+                  </div>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_110px_140px_160px]">
                   <div className="min-w-0 sm:col-span-2 lg:col-span-1">
                     <label className="mb-1.5 block text-xs font-semibold text-slate-500">Descripción *</label>
                     <Input
@@ -162,6 +226,15 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
               </div>
             ))}
           </div>
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-400">Cotización del proveedor</label>
+          <AttachmentField
+            value={quoteAttachments}
+            onChange={setQuoteAttachments}
+            testId="purchase-quote-attachments"
+          />
         </div>
 
         <div>
