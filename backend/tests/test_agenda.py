@@ -353,6 +353,13 @@ def test_agenda_acl_view_blocks_appointment_reschedule(client: TestClient) -> No
         params={"version": appointment["version"]},
     )
     assert blocked_delete.status_code == 403, blocked_delete.text
+    cleared_acl = client.put(
+        f"/api/v1/appointment-resources/{resource_id}/acl",
+        headers=owner_headers,
+        params={"branchId": branch_id},
+        json={"items": []},
+    )
+    assert cleared_acl.status_code == 200, cleared_acl.text
 
 
 @pytest.mark.integration
@@ -1187,6 +1194,14 @@ def test_appointment_resource_config_crud_reorder_hours_and_acl(client: TestClie
         json={"items": []},
     )
     assert reset_hours.status_code == 200, reset_hours.text
+    for resource_id in (cabina_id, restricted_id):
+        cleared_acl = client.put(
+            f"/api/v1/appointment-resources/{resource_id}/acl",
+            headers=owner_headers,
+            params={"branchId": branch_id},
+            json={"items": []},
+        )
+        assert cleared_acl.status_code == 200, cleared_acl.text
 
 
 @pytest.mark.integration

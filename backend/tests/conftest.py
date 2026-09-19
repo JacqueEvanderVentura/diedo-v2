@@ -5,10 +5,12 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from app.config import settings
-from app.db.session import dispose_engine
+from app.db.models import AppointmentResourceAcl, BranchOpeningHour
+from app.db.session import dispose_engine, session_scope
 from app.main import app
 from app.scripts.release_test_database_backends import release_backends
 from fastapi.testclient import TestClient
+from sqlalchemy import delete
 from sqlalchemy.engine import make_url
 
 
@@ -38,6 +40,20 @@ def ensure_database_schema_at_head(request: pytest.FixtureRequest) -> Generator[
     dispose_engine()
     command.upgrade(_migration_config(), "head")
     dispose_engine()
+
+
+@pytest.fixture(autouse=True)
+def reset_agenda_test_isolation(
+    request: pytest.FixtureRequest,
+    ensure_database_schema_at_head: None,
+) -> Generator[None]:
+    if "integration" not in request.keywords:
+        yield
+        return
+    with session_scope() as session:
+        session.execute(delete(AppointmentResourceAcl))
+        session.execute(delete(BranchOpeningHour))
+    yield
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

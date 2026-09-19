@@ -1246,13 +1246,16 @@ def test_agenda_receivable_keeps_original_amount_after_partial_payment_and_edit(
         session.flush()
         move_resource_id = move_resource.id
 
-    resources_response = client.get(
+    primary_resource = client.post(
         "/api/v1/appointment-resources",
         headers=headers,
-        params={"branchId": str(primary_branch_id)},
+        json={
+            "branchId": str(primary_branch_id),
+            "name": f"Cabina CxC {suffix}",
+        },
     )
-    assert resources_response.status_code == 200, resources_response.text
-    primary_resource_id = resources_response.json()["items"][0]["id"]
+    assert primary_resource.status_code == 201, primary_resource.text
+    primary_resource_id = primary_resource.json()["id"]
 
     customer_response = client.post(
         "/api/v1/customers",
