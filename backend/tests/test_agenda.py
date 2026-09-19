@@ -1181,6 +1181,12 @@ def test_appointment_resource_config_crud_reorder_hours_and_acl(client: TestClie
     )
     assert still_there.status_code == 200, still_there.text
     assert locked_version == cabina["version"]
+    reset_hours = client.put(
+        f"/api/v1/branches/{branch_id}/opening-hours",
+        headers=owner_headers,
+        json={"items": []},
+    )
+    assert reset_hours.status_code == 200, reset_hours.text
 
 
 @pytest.mark.integration

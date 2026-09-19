@@ -25,6 +25,12 @@ def booking_setup(client, monkeypatch):
     client._transport.raise_server_exceptions = True
     headers, me = _bootstrap_and_login(client)
     branch = _hq_branch_id(me)
+    cleared_hours = client.put(
+        f"/api/v1/branches/{branch}/opening-hours",
+        headers=headers,
+        json={"items": []},
+    )
+    assert cleared_hours.status_code == 200, cleared_hours.text
     suffix = uuid7().hex[-12:]
     with get_session_factory()() as session:
         primary = session.get(Branch, UUID(branch))
