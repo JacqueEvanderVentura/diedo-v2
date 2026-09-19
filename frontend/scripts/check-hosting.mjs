@@ -1,8 +1,37 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { setTimeout as sleep } from 'node:timers/promises'
 
 const base = process.argv[2]
 assert.ok(base, 'Provide the deployment URL')
+
+function fetchSpaShell(path) {
+  // Node fetch overwrites Sec-Fetch-Mode with cors. curl preserves the browser
+  // navigation header, matching how Cloudflare serves the SPA shell.
+  return execFileSync(
+    'curl',
+    [
+      '--silent',
+      '--show-error',
+      '--fail',
+      '-H',
+      'Sec-Fetch-Mode: navigate',
+      '-H',
+      'Cache-Control: no-cache',
+      `${base}${path}`,
+    ],
+    { encoding: 'utf8' },
+  )
+}
+
+function extractAssets(html) {
+  return [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+\.(?:js|css))"/g)].map((m) => m[1]).sort()
+}
+
+function normalizeSpaShell(html) {
+  return html.replace(/\/assets\/[^"]+/g, '/assets/HASH')
+}
+
 const health = await fetch(`${base}/health`)
 assert.equal(health.status, 200)
 assert.equal((await health.text()).trim(), 'ok')
@@ -12,18 +41,47 @@ assert.equal(page.status, 200)
 assert.equal(page.headers.get('x-content-type-options'), 'nosniff')
 assert.equal(page.headers.get('x-frame-options'), 'DENY')
 assert.match(page.headers.get('cache-control'), /must-revalidate/)
-const html = await page.text()
-// Node fetch overwrites Sec-Fetch-Mode with cors. curl preserves the browser
-// navigation header, so this checks the intended SPA request rather than a fetch.
-const deep = execFileSync('curl', ['--silent', '--show-error', '--fail',
-  '-H', 'Sec-Fetch-Mode: navigate', `${base}/login`], { encoding: 'utf8' })
-assert.equal(deep, html)
-const assets = [...html.matchAll(/(?:src|href)="(\/assets\/[^\"]+\.(?:js|css))"/g)].map(m => m[1])
+
+let rootHtml = ''
+let loginHtml = ''
+const maxAttempts = 12
+for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+  rootHtml = fetchSpaShell('/')
+  loginHtml = fetchSpaShell('/login')
+  const rootAssets = extractAssets(rootHtml)
+  const loginAssets = extractAssets(loginHtml)
+  const shellsAligned =
+    rootAssets.length >= 2 &&
+    loginAssets.length >= 2 &&
+    rootAssets.join('\0') === loginAssets.join('\0') &&
+    normalizeSpaShell(rootHtml) === normalizeSpaShell(loginHtml)
+  if (shellsAligned) {
+    break
+  }
+  if (attempt === maxAttempts) {
+    assert.deepEqual(
+      loginAssets,
+      rootAssets,
+      'SPA shell assets must match between / and /login after deploy',
+    )
+    assert.equal(
+      normalizeSpaShell(loginHtml),
+      normalizeSpaShell(rootHtml),
+      'SPA HTML shell must match between / and /login after deploy',
+    )
+  }
+  await sleep(2_000)
+}
+
+const assets = extractAssets(rootHtml)
 assert.ok(assets.length >= 2)
 for (const asset of assets) {
   const response = await fetch(`${base}${asset}`)
   assert.equal(response.status, 200)
-  assert.match(response.headers.get('content-type'), asset.endsWith('.css') ? /text\/css/ : /javascript/)
+  assert.match(
+    response.headers.get('content-type'),
+    asset.endsWith('.css') ? /text\/css/ : /javascript/,
+  )
   assert.match(response.headers.get('cache-control'), /immutable/)
   const body = await response.text()
   assert.ok(!body.includes('api.helios360erp.com'))
