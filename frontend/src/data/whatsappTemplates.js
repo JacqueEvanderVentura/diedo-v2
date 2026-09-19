@@ -43,7 +43,7 @@ export const DEFAULT_WHATSAPP_TEMPLATES = {
 }
 
 export const WHATSAPP_VARIABLES = {
-  agenda: ['nombre_cliente', 'fecha', 'hora', 'servicio', 'sucursal', 'enlace'],
-  oportunidades: ['nombre_cliente', 'empresa', 'ubicacion'],
-  clientes: ['nombre_cliente', 'empresa'],
+  agenda: ['nombre_cliente', 'fecha', 'hora', 'servicio', 'sucursal', 'sucursal_1', 'sucursal_2', 'enlace'],
+  oportunidades: ['nombre_cliente', 'empresa', 'ubicacion', 'sucursal_1', 'sucursal_2'],
+  clientes: ['nombre_cliente', 'empresa', 'sucursal_1', 'sucursal_2'],
 }

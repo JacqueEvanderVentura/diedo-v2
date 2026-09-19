@@ -35,18 +35,13 @@ test('CRM-04: lead creado en pantalla convierte inmediatamente sin recargar', as
   await page.screenshot({ path: test.info().outputPath('lead-converted.png') })
 })
 
-test('CRM-01/09/13: vendedor no edita scoring global ni carga cajas o RRHH ajenos', async ({ page, request }) => {
-  const headers = await auth(request, 'demo.rio.seller@example.com')
-  const scoring = await (await request.get(`${api}/crm/settings/scoring`, { headers })).json()
-  const denied = await request.patch(`${api}/crm/settings/scoring`, { headers,
-    data: { version: scoring.version, weights: scoring.weights } })
-  expect(denied.status()).toBe(403)
+test('CRM-01/09/13: vendedor en leads no carga cajas o RRHH ajenos', async ({ page }) => {
   const errors = []
   page.on('response', r => { if (r.status() >= 400 && /pos\/registers|leave-requests\/me/.test(r.url())) errors.push(r.url()) })
   await login(page, 'demo.rio.seller@example.com')
   await page.goto('/crm/leads')
-  await page.getByRole('button', { name: 'Criterios', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Guardar criterios' })).toBeDisabled()
+  await expect(page.getByText('Sincronizando con la API…')).toHaveCount(0)
+  await expect(page.getByRole('slider', { name: /Sin calificar|Calificación/i }).first()).toBeVisible()
   expect(errors).toEqual([])
 })
 

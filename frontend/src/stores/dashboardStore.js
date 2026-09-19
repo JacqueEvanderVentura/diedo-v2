@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { intersectBranchIds } from '@/lib/branches'
 import { dashboardGateway } from '@/services/dashboardApi'
+import { registerSensitiveStateCleaner } from '@/services/storagePolicy'
 
 let latestRequest = 0
 
@@ -13,6 +15,16 @@ const EMPTY_SUMMARY = Object.freeze({
 })
 const EMPTY_TREND = Object.freeze({ total: 0, points: [] })
 
+function dashboardPersistScope(workspaceId, userId) {
+  if (!workspaceId || !userId) return null
+  return `${workspaceId}:${userId}`
+}
+
+const defaultBranchFilters = () => ({
+  branchId: 'all',
+  branchIds: [],
+})
+
 export const useDashboardStore = create(
   persist(
     (set, get) => ({
@@ -21,6 +33,7 @@ export const useDashboardStore = create(
       dateTo: null,
       branchId: 'all',
       branchIds: [],
+      persistScope: null,
       summary: EMPTY_SUMMARY,
       trend: EMPTY_TREND,
       stockAlerts: [],
@@ -43,6 +56,49 @@ export const useDashboardStore = create(
           branchIds: branchIds || [],
           branchId: branchIds?.length === 1 ? branchIds[0] : 'all',
         }),
+
+      ensureSessionScope: (workspaceId, userId) => {
+        const nextScope = dashboardPersistScope(workspaceId, userId)
+        if (!nextScope) return
+        const { persistScope } = get()
+        if (persistScope === nextScope) return
+        const isLegacyUnscoped = persistScope == null
+        if (isLegacyUnscoped) {
+          set({ persistScope: nextScope })
+          return
+        }
+        set({
+          persistScope: nextScope,
+          ...defaultBranchFilters(),
+          error: null,
+        })
+      },
+
+      reconcileBranchIds: (allowedBranchIds) => {
+        const current = get().branchIds || []
+        const next = intersectBranchIds(current, allowedBranchIds)
+        if (next.length === current.length && next.every((id, i) => id === current[i])) return false
+        set({
+          branchIds: next,
+          branchId: next.length === 1 ? next[0] : 'all',
+          error: null,
+        })
+        return true
+      },
+
+      clearSensitive: () => {
+        set({
+          ...defaultBranchFilters(),
+          persistScope: null,
+          summary: EMPTY_SUMMARY,
+          trend: EMPTY_TREND,
+          stockAlerts: [],
+          appointments: [],
+          activity: [],
+          loading: false,
+          error: null,
+        })
+      },
 
       hydrate: async (filters = {}) => {
         const requestId = ++latestRequest
@@ -77,7 +133,7 @@ export const useDashboardStore = create(
     }),
     {
       name: 'diedo-dashboard',
-      version: 3,
+      version: 4,
       migrate: (persisted) => ({
         period: persisted?.period ?? 'week',
         dateFrom: persisted?.dateFrom ?? null,
@@ -86,6 +142,7 @@ export const useDashboardStore = create(
         branchIds: persisted?.branchIds ?? (
           persisted?.branchId && persisted.branchId !== 'all' ? [persisted.branchId] : []
         ),
+        persistScope: persisted?.persistScope ?? null,
       }),
       partialize: (state) => ({
         period: state.period,
@@ -93,7 +150,10 @@ export const useDashboardStore = create(
         dateTo: state.dateTo,
         branchId: state.branchId,
         branchIds: state.branchIds,
+        persistScope: state.persistScope,
       }),
     }
   )
 )
+
+registerSensitiveStateCleaner(() => useDashboardStore.getState().clearSensitive())

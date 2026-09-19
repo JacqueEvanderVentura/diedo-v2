@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { Loader2, Plus, Search } from 'lucide-react'
+import { Loader2, Plus, Search, Pencil, Trash2, CheckSquare, Square } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { useCrmStore } from '@/stores/crmStore'
 
@@ -23,6 +24,11 @@ import { DatePeriodFilter } from '@/components/ui/DatePeriodFilter'
 import { LeadFormModal } from '@/modules/crm/components/LeadFormModal'
 
 import { SimplifiedLeadActions } from '@/modules/crm/components/SimplifiedLeadActions'
+import { SimplifiedCustomersPanel } from '@/modules/crm/components/SimplifiedCustomersPanel'
+import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
+import { BulkSelectionBar } from '@/components/ui/BulkSelectionBar'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { nextSelectAllState } from '@/lib/listSelection'
 
 import { ACTIVITY_TYPE_META } from '@/data/crm'
 
@@ -39,6 +45,11 @@ import {
 } from '@/modules/crm/lib/simplifiedWorkspaceQuery'
 
 
+
+const WORKSPACE_SECTIONS = [
+  { id: 'prospectos', label: 'Prospectos' },
+  { id: 'clientes', label: 'Clientes' },
+]
 
 const SIMPLIFIED_TABS = [
 
@@ -67,8 +78,9 @@ function opportunityTitle(opportunity, leads) {
 
 
 export default function SimplifiedWorkspacePage() {
-
+  const can = useCrmCapabilities()
   const leads = useCrmStore((state) => state.leads)
+  const deleteLeads = useCrmStore((state) => state.deleteLeads)
 
   const simplifiedWorkspace = useCrmStore((state) => state.simplifiedWorkspace)
 
@@ -96,8 +108,13 @@ export default function SimplifiedWorkspacePage() {
   const [dateFilter, setDateFilter] = useState(() => defaultSimplifiedDateFilter())
 
   const [page, setPage] = useState(1)
-
-
+  const [workspaceSection, setWorkspaceSection] = useState('prospectos')
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedLeadIds, setSelectedLeadIds] = useState(() => new Set())
+  const [deleting, setDeleting] = useState(false)
+  const [confirm, setConfirm] = useState(null)
+  const [editLeadOpen, setEditLeadOpen] = useState(false)
+  const [editingLead, setEditingLead] = useState(null)
 
   const {
 
@@ -178,26 +195,122 @@ export default function SimplifiedWorkspacePage() {
 
 
   const handleFiltersChange = () => {
-
     setPage(1)
-
     setSelectedId(null)
-
   }
 
+  const selectableQueueLeadIds = useMemo(() => (
+    queueItems
+      .map((item) => item.leadId)
+      .filter((leadId) => {
+        if (!leadId) return false
+        const lead = leads.find((item) => item.id === leadId)
+        return lead && lead.status !== 'convertido'
+      })
+  ), [queueItems, leads])
 
+  const exitSelectMode = () => {
+    setSelectMode(false)
+    setSelectedLeadIds(new Set())
+  }
+
+  const runDeleteLeads = async (ids) => {
+    setDeleting(true)
+    try {
+      const chunks = []
+      for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100))
+      let deleted = 0
+      let errors = 0
+      for (const chunk of chunks) {
+        const result = await deleteLeads(chunk)
+        for (const row of result.items || []) {
+          if (row.status === 'deleted') deleted += 1
+          else errors += 1
+        }
+      }
+      if (deleted) toast.success(deleted === 1 ? 'Lead eliminado' : `${deleted} lead(s) eliminados`)
+      if (errors) toast.error(`${errors} no se pudieron eliminar.`)
+      if (selectedLead?.id && ids.includes(selectedLead.id)) setSelectedId(null)
+      exitSelectMode()
+      refreshWorkspace()
+    } catch (error) {
+      toast.error(error.message || 'No se pudo completar la eliminación')
+    } finally {
+      setDeleting(false)
+      setConfirm(null)
+    }
+  }
+
+  const requestDeleteLead = (lead) => {
+    if (!lead || lead.status === 'convertido') {
+      toast.error('No se puede eliminar un lead convertido.')
+      return
+    }
+    setConfirm({
+      title: 'Eliminar lead',
+      description: `¿Eliminar el lead "${lead.company || lead.name}"? También se quita su oportunidad si no tiene cotizaciones.`,
+      onConfirm: () => runDeleteLeads([lead.id]),
+    })
+  }
+
+  const requestDeleteSelectedLeads = () => {
+    const ids = [...selectedLeadIds]
+    if (!ids.length) return
+    setConfirm({
+      title: 'Eliminar leads',
+      description: `¿Eliminar ${ids.length} lead(s) seleccionados? Los convertidos o con cotizaciones se omitirán.`,
+      onConfirm: () => runDeleteLeads(ids),
+    })
+  }
+
+  const toggleQueueLead = (leadId) => {
+    if (!leadId) return
+    setSelectedLeadIds((current) => {
+      const next = new Set(current)
+      if (next.has(leadId)) next.delete(leadId)
+      else next.add(leadId)
+      return next
+    })
+  }
 
   return (
 
     <div className="mx-auto w-full max-w-[1600px] space-y-4 p-4 sm:space-y-6 sm:p-8" data-testid="crm-simplified-workspace">
 
-      <div className="flex sm:justify-end">
-        <Button className="w-full sm:w-auto" onClick={() => setLeadModalOpen(true)} data-testid="crm-simplified-register-lead">
-          <Plus className="h-4 w-4" />
-          Registrar lead
-        </Button>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-2" data-testid="crm-simplified-sections">
+          {WORKSPACE_SECTIONS.map((section) => (
+            <button
+              key={section.id}
+              type="button"
+              onClick={() => {
+                setWorkspaceSection(section.id)
+                exitSelectMode()
+                setSelectedId(null)
+              }}
+              className={cn(
+                'rounded-full px-4 py-2 text-sm font-semibold transition-colors',
+                workspaceSection === section.id
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+              )}
+            >
+              {section.label}
+            </button>
+          ))}
+        </div>
+        {workspaceSection === 'prospectos' && (
+          <Button className="w-full sm:w-auto" onClick={() => setLeadModalOpen(true)} data-testid="crm-simplified-register-lead">
+            <Plus className="h-4 w-4" />
+            Registrar lead
+          </Button>
+        )}
       </div>
 
+      {workspaceSection === 'clientes' ? (
+        <SimplifiedCustomersPanel />
+      ) : (
+        <>
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
 
         <div className="relative flex-1 min-w-72">
@@ -265,9 +378,30 @@ export default function SimplifiedWorkspacePage() {
 
         />
 
+        {can.manage && (
+          <Button
+            type="button"
+            variant={selectMode ? 'secondary' : 'ghost'}
+            className="w-full xl:w-auto"
+            onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+            data-testid="crm-simplified-select-mode"
+          >
+            {selectMode ? 'Cancelar selección' : 'Seleccionar'}
+          </Button>
+        )}
+
       </div>
 
-
+      {selectMode && can.manage && (
+        <BulkSelectionBar
+          selectedCount={selectedLeadIds.size}
+          totalSelectable={selectableQueueLeadIds.length}
+          onSelectAll={() => setSelectedLeadIds(nextSelectAllState(selectedLeadIds, selectableQueueLeadIds))}
+          onDelete={requestDeleteSelectedLeads}
+          deleting={deleting}
+          testId="crm-simplified-leads-batch"
+        />
+      )}
 
       <div className="flex flex-wrap gap-2" data-testid="crm-simplified-tabs">
 
@@ -364,9 +498,23 @@ export default function SimplifiedWorkspacePage() {
 
                     const active = selected?.id === item.id
 
+                    const lead = item.leadId ? leads.find((row) => row.id === item.leadId) : null
+                    const canSelect = selectMode && can.manage && lead && lead.status !== 'convertido'
+
                     return (
 
-                      <li key={item.id}>
+                      <li key={item.id} className="flex items-stretch">
+
+                        {canSelect && (
+                          <button
+                            type="button"
+                            className="px-3 text-slate-500 hover:text-blue-600"
+                            onClick={() => toggleQueueLead(item.leadId)}
+                            aria-label={selectedLeadIds.has(item.leadId) ? 'Quitar selección' : 'Seleccionar lead'}
+                          >
+                            {selectedLeadIds.has(item.leadId) ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
+                          </button>
+                        )}
 
                         <button
 
@@ -376,7 +524,7 @@ export default function SimplifiedWorkspacePage() {
 
                           className={cn(
 
-                            'flex w-full flex-col gap-1 px-4 py-3 text-left transition-colors',
+                            'flex min-w-0 flex-1 flex-col gap-1 px-4 py-3 text-left transition-colors',
 
                             active ? 'bg-blue-50' : 'hover:bg-slate-50'
 
@@ -475,11 +623,36 @@ export default function SimplifiedWorkspacePage() {
 
                 </div>
 
-                <Badge tone={STAGE_META[selected.stage]?.tone || 'neutral'}>
-
-                  {STAGE_META[selected.stage]?.label || selected.stage}
-
-                </Badge>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={STAGE_META[selected.stage]?.tone || 'neutral'}>
+                    {STAGE_META[selected.stage]?.label || selected.stage}
+                  </Badge>
+                  {can.manage && selectedLead && !selectMode && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setEditingLead(selectedLead)
+                          setEditLeadOpen(true)
+                        }}
+                        data-testid="crm-simplified-edit-lead"
+                      >
+                        <Pencil className="h-3.5 w-3.5" /> Editar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="text-red-600"
+                        disabled={deleting || selectedLead.status === 'convertido'}
+                        onClick={() => requestDeleteLead(selectedLead)}
+                        data-testid="crm-simplified-delete-lead"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Eliminar
+                      </Button>
+                    </>
+                  )}
+                </div>
 
               </div>
 
@@ -604,14 +777,37 @@ export default function SimplifiedWorkspacePage() {
 
 
       <LeadFormModal
-
         open={leadModalOpen}
-
         onClose={() => setLeadModalOpen(false)}
-
         onSaved={() => refreshWorkspace()}
-
       />
+
+      <LeadFormModal
+        open={editLeadOpen}
+        onClose={() => {
+          setEditLeadOpen(false)
+          setEditingLead(null)
+        }}
+        lead={editingLead}
+        onSaved={() => {
+          setEditLeadOpen(false)
+          setEditingLead(null)
+          refreshWorkspace()
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!confirm}
+        onClose={() => !deleting && setConfirm(null)}
+        onConfirm={() => confirm?.onConfirm?.()}
+        title={confirm?.title || ''}
+        description={confirm?.description}
+        confirmLabel="Eliminar"
+        busy={deleting}
+        testId="crm-simplified-confirm-delete"
+      />
+        </>
+      )}
 
     </div>
 

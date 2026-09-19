@@ -66,13 +66,14 @@ export function PageShell() {
     useCrmStore.getState().ensureWorkspaceSettings().catch(() => {})
     const requests = canReadCrm || sessionStatus === 'demo' ? [hydrateCrmSection(crmSection)] : []
     if (CRM_SECTIONS_REQUIRING_CUSTOMERS.has(crmSection) && (canReadCustomers || sessionStatus === 'demo')) {
-      requests.push(hydrateCustomers({ force: true }))
+      requests.push(hydrateCustomers({ force: false }))
     }
     if (['quotes', 'pipeline', 'customers'].includes(crmSection) && sessionStatus === 'online' && canReadCatalog) {
       requests.push(hydrateCatalog(useConfigStore.getState().branches))
     }
     Promise.allSettled(requests)
       .then(() => {
+        if (crmSection === 'customers') return
         useCustomersStore.getState().mergeCrmProfiles(useCrmStore.getState().customers)
       })
   }, [crmSection, hydrateCatalog, hydrateCrmSection, hydrateCustomers, sessionStatus, canReadCrm, canReadCustomers, canReadCatalog])

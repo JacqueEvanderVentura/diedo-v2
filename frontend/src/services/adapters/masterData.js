@@ -5,6 +5,23 @@ const DEMO_BRANCH_IDS = Object.freeze({
   HQ: 'charm-dn',
 })
 
+export function mapCustomersPaginatedFromApi(response) {
+  const itemsList = response?.items || []
+  const totalItems = Number(response?.totalItems ?? response?.total_items ?? itemsList.length)
+  const pageSize = Number(response?.pageSize ?? response?.page_size ?? 50)
+  const page = Number(response?.page ?? 1)
+  const totalPages = Number(
+    response?.totalPages ?? response?.total_pages ?? Math.max(1, Math.ceil(totalItems / pageSize))
+  )
+  return {
+    items: itemsList.map(mapCustomerFromApi),
+    page,
+    pageSize,
+    totalItems,
+    totalPages,
+  }
+}
+
 export function mapCustomerFromApi(item) {
   const branchIds = (item.branches || []).map((branch) => branch.id)
   return {

@@ -8,6 +8,7 @@ import {
   CalendarClock,
   CalendarDays,
   Pencil,
+  Trash2,
   CalendarPlus,
   Building2,
   FileText,
@@ -47,6 +48,7 @@ export function CustomerDetailModal({
   onClose,
   customer,
   onEdit,
+  onDelete,
   onSchedule,
   onQuote,
   onNewTask,
@@ -133,6 +135,17 @@ export function CustomerDetailModal({
               <Button size="sm" variant="secondary" disabled={!can.customer} onClick={() => onEdit(customer)} data-testid="customer-detail-edit">
                 <Pencil className="h-3.5 w-3.5" /> Editar
               </Button>
+              {onDelete && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={!can.customer}
+                  onClick={() => onDelete(customer)}
+                  data-testid="customer-detail-delete"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Eliminar
+                </Button>
+              )}
             </div>
           </div>
 

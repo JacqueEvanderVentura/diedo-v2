@@ -2,19 +2,17 @@ import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { List, Search, ScanSearch, SlidersHorizontal, MapPin, Phone, Globe, Import, UserCheck, Briefcase, Plus } from 'lucide-react'
-import { useSessionStore } from '@/stores/sessionStore'
+import { List, Search, ScanSearch, MapPin, Phone, Globe, Import, UserCheck, Briefcase, Plus, Pencil, Trash2, CheckSquare, Square } from 'lucide-react'
 import { useCrmStore } from '@/stores/crmStore'
 import { searchBusinesses } from '@/services/leadSearch'
 import {
-  DIEDO_MODULES,
-  MODULE_LABELS,
-  LEAD_STATUS_META,
-  LEAD_STATUSES,
+  OPPORTUNITY_STAGES,
   SOURCE_LABELS,
   ACQUISITION_SOURCE_LABELS,
+  STAGE_META,
 } from '@/data/crm'
-import { buildWhatsAppVariables } from '@/lib/whatsapp'
+import { leadPipelineStage, opportunityStageToLeadStatus } from '../lib/pipelineLeads'
+import { buildLeadWhatsAppVariables } from '@/lib/whatsapp'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -22,51 +20,205 @@ import { Select } from '@/components/ui/Select'
 import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
 import { matchesBranches } from '@/lib/branches'
 import { useConfigStore } from '@/stores/configStore'
-import { ModuleFitBars, ScoreBadge } from '../components/ModuleFitBars'
+import { LeadStarRating, sortLeadsByStarRating } from '../components/LeadStarRating'
 import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
 import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
 import { cn } from '@/lib/utils'
 import { LeadFormModal } from '../components/LeadFormModal'
 import { LeadHandoffStrip } from '../components/LeadHandoffStrip'
 import { FEATURES } from '@/config/features'
+import { useSessionStore } from '@/stores/sessionStore'
+import { Pagination } from '@/modules/reportes/components/Pagination'
+import { paginateSlice } from '@/modules/reportes/lib/pagination'
+import { CRM_PAGE_SIZE_OPTIONS, DEFAULT_CRM_PAGE_SIZE } from '@/modules/crm/constants/paging'
+import { BulkSelectionBar } from '@/components/ui/BulkSelectionBar'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { nextSelectAllState } from '@/lib/listSelection'
 
 const TABS = [
   { id: 'lista', label: 'Lista', icon: List },
   ...(FEATURES.crmDiscovery ? [{ id: 'descubrir', label: 'Descubrir', icon: ScanSearch }] : []),
-  { id: 'criterios', label: 'Criterios', icon: SlidersHorizontal },
 ]
 
-function LeadsListaTab() {
+const STAR_SORT_OPTIONS = [
+  { value: 'none', label: 'Orden: recientes' },
+  { value: 'desc', label: 'Estrellas: mayor a menor' },
+  { value: 'asc', label: 'Estrellas: menor a mayor' },
+]
+
+function LeadsListaTab({ onEditLead }) {
   const can = useCrmCapabilities()
   const leads = useCrmStore((s) => s.leads)
+  const opportunities = useCrmStore((s) => s.opportunities)
   const branches = useConfigStore((s) => s.branches)
-  const setManualScore = useCrmStore((s) => s.setManualScore)
+  const businessName = useConfigStore((s) => s.settings?.businessName || '')
   const convertToCustomer = useCrmStore((s) => s.convertToCustomer)
   const addToPipeline = useCrmStore((s) => s.addToPipeline)
   const updateLead = useCrmStore((s) => s.updateLead)
+  const updateOpportunity = useCrmStore((s) => s.updateOpportunity)
+  const setLeadStarRating = useCrmStore((s) => s.setLeadStarRating)
+  const leadsListMeta = useCrmStore((s) => s.leadsListMeta)
+  const fetchLeadsPage = useCrmStore((s) => s.fetchLeadsPage)
+  const setLeadsPage = useCrmStore((s) => s.setLeadsPage)
+  const setLeadsPageSize = useCrmStore((s) => s.setLeadsPageSize)
+  const deleteLeads = useCrmStore((s) => s.deleteLeads)
+  const online = useSessionStore((s) => s.status === 'online')
+  const [offlinePage, setOfflinePage] = useState(1)
+  const [offlinePageSize, setOfflinePageSize] = useState(DEFAULT_CRM_PAGE_SIZE)
 
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [deleting, setDeleting] = useState(false)
+  const [confirm, setConfirm] = useState(null)
   const [query, setQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [stageFilter, setStageFilter] = useState('all')
   const [branchIds, setBranchIds] = useState([])
-  const [editingScore, setEditingScore] = useState(null)
-  const [manualVal, setManualVal] = useState('')
-  const [manualNotes, setManualNotes] = useState('')
+  const [starSort, setStarSort] = useState('none')
   const [handoff, setHandoff] = useState(null)
 
+  const opportunityByLeadId = useMemo(() => {
+    const map = new Map()
+    for (const opp of opportunities) {
+      if (opp.leadId) map.set(opp.leadId, opp)
+    }
+    return map
+  }, [opportunities])
+
+  useEffect(() => {
+    if (!online) return undefined
+    const branchId = branchIds.length === 1 ? branchIds[0] : undefined
+    const handle = window.setTimeout(() => {
+      fetchLeadsPage({ page: 1, search: query.trim(), branchId }).catch(() => {})
+    }, query.trim() ? 400 : 0)
+    return () => window.clearTimeout(handle)
+  }, [online, query, branchIds, fetchLeadsPage])
+
+  useEffect(() => {
+    setOfflinePage(1)
+  }, [query, stageFilter, branchIds, starSort, offlinePageSize])
+
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return leads.filter((l) => {
-      if (statusFilter !== 'all' && l.status !== statusFilter) return false
-      if (!matchesBranches(l, branchIds)) return false
+    const q = online ? '' : query.trim().toLowerCase()
+    const rows = leads.filter((l) => {
+      const stage = leadPipelineStage(l, opportunityByLeadId.get(l.id))
+      if (stageFilter !== 'all' && stage !== stageFilter) return false
+      if (!online || branchIds.length > 1) {
+        if (!matchesBranches(l, branchIds)) return false
+      }
       if (!q) return true
       return [l.name, l.company, l.location, l.phone, l.email].some((f) => f && `${f}`.toLowerCase().includes(q))
     })
-  }, [leads, query, statusFilter, branchIds])
+    if (starSort === 'desc' || starSort === 'asc') {
+      return sortLeadsByStarRating(rows, starSort)
+    }
+    return rows
+  }, [leads, query, stageFilter, branchIds, starSort, opportunityByLeadId, online])
 
-  const saveManual = (id) => {
-    setManualScore(id, manualVal, manualNotes)
-    setEditingScore(null)
-    toast.success('Score manual guardado')
+  const offlinePaged = useMemo(
+    () => paginateSlice(filtered, { page: offlinePage, pageSize: offlinePageSize }),
+    [filtered, offlinePage, offlinePageSize],
+  )
+
+  const list = online ? filtered : offlinePaged.items
+  const paginationMeta = online
+    ? {
+      page: leadsListMeta.page || 1,
+      totalPages: Math.max(1, leadsListMeta.totalPages || 1),
+      total: leadsListMeta.totalItems || 0,
+      pageSize: leadsListMeta.pageSize || DEFAULT_CRM_PAGE_SIZE,
+      from: leadsListMeta.totalItems === 0 ? 0 : ((leadsListMeta.page - 1) * leadsListMeta.pageSize) + 1,
+      to: Math.min(leadsListMeta.page * leadsListMeta.pageSize, leadsListMeta.totalItems),
+    }
+    : {
+      page: offlinePaged.page,
+      totalPages: offlinePaged.totalPages,
+      total: offlinePaged.total,
+      pageSize: offlinePaged.pageSize,
+      from: offlinePaged.from,
+      to: offlinePaged.to,
+    }
+
+  const selectableLeadIds = useMemo(
+    () => list.filter((lead) => lead.status !== 'convertido').map((lead) => lead.id),
+    [list],
+  )
+
+  const toggleSelected = (leadId) => {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (next.has(leadId)) next.delete(leadId)
+      else next.add(leadId)
+      return next
+    })
+  }
+
+  const exitSelectMode = () => {
+    setSelectMode(false)
+    setSelectedIds(new Set())
+  }
+
+  const runDeleteLeads = async (ids) => {
+    setDeleting(true)
+    try {
+      const chunks = []
+      for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100))
+      let deleted = 0
+      let errors = 0
+      for (const chunk of chunks) {
+        const result = await deleteLeads(chunk)
+        for (const row of result.items || []) {
+          if (row.status === 'deleted') deleted += 1
+          else errors += 1
+        }
+      }
+      if (deleted) toast.success(deleted === 1 ? 'Lead eliminado' : `${deleted} lead(s) eliminados`)
+      if (errors) toast.error(`${errors} no se pudieron eliminar (convertidos, cotizaciones o sin acceso).`)
+      exitSelectMode()
+    } catch (error) {
+      toast.error(error.message || 'No se pudo completar la eliminación')
+    } finally {
+      setDeleting(false)
+      setConfirm(null)
+    }
+  }
+
+  const requestDeleteLead = (lead) => {
+    if (lead.status === 'convertido') {
+      toast.error('No se puede eliminar un lead convertido.')
+      return
+    }
+    setConfirm({
+      title: 'Eliminar lead',
+      description: `¿Eliminar el lead "${lead.company || lead.name}"? También se quita su oportunidad si no tiene cotizaciones.`,
+      onConfirm: () => runDeleteLeads([lead.id]),
+    })
+  }
+
+  const requestDeleteSelectedLeads = () => {
+    const ids = [...selectedIds]
+    if (!ids.length) return
+    setConfirm({
+      title: 'Eliminar leads',
+      description: `¿Eliminar ${ids.length} lead(s) seleccionados? Los convertidos o con cotizaciones se omitirán.`,
+      onConfirm: () => runDeleteLeads(ids),
+    })
+  }
+
+  const setLeadPipelineStage = async (lead, stage) => {
+    const opportunity = opportunityByLeadId.get(lead.id)
+    try {
+      if (opportunity) {
+        const patch = { stage }
+        if (stage === 'perdido' && !opportunity.lostReason) {
+          patch.lostReason = 'Otro'
+        }
+        await updateOpportunity(opportunity.id, patch)
+      } else {
+        await updateLead(lead.id, { status: opportunityStageToLeadStatus(stage) })
+      }
+    } catch (error) {
+      toast.error(error.message || 'No se pudo actualizar la etapa')
+    }
   }
 
   const sendToPipeline = async (leadId) => {
@@ -114,9 +266,12 @@ function LeadsListaTab() {
           />
         </div>
         <Select
-          value={statusFilter}
-          onChange={setStatusFilter}
-          options={[{ value: 'all', label: 'Todos los estados' }, ...LEAD_STATUSES.map((s) => ({ value: s, label: LEAD_STATUS_META[s].label }))]}
+          value={stageFilter}
+          onChange={setStageFilter}
+          options={[
+            { value: 'all', label: 'Todas las etapas' },
+            ...OPPORTUNITY_STAGES.map((s) => ({ value: s, label: STAGE_META[s].label })),
+          ]}
           className="w-full sm:w-48"
         />
         <BranchMultiSelect
@@ -126,18 +281,58 @@ function LeadsListaTab() {
           className="w-full sm:w-56"
           testId="leads-branch-filter"
         />
+        <Select
+          value={starSort}
+          onChange={setStarSort}
+          options={STAR_SORT_OPTIONS}
+          className="w-full sm:w-56"
+          testId="leads-star-sort"
+        />
+        {can.manage && (
+          <Button
+            type="button"
+            variant={selectMode ? 'secondary' : 'ghost'}
+            onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+            data-testid="leads-select-mode"
+          >
+            {selectMode ? 'Cancelar selección' : 'Seleccionar'}
+          </Button>
+        )}
       </div>
 
+      {selectMode && can.manage && (
+        <BulkSelectionBar
+          selectedCount={selectedIds.size}
+          totalSelectable={selectableLeadIds.length}
+          onSelectAll={() => setSelectedIds(nextSelectAllState(selectedIds, selectableLeadIds))}
+          onDelete={requestDeleteSelectedLeads}
+          deleting={deleting}
+          testId="leads-batch"
+        />
+      )}
+
       <div className="space-y-3">
-        {filtered.map((lead) => {
-          const meta = LEAD_STATUS_META[lead.status]
+        {list.map((lead) => {
+          const opportunity = opportunityByLeadId.get(lead.id)
+          const pipelineStage = leadPipelineStage(lead, opportunity)
+          const meta = STAGE_META[pipelineStage]
           return (
             <Card key={lead.id} className="p-4">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="flex min-w-0 flex-1 gap-3">
+                  {selectMode && can.manage && lead.status !== 'convertido' && (
+                    <button
+                      type="button"
+                      className="mt-1 shrink-0 text-slate-500 hover:text-blue-600"
+                      aria-label={selectedIds.has(lead.id) ? 'Quitar selección' : 'Seleccionar lead'}
+                      onClick={() => toggleSelected(lead.id)}
+                    >
+                      {selectedIds.has(lead.id) ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
+                    </button>
+                  )}
                 <div className="min-w-0 flex-1 space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="font-heading font-semibold text-slate-900">{lead.company || lead.name}</h3>
-                    <ScoreBadge score={lead.score} />
                     <Badge tone={meta.tone}>{meta.label}</Badge>
                     <Badge tone="neutral">{SOURCE_LABELS[lead.source] || lead.source}</Badge>
                     {lead.acquisitionSource && (
@@ -152,7 +347,12 @@ function LeadsListaTab() {
                     {lead.website && <span className="inline-flex items-center gap-1"><Globe className="h-3.5 w-3.5" />{lead.website}</span>}
                   </div>
                   {lead.rawSnippet && <p className="text-sm text-slate-500">{lead.rawSnippet}</p>}
-                  <ModuleFitBars moduleFits={lead.moduleFits} compact />
+                  <LeadStarRating
+                    value={lead.starRating}
+                    disabled={!can.manage}
+                    onChange={(rating) => setLeadStarRating(lead.id, rating)}
+                  />
+                </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                   {lead.phone && (
@@ -160,19 +360,23 @@ function LeadsListaTab() {
                       phone={lead.phone}
                       context="oportunidades"
                       size="sm"
-                      variables={buildWhatsAppVariables({
-                        name: lead.name || lead.company || '',
-                        phone: lead.phone,
-                        company: lead.company || lead.name || '',
-                        ubicacion: lead.location || '',
-                      })}
+                      variables={buildLeadWhatsAppVariables(lead, { sellerName: businessName, branches })}
                       data-testid={`lead-wa-${lead.id}`}
                     />
                   )}
-                  {can.manage && lead.status !== 'convertido' && (
+                  {can.manage && lead.status !== 'convertido' && !selectMode && (
                     <>
-                      <Button size="sm" variant="secondary" onClick={() => { setEditingScore(lead.id); setManualVal(lead.scoreManual ?? ''); setManualNotes(lead.scoreNotes || '') }}>
-                        Score
+                      <Button size="sm" variant="secondary" onClick={() => onEditLead(lead)} data-testid={`lead-edit-${lead.id}`}>
+                        <Pencil className="h-3.5 w-3.5" /> Editar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={deleting}
+                        onClick={() => requestDeleteLead(lead)}
+                        data-testid={`lead-delete-${lead.id}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Eliminar
                       </Button>
                       {lead.opportunityId ? (
                         <Button size="sm" variant="secondary" disabled>
@@ -190,35 +394,55 @@ function LeadsListaTab() {
                   )}
                   <Select
                     disabled={!can.manage}
-                    value={lead.status}
-                    onChange={(v) => updateLead(lead.id, { status: v })}
-                    options={LEAD_STATUSES.map((s) => ({ value: s, label: LEAD_STATUS_META[s].label }))}
-                    className="w-36"
+                    value={pipelineStage}
+                    onChange={(v) => setLeadPipelineStage(lead, v)}
+                    options={OPPORTUNITY_STAGES.map((s) => ({ value: s, label: STAGE_META[s].label }))}
+                    className="w-40"
                   />
                 </div>
               </div>
               {handoff?.leadId === lead.id && (
                 <LeadHandoffStrip handoff={handoff} onDismiss={() => setHandoff(null)} />
               )}
-              {editingScore === lead.id && (
-                <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
-                  <label className="text-sm">
-                    <span className="mb-1 block text-xs text-slate-500">Score manual (0-100)</span>
-                    <input type="number" min={0} max={100} value={manualVal} onChange={(e) => setManualVal(e.target.value)} className="w-24 rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-                  </label>
-                  <label className="flex-1 text-sm">
-                    <span className="mb-1 block text-xs text-slate-500">Notas</span>
-                    <input value={manualNotes} onChange={(e) => setManualNotes(e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-                  </label>
-                  <Button size="sm" onClick={() => saveManual(lead.id)}>Guardar</Button>
-                  <Button size="sm" variant="ghost" onClick={() => setEditingScore(null)}>Cancelar</Button>
-                </div>
-              )}
             </Card>
           )
         })}
-        {filtered.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No hay leads que coincidan.</p>}
+        {list.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No hay leads que coincidan.</p>}
+        {(list.length > 0 || paginationMeta.total > 0) && (
+          <Card className="p-4">
+            <Pagination
+              page={paginationMeta.page}
+              totalPages={paginationMeta.totalPages}
+              total={paginationMeta.total}
+              from={paginationMeta.from}
+              to={paginationMeta.to}
+              pageSize={paginationMeta.pageSize}
+              pageSizeOptions={CRM_PAGE_SIZE_OPTIONS}
+              onPageChange={(page) => {
+                if (online) setLeadsPage(page).catch(() => {})
+                else setOfflinePage(page)
+              }}
+              onPageSizeChange={(size) => {
+                if (online) setLeadsPageSize(size).catch(() => {})
+                else setOfflinePageSize(size)
+              }}
+              noun="leads"
+              testId="leads-pagination"
+            />
+          </Card>
+        )}
       </div>
+
+      <ConfirmDialog
+        open={!!confirm}
+        onClose={() => !deleting && setConfirm(null)}
+        onConfirm={() => confirm?.onConfirm?.()}
+        title={confirm?.title || ''}
+        description={confirm?.description}
+        confirmLabel="Eliminar"
+        busy={deleting}
+        testId="leads-confirm-delete"
+      />
     </div>
   )
 }
@@ -324,65 +548,18 @@ function LeadsDescubrirTab() {
   )
 }
 
-function LeadsCriteriosTab() {
-  const canManage = useSessionStore((s) => s.hasWorkspacePermission('crm.manage'))
-  const [saving, setSaving] = useState(false)
-  const scoringWeights = useCrmStore((s) => s.scoringWeights)
-  const updateScoringWeights = useCrmStore((s) => s.updateScoringWeights)
-  const [local, setLocal] = useState({ ...scoringWeights })
-
-  const setWeight = (mod, val) => setLocal((p) => ({ ...p, [mod]: Number(val) }))
-
-  const save = async () => {
-    if (!canManage || saving) return
-    setSaving(true)
-    try {
-      await updateScoringWeights(local)
-      toast.success('Pesos actualizados — scores recalculados')
-    } catch (error) { toast.error(error.message) }
-    finally { setSaving(false) }
-  }
-
-  return (
-    <Card className="p-6">
-      <h3 className="font-heading text-lg font-semibold text-slate-900">Pesos del scoring automático</h3>
-      <p className="mt-1 text-sm text-slate-500">Ajusta la importancia de cada módulo Helios 360 al calcular el fit del lead.</p>
-      <div className="mt-6 space-y-5">
-        {DIEDO_MODULES.map((mod) => (
-          <div key={mod}>
-            <div className="mb-2 flex justify-between text-sm">
-              <span className="font-medium text-slate-700">{MODULE_LABELS[mod]}</span>
-              <span className="text-slate-500">{local[mod]?.toFixed(1) ?? 1}</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={2}
-              step={0.1}
-              value={local[mod] ?? 1}
-              onChange={(e) => setWeight(mod, e.target.value)}
-              className="w-full accent-blue-600"
-            />
-          </div>
-        ))}
-      </div>
-      <Button className="mt-6" onClick={save} disabled={!canManage || saving}>{saving ? 'Guardando…' : 'Guardar criterios'}</Button>
-      {!canManage && <p className="mt-2 text-sm text-slate-500">La edición de criterios requiere permiso CRM con alcance global.</p>}
-    </Card>
-  )
-}
-
 const LEADS_SUBTITLE = FEATURES.crmDiscovery
-  ? 'Descubre negocios, puntúalos y llévalos al pipeline o conviértelos en clientes.'
-  : 'Registra leads, puntúalos y conviértelos en clientes u oportunidades sin salir del flujo.'
+  ? 'Descubre negocios, califícalos con estrellas y llévalos al pipeline o conviértelos en clientes.'
+  : 'Registra leads, califícalos con estrellas y conviértelos en clientes u oportunidades.'
 
 export default function LeadsPage() {
   const can = useCrmCapabilities()
   const [params, setParams] = useSearchParams()
   const [formOpen, setFormOpen] = useState(false)
+  const [editingLead, setEditingLead] = useState(null)
   const tabParam = params.get('tab') || 'lista'
   const tab = TABS.some((t) => t.id === tabParam) ? tabParam : 'lista'
-  const tabCols = TABS.length <= 2 ? 'grid-cols-2' : 'grid-cols-3'
+  const tabCols = 'grid-cols-2'
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="crm-leads">
@@ -419,10 +596,14 @@ export default function LeadsPage() {
 
       <AnimatedTabPanel panelKey={tab}>
         {tab === 'descubrir' && <LeadsDescubrirTab />}
-        {tab === 'criterios' && <LeadsCriteriosTab />}
-        {tab === 'lista' && <LeadsListaTab />}
+        {tab === 'lista' && <LeadsListaTab onEditLead={setEditingLead} />}
       </AnimatedTabPanel>
       <LeadFormModal open={formOpen} onClose={() => setFormOpen(false)} />
+      <LeadFormModal
+        open={Boolean(editingLead)}
+        lead={editingLead}
+        onClose={() => setEditingLead(null)}
+      />
     </div>
   )
 }

@@ -24,10 +24,8 @@ export const crmApi = {
   quotes: (params) => apiClient.get(`${CRM_BASE}/quotes`, params),
   sales: (params) => apiClient.get(`${CRM_BASE}/sales`, params),
   getSale: (saleId) => apiClient.get(`${CRM_BASE}/sales/${saleId}`),
-  scoring: () => apiClient.get(`${CRM_BASE}/settings/scoring`),
   discoveryCapabilities: () => apiClient.get(`${CRM_BASE}/discovery/capabilities`),
   searchDiscovery: (payload) => apiClient.post(`${CRM_BASE}/discovery/search`, payload),
-  updateScoring: (payload) => apiClient.patch(`${CRM_BASE}/settings/scoring`, payload),
   workspaceSettings: () => apiClient.get(`${CRM_BASE}/settings/workspace`),
   updateWorkspaceSettings: (payload) => apiClient.patch(`${CRM_BASE}/settings/workspace`, payload),
 
@@ -41,7 +39,18 @@ export const crmApi = {
     payload,
     idempotencyOptions(key)
   ),
+  importPipeline: (payload, key) => apiClient.post(
+    `${CRM_BASE}/import/pipeline`,
+    payload,
+    idempotencyOptions(key)
+  ),
+  importActivities: (payload, key) => apiClient.post(
+    `${CRM_BASE}/import/activities`,
+    payload,
+    idempotencyOptions(key)
+  ),
   updateLead: (leadId, payload) => apiClient.patch(`${CRM_BASE}/leads/${leadId}`, payload),
+  deleteLeadsBatch: (payload) => apiClient.post(`${CRM_BASE}/leads/batch-delete`, payload),
   convertLead: (leadId, payload, key) => apiClient.post(
     `${CRM_BASE}/leads/${leadId}/convert`,
     payload,

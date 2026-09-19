@@ -23,10 +23,14 @@ async function loadSessionStore({ ready, demoEnabled, refreshed = false, me = nu
   vi.doMock('@/services/configFacade', () => ({
     configFacade: { clearApiBranches },
   }))
-  vi.doMock('@/services/storagePolicy', () => ({
-    clearSensitiveLocalState,
-    invalidateLegacySensitiveStorage: vi.fn(),
-  }))
+  vi.doMock('@/services/storagePolicy', async (importOriginal) => {
+    const actual = await importOriginal()
+    return {
+      ...actual,
+      clearSensitiveLocalState,
+      invalidateLegacySensitiveStorage: vi.fn(),
+    }
+  })
   const { useSessionStore } = await import('@/stores/sessionStore')
   return {
     store: useSessionStore,

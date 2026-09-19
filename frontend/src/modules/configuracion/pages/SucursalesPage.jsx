@@ -21,21 +21,13 @@ import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { BranchFormModal } from '../components/BranchFormModal'
 import { configPageClass } from '../lib/pageShell'
+import { mapWorkspaceSettingsFromApi } from '../lib/workspaceSettings'
 
 const EMPTY_SETTINGS = { businessName: '', region: '', taxDefault: 0, version: 1 }
 
 function branchCode(name) {
   const normalized = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   return `${normalized.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 20)}-${Date.now().toString(36).slice(-5)}`.toUpperCase()
-}
-
-function mapSettings(settings) {
-  return {
-    businessName: settings.name,
-    region: settings.locale,
-    taxDefault: Number(settings.taxDefaultRate),
-    version: settings.version,
-  }
 }
 
 function GeneralSettings({ settings, online, canMutate, onSaved }) {
@@ -56,7 +48,9 @@ function GeneralSettings({ settings, online, canMutate, onSaved }) {
           taxDefaultRate: Number(form.taxDefault) || 0,
           version: form.version,
         })
-        onSaved(mapSettings(result))
+        const mapped = mapWorkspaceSettingsFromApi(result)
+        onSaved(mapped)
+        localUpdate({ ...mapped, taxDefault: mapped.taxDefault })
       } else {
         localUpdate({ ...form, taxDefault: Number(form.taxDefault) || 0 })
       }
@@ -135,7 +129,7 @@ export default function SucursalesPage({ embedded = false }) {
       setLegalEntities(canReadLegalEntity
         ? mappedEntities
         : legalEntityReferencesFromBranches(branchResult.data))
-      setApiSettings(settingsResult ? mapSettings(settingsResult.data) : null)
+      setApiSettings(settingsResult ? mapWorkspaceSettingsFromApi(settingsResult.data) : null)
       const results = [branchResult, settingsResult, legalEntityResult].filter(Boolean)
       const allReady = results.every((result) => result.status === 'ready')
       const anyStale = results.some((result) => result.status === 'stale')

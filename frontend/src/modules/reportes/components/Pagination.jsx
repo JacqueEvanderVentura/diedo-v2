@@ -12,6 +12,7 @@ export function Pagination({
   pageSize,
   onPageChange,
   onPageSizeChange,
+  pageSizeOptions = PAGE_SIZE_OPTIONS,
   noun = 'registros',
   testId = 'report-pagination',
   compact = false,
@@ -50,14 +51,15 @@ export function Pagination({
       </p>
       <div className="flex flex-nowrap items-center justify-end gap-2 overflow-x-auto">
         {onPageSizeChange && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400">Por página</span>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="shrink-0 whitespace-nowrap text-xs text-slate-400">Por página</span>
             <Select
               value={String(pageSize)}
               onChange={(v) => onPageSizeChange(Number(v))}
-              options={PAGE_SIZE_OPTIONS.map((n) => ({ value: String(n), label: String(n) }))}
+              options={pageSizeOptions.map((n) => ({ value: String(n), label: String(n) }))}
               size="sm"
-              className="w-20"
+              className="w-auto min-w-fit shrink-0"
+              triggerClassName="w-auto min-w-fit [&>span]:flex-none [&>span]:shrink-0 [&>span]:overflow-visible [&>span]:whitespace-nowrap"
             />
           </div>
         )}

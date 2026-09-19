@@ -14,8 +14,16 @@ import { cn } from '@/lib/utils'
 
 const ROW_PX = 52
 
-export function DayView({ dateKey, appointments, resources = [], onSlotClick, onAppointmentClick }) {
-  const slots = timeSlots(8, 20, CALENDAR_SLOT_MINUTES)
+export function DayView({
+  dateKey,
+  appointments,
+  resources = [],
+  onSlotClick,
+  onAppointmentClick,
+  startHour = 8,
+  endHour = 20,
+}) {
+  const slots = timeSlots(startHour, endHour, CALENDAR_SLOT_MINUTES)
 
   const laneLayoutByResource = useMemo(() => {
     const map = new Map()
@@ -58,6 +66,7 @@ export function DayView({ dateKey, appointments, resources = [], onSlotClick, on
                 <div key={slot} className="contents">
                   <div className="border-b border-slate-100 px-2 py-3 text-xs font-medium text-slate-400">{slot}</div>
                   {resources.map((c) => {
+                    const canBook = c.access !== 'view'
                     const resourceAppointments = activeAppointmentsForResource(appointments, dateKey, c.id)
                     const { assignment, laneCount } = laneLayoutByResource.get(c.id) || {
                       assignment: new Map(),
@@ -86,8 +95,8 @@ export function DayView({ dateKey, appointments, resources = [], onSlotClick, on
                                   <button
                                     key={laneIndex}
                                     type="button"
-                                    onClick={() => onSlotClick?.({ date: dateKey, time: slot, cabinaId: c.id })}
-                                    disabled={!onSlotClick}
+                                    onClick={() => canBook && onSlotClick?.({ date: dateKey, time: slot, cabinaId: c.id })}
+                                    disabled={!onSlotClick || !canBook}
                                     className="min-w-0 flex-1 rounded-lg transition-colors hover:bg-blue-50/60"
                                     aria-label={`Agendar ${slot} en ${c.name}`}
                                   />
@@ -128,8 +137,8 @@ export function DayView({ dateKey, appointments, resources = [], onSlotClick, on
                         ) : (
                           <button
                             type="button"
-                            onClick={() => onSlotClick?.({ date: dateKey, time: slot, cabinaId: c.id })}
-                            disabled={!onSlotClick}
+                            onClick={() => canBook && onSlotClick?.({ date: dateKey, time: slot, cabinaId: c.id })}
+                            disabled={!onSlotClick || !canBook}
                             className="h-full min-h-[44px] w-full rounded-lg text-left transition-colors hover:bg-blue-50/50"
                             aria-label={`Agendar ${slot} en ${c.name}`}
                           />

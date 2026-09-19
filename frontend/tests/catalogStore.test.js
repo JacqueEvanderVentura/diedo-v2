@@ -78,6 +78,21 @@ describe('store de catálogo conectado al inventario', () => {
       expect.objectContaining({ id: category.id, name: 'Otros', api: true }),
     ])
     expect(useCatalogStore.getState().apiContext).toMatchObject({ hydrated: true })
+    expect(useCatalogStore.getState().products).toEqual([])
+  })
+
+  it('no conserva productos demo al hidratar en línea', async () => {
+    useCatalogStore.getState().ensureDemoSeed()
+    expect(useCatalogStore.getState().products.length).toBeGreaterThan(0)
+
+    mocks.listCategories.mockResolvedValue({ items: [category] })
+    mocks.listAllItems.mockResolvedValue({ items: [] })
+    mocks.listUnitsOfMeasure.mockResolvedValue([unit])
+    mocks.branches.mockResolvedValue([branch])
+
+    await useCatalogStore.getState().hydrateFromApi([branch])
+
+    expect(useCatalogStore.getState().products).toEqual([])
   })
 
   it('crea el producto en inventario con categoría, sucursal, precio y stock', async () => {

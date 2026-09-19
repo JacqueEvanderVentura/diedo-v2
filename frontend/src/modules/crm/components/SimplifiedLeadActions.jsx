@@ -18,7 +18,7 @@ import { useConfigStore } from '@/stores/configStore'
 import { useCustomersStore } from '@/stores/customersStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { useCatalogStore, isPosSellable } from '@/stores/catalogStore'
-import { buildWhatsAppVariables } from '@/lib/whatsapp'
+import { buildLeadWhatsAppVariables } from '@/lib/whatsapp'
 import { customersVisibleToSession } from '@/lib/customerScope'
 import { isProductAvailableAtBranch } from '@/lib/catalogSync'
 import { CloseOpportunityInvoiceModal } from '@/modules/crm/components/CloseOpportunityInvoiceModal'
@@ -381,12 +381,7 @@ export function SimplifiedLeadActions({ opportunity, lead, onActionComplete }) {
             phone={lead.phone}
             context="oportunidades"
             size="sm"
-            variables={buildWhatsAppVariables({
-              name: displayName,
-              phone: lead.phone,
-              company: lead.company || displayName,
-              ubicacion: lead.location || '',
-            })}
+            variables={buildLeadWhatsAppVariables(lead, { sellerName: settings?.businessName, branches })}
             data-testid="crm-simplified-wa"
           />
         )}

@@ -2,7 +2,7 @@ import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { CalendarPlus, FileText, GripVertical, Link2, Plus, UserCheck, UserPlus } from 'lucide-react'
+import { CalendarPlus, FileText, GripVertical, Link2, Plus, Search, UserCheck, UserPlus } from 'lucide-react'
 import { useCrmStore } from '@/stores/crmStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useCustomersStore } from '@/stores/customersStore'
@@ -40,6 +40,9 @@ import {
   opportunityCustomerDefaults,
 } from '../lib/pipelineForm'
 import { ensureCustomerForQuote } from '../lib/quoteCustomer'
+import { opportunityMatchesQuery } from '../lib/pipelineSearch'
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
+import { IncrementalListFooter } from '@/components/ui/IncrementalListFooter'
 
 const emptyOpportunity = () => ({
   title: '',
@@ -130,9 +133,8 @@ function DealCard({
           <button
             type="button"
             onPointerDown={stopDrag}
-            disabled={busy}
-            disabled={!can.manage}
-          onClick={() => onLinkCustomer(opp)}
+            disabled={busy || !can.manage}
+            onClick={() => onLinkCustomer(opp)}
             className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50"
           >
             <Link2 className="h-3.5 w-3.5" /> Cliente
@@ -170,6 +172,7 @@ export default function PipelinePage() {
   const [linkingOpportunity, setLinkingOpportunity] = useState(null)
   const [linkCustomerId, setLinkCustomerId] = useState('')
   const [branchIds, setBranchIds] = useState([])
+  const [searchQuery, setSearchQuery] = useState('')
   const [form, setForm] = useState(emptyOpportunity())
   const [busyOpportunityId, setBusyOpportunityId] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -241,13 +244,30 @@ export default function PipelinePage() {
     }).catch(() => {})
   }, [pendingOpportunity, activeCustomers, updateOpportunity])
 
+  const leadById = useMemo(
+    () => new Map(leads.map((lead) => [lead.id, lead])),
+    [leads],
+  )
+
+  const customerById = useMemo(
+    () => new Map(visibleCustomers.map((customer) => [customer.id, customer])),
+    [visibleCustomers],
+  )
+
   const filteredOpportunities = useMemo(() => {
-    return opportunities.filter((opportunity) => matchesBranches(
-      opportunity,
-      branchIds,
-      (row) => (row.branchId ? [row.branchId] : []),
-    ))
-  }, [opportunities, branchIds])
+    const q = searchQuery.trim()
+    return opportunities.filter((opportunity) => {
+      if (!matchesBranches(
+        opportunity,
+        branchIds,
+        (row) => (row.branchId ? [row.branchId] : []),
+      )) return false
+      if (!q) return true
+      const lead = opportunity.leadId ? leadById.get(opportunity.leadId) : null
+      const customer = opportunity.customerId ? customerById.get(opportunity.customerId) : null
+      return opportunityMatchesQuery(opportunity, { lead, customer }, q)
+    })
+  }, [opportunities, branchIds, searchQuery, leadById, customerById])
 
   const byStage = useMemo(() => {
     const map = Object.fromEntries(OPPORTUNITY_STAGES.map((stage) => [stage, []]))
@@ -564,7 +584,20 @@ export default function PipelinePage() {
 
   const toolbarRef = useRef(null)
   const boardHorizontalScrollRef = useRef(null)
+  const boardVerticalScrollRef = useRef(null)
   const [boardViewportHeight, setBoardViewportHeight] = useState(0)
+  const opportunitiesListMeta = useCrmStore((state) => state.opportunitiesListMeta)
+  const loadMoreOpportunities = useCrmStore((state) => state.loadMoreOpportunities)
+  const online = useSessionStore((state) => state.status === 'online')
+  const oppsHasMore = online && opportunitiesListMeta.page < opportunitiesListMeta.totalPages
+
+  const pipelineScrollSentinelRef = useInfiniteScroll({
+    hasMore: oppsHasMore,
+    loading: opportunitiesListMeta.loadingMore,
+    onLoadMore: () => { loadMoreOpportunities().catch(() => {}) },
+    rootRef: boardVerticalScrollRef,
+    rootMargin: '240px',
+  })
 
   useLayoutEffect(() => {
     const node = boardHorizontalScrollRef.current
@@ -602,7 +635,12 @@ export default function PipelinePage() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="font-heading text-2xl font-bold text-slate-900">Pipeline</h2>
-            <p className="text-sm text-slate-500">{totals.count} oportunidades abiertas · {formatDOP(totals.value)}</p>
+            <p className="text-sm text-slate-500">
+              {totals.count} oportunidades abiertas · {formatDOP(totals.value)}
+              {searchQuery.trim() && (
+                <> · {filteredOpportunities.length} coincidencia{filteredOpportunities.length === 1 ? '' : 's'}</>
+              )}
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <BranchMultiSelect
@@ -616,6 +654,17 @@ export default function PipelinePage() {
               <Plus className="h-4 w-4" /> Nueva oportunidad
             </Button>
           </div>
+        </div>
+        <div className="relative mt-4 w-full max-w-xl">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Buscar por nombre, teléfono, documento, ID…"
+            className="w-full rounded-xl border-0 bg-slate-50 py-2.5 pl-10 pr-4 text-sm ring-1 ring-inset ring-slate-200 focus:bg-white focus:ring-2 focus:ring-blue-600"
+            data-testid="pipeline-search"
+          />
         </div>
       </div>
 
@@ -636,6 +685,7 @@ export default function PipelinePage() {
             />
 
             <div
+              ref={boardVerticalScrollRef}
               className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain scrollbar-thin"
               data-testid="pipeline-board-vertical-scroll"
             >
@@ -671,6 +721,16 @@ export default function PipelinePage() {
                   )
                 })}
               </div>
+              <div ref={pipelineScrollSentinelRef} className="h-1 w-full shrink-0" aria-hidden />
+              {online && (
+                <IncrementalListFooter
+                  loaded={opportunities.length}
+                  total={opportunitiesListMeta.totalItems}
+                  loading={opportunitiesListMeta.loadingMore}
+                  hasMore={oppsHasMore}
+                  className="shrink-0"
+                />
+              )}
             </div>
           </div>
         </div>

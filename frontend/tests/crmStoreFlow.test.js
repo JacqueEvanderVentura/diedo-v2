@@ -4,7 +4,6 @@ const mocks = vi.hoisted(() => ({
   createLeadOpportunity: vi.fn(),
   getLead: vi.fn(),
   getSale: vi.fn(),
-  updateScoring: vi.fn(),
   createOpportunity: vi.fn(),
   updateOpportunity: vi.fn(),
   createActivity: vi.fn(),
@@ -68,7 +67,7 @@ describe('flujo conectado del store CRM', () => {
         name: 'Ada',
         company: 'Empresa de prueba',
         status: 'calificado',
-        score: 80,
+        starRating: 4,
         opportunityId: null,
         assignedUserId: membershipId,
         version: 1,
@@ -243,13 +242,6 @@ describe('flujo conectado del store CRM', () => {
       ],
     })
     expect(useCrmStore.getState().quotes[0].opportunityId).toBe(newOppId)
-  })
-  it('no cambia pesos locales cuando el servidor rechaza scoring', async () => {
-    useCrmStore.setState({ scoringWeights: { crm: 1 }, scoringVersion: 3 })
-    mocks.updateScoring.mockRejectedValue(new Error('Sin permiso'))
-    await expect(useCrmStore.getState().updateScoringWeights({ crm: 2 })).rejects.toThrow('Sin permiso')
-    expect(useCrmStore.getState().scoringWeights).toEqual({ crm: 1 })
-    expect(useCrmStore.getState().scoringVersion).toBe(3)
   })
 
   it('programa seguimiento simplificado y mueve a negociación', async () => {

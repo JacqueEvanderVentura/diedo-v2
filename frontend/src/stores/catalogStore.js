@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { ephemeralJsonStorage } from '@/services/storagePolicy'
+import { ephemeralJsonStorage, registerSensitiveStateCleaner } from '@/services/storagePolicy'
 import { PRODUCTS, SUPPLIES } from '@/data/products'
 import { catalogApi } from '@/services/catalogApi'
 import { inventoryApi } from '@/services/inventoryApi'
@@ -63,11 +63,24 @@ export function deriveLowStock(products) {
     }))
 }
 
+function catalogProductsForApiMerge(products) {
+  return (products || []).filter((product) => product.apiSynced)
+}
+
 export const useCatalogStore = create(
   persist(
     (set, get) => ({
-      products: SEED,
+      products: [],
       apiContext: { units: [], apiBranches: [], hydrated: false },
+
+      ensureDemoSeed: () =>
+        set((state) => (state.products.length ? state : { products: SEED.map((p) => ({ ...p })) })),
+
+      clearSensitive: () =>
+        set({
+          products: [],
+          apiContext: { units: [], apiBranches: [], hydrated: false },
+        }),
 
       hydrateFromApi: async (configBranches = []) => {
         const [categoriesRes, productsRes, units, apiBranches] = await Promise.all([
@@ -87,7 +100,11 @@ export const useCatalogStore = create(
           if (c.api) categoryIdToLocal.set(c.id, c.id)
         })
 
-        const merged = mergeProductLists(productsRes.items || [], get().products, categoryIdToLocal)
+        const merged = mergeProductLists(
+          productsRes.items || [],
+          catalogProductsForApiMerge(get().products),
+          categoryIdToLocal,
+        )
         set({
           products: merged,
           apiContext: { units, apiBranches, categories, hydrated: true, configBranches },
@@ -293,6 +310,8 @@ export const useCatalogStore = create(
 
       getLowStock: () => deriveLowStock(get().products),
     }),
-    { name: 'diedo-catalog', storage: ephemeralJsonStorage, partialize: (s) => ({ products: s.products, apiContext: { hydrated: false } }) }
-  )
+    { name: 'diedo-catalog', storage: ephemeralJsonStorage, partialize: (s) => ({ products: s.products, apiContext: { hydrated: false } }) },
+  ),
 )
+
+registerSensitiveStateCleaner(() => useCatalogStore.getState().clearSensitive())

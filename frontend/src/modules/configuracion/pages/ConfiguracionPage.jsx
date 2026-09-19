@@ -33,6 +33,9 @@ import MetodosPagoPage from './MetodosPagoPage'
 import PlantillasWaPanel from '../components/PlantillasWaPanel'
 import BillingDocumentsPanel from '../components/BillingDocumentsPanel'
 import CrmModePanel from '../components/CrmModePanel'
+import DataImportPanel from '../components/DataImportPanel'
+import PerfilWorkspacePanel from '../components/PerfilWorkspacePanel'
+import AgendaCabinasPanel from '../components/AgendaCabinasPanel'
 
 const EMBED_MAP = {
   usuarios: UsuariosPage,
@@ -43,6 +46,9 @@ const EMBED_MAP = {
   whatsapp: PlantillasWaPanel,
   'billing-documents': BillingDocumentsPanel,
   'crm-mode': CrmModePanel,
+  datos: DataImportPanel,
+  perfil: PerfilWorkspacePanel,
+  'agenda-cabinas': AgendaCabinasPanel,
 }
 
 const SECTIONS = [
@@ -80,13 +86,20 @@ const SECTIONS = [
       { id: 'plantillas-docs', title: 'Plantillas de Documentos', subtitle: 'Formatos base para CRM y RRHH', icon: FileText, kind: 'stub' },
       { id: 'doc-crm', title: 'Documentación CRM', subtitle: 'Configura requisitos de perfiles', icon: FileText, kind: 'stub' },
       { id: 'impuestos-nomina', title: 'Impuestos de Nómina', subtitle: 'Configura aportes TSS e INFOTEP', icon: Receipt, kind: 'stub' },
-      { id: 'agenda-cabinas', title: 'Agenda y Cabinas', subtitle: 'Horarios, cabinas y permisos por sucursal', icon: CalendarDays, kind: 'stub' },
+      {
+        id: 'agenda-cabinas',
+        title: 'Agenda y Cabinas',
+        subtitle: 'Horarios, cabinas y permisos por sucursal',
+        icon: CalendarDays,
+        kind: 'embed',
+        embed: 'agenda-cabinas',
+      },
     ],
   },
   {
     title: 'Cuenta',
     items: [
-      { id: 'perfil', title: 'Perfil', subtitle: 'Gestiona tu información personal', icon: UserCircle, kind: 'stub' },
+      { id: 'perfil', title: 'Perfil', subtitle: 'Gestiona tu información personal', icon: UserCircle, kind: 'embed', embed: 'perfil' },
       { id: 'notificaciones', title: 'Notificaciones', subtitle: 'Configura alertas y preferencias', icon: Bell, kind: 'stub' },
       { id: 'seguridad', title: 'Seguridad', subtitle: 'Contraseña y autenticación', icon: Lock, kind: 'stub' },
     ],
@@ -96,7 +109,7 @@ const SECTIONS = [
     items: [
       { id: 'apariencia', title: 'Apariencia', subtitle: 'Temas y personalización visual', icon: Palette, kind: 'stub' },
       { id: 'idioma', title: 'Idioma y Región', subtitle: 'Preferencias de localización', icon: Globe, kind: 'stub' },
-      { id: 'datos', title: 'Datos', subtitle: 'Exportar e importar información', icon: Database, kind: 'stub' },
+      { id: 'datos', title: 'Datos', subtitle: 'Exportar e importar información', icon: Database, kind: 'embed', embed: 'datos' },
     ],
   },
   {

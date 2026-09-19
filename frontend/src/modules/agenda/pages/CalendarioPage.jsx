@@ -26,6 +26,9 @@ import {
   weekKeysMonday,
 } from '../lib/calendar'
 import { cn } from '@/lib/utils'
+import { appointmentsApi } from '@/services/appointmentsApi'
+import { sortResources } from '@/modules/configuracion/lib/agendaCabinas'
+import { boundsForDate } from '../lib/branchOpeningHours'
 
 const VIEWS = [
   { id: 'day', label: 'Día' },
@@ -41,6 +44,8 @@ export default function CalendarioPage() {
   const hydrateResources = useAgendaStore((s) => s.hydrateResources)
   const { activeBranchId: branchId, setActiveBranch: setBranchId, branches, selectOptions } = useActiveBranchScope()
   const canManage = useSessionStore((s) => s.hasPermission('appointment.manage'))
+  const isDemo = useSessionStore((s) => s.status === 'demo')
+  const [openingHours, setOpeningHours] = useState([])
   const [view, setView] = useState('week')
   const [cursor, setCursor] = useState(todayKey())
   const [showCancelled, setShowCancelled] = useState(false)
@@ -69,9 +74,26 @@ export default function CalendarioPage() {
     hydrateResources({ branchId }).catch(() => {})
   }, [branchId, hydrateResources])
 
+  useEffect(() => {
+    if (!branchId || isDemo) {
+      setOpeningHours([])
+      return
+    }
+    appointmentsApi.branchOpeningHours(branchId)
+      .then(setOpeningHours)
+      .catch(() => setOpeningHours([]))
+  }, [branchId, isDemo])
+
   const branchResources = useMemo(
-    () => resources.filter((resource) => resource.branchId === branchId && resource.active !== false),
-    [branchId, resources]
+    () => sortResources(
+      resources.filter((resource) => resource.branchId === branchId && resource.active !== false),
+    ),
+    [branchId, resources],
+  )
+
+  const dayBounds = useMemo(
+    () => boundsForDate(openingHours, cursor),
+    [openingHours, cursor],
   )
 
   const filtered = useMemo(() => {
@@ -91,8 +113,15 @@ export default function CalendarioPage() {
   }
 
   const openNew = (slot = {}) => {
+    const defaultCabina = branchResources.find((resource) => resource.access !== 'view')?.id || ''
     setEditing(null)
-    setDefaults({ date: cursor, time: '08:00', cabinaId: 'cab1', branchId, ...slot })
+    setDefaults({
+      date: cursor,
+      time: '08:00',
+      cabinaId: defaultCabina,
+      branchId,
+      ...slot,
+    })
     setModalOpen(true)
   }
 
@@ -225,6 +254,8 @@ export default function CalendarioPage() {
             dateKey={cursor}
             appointments={filtered}
             resources={branchResources}
+            startHour={dayBounds.startHour}
+            endHour={dayBounds.endHour}
             onSlotClick={canManage ? openNew : undefined}
             onAppointmentClick={openEdit}
           />

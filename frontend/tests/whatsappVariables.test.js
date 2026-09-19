@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   appointmentWhatsAppFields,
   buildCustomerWhatsAppVariables,
+  buildBranchWhatsAppFields,
+  buildLeadWhatsAppVariables,
   buildWhatsAppVariables,
   findNextCustomerAppointment,
   firstNameFromDisplayName,
@@ -25,6 +27,32 @@ describe('whatsapp variables', () => {
     const result = insertTemplateToken('Hola ', 'firstName', 5)
     expect(result.body).toBe('Hola {{firstName}}')
     expect(result.caret).toBe(18)
+  })
+
+  it('rellena sucursal_1 y sucursal_2 desde sucursales activas', () => {
+    const fields = buildBranchWhatsAppFields([
+      { name: 'Principal', active: true },
+      { name: 'Norte', active: true },
+      { name: 'Cerrada', active: false },
+    ])
+    expect(fields.sucursal_1).toBe('Principal')
+    expect(fields.sucursal_2).toBe('Norte')
+    const message = fillTemplate('Visítenos en {{sucursal_1}} o {{sucursal_2}}.', fields)
+    expect(message).toBe('Visítenos en Principal o Norte.')
+  })
+
+  it('usa el nombre del contacto y la empresa del vendedor en leads', () => {
+    const vars = buildLeadWhatsAppVariables(
+      { name: 'Claudette Cochon', company: '', phone: '8095550000' },
+      { sellerName: 'Cortinaje del Este' },
+    )
+    const message = fillTemplate(
+      'Hola {{nombre_cliente}}, soy de {{empresa}}. Nos gustaría conocer más sobre sus necesidades.',
+      vars,
+    )
+    expect(message).toBe(
+      'Hola Claudette Cochon, soy de Cortinaje del Este. Nos gustaría conocer más sobre sus necesidades.',
+    )
   })
 
   it('detecta variables vacías vs con valor', () => {

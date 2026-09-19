@@ -93,10 +93,26 @@ export function mapAppointmentResourceFromApi(item, fallbackBranchId) {
     branchId: item.branchId || fallbackBranchId,
     code: item.code || '',
     name: item.name,
+    description: item.description || '',
     resourceType: item.resourceType || 'room',
     status: item.status || 'active',
     active: item.status !== 'inactive' && item.status !== 'archived',
+    sortOrder: Number(item.sortOrder) || 0,
+    access: item.access || 'use',
     version: Number(item.version) || 1,
+  }
+}
+
+export function mapOpeningHourFromApi(item) {
+  const formatTime = (value) => {
+    if (!value) return '08:00'
+    if (typeof value === 'string' && value.length >= 5) return value.slice(0, 5)
+    return String(value)
+  }
+  return {
+    weekday: item.weekday,
+    opensAt: formatTime(item.opensAt),
+    closesAt: formatTime(item.closesAt),
   }
 }
 

@@ -11,6 +11,13 @@ export function isAllBranchSelection(branchIds) {
   return !Array.isArray(branchIds) || branchIds.length === 0
 }
 
+/** Drops branch ids that are not in the current workspace branch list (stale localStorage). */
+export function intersectBranchIds(branchIds, allowedBranchIds) {
+  if (!Array.isArray(branchIds) || !branchIds.length) return []
+  const allowed = new Set(allowedBranchIds || [])
+  return branchIds.filter((id) => allowed.has(id))
+}
+
 export function normalizeBranchIds(branchId, branchIds) {
   if (Array.isArray(branchIds) && branchIds.length) return branchIds
   if (!isAllBranches(branchId)) return [branchId]

@@ -113,10 +113,22 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     : APPOINTMENT_STATUSES.filter((status) => status.id === 'confirmada')
   const price = selectedService?.price || form.price || 0
   const branchStaff = useBranchStaff(form.branchId)
-  const branchResources = useMemo(
-    () => resources.filter((resource) => resource.branchId === form.branchId && resource.active !== false),
-    [form.branchId, resources]
-  )
+  const branchResources = useMemo(() => {
+    const scoped = resources.filter(
+      (resource) => resource.branchId === form.branchId && resource.active !== false,
+    )
+    const bookable = scoped.filter((resource) => resource.access !== 'view')
+    const sorted = [...bookable].sort((left, right) => {
+      const order = (left.sortOrder ?? 0) - (right.sortOrder ?? 0)
+      if (order !== 0) return order
+      return String(left.name || '').localeCompare(String(right.name || ''))
+    })
+    if (appointment?.cabinaId && !sorted.some((resource) => resource.id === appointment.cabinaId)) {
+      const current = scoped.find((resource) => resource.id === appointment.cabinaId)
+      if (current) return [current, ...sorted]
+    }
+    return sorted
+  }, [appointment?.cabinaId, form.branchId, resources])
   const resourcesLoading = resourceLoadingByBranch[form.branchId] === true
   const selectedEmployee = useMemo(
     () => employees.find((e) => e.id === form.employeeId),

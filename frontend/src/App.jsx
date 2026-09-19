@@ -35,7 +35,7 @@ export default function App() {
     const session = useSessionStore.getState()
     const requests = []
     if (status === 'demo' || (session.hasModule('crm') && session.hasPermission('customer.read'))) {
-      requests.push(hydrateCustomers({ force: true }))
+      requests.push(hydrateCustomers({ force: false }))
     }
     if (status === 'demo' || (session.hasModule('hr') && session.hasPermission('employee.read'))) {
       requests.push(hydrateEmployees({ force: true }), hydrateHrData({ force: true }))

@@ -9,6 +9,7 @@ import { checkHealthReady } from '@/services/healthApi'
 import { isModuleAvailable } from '@/services/moduleAvailability'
 import { mapSessionUser } from '@/services/adapters/iam'
 import { clearSensitiveLocalState, invalidateLegacySensitiveStorage } from '@/services/storagePolicy'
+import { useCatalogStore } from '@/stores/catalogStore'
 import { hasWorkspacePermission } from '@/lib/sessionCapabilities'
 import {
   buildDemoElevation,
@@ -88,6 +89,7 @@ export const useSessionStore = create((set, get) => ({
     if (!ready) {
       clearTenantState()
       if (DEMO_SEED_ENABLED) {
+        useCatalogStore.getState().ensureDemoSeed()
         set({
           status: 'demo',
           initialized: true,

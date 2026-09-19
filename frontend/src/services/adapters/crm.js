@@ -8,13 +8,11 @@ const numberValue = (value) => {
 const items = (response) => response?.items || []
 
 export function mapLeadFromApi(lead) {
+  const starRating = lead.starRating
   return {
     ...lead,
     assignedUserId: lead.assignedMembershipId,
-    score: numberValue(lead.score),
-    scoreAuto: numberValue(lead.scoreAuto),
-    scoreManual: lead.scoreManual == null ? null : numberValue(lead.scoreManual),
-    scoreNotes: lead.scoreNotes || '',
+    starRating: starRating == null || starRating === '' ? null : Number(starRating),
     rawSnippet: lead.rawSnippet || '',
     location: lead.location || '',
   }
@@ -116,13 +114,29 @@ export function mapCrmStateFromApi(state) {
     opportunities: (state?.opportunities || []).map(mapOpportunityFromApi),
     activities: (state?.activities || []).map(mapActivityFromApi),
     quotes: (state?.quotes || []).map(mapCrmQuoteFromApi),
-    scoringWeights: state?.settings?.weights || {},
-    scoringVersion: state?.settings?.version || 1,
+    uiMode: state?.settings?.uiMode || 'standard',
+    uiModeVersion: state?.settings?.version || 1,
   }
 }
 
 export function mapLeadsPageFromApi(response) {
   return items(response).map(mapLeadFromApi)
+}
+
+export function mapLeadsPaginatedFromApi(response) {
+  const totalItems = Number(response?.totalItems ?? response?.total_items ?? 0)
+  const pageSize = Number(response?.pageSize ?? response?.page_size ?? 50)
+  const page = Number(response?.page ?? 1)
+  const totalPages = Number(
+    response?.totalPages ?? response?.total_pages ?? Math.max(1, Math.ceil(totalItems / pageSize))
+  )
+  return {
+    items: mapLeadsPageFromApi(response),
+    page,
+    pageSize,
+    totalItems,
+    totalPages,
+  }
 }
 
 export function mapOpportunitiesPageFromApi(response) {
@@ -164,6 +178,22 @@ export function mapCrmOverviewFromApi(response) {
 
 export function mapCrmCustomersPageFromApi(response) {
   return items(response).map(mapCrmCustomerFromApi)
+}
+
+export function mapCrmCustomersPaginatedFromApi(response) {
+  const totalItems = Number(response?.totalItems ?? response?.total_items ?? 0)
+  const pageSize = Number(response?.pageSize ?? response?.page_size ?? 50)
+  const page = Number(response?.page ?? 1)
+  const totalPages = Number(
+    response?.totalPages ?? response?.total_pages ?? Math.max(1, Math.ceil(totalItems / pageSize))
+  )
+  return {
+    items: mapCrmCustomersPageFromApi(response),
+    page,
+    pageSize,
+    totalItems,
+    totalPages,
+  }
 }
 
 export function mapCrmSalesPageFromApi(response) {

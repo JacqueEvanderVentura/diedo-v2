@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { buildWhatsAppVariables, digitsOnly, fillTemplate, waMeUrl } from '@/lib/whatsapp'
+import { buildBranchWhatsAppFields } from '@/lib/whatsappVariables'
 import { WHATSAPP_VARIABLE_CHIPS, insertTemplateToken } from '@/lib/whatsappVariables'
 import { WhatsAppVariableChips } from '@/components/ui/WhatsAppVariableChips'
 import { DropdownPanel } from '@/components/ui/DropdownPanel'
@@ -46,6 +47,7 @@ export function WhatsAppMenuButton({
   'data-testid': testId,
 }) {
   const templates = useConfigStore((s) => s.whatsappTemplates?.[context] || [])
+  const branches = useConfigStore((s) => s.branches)
   const addWhatsappTemplate = useConfigStore((s) => s.addWhatsappTemplate)
   const user = useSessionStore((s) => s.user)
   const canCreateTemplate = ['Administrador', 'Gerente'].includes(user?.role)
@@ -59,10 +61,12 @@ export function WhatsAppMenuButton({
   const bodyRef = useRef(null)
   const bodyCaretRef = useRef(0)
   const createFormId = useId()
+  const branchFields = useMemo(() => buildBranchWhatsAppFields(branches), [branches])
   const resolvedVariables = buildWhatsAppVariables({
     name: variables.nombre_cliente || variables.name,
     phone: variables.phone || phone,
     company: variables.empresa || variables.company,
+    ...branchFields,
     ...variables,
   })
   const variableChips = WHATSAPP_VARIABLE_CHIPS[context] || WHATSAPP_VARIABLE_CHIPS.clientes

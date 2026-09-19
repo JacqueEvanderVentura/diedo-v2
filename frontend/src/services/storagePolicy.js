@@ -27,6 +27,7 @@ const LEGACY_SENSITIVE_KEYS = [
   'diedo-catalog',
   'diedo-self-booking',
   'diedo-self-doc',
+  'diedo-dashboard',
 ]
 
 export function invalidateLegacySensitiveStorage(storage = window.localStorage) {

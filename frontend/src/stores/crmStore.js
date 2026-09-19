@@ -3,9 +3,7 @@ import { persist } from 'zustand/middleware'
 import { ephemeralJsonStorage } from '@/services/storagePolicy'
 import { registerSensitiveStateCleaner } from '@/services/storagePolicy'
 import { currentSessionActor } from '@/lib/sessionActor'
-import { computeAutoScore, effectiveScore } from '@/modules/crm/lib/scoring'
 import { recordSerpUsage } from '@/modules/crm/lib/serpQuota'
-import { DEFAULT_SCORING_WEIGHTS } from '@/data/crm'
 import { useCustomersStore } from '@/stores/customersStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { crmApi } from '@/services/crmApi'
@@ -22,10 +20,21 @@ import {
   mapCrmStateFromApi,
   mapLeadFromApi,
   mapLeadsPageFromApi,
+  mapLeadsPaginatedFromApi,
   mapOpportunityFromApi,
   mapOpportunitiesPageFromApi,
   mapOpportunitiesPaginatedFromApi,
 } from '@/services/adapters/crm'
+import {
+  CRM_INFINITE_PAGE_SIZE,
+  DEFAULT_CRM_PAGE_SIZE,
+  normalizeCrmPageSize,
+} from '@/modules/crm/constants/paging'
+import {
+  emptyListMeta,
+  fetchMissingLeadsForOpportunities,
+  listMetaFromPaginated,
+} from '@/modules/crm/lib/crmListLoading'
 import {
   SIMPLIFIED_WORKSPACE_STAGES,
   buildSimplifiedOpportunityQuery,
@@ -98,8 +107,7 @@ function leadPayload(data) {
     scrapedAt: data.scrapedAt || null,
     rawSnippet: data.rawSnippet || null,
     status: data.status || 'nuevo',
-    scoreManual: data.scoreManual ?? null,
-    scoreNotes: data.scoreNotes || null,
+    starRating: data.starRating ?? null,
   }
 }
 
@@ -115,29 +123,35 @@ async function loadOnlineSection(section) {
       return { overview: mapCrmOverviewFromApi(response) }
     }
     case 'leads': {
-      const [page, settings, discoveryCapabilities] = await Promise.all([
-        readAllPages(crmApi.leads),
-        crmApi.scoring(),
+      const pageSize = DEFAULT_CRM_PAGE_SIZE
+      const [leadsRes, discoveryCapabilities, oppsRes] = await Promise.all([
+        crmApi.leads({ page: 1, pageSize }),
         crmApi.discoveryCapabilities(),
+        crmApi.opportunities({ page: 1, pageSize: 200 }),
       ])
+      const leadsMapped = mapLeadsPaginatedFromApi(leadsRes)
+      const oppsMapped = mapOpportunitiesPaginatedFromApi(oppsRes)
       return {
-        leads: mapLeadsPageFromApi(page),
-        scoringWeights: settings.weights,
-        scoringVersion: settings.version,
+        leads: leadsMapped.items,
+        leadsListMeta: listMetaFromPaginated(leadsMapped, { pageSize }),
         discoveryCapabilities,
+        opportunities: oppsMapped.items,
+        opportunitiesListMeta: listMetaFromPaginated(oppsMapped, { pageSize: 200 }),
       }
     }
     case 'pipeline': {
-      const [opportunities, leads, quotes] = await Promise.all([
-        readAllPages(crmApi.opportunities),
-        readAllPages(crmApi.leads),
+      const [oppsRes, quotes] = await Promise.all([
+        crmApi.opportunities({ page: 1, pageSize: CRM_INFINITE_PAGE_SIZE }),
         readAllPages(crmApi.quotes),
         syncWorkspacePaymentMethods(),
       ])
+      const oppsMapped = mapOpportunitiesPaginatedFromApi(oppsRes)
+      const extraLeads = await fetchMissingLeadsForOpportunities([], oppsMapped.items)
       return {
         quotes: mapCrmQuotesPageFromApi(quotes),
-        opportunities: mapOpportunitiesPageFromApi(opportunities),
-        leads: mapLeadsPageFromApi(leads),
+        opportunities: oppsMapped.items,
+        opportunitiesListMeta: listMetaFromPaginated(oppsMapped),
+        leads: extraLeads,
       }
     }
     case 'activities': {
@@ -151,14 +165,21 @@ async function loadOnlineSection(section) {
       }
     }
     case 'customers': {
-      const [customers, sales, quotes, opportunities, activities] = await Promise.all([
-        readAllPages(crmApi.customers), readAllPages(crmApi.sales),
-        readAllPages(crmApi.quotes), readAllPages(crmApi.opportunities),
-        readAllPages(crmApi.activities),
+      const pageSize = CRM_INFINITE_PAGE_SIZE
+      const [salesRes, quotesRes, oppsRes, activitiesRes] = await Promise.all([
+        crmApi.sales({ page: 1, pageSize }),
+        crmApi.quotes({ page: 1, pageSize: 100 }),
+        crmApi.opportunities({ page: 1, pageSize }),
+        crmApi.activities({ page: 1, pageSize: 100 }),
       ])
-      return { customers: mapCrmCustomersPageFromApi(customers), sales: mapCrmSalesPageFromApi(sales),
-        quotes: mapCrmQuotesPageFromApi(quotes), opportunities: mapOpportunitiesPageFromApi(opportunities),
-        activities: mapActivitiesPageFromApi(activities) }
+      const oppsMapped = mapOpportunitiesPaginatedFromApi(oppsRes)
+      return {
+        sales: mapCrmSalesPageFromApi(salesRes),
+        quotes: mapCrmQuotesPageFromApi(quotesRes),
+        opportunities: oppsMapped.items,
+        opportunitiesListMeta: listMetaFromPaginated(oppsMapped),
+        activities: mapActivitiesPageFromApi(activitiesRes),
+      }
     }
     case 'quotes': {
       const [quotes, opportunities, customers] = await Promise.all([
@@ -201,9 +222,8 @@ async function loadOnlineSection(section) {
   }
 }
 
-function normalizeLead(raw, weights) {
-  const { score, moduleFits, reasons } = computeAutoScore(raw, weights)
-  const scoreManual = raw.scoreManual ?? null
+function normalizeLead(raw) {
+  const starRating = raw.starRating ?? null
   return {
     id: raw.id || genId('lead'),
     name: raw.name || '',
@@ -218,18 +238,14 @@ function normalizeLead(raw, weights) {
     scrapedAt: raw.scrapedAt || null,
     rawSnippet: raw.rawSnippet || '',
     status: raw.status || 'nuevo',
-    scoreManual,
-    scoreAuto: score,
-    score: effectiveScore({ scoreManual, scoreAuto: score }),
-    moduleFits,
-    scoreReasons: reasons,
-    scoreNotes: raw.scoreNotes || '',
+    starRating: starRating == null || starRating === '' ? null : Number(starRating),
     branchId: raw.branchId || 'charm-dn',
     assignedUserId: raw.assignedUserId || currentSessionActor().id,
     createdAt: raw.createdAt || now(),
     updatedAt: raw.updatedAt || now(),
     customerId: raw.customerId || null,
     opportunityId: raw.opportunityId || null,
+    version: raw.version || 1,
   }
 }
 
@@ -269,17 +285,9 @@ const SEED_QUOTES = [
   { id: 'qt-2', number: 'COT-2026-002', opportunityId: 'opp-2', customerName: 'Spa Zen Caribe', status: 'borrador', total: 78000, items: [{ name: 'Suite Helios Completa', qty: 1, price: 78000 }], branchId: 'charm-dn', validUntil: daysAgo(-20), createdAt: daysAgo(2), updatedAt: daysAgo(2) },
 ]
 
-function recomputeLeads(leads, weights) {
-  return leads.map((l) => {
-    const scored = computeAutoScore(l, weights)
-    const score = l.scoreManual != null ? l.scoreManual : scored.score
-    return { ...l, scoreAuto: scored.score, moduleFits: scored.moduleFits, scoreReasons: scored.reasons, score }
-  })
-}
-
 function buildSeedLeads() {
   return RAW_SEED_LEADS.map((l, i) =>
-    normalizeLead({ ...l, id: `lead-seed-${i + 1}`, createdAt: daysAgo(30 - i * 2), updatedAt: daysAgo(i) }, DEFAULT_SCORING_WEIGHTS)
+    normalizeLead({ ...l, id: `lead-seed-${i + 1}`, createdAt: daysAgo(30 - i * 2), updatedAt: daysAgo(i) })
   )
 }
 
@@ -287,15 +295,15 @@ export const useCrmStore = create(
   persist(
     (set, get) => ({
       leads: [],
+      leadsListMeta: emptyListMeta(),
       opportunities: [],
+      opportunitiesListMeta: emptyListMeta(),
       activities: [],
       quotes: [],
       customers: [],
       sales: [],
       overview: null,
       discoveryCapabilities: null,
-      scoringWeights: { ...DEFAULT_SCORING_WEIGHTS },
-      scoringVersion: 1,
       uiMode: 'standard',
       uiModeVersion: 1,
       workspaceSettingsLoaded: false,
@@ -416,6 +424,93 @@ export const useCrmStore = create(
         } catch (error) {
           if (generation !== crmGeneration) return {}
           set({ hydrating: false, error, dataState: { status: 'error', source: null, error } })
+          throw error
+        }
+      },
+
+      fetchLeadsPage: async ({ page = 1, pageSize, search, branchId } = {}) => {
+        if (!isOnline()) return get().leads
+        const meta = get().leadsListMeta
+        const targetPage = Math.max(1, page)
+        const targetSize = normalizeCrmPageSize(pageSize ?? meta.pageSize)
+        const searchKey = search ?? meta.search ?? ''
+        const branchKey = branchId ?? meta.branchId ?? null
+        set({
+          leadsListMeta: {
+            ...meta,
+            page: targetPage,
+            pageSize: targetSize,
+            search: searchKey,
+            branchId: branchKey,
+            loading: true,
+            loadingMore: false,
+          },
+        })
+        try {
+          const response = await crmApi.leads({
+            page: targetPage,
+            pageSize: targetSize,
+            search: searchKey.trim() || undefined,
+            branchId: branchKey || undefined,
+          })
+          const mapped = mapLeadsPaginatedFromApi(response)
+          set({
+            leads: mapped.items,
+            leadsListMeta: listMetaFromPaginated(mapped, {
+              pageSize: targetSize,
+              search: searchKey,
+              branchId: branchKey,
+            }),
+          })
+          return mapped.items
+        } catch (error) {
+          set({ leadsListMeta: { ...get().leadsListMeta, loading: false, loadingMore: false } })
+          throw error
+        }
+      },
+
+      setLeadsPage: (page) => {
+        const meta = get().leadsListMeta
+        return get().fetchLeadsPage({
+          page,
+          pageSize: meta.pageSize,
+          search: meta.search,
+          branchId: meta.branchId,
+        })
+      },
+
+      setLeadsPageSize: (pageSize) => {
+        const meta = get().leadsListMeta
+        return get().fetchLeadsPage({
+          page: 1,
+          pageSize,
+          search: meta.search,
+          branchId: meta.branchId,
+        })
+      },
+
+      /** @deprecated Usar paginación por página */
+      loadMoreLeads: async () => get().setLeadsPage(get().leadsListMeta.page + 1),
+
+      loadMoreOpportunities: async () => {
+        if (!isOnline()) return
+        const meta = get().opportunitiesListMeta
+        if (meta.loadingMore || meta.page >= meta.totalPages) return
+        set({ opportunitiesListMeta: { ...meta, loadingMore: true } })
+        try {
+          const response = await crmApi.opportunities({
+            page: meta.page + 1,
+            pageSize: CRM_INFINITE_PAGE_SIZE,
+          })
+          const mapped = mapOpportunitiesPaginatedFromApi(response)
+          const extraLeads = await fetchMissingLeadsForOpportunities(get().leads, mapped.items)
+          set((state) => ({
+            opportunities: upsertById(state.opportunities, mapped.items),
+            opportunitiesListMeta: listMetaFromPaginated(mapped),
+            leads: extraLeads.length ? upsertById(state.leads, extraLeads) : state.leads,
+          }))
+        } catch (error) {
+          set({ opportunitiesListMeta: { ...get().opportunitiesListMeta, loadingMore: false } })
           throw error
         }
       },
@@ -700,24 +795,8 @@ export const useCrmStore = create(
         await get().updateOpportunity(opportunityId, { stage: 'perdido', lostReason: reason })
       },
 
-      updateScoringWeights: async (weights) => {
-        if (!isOnline()) {
-          set((s) => ({ scoringWeights: { ...s.scoringWeights, ...weights },
-            leads: recomputeLeads(s.leads, { ...s.scoringWeights, ...weights }) }))
-          return
-        }
-        try {
-          const result = await crmApi.updateScoring({ version: get().scoringVersion, weights })
-          set({ scoringWeights: result.weights, scoringVersion: result.version })
-          await get().hydrateSection('leads')
-        } catch (error) {
-          reportMutationError(set, error)
-          throw error
-        }
-      },
-
       addLead: async (data) => {
-        const lead = normalizeLead(data, get().scoringWeights)
+        const lead = normalizeLead(data)
         if (isOnline()) {
           try {
             const response = await crmApi.createLead(leadPayload(lead))
@@ -736,10 +815,9 @@ export const useCrmStore = create(
       },
 
       addLeadsBatch: async (items, source = 'serp') => {
-        const weights = get().scoringWeights
         const ts = now()
         const newLeads = items.map((item) =>
-          normalizeLead({ ...item, source, scrapedAt: ts, status: 'nuevo' }, weights)
+          normalizeLead({ ...item, source, scrapedAt: ts, status: 'nuevo' })
         )
         if (isOnline() && newLeads.length > 0) {
           try {
@@ -762,39 +840,68 @@ export const useCrmStore = create(
         return newLeads
       },
 
-      updateLead: (id, data) => {
+      updateLead: async (id, data) => {
         const current = get().leads.find((lead) => lead.id === id)
+        if (!current) throw new Error('Lead no encontrado.')
         set((s) => ({
           leads: s.leads.map((l) => {
             if (l.id !== id) return l
-            const merged = { ...l, ...data, updatedAt: now() }
-            if (data.scoreManual !== undefined) {
-              merged.score = effectiveScore(merged)
-            }
-            return merged
+            return { ...l, ...data, updatedAt: now() }
           }),
         }))
-        if (isOnline() && current) {
+        if (isOnline()) {
           const payload = { version: current.version }
           const fields = [
             'name', 'company', 'email', 'phone', 'website', 'location', 'status',
-            'scoreManual', 'scoreNotes', 'rawSnippet',
+            'starRating', 'rawSnippet', 'acquisitionSource',
           ]
           fields.forEach((field) => {
             if (data[field] !== undefined) payload[field] = data[field]
           })
-          crmApi.updateLead(id, payload)
-            .then((response) => {
-              const saved = mapLeadFromApi(response)
-              set((s) => ({ leads: replaceById(s.leads, saved) }))
-            })
-            .catch((error) => reportMutationError(set, error))
+          try {
+            const response = await crmApi.updateLead(id, payload)
+            const saved = mapLeadFromApi(response)
+            set((s) => ({ leads: replaceById(s.leads, saved) }))
+            return saved
+          } catch (error) {
+            reportMutationError(set, error)
+            throw error
+          }
         }
+        return get().leads.find((lead) => lead.id === id)
       },
 
-      setManualScore: (id, scoreManual, scoreNotes = '') => get().updateLead(id, {
-        scoreManual: scoreManual != null && scoreManual !== '' ? Number(scoreManual) : null,
-        scoreNotes,
+      deleteLeads: async (leadIds) => {
+        const ids = [...new Set(leadIds)].filter(Boolean)
+        if (!ids.length) return { items: [] }
+        if (!isOnline()) {
+          set((state) => ({
+            leads: state.leads.filter((lead) => !ids.includes(lead.id)),
+            opportunities: state.opportunities.filter((opp) => !ids.includes(opp.leadId)),
+            activities: state.activities.filter((act) => !ids.includes(act.leadId)),
+          }))
+          return { items: ids.map((id) => ({ leadId: id, status: 'deleted' })) }
+        }
+        const response = await crmApi.deleteLeadsBatch({ leadIds: ids })
+        const deleted = new Set(
+          (response.items || []).filter((row) => row.status === 'deleted').map((row) => row.leadId),
+        )
+        if (deleted.size) {
+          set((state) => ({
+            leads: state.leads.filter((lead) => !deleted.has(lead.id)),
+            opportunities: state.opportunities.filter((opp) => !deleted.has(opp.leadId)),
+            activities: state.activities.filter((act) => !deleted.has(act.leadId)),
+            leadsListMeta: {
+              ...state.leadsListMeta,
+              totalItems: Math.max(0, state.leadsListMeta.totalItems - deleted.size),
+            },
+          }))
+        }
+        return response
+      },
+
+      setLeadStarRating: (id, starRating) => get().updateLead(id, {
+        starRating: starRating == null || starRating === '' ? null : Number(starRating),
       }),
 
       convertToCustomer: async (leadId) => {
@@ -1410,7 +1517,9 @@ export const useCrmStore = create(
         saleDetailRequests.clear()
         set({
         leads: [],
+        leadsListMeta: emptyListMeta(),
         opportunities: [],
+        opportunitiesListMeta: emptyListMeta(),
         activities: [],
         quotes: [],
         customers: [],
@@ -1459,9 +1568,8 @@ export const useCrmStore = create(
     {
       name: 'diedo-crm',
       storage: ephemeralJsonStorage,
-      version: 3,
+      version: 4,
       partialize: (state) => ({
-        scoringWeights: state.scoringWeights,
         uiMode: state.uiMode,
         uiModeVersion: state.uiModeVersion,
         serpHourCount: state.serpHourCount,

@@ -1,7 +1,7 @@
 // Generated from demo-data/v1; do not edit.
 export const DEMO_SNAPSHOT = Object.freeze({
   "seedVersion": "v1",
-  "schemaVersion": "20260903_0019",
+  "schemaVersion": "20260907_0020",
   "workspaceSlug": "local-erp",
   "foundation": {
     "branches": [
@@ -86,7 +86,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "date": "2026-09-01",
         "time": "09:30",
         "durationMinutes": 30,
-        "status": "completed",
+        "status": "fulfilled",
         "createdAt": "2026-09-01T11:45:00Z"
       },
       {
@@ -98,7 +98,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "date": "2026-09-01",
         "time": "12:30",
         "durationMinutes": 60,
-        "status": "pending",
+        "status": "confirmed",
         "createdAt": "2026-09-01T11:55:00Z"
       },
       {
@@ -111,7 +111,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "date": "2026-09-01",
         "time": "10:00",
         "durationMinutes": 60,
-        "status": "completed",
+        "status": "fulfilled",
         "createdAt": "2026-09-01T12:10:00Z"
       },
       {
@@ -123,7 +123,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "date": "2026-09-01",
         "time": "15:00",
         "durationMinutes": 45,
-        "status": "delayed",
+        "status": "confirmed",
         "createdAt": "2026-09-01T12:20:00Z"
       },
       {
@@ -136,7 +136,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "date": "2026-09-01",
         "time": "11:00",
         "durationMinutes": 30,
-        "status": "completed",
+        "status": "fulfilled",
         "createdAt": "2026-09-01T12:30:00Z"
       },
       {
@@ -149,7 +149,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "date": "2026-09-01",
         "time": "17:00",
         "durationMinutes": 60,
-        "status": "pending",
+        "status": "confirmed",
         "createdAt": "2026-09-01T12:40:00Z"
       },
       {
@@ -175,7 +175,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "date": "2026-09-01",
         "time": "16:00",
         "durationMinutes": 30,
-        "status": "rescheduled",
+        "status": "cancelled",
         "createdAt": "2026-09-01T13:00:00Z"
       },
       {
@@ -188,7 +188,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "date": "2026-09-02",
         "time": "10:00",
         "durationMinutes": 60,
-        "status": "completed",
+        "status": "fulfilled",
         "createdAt": "2026-09-01T13:10:00Z"
       }
     ]
@@ -445,7 +445,6 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "pos.receivables.collect",
         "pos.receivables.manage",
         "pos.void",
-        "sales.invoice.void",
         "inventory.read",
         "inventory.manage",
         "inventory.move",
@@ -486,12 +485,12 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "membership.read",
         "catalog.read",
         "sales.read",
+        "sales.invoice.void",
         "pos.read",
         "pos.cash.read",
         "pos.receivables.read",
         "pos.receivables.collect",
         "pos.void",
-        "sales.invoice.void",
         "inventory.read",
         "inventory.move",
         "purchasing.read",
@@ -1926,7 +1925,6 @@ export const DEMO_SNAPSHOT = Object.freeze({
           "NORTH",
           "EAST"
         ],
-        "acquisitionSource": "whatsapp",
         "status": "active",
         "points": 340
       },
@@ -1940,7 +1938,6 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "branchCodes": [
           "DOWNTOWN"
         ],
-        "acquisitionSource": "referral",
         "status": "active",
         "points": 120
       },
@@ -1954,7 +1951,6 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "branchCodes": [
           "NORTH"
         ],
-        "acquisitionSource": "instagram",
         "status": "active",
         "points": 890
       },
@@ -1970,7 +1966,6 @@ export const DEMO_SNAPSHOT = Object.freeze({
           "DOWNTOWN",
           "EAST"
         ],
-        "acquisitionSource": "pos_walk_in",
         "status": "active",
         "points": 55
       },
@@ -1984,22 +1979,12 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "branchCodes": [
           "EAST"
         ],
-        "acquisitionSource": "otros",
         "status": "active",
         "points": 410
       }
     ]
   },
   "crm": {
-    "scoringWeights": {
-      "pos": 1,
-      "agenda": 1,
-      "inventarios": 1,
-      "finanzas": 0.9,
-      "crm": 1.2,
-      "incidencias": 0.8,
-      "config": 0.6
-    },
     "customerProfiles": [
       {
         "customerSeedKey": "c1",
@@ -2039,11 +2024,9 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "website": "https://studio-jr.example.com",
         "location": "Santo Domingo",
         "source": "referral",
-        "acquisitionSource": "referral",
         "rawSnippet": "Salón de belleza con agenda, citas, clientes y punto de venta.",
         "status": "convertido",
-        "scoreManual": 91,
-        "scoreNotes": "Referido por cliente VIP.",
+        "starRating": "4.5",
         "convertedCustomerSeedKey": "c2",
         "createdAt": "2026-08-20T14:00:00Z",
         "updatedAt": "2026-08-24T16:30:00Z"
@@ -2063,7 +2046,6 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "scrapedAt": "2026-08-25T13:00:00Z",
         "rawSnippet": "Tienda retail con productos, inventario, stock y ventas.",
         "status": "convertido",
-        "scoreNotes": "Conversión parcial; validar presupuesto actualizado.",
         "convertedCustomerSeedKey": "c5",
         "createdAt": "2026-08-25T13:00:00Z",
         "updatedAt": "2026-08-27T17:10:00Z"
@@ -2083,7 +2065,6 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "scrapedAt": "2026-08-29T14:15:00Z",
         "rawSnippet": "Clínica dental con citas, pacientes, inventario e historial de clientes.",
         "status": "calificado",
-        "scoreNotes": "Solicitó demostración de agenda y CRM.",
         "createdAt": "2026-08-29T14:15:00Z",
         "updatedAt": "2026-08-31T18:00:00Z"
       },
@@ -2099,8 +2080,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "source": "manual",
         "rawSnippet": "Spa de masajes que necesita reservas, agenda y fidelización de clientes.",
         "status": "contactado",
-        "scoreManual": 84,
-        "scoreNotes": "Primera llamada positiva.",
+        "starRating": "4",
         "createdAt": "2026-08-30T15:20:00Z",
         "updatedAt": "2026-09-01T13:30:00Z"
       },
@@ -2146,8 +2126,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "source": "manual",
         "rawSnippet": "Lavado y detailing por reserva; necesita caja e inventario.",
         "status": "descartado",
-        "scoreManual": 42,
-        "scoreNotes": "Sin presupuesto para este trimestre.",
+        "starRating": "2",
         "createdAt": "2026-08-22T17:00:00Z",
         "updatedAt": "2026-08-26T19:00:00Z"
       },

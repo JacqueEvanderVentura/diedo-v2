@@ -22,66 +22,98 @@ const emptyForm = (branchId = '') => ({
   acquisitionSource: 'whatsapp',
 })
 
-export function LeadFormModal({ open, onClose, onSaved }) {
+function formFromLead(lead, defaultBranch) {
+  if (!lead) return emptyForm(defaultBranch)
+  return {
+    branchId: lead.branchId || defaultBranch,
+    name: lead.name || '',
+    company: lead.company || '',
+    email: lead.email || '',
+    phone: lead.phone || '',
+    website: lead.website || '',
+    location: lead.location || '',
+    acquisitionSource: lead.acquisitionSource || 'whatsapp',
+  }
+}
+
+export function LeadFormModal({ open, onClose, onSaved, lead = null }) {
   const branches = useConfigStore((state) => state.branches)
   const addLead = useCrmStore((state) => state.addLead)
+  const updateLead = useCrmStore((state) => state.updateLead)
   const [form, setForm] = useState(emptyForm())
   const can = useCrmCapabilities()
   const [submitting, setSubmitting] = useState(false)
+  const isEdit = Boolean(lead?.id)
 
   useEffect(() => {
     if (!open) return
     const defaultBranch = branches.find((branch) => branch.active)?.id || ''
-    setForm(emptyForm(defaultBranch))
+    setForm(formFromLead(lead, defaultBranch))
     setSubmitting(false)
-  }, [branches, open])
+  }, [branches, open, lead])
 
   const set = (field, value) => setForm((current) => ({ ...current, [field]: value }))
 
   const submit = async () => {
-    if (!form.branchId) return toast.error('Selecciona una sucursal')
+    if (!isEdit && !form.branchId) return toast.error('Selecciona una sucursal')
     if (!form.name.trim() && !form.company.trim()) {
       return toast.error('Indica el nombre o la empresa del lead')
     }
     setSubmitting(true)
     try {
-      await addLead({
-        ...form,
+      const payload = {
         name: form.name.trim(),
         company: form.company.trim(),
         email: form.email.trim() || null,
         phone: form.phone.trim() || null,
         website: form.website.trim() || null,
         location: form.location.trim() || null,
-        source: 'manual',
         acquisitionSource: form.acquisitionSource || null,
-        status: 'nuevo',
-      })
-      toast.success('Lead creado')
+      }
+      if (isEdit) {
+        await updateLead(lead.id, payload)
+        toast.success('Lead actualizado')
+      } else {
+        await addLead({
+          ...form,
+          ...payload,
+          source: 'manual',
+          status: 'nuevo',
+        })
+        toast.success('Lead creado')
+      }
       onSaved?.()
       onClose()
     } catch (error) {
-      toast.error(error.message || 'No se pudo crear el lead')
+      toast.error(error.message || (isEdit ? 'No se pudo actualizar el lead' : 'No se pudo crear el lead'))
     } finally {
       setSubmitting(false)
     }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Nuevo lead" testId="lead-form-modal" wide>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={isEdit ? 'Editar lead' : 'Nuevo lead'}
+      testId="lead-form-modal"
+      wide
+    >
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="sm:col-span-2">
-          <label className="mb-1.5 block text-sm font-medium text-slate-600">Sucursal</label>
-          <BranchMultiSelect
-            branches={branches}
-            branchIds={form.branchId ? [form.branchId] : []}
-            onChange={(ids) => set('branchId', ids[0] || '')}
-            selectionMode="single"
-            showAllOption={false}
-            className="w-full"
-            testId="lead-branch"
-          />
-        </div>
+        {!isEdit && (
+          <div className="sm:col-span-2">
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Sucursal</label>
+            <BranchMultiSelect
+              branches={branches}
+              branchIds={form.branchId ? [form.branchId] : []}
+              onChange={(ids) => set('branchId', ids[0] || '')}
+              selectionMode="single"
+              showAllOption={false}
+              className="w-full"
+              testId="lead-branch"
+            />
+          </div>
+        )}
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Contacto</label>
           <Input value={form.name} onChange={(event) => set('name', event.target.value)} placeholder="Nombre del contacto" data-testid="lead-name" />
@@ -130,7 +162,7 @@ export function LeadFormModal({ open, onClose, onSaved }) {
       <div className="mt-6 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose} disabled={submitting}>Cancelar</Button>
         <Button onClick={submit} disabled={submitting || !can.manage} data-testid="lead-submit">
-          <Save className="h-4 w-4" /> {submitting ? 'Guardando…' : 'Crear lead'}
+          <Save className="h-4 w-4" /> {submitting ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Crear lead'}
         </Button>
       </div>
     </Modal>

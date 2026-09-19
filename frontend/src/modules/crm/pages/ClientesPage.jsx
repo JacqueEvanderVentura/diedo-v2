@@ -1,7 +1,8 @@
 import { toast } from 'sonner'
 import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, Users, Phone, Mail, ChevronLeft, ChevronRight, Building2 } from 'lucide-react'
+import { Plus, Search, Users, Phone, Mail, Building2, Pencil, Trash2, CheckSquare, Square } from 'lucide-react'
+import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
 import { usePosStore } from '@/stores/posStore'
 import { useCrmStore } from '@/stores/crmStore'
 import { useCustomersStore } from '@/stores/customersStore'
@@ -41,8 +42,12 @@ import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable
 import { useSortedRows } from '@/hooks/useTableControls'
 import { cn } from '@/lib/utils'
 import { DataSourceNotice } from '@/components/ui/DataSourceNotice'
-
-const PAGE_SIZE = 10
+import { BulkSelectionBar } from '@/components/ui/BulkSelectionBar'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { nextSelectAllState } from '@/lib/listSelection'
+import { Pagination } from '@/modules/reportes/components/Pagination'
+import { paginateSlice } from '@/modules/reportes/lib/pagination'
+import { CRM_PAGE_SIZE_OPTIONS, DEFAULT_CRM_PAGE_SIZE } from '@/modules/crm/constants/paging'
 
 function Chip({ label, value, tone }) {
   const tones = { brand: 'text-blue-600', slate: 'text-slate-700', amber: 'text-amber-600' }
@@ -58,7 +63,13 @@ export default function ClientesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const customers = useCustomersStore((s) => s.customers)
   const dataState = useCustomersStore((s) => s.dataState)
-  const hydrateCustomers = useCustomersStore((s) => s.hydrate)
+  const fetchCustomersPage = useCustomersStore((s) => s.fetchCustomersPage)
+  const setCustomersPage = useCustomersStore((s) => s.setCustomersPage)
+  const setCustomersPageSize = useCustomersStore((s) => s.setCustomersPageSize)
+  const customersListMeta = useCustomersStore((s) => s.customersListMeta)
+  const deleteCustomers = useCustomersStore((s) => s.deleteCustomers)
+  const can = useCrmCapabilities()
+  const online = useSessionStore((s) => s.status === 'online')
   const sales = usePosStore((s) => s.sales)
   const crmSales = useCrmStore((s) => s.sales)
   const branches = useConfigStore((s) => s.branches)
@@ -85,7 +96,6 @@ export default function ClientesPage() {
   const [typeFilter, setTypeFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [branchIds, setBranchIds] = useState([])
-  const [page, setPage] = useState(0)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [detail, setDetail] = useState(null)
@@ -97,8 +107,32 @@ export default function ClientesPage() {
   const [opportunityOpen, setOpportunityOpen] = useState(false)
   const [opportunityCustomer, setOpportunityCustomer] = useState(null)
   const [saleDetail, setSaleDetail] = useState(null)
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [deleting, setDeleting] = useState(false)
+  const [confirm, setConfirm] = useState(null)
 
   const requestedCustomerId = searchParams.get('customerId') || ''
+  const [offlinePage, setOfflinePage] = useState(1)
+  const [offlinePageSize, setOfflinePageSize] = useState(DEFAULT_CRM_PAGE_SIZE)
+
+  useEffect(() => {
+    if (!online) return undefined
+    const handle = window.setTimeout(() => {
+      fetchCustomersPage({
+        page: 1,
+        search: query.trim(),
+        typeFilter,
+        statusFilter,
+        branchIds,
+      }).catch(() => {})
+    }, query.trim() ? 400 : 0)
+    return () => window.clearTimeout(handle)
+  }, [query, typeFilter, statusFilter, branchIds, online, fetchCustomersPage])
+
+  useEffect(() => {
+    setOfflinePage(1)
+  }, [query, typeFilter, statusFilter, branchIds, offlinePageSize])
 
   useEffect(() => {
     if (!requestedCustomerId || dataState.status === 'loading' || dataState.status === 'error') return
@@ -110,30 +144,38 @@ export default function ClientesPage() {
     setSearchParams(nextParams, { replace: true })
   }, [requestedCustomerId, scopedCustomers, searchParams, setSearchParams, dataState.status])
 
-  // Total gastado por cliente (una sola pasada).
+  const pageRows = useMemo(() => {
+    const rows = scopedCustomers.filter((c) => c.id !== 'walk-in')
+    if (!online) return rows
+    return rows
+      .filter((c) => statusFilter === 'prospecto' ? (c.customerStatus || 'activo') === 'prospecto' : true)
+      .filter((c) => (branchIds.length > 1 ? matchesBranches(c, branchIds, getRowBranchIds) : true))
+  }, [scopedCustomers, online, statusFilter, branchIds])
+
   const spentByCustomer = useMemo(() => {
     const map = {}
+    const pageIds = new Set(pageRows.map((c) => c.id))
     const latest = new Map([...sales, ...crmSales].map((sale) => [sale.id, sale]))
     for (const sale of latest.values()) {
       if (sale.status === 'voided') continue
       const id = sale.customer?.id
-      if (!id) continue
+      if (!id || !pageIds.has(id)) continue
       map[id] = (map[id] || 0) + (sale.total || 0)
     }
     return map
-  }, [sales, crmSales])
+  }, [sales, crmSales, pageRows])
 
-  const filtered = useMemo(() => {
+  const filteredOffline = useMemo(() => {
     const q = query.trim().toLowerCase()
     return scopedCustomers
       .filter((c) => c.id !== 'walk-in')
-      .filter((c) => !q || c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)) || (c.email && c.email.toLowerCase().includes(q)))
+      .filter((c) => !q || c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)) || (c.email && c.email.toLowerCase().includes(q)) || (c.documentId && c.documentId.includes(q)))
       .filter((c) => typeFilter === 'all' || (c.customerType || 'b2c') === typeFilter)
       .filter((c) => statusFilter === 'all' || (c.customerStatus || 'activo') === statusFilter)
       .filter((c) => matchesBranches(c, branchIds, getRowBranchIds))
   }, [scopedCustomers, query, typeFilter, statusFilter, branchIds])
 
-  const { rows: sortedFiltered, sortKey, sortDir, toggleSort } = useSortedRows(filtered, {
+  const { rows: sortedOffline, sortKey, sortDir, toggleSort } = useSortedRows(filteredOffline, {
     defaultSort: { key: 'name', dir: 'asc' },
     accessors: {
       name: (c) => c.name,
@@ -141,22 +183,119 @@ export default function ClientesPage() {
     },
   })
 
-  const totalPages = Math.max(1, Math.ceil(sortedFiltered.length / PAGE_SIZE))
-  const list = useMemo(() => sortedFiltered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE), [sortedFiltered, page])
+  const { rows: sortedPageRows, sortKey: onlineSortKey, sortDir: onlineSortDir, toggleSort: toggleOnlineSort } = useSortedRows(pageRows, {
+    defaultSort: { key: 'name', dir: 'asc' },
+    accessors: {
+      name: (c) => c.name,
+      spent: (c) => spentByCustomer[c.id] || 0,
+    },
+  })
 
+  const offlinePaged = useMemo(
+    () => paginateSlice(sortedOffline, { page: offlinePage, pageSize: offlinePageSize }),
+    [sortedOffline, offlinePage, offlinePageSize],
+  )
+
+  const list = online ? sortedPageRows : offlinePaged.items
+  const activeSortKey = online ? onlineSortKey : sortKey
+  const activeSortDir = online ? onlineSortDir : sortDir
+  const activeToggleSort = online ? toggleOnlineSort : toggleSort
+  const paginationMeta = online
+    ? {
+      page: customersListMeta.page || 1,
+      totalPages: Math.max(1, customersListMeta.totalPages || 1),
+      total: customersListMeta.totalItems || 0,
+      pageSize: customersListMeta.pageSize || DEFAULT_CRM_PAGE_SIZE,
+      from: customersListMeta.totalItems === 0 ? 0 : ((customersListMeta.page - 1) * customersListMeta.pageSize) + 1,
+      to: Math.min(customersListMeta.page * customersListMeta.pageSize, customersListMeta.totalItems),
+    }
+    : {
+      page: offlinePaged.page,
+      totalPages: offlinePaged.totalPages,
+      total: offlinePaged.total,
+      pageSize: offlinePaged.pageSize,
+      from: offlinePaged.from,
+      to: offlinePaged.to,
+    }
+
+  const selectableCustomerIds = useMemo(() => list.map((c) => c.id), [list])
   const stats = useMemo(() => {
     const base = scopedCustomers.filter((c) => c.id !== 'walk-in')
     const conCompras = Object.keys(spentByCustomer).filter((id) => id !== 'walk-in').length
     const prospectos = base.filter((c) => (c.customerStatus || 'activo') === 'prospecto').length
-    return { total: base.length, conCompras, prospectos }
-  }, [scopedCustomers, spentByCustomer])
+    const total = online && customersListMeta.totalItems > 0
+      ? customersListMeta.totalItems
+      : base.length
+    return { total, conCompras, prospectos }
+  }, [scopedCustomers, spentByCustomer, customersListMeta.totalItems, online])
 
   const openNew = () => { setEditing(null); setFormOpen(true) }
   const openEdit = (c) => { setDetail(null); setEditing(c); setFormOpen(true) }
 
+  const toggleSelected = (customerId) => {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (next.has(customerId)) next.delete(customerId)
+      else next.add(customerId)
+      return next
+    })
+  }
+
+  const exitSelectMode = () => {
+    setSelectMode(false)
+    setSelectedIds(new Set())
+  }
+
+  const runDeleteCustomers = async (ids) => {
+    setDeleting(true)
+    try {
+      const chunks = []
+      for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100))
+      let deleted = 0
+      let errors = 0
+      for (const chunk of chunks) {
+        const result = await deleteCustomers(chunk)
+        for (const row of result.items || []) {
+          if (row.status === 'deleted') deleted += 1
+          else errors += 1
+        }
+      }
+      if (deleted) toast.success(deleted === 1 ? 'Cliente eliminado' : `${deleted} cliente(s) eliminados`)
+      if (errors) toast.error(`${errors} no se pudieron eliminar (sin acceso o error).`)
+      const removed = new Set(ids)
+      if (detail && removed.has(detail.id)) setDetail(null)
+      exitSelectMode()
+    } catch (error) {
+      toast.error(error.message || 'No se pudo completar la eliminación')
+    } finally {
+      setDeleting(false)
+      setConfirm(null)
+    }
+  }
+
+  const requestDeleteCustomer = (customer) => {
+    setConfirm({
+      title: 'Eliminar cliente',
+      description: `¿Eliminar el cliente "${customer.name}"? Se archivará del directorio.`,
+      onConfirm: () => runDeleteCustomers([customer.id]),
+    })
+  }
+
+  const requestDeleteSelectedCustomers = () => {
+    const ids = [...selectedIds]
+    if (!ids.length) return
+    setConfirm({
+      title: 'Eliminar clientes',
+      description: `¿Eliminar ${ids.length} cliente(s) seleccionados? Se archivarán del directorio.`,
+      onConfirm: () => runDeleteCustomers(ids),
+    })
+  }
+
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8">
-      <DataSourceNotice state={dataState} onRetry={() => hydrateCustomers({ force: true })} />
+      {['loading', 'error', 'stale'].includes(dataState.status) && (
+        <DataSourceNotice state={dataState} onRetry={() => fetchCustomersPage({ page: 1, search: query.trim(), typeFilter, statusFilter, branchIds })} />
+      )}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         <Chip label="Clientes" value={stats.total} tone="brand" />
         <Chip label="Prospectos" value={stats.prospectos} tone="slate" />
@@ -169,8 +308,8 @@ export default function ClientesPage() {
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               value={query}
-              onChange={(e) => { setQuery(e.target.value); setPage(0) }}
-              placeholder="Buscar por nombre, teléfono o email..."
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar por nombre, teléfono, documento o email..."
               data-testid="clientes-search"
               className="w-full rounded-xl border-0 bg-white py-3 pl-10 pr-4 text-sm text-slate-700 ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600"
             />
@@ -185,7 +324,7 @@ export default function ClientesPage() {
               <button
                 key={t.id}
                 type="button"
-                onClick={() => { setTypeFilter(t.id); setPage(0) }}
+                onClick={() => setTypeFilter(t.id)}
                 className={cn('rounded-lg px-3 py-1.5 text-xs font-semibold transition-all', typeFilter === t.id ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500')}
               >
                 {t.label}
@@ -194,28 +333,49 @@ export default function ClientesPage() {
           </div>
           <Select
             value={statusFilter}
-            onChange={(v) => { setStatusFilter(v); setPage(0) }}
+            onChange={setStatusFilter}
             options={[{ value: 'all', label: 'Todos los estados' }, ...CUSTOMER_STATUSES.map((s) => ({ value: s, label: CUSTOMER_STATUS_META[s].label }))]}
             className="min-w-[12.5rem] flex-1 sm:max-w-xs"
           />
           <BranchMultiSelect
             branches={branches}
             branchIds={branchIds}
-            onChange={(ids) => { setBranchIds(ids); setPage(0) }}
+            onChange={setBranchIds}
             className={CRM_BRANCH_FILTER_CLASS}
             testId="clientes-branch-filter"
           />
+          {can.customer && (
+            <Button
+              type="button"
+              variant={selectMode ? 'secondary' : 'ghost'}
+              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+              data-testid="clientes-select-mode"
+            >
+              {selectMode ? 'Cancelar selección' : 'Seleccionar'}
+            </Button>
+          )}
         </div>
       </div>
+
+      {selectMode && can.customer && (
+        <BulkSelectionBar
+          selectedCount={selectedIds.size}
+          totalSelectable={selectableCustomerIds.length}
+          onSelectAll={() => setSelectedIds(nextSelectAllState(selectedIds, selectableCustomerIds))}
+          onDelete={requestDeleteSelectedCustomers}
+          deleting={deleting}
+          testId="clientes-batch"
+        />
+      )}
 
       {list.length === 0 ? (
         <Card className="overflow-hidden">
           <EmptyState icon={Users} title="Sin clientes" description="No hay clientes con esos filtros." className="py-14" />
         </Card>
       ) : (
-          <ResponsiveList minTableWidth={720} columnCount={4}>
+          <ResponsiveList minTableWidth={can.customer ? 880 : 720} columnCount={can.customer ? 5 : 4}>
           <ResponsiveTable testId="clientes-table">
-            <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
+            <SortableTableProvider sortKey={activeSortKey} sortDir={activeSortDir} onSort={activeToggleSort}>
             <table className="w-full min-w-[760px] text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -223,6 +383,9 @@ export default function ClientesPage() {
                   <SortableTh column="type" sortable={false} className="px-6 py-4">Tipo / Estado</SortableTh>
                   <SortableTh column="contact" sortable={false} className="px-6 py-4">Contacto</SortableTh>
                   <SortableTh column="spent" align="right" className="px-6 py-4">Total gastado</SortableTh>
+                  {can.customer && (
+                    <SortableTh column="actions" sortable={false} align="right" className="px-6 py-4">Acciones</SortableTh>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -235,6 +398,19 @@ export default function ClientesPage() {
                   >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
+                        {selectMode && can.customer && (
+                          <button
+                            type="button"
+                            className="shrink-0 text-slate-500 hover:text-blue-600"
+                            aria-label={selectedIds.has(c.id) ? 'Quitar selección' : 'Seleccionar cliente'}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleSelected(c.id)
+                            }}
+                          >
+                            {selectedIds.has(c.id) ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
+                          </button>
+                        )}
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
                           {c.name.slice(0, 1).toUpperCase()}
                         </div>
@@ -279,6 +455,34 @@ export default function ClientesPage() {
                       </div>
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-right font-heading font-bold text-slate-900">{formatDOP(spentByCustomer[c.id] || 0)}</td>
+                    {can.customer && (
+                      <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                        {!selectMode && (
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => openEdit(c)}
+                              data-testid={`clientes-edit-${c.id}`}
+                              aria-label="Editar cliente"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-red-600 hover:bg-red-50"
+                              disabled={deleting}
+                              onClick={() => requestDeleteCustomer(c)}
+                              data-testid={`clientes-delete-${c.id}`}
+                              aria-label="Eliminar cliente"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -292,6 +496,16 @@ export default function ClientesPage() {
                   title={c.name}
                   badge={
                     <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      {selectMode && can.customer && (
+                        <button
+                          type="button"
+                          className="mr-1 text-slate-500"
+                          onClick={() => toggleSelected(c.id)}
+                          aria-label={selectedIds.has(c.id) ? 'Quitar selección' : 'Seleccionar cliente'}
+                        >
+                          {selectedIds.has(c.id) ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
+                        </button>
+                      )}
                       {c.phone && (
                         <WhatsAppMenuButton
                           phone={c.phone}
@@ -331,25 +545,51 @@ export default function ClientesPage() {
                     <span className="font-heading font-bold text-slate-900">{formatDOP(spentByCustomer[c.id] || 0)}</span>
                   </MobileField>
                 </MobileCardGrid>
+                {can.customer && !selectMode && (
+                  <MobileCardFooter>
+                    <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); openEdit(c) }}>
+                      <Pencil className="h-3.5 w-3.5" /> Editar
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="text-red-600"
+                      disabled={deleting}
+                      onClick={(e) => { e.stopPropagation(); requestDeleteCustomer(c) }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Eliminar
+                    </Button>
+                  </MobileCardFooter>
+                )}
               </MobileCard>
             ))}
           </ResponsiveCards>
         </ResponsiveList>
       )}
 
-      {sortedFiltered.length > PAGE_SIZE && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-slate-500">Página {page + 1} de {totalPages} · {sortedFiltered.length} clientes</p>
-          <div className="flex gap-2">
-            <Button size="sm" variant="secondary" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
-              <ChevronLeft className="h-4 w-4" /> Anterior
-            </Button>
-            <Button size="sm" variant="secondary" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>
-              Siguiente <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
+      {list.length > 0 || paginationMeta.total > 0 ? (
+        <Card className="p-4">
+          <Pagination
+            page={paginationMeta.page}
+            totalPages={paginationMeta.totalPages}
+            total={paginationMeta.total}
+            from={paginationMeta.from}
+            to={paginationMeta.to}
+            pageSize={paginationMeta.pageSize}
+            pageSizeOptions={CRM_PAGE_SIZE_OPTIONS}
+            onPageChange={(page) => {
+              if (online) setCustomersPage(page).catch(() => {})
+              else setOfflinePage(page)
+            }}
+            onPageSizeChange={(size) => {
+              if (online) setCustomersPageSize(size).catch(() => {})
+              else setOfflinePageSize(size)
+            }}
+            noun="clientes"
+            testId="clientes-pagination"
+          />
+        </Card>
+      ) : null}
 
       <CustomerFormModal open={formOpen} onClose={() => setFormOpen(false)} customer={editing} />
       <CustomerDetailModal
@@ -357,6 +597,7 @@ export default function ClientesPage() {
         onClose={() => setDetail(null)}
         customer={scopedCustomers.find((item) => item.id === detail?.id) || detail}
         onEdit={openEdit}
+        onDelete={can.customer ? requestDeleteCustomer : undefined}
         onSchedule={(c) => { setScheduling(c) }}
         onQuote={(c) => {
           setQuoteContext({
@@ -396,6 +637,17 @@ export default function ClientesPage() {
         sale={saleDetail}
       />
       <AppointmentFormModal open={!!scheduling} onClose={() => setScheduling(null)} defaultCustomerId={scheduling?.id} defaultSlot={{ branchId: scheduling?.branchIds?.[0] || scheduling?.branchId }} />
+
+      <ConfirmDialog
+        open={!!confirm}
+        onClose={() => !deleting && setConfirm(null)}
+        onConfirm={() => confirm?.onConfirm?.()}
+        title={confirm?.title || ''}
+        description={confirm?.description}
+        confirmLabel="Eliminar"
+        busy={deleting}
+        testId="clientes-confirm-delete"
+      />
     </div>
   )
 }
