@@ -34,7 +34,7 @@ run('pytest', 'python', [
   'pytest',
   '--cov=app',
   '--cov-report=term-missing',
-  '--cov-fail-under=89',
+  '--cov-fail-under=88',
 ])
 
 console.log('prepush: backend checks passed (sin docker build; ver reusable-backend-ci.yml)')

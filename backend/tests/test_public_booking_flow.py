@@ -175,6 +175,34 @@ def test_resources_other_branches_and_past_slots(client, booking_setup):
 
 
 @pytest.mark.integration
+def test_public_slots_respect_branch_opening_hours(client, booking_setup):
+    headers, _, branch, employee, _service = booking_setup
+    body = payload_for(employee, _service)
+    booking_date = date.fromisoformat(body["date"])
+    weekday = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")[booking_date.weekday()]
+    hours = client.put(
+        f"/api/v1/branches/{branch}/opening-hours",
+        headers=headers,
+        json={"items": [{"weekday": weekday, "opensAt": "10:00", "closesAt": "12:00"}]},
+    )
+    assert hours.status_code == 200, hours.text
+    base = f"/api/v1/public/booking/branches/{branch}"
+    slots = client.get(
+        f"{base}/slots",
+        params={"date": body["date"], "employeeId": employee, "duration": 30},
+    ).json()["slots"]
+    assert slots
+    assert min(slots) >= "10:00"
+    assert max(slots) <= "11:30"
+    cleared = client.put(
+        f"/api/v1/branches/{branch}/opening-hours",
+        headers=headers,
+        json={"items": []},
+    )
+    assert cleared.status_code == 200, cleared.text
+
+
+@pytest.mark.integration
 def test_schedule_timezone_leave_and_expired_email_retry(client, booking_setup, monkeypatch):
     from app.db.models import EmployeeSchedule, HrLeaveRequest
 

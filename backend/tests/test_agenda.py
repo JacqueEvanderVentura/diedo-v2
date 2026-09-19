@@ -25,9 +25,12 @@ from app.schemas.agenda import (
     CreateAppointmentRequest,
     CreateAppointmentResourceRequest,
     ReorderAppointmentResourcesRequest,
+    ReplaceAppointmentResourceAclRequest,
     ReplaceBranchOpeningHoursRequest,
     UpdateAppointmentRequest,
+    UpdateAppointmentResourceRequest,
 )
+from app.services.agenda import AgendaService
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -148,6 +151,84 @@ def _login_as_agenda_manager(client: TestClient, email: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {response.json()['accessToken']}"}
 
 
+def _create_branch_agenda_reader(workspace_id: UUID, branch_id: UUID) -> str:
+    with session_scope() as session:
+        now = datetime.now(UTC)
+        suffix = uuid7().hex[-12:]
+        email = f"agenda-reader-{suffix}@example.com"
+        branch = session.scalar(
+            select(Branch).where(
+                Branch.workspace_id == workspace_id,
+                Branch.id == branch_id,
+            )
+        )
+        permission = session.scalar(select(Permission).where(Permission.code == "appointment.read"))
+        assert branch is not None
+        assert permission is not None
+        scope = session.scalar(
+            select(AccessScope).where(
+                AccessScope.workspace_id == workspace_id,
+                AccessScope.scope_type == "branch",
+                AccessScope.branch_id == branch_id,
+            )
+        )
+        if scope is None:
+            scope = AccessScope(
+                workspace_id=workspace_id,
+                scope_type="branch",
+                legal_entity_id=branch.legal_entity_id,
+                branch_id=branch.id,
+            )
+            session.add(scope)
+            session.flush()
+        user = PlatformUser(
+            external_subject=f"password:agenda-reader-{suffix}",
+            email=email,
+            normalized_email=email,
+            display_name="Agenda Reader",
+            password_hash=hash_password(_AGENDA_MANAGER_PASSWORD),
+            password_changed_at=now,
+            status="active",
+        )
+        role = Role(
+            workspace_id=workspace_id,
+            code=f"agenda_reader_{suffix}",
+            name=f"Agenda Reader {suffix}",
+            status="active",
+            is_system=False,
+        )
+        session.add_all([user, role])
+        session.flush()
+        membership = WorkspaceMembership(
+            workspace_id=workspace_id,
+            platform_user_id=user.id,
+            status="active",
+            invited_at=now,
+            activated_at=now,
+            is_default=True,
+        )
+        session.add(membership)
+        session.flush()
+        session.add_all(
+            [
+                RolePermission(
+                    workspace_id=workspace_id,
+                    role_id=role.id,
+                    permission_id=permission.id,
+                ),
+                RoleAssignment(
+                    workspace_id=workspace_id,
+                    membership_id=membership.id,
+                    role_id=role.id,
+                    access_scope_id=scope.id,
+                    status="active",
+                    valid_from=now,
+                ),
+            ]
+        )
+        return email
+
+
 def _appointment_payload(
     *,
     branch_id: str,
@@ -222,6 +303,87 @@ def test_agenda_resource_and_hours_schemas_validate() -> None:
                 {"weekday": "mon", "opensAt": time(9, 0), "closesAt": time(18, 0)},
             ]
         )
+    UpdateAppointmentResourceRequest(version=1, status="inactive")
+    ReplaceAppointmentResourceAclRequest(items=[])
+
+
+@pytest.mark.integration
+def test_agenda_acl_view_blocks_appointment_reschedule(client: TestClient) -> None:
+    owner_headers, context = _bootstrap_and_login(client)
+    owner_user_id = str(context["userId"])
+    branch_id = _hq_branch_id(context)
+    suffix = uuid7().hex[-10:]
+    cabina = client.post(
+        "/api/v1/appointment-resources",
+        headers=owner_headers,
+        json={"branchId": branch_id, "name": f"Cabina ACL update {suffix}"},
+    )
+    assert cabina.status_code == 201, cabina.text
+    resource_id = cabina.json()["id"]
+    scheduled_date = date.today() + timedelta(days=70_000 + uuid7().int % 5_000)
+    created = client.post(
+        "/api/v1/appointments",
+        headers={**owner_headers, "Idempotency-Key": f"acl-reschedule-{suffix}"},
+        json=_appointment_payload(
+            branch_id=branch_id,
+            resource_id=resource_id,
+            scheduled_date=scheduled_date,
+            scheduled_time="10:00",
+            customer_name=f"Cliente ACL {suffix}",
+        ),
+    )
+    assert created.status_code == 201, created.text
+    appointment = created.json()["items"][0]
+    locked_acl = client.put(
+        f"/api/v1/appointment-resources/{resource_id}/acl",
+        headers=owner_headers,
+        params={"branchId": branch_id},
+        json={"items": [{"userId": owner_user_id, "access": "view"}]},
+    )
+    assert locked_acl.status_code == 200, locked_acl.text
+    blocked = client.patch(
+        f"/api/v1/appointments/{appointment['id']}",
+        headers=owner_headers,
+        json={"version": appointment["version"], "time": "11:00"},
+    )
+    assert blocked.status_code == 403, blocked.text
+    blocked_delete = client.delete(
+        f"/api/v1/appointments/{appointment['id']}",
+        headers=owner_headers,
+        params={"version": appointment["version"]},
+    )
+    assert blocked_delete.status_code == 403, blocked_delete.text
+
+
+@pytest.mark.integration
+def test_appointment_resource_not_found_paths(client: TestClient) -> None:
+    owner_headers, context = _bootstrap_and_login(client)
+    branch_id = _hq_branch_id(context)
+    missing_branch = str(uuid7())
+    missing_resource = str(uuid7())
+    assert (
+        client.post(
+            "/api/v1/appointment-resources",
+            headers=owner_headers,
+            json={"branchId": missing_branch, "name": "Fantasma"},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            f"/api/v1/branches/{missing_branch}/opening-hours",
+            headers=owner_headers,
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            f"/api/v1/appointment-resources/{missing_resource}/acl",
+            headers=owner_headers,
+            params={"branchId": branch_id},
+        ).status_code
+        == 404
+    )
 
 
 @pytest.mark.integration
@@ -771,6 +933,254 @@ def test_appointment_delete_requires_permission_soft_deletes_and_frees_slot(
         json={**payload, "customerName": f"Reemplazo {suffix}"},
     )
     assert replacement.status_code == 201, replacement.text
+
+
+@pytest.mark.integration
+def test_appointment_resource_config_crud_reorder_hours_and_acl(client: TestClient) -> None:
+    owner_headers, context = _bootstrap_and_login(client)
+    workspace_id = UUID(str(context["workspaceId"]))
+    owner_user_id = str(context["userId"])
+    branch_id = _hq_branch_id(context)
+    suffix = uuid7().hex[-10:]
+
+    created = client.post(
+        "/api/v1/appointment-resources",
+        headers=owner_headers,
+        json={
+            "branchId": branch_id,
+            "name": f"Cabina config {suffix}",
+            "description": "Prueba de configuración",
+        },
+    )
+    assert created.status_code == 201, created.text
+    cabina = created.json()
+    cabina_id = cabina["id"]
+    assert cabina["description"] == "Prueba de configuración"
+    assert cabina["sortOrder"] >= 0
+
+    stale_patch = client.patch(
+        f"/api/v1/appointment-resources/{cabina_id}",
+        headers=owner_headers,
+        params={"branchId": branch_id},
+        json={"version": cabina["version"] + 1, "name": "Obsoleto"},
+    )
+    assert stale_patch.status_code == 409, stale_patch.text
+
+    updated = client.patch(
+        f"/api/v1/appointment-resources/{cabina_id}",
+        headers=owner_headers,
+        params={"branchId": branch_id},
+        json={"version": cabina["version"], "name": f"Cabina {suffix} editada"},
+    )
+    assert updated.status_code == 200, updated.text
+    cabina = updated.json()
+    assert cabina["name"] == f"Cabina {suffix} editada"
+
+    cleared = client.patch(
+        f"/api/v1/appointment-resources/{cabina_id}",
+        headers=owner_headers,
+        params={"branchId": branch_id},
+        json={"version": cabina["version"], "description": None},
+    )
+    assert cleared.status_code == 200, cleared.text
+    cabina = cleared.json()
+    assert cabina["description"] is None
+
+    missing_acl = client.get(
+        f"/api/v1/appointment-resources/{uuid7()}/acl",
+        headers=owner_headers,
+        params={"branchId": branch_id},
+    )
+    assert missing_acl.status_code == 404, missing_acl.text
+
+    listed = client.get(
+        "/api/v1/appointment-resources",
+        headers=owner_headers,
+        params={"branchId": branch_id},
+    )
+    assert listed.status_code == 200, listed.text
+    active_ids = [item["id"] for item in listed.json()["items"]]
+    assert cabina_id in active_ids
+
+    bad_order = client.put(
+        "/api/v1/appointment-resources/order",
+        headers=owner_headers,
+        json={"branchId": branch_id, "resourceIds": [cabina_id]},
+    )
+    assert bad_order.status_code == 400, bad_order.text
+
+    reordered = client.put(
+        "/api/v1/appointment-resources/order",
+        headers=owner_headers,
+        json={"branchId": branch_id, "resourceIds": list(reversed(active_ids))},
+    )
+    assert reordered.status_code == 200, reordered.text
+    order_by_id = {item["id"]: item["sortOrder"] for item in reordered.json()["items"]}
+    assert order_by_id[cabina_id] == 0
+
+    hours_put = client.put(
+        f"/api/v1/branches/{branch_id}/opening-hours",
+        headers=owner_headers,
+        json={
+            "items": [
+                {"weekday": "mon", "opensAt": "09:00", "closesAt": "18:00"},
+                {"weekday": "wed", "opensAt": "10:00", "closesAt": "14:00"},
+            ]
+        },
+    )
+    assert hours_put.status_code == 200, hours_put.text
+    assert {item["weekday"] for item in hours_put.json()["items"]} == {"mon", "wed"}
+
+    hours_get = client.get(
+        f"/api/v1/branches/{branch_id}/opening-hours",
+        headers=owner_headers,
+    )
+    assert hours_get.status_code == 200, hours_get.text
+    mon = next(item for item in hours_get.json()["items"] if item["weekday"] == "mon")
+    assert mon["opensAt"].startswith("09:00")
+    assert mon["closesAt"].startswith("18:00")
+
+    reader_email = _create_branch_agenda_reader(workspace_id, UUID(branch_id))
+    reader_headers = _login_as_agenda_manager(client, reader_email)
+    with session_scope() as session:
+        reader = session.scalar(select(PlatformUser).where(PlatformUser.email == reader_email))
+        assert reader is not None
+        reader_user_id = str(reader.id)
+
+    acl_put = client.put(
+        f"/api/v1/appointment-resources/{cabina_id}/acl",
+        headers=owner_headers,
+        params={"branchId": branch_id},
+        json={
+            "items": [
+                {"userId": owner_user_id, "access": "use"},
+                {"userId": reader_user_id, "access": "view"},
+            ]
+        },
+    )
+    assert acl_put.status_code == 200, acl_put.text
+    acl_get = client.get(
+        f"/api/v1/appointment-resources/{cabina_id}/acl",
+        headers=owner_headers,
+        params={"branchId": branch_id},
+    )
+    assert acl_get.status_code == 200, acl_get.text
+    acl_by_user = {item["userId"]: item["access"] for item in acl_get.json()["items"]}
+    assert acl_by_user[reader_user_id] == "view"
+
+    owner_list = client.get(
+        "/api/v1/appointment-resources",
+        headers=owner_headers,
+        params={"branchId": branch_id},
+    )
+    assert owner_list.status_code == 200, owner_list.text
+    owner_cabina = next(item for item in owner_list.json()["items"] if item["id"] == cabina_id)
+    assert owner_cabina["access"] == "use"
+
+    reader_list = client.get(
+        "/api/v1/appointment-resources",
+        headers=reader_headers,
+        params={"branchId": branch_id},
+    )
+    assert reader_list.status_code == 200, reader_list.text
+    reader_cabina = next(item for item in reader_list.json()["items"] if item["id"] == cabina_id)
+    assert reader_cabina["access"] == "view"
+
+    manager_email = _create_branch_agenda_manager(workspace_id, UUID(branch_id))
+    manager_headers = _login_as_agenda_manager(client, manager_email)
+    with session_scope() as session:
+        manager = session.scalar(select(PlatformUser).where(PlatformUser.email == manager_email))
+        assert manager is not None
+        manager_user_id = str(manager.id)
+
+    view_only_acl = client.put(
+        f"/api/v1/appointment-resources/{cabina_id}/acl",
+        headers=owner_headers,
+        params={"branchId": branch_id},
+        json={
+            "items": [
+                {"userId": owner_user_id, "access": "use"},
+                {"userId": reader_user_id, "access": "view"},
+                {"userId": manager_user_id, "access": "view"},
+            ]
+        },
+    )
+    assert view_only_acl.status_code == 200, view_only_acl.text
+
+    scheduled_date = date.today() + timedelta(days=60_000 + uuid7().int % 5_000)
+    forbidden_booking = client.post(
+        "/api/v1/appointments",
+        headers={**manager_headers, "Idempotency-Key": f"agenda-acl-view-{suffix}"},
+        json=_appointment_payload(
+            branch_id=branch_id,
+            resource_id=cabina_id,
+            scheduled_date=scheduled_date,
+            scheduled_time="11:00",
+            customer_name=f"ACL view {suffix}",
+        ),
+    )
+    assert forbidden_booking.status_code == 403, forbidden_booking.text
+
+    restricted = client.post(
+        "/api/v1/appointment-resources",
+        headers=owner_headers,
+        json={"branchId": branch_id, "name": f"Cabina restringida {suffix}"},
+    )
+    assert restricted.status_code == 201, restricted.text
+    restricted_id = restricted.json()["id"]
+    owner_only_acl = client.put(
+        f"/api/v1/appointment-resources/{restricted_id}/acl",
+        headers=owner_headers,
+        params={"branchId": branch_id},
+        json={"items": [{"userId": owner_user_id, "access": "use"}]},
+    )
+    assert owner_only_acl.status_code == 200, owner_only_acl.text
+    reader_after_restrict = client.get(
+        "/api/v1/appointment-resources",
+        headers=reader_headers,
+        params={"branchId": branch_id},
+    )
+    assert reader_after_restrict.status_code == 200, reader_after_restrict.text
+    assert restricted_id not in {item["id"] for item in reader_after_restrict.json()["items"]}
+
+    with session_scope() as session:
+        schedule = AgendaService(session).branch_opening_schedule(workspace_id, UUID(branch_id))
+        assert schedule is not None
+        assert schedule["mon"][0]["start"].startswith("09:00")
+
+    locked_cabina_id = cabina_id
+    locked_version = cabina["version"]
+    other_created = client.post(
+        "/api/v1/appointment-resources",
+        headers=owner_headers,
+        json={"branchId": branch_id, "name": f"Cabina archivar {suffix}"},
+    )
+    assert other_created.status_code == 201, other_created.text
+    to_archive = other_created.json()
+
+    archived = client.delete(
+        f"/api/v1/appointment-resources/{to_archive['id']}",
+        headers=owner_headers,
+        params={"branchId": branch_id, "version": to_archive["version"]},
+    )
+    assert archived.status_code == 204, archived.text
+
+    after_archive = client.get(
+        "/api/v1/appointment-resources",
+        headers=owner_headers,
+        params={"branchId": branch_id},
+    )
+    assert after_archive.status_code == 200, after_archive.text
+    assert to_archive["id"] not in {item["id"] for item in after_archive.json()["items"]}
+    assert locked_cabina_id in {item["id"] for item in after_archive.json()["items"]}
+
+    still_there = client.get(
+        f"/api/v1/appointment-resources/{locked_cabina_id}/acl",
+        headers=owner_headers,
+        params={"branchId": branch_id},
+    )
+    assert still_there.status_code == 200, still_there.text
+    assert locked_version == cabina["version"]
 
 
 @pytest.mark.integration

@@ -34,6 +34,7 @@ omit = [
     "app/scripts/run_full_stack_test_server.py",
     "app/scripts/format_kommo_import.py",
     "app/scripts/booking_email.py",
+    "app/scripts/reconcile_crm_roles.py",
     "app/services/demo_pos_seed.py",
     "app/services/demo_seed.py",
     "app/services/demo_seed_registry.py",

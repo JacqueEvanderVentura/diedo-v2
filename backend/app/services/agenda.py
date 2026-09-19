@@ -220,7 +220,7 @@ class AgendaService:
         self._require_branch_access(grant, branch_id)
         if self._repository.branch(grant.workspace_id, branch_id) is None:
             raise ResourceNotFoundError("La sucursal no existe o no está activa.", "branchId")
-        code = f"cab-{uuid7().hex[:10]}"
+        code = f"cab-{uuid7().hex}"
         resource = AppointmentResource(
             workspace_id=grant.workspace_id,
             branch_id=branch_id,
