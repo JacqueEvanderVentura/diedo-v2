@@ -20,6 +20,8 @@ AppointmentSortField = Literal["date", "customerName", "serviceName", "status", 
 SortDirection = Literal["asc", "desc"]
 ResourceStatus = Literal["active", "inactive", "archived"]
 ResourceType = Literal["room", "equipment", "other"]
+ResourceAccess = Literal["view", "use"]
+WeekdayKey = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 
 def _normalize_required_text(value: str) -> str:
@@ -38,13 +40,108 @@ class AppointmentResourceResponse(ApiModel):
     branch_id: UUID
     code: str
     name: str
+    description: str | None = None
     resource_type: ResourceType
     status: ResourceStatus
+    sort_order: int = 0
+    access: ResourceAccess | None = None
     version: int
 
 
 class AppointmentResourcesResponse(ApiModel):
     items: list[AppointmentResourceResponse]
+
+
+class CreateAppointmentResourceRequest(ApiModel):
+    branch_id: UUID
+    name: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        return _normalize_required_text(value)
+
+    @field_validator("description")
+    @classmethod
+    def normalize_description(cls, value: str | None) -> str | None:
+        return _normalize_optional_text(value)
+
+
+class UpdateAppointmentResourceRequest(ApiModel):
+    version: int = Field(ge=1)
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    status: ResourceStatus | None = None
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str | None) -> str | None:
+        return _normalize_required_text(value) if value is not None else None
+
+    @field_validator("description")
+    @classmethod
+    def normalize_description(cls, value: str | None) -> str | None:
+        return _normalize_optional_text(value)
+
+    @model_validator(mode="after")
+    def validate_changes(self) -> Self:
+        changed = self.model_fields_set - {"version"}
+        if not changed:
+            raise ValueError("Debes enviar al menos un cambio.")
+        return self
+
+
+class ReorderAppointmentResourcesRequest(ApiModel):
+    branch_id: UUID
+    resource_ids: list[UUID] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_unique_ids(self) -> Self:
+        if len(set(self.resource_ids)) != len(self.resource_ids):
+            raise ValueError("Los identificadores de recursos deben ser únicos.")
+        return self
+
+
+class BranchOpeningHourItem(ApiModel):
+    weekday: WeekdayKey
+    opens_at: TimeValue
+    closes_at: TimeValue
+
+    @model_validator(mode="after")
+    def validate_window(self) -> Self:
+        if self.closes_at <= self.opens_at:
+            raise ValueError("La hora de cierre debe ser posterior a la de apertura.")
+        return self
+
+
+class BranchOpeningHoursResponse(ApiModel):
+    items: list[BranchOpeningHourItem]
+
+
+class ReplaceBranchOpeningHoursRequest(ApiModel):
+    items: list[BranchOpeningHourItem]
+
+    @model_validator(mode="after")
+    def validate_unique_days(self) -> Self:
+        weekdays = [item.weekday for item in self.items]
+        if len(set(weekdays)) != len(weekdays):
+            raise ValueError("Cada día de la semana solo puede aparecer una vez.")
+        return self
+
+
+class AppointmentResourceAclEntry(ApiModel):
+    user_id: UUID
+    access: ResourceAccess | None = None
+
+
+class AppointmentResourceAclResponse(ApiModel):
+    resource_id: UUID
+    items: list[AppointmentResourceAclEntry]
+
+
+class ReplaceAppointmentResourceAclRequest(ApiModel):
+    items: list[AppointmentResourceAclEntry]
 
 
 class AppointmentReference(ApiModel):

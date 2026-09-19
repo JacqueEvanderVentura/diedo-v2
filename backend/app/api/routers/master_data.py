@@ -2,7 +2,7 @@ from datetime import date
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, File, Form, Query, Response, UploadFile, status
+from fastapi import APIRouter, File, Form, Header, Query, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 
 from app.api.attachment_response import authorized_attachment_response
@@ -34,9 +34,15 @@ from app.schemas.master_data import (
     CustomerSortField,
     CustomerTimelineResponse,
     CustomerType,
+    DeleteCustomerResultItem,
+    DeleteCustomersRequest,
+    DeleteCustomersResponse,
     EmployeeResponse,
     EmployeeScheduleResponse,
     EmployeeSortField,
+    ImportCustomerRowResult,
+    ImportCustomersRequest,
+    ImportCustomersResponse,
     MasterDataStatus,
     PaginatedCustomersResponse,
     PaginatedEmployeesResponse,
@@ -51,6 +57,11 @@ from app.services.master_data import MasterDataService
 
 customers_router = APIRouter(prefix="/api/v1/customers", tags=["customers"])
 employees_router = APIRouter(prefix="/api/v1/employees", tags=["employees"])
+
+IdempotencyKey = Annotated[
+    str,
+    Header(alias="Idempotency-Key", min_length=8, max_length=128),
+]
 
 _SECURITY_RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {"model": ErrorResponse},
@@ -154,7 +165,7 @@ def list_customers(
     status_filter: Annotated[MasterDataStatus | None, Query(alias="status")] = None,
     branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
     page: Annotated[int, Query(ge=1, le=1_000_000)] = 1,
-    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=100)] = 50,
+    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=500)] = 50,
     sort_by: Annotated[CustomerSortField, Query(alias="sortBy")] = "name",
     sort_direction: Annotated[SortDirection, Query(alias="sortDirection")] = "asc",
 ) -> PaginatedCustomersResponse:
@@ -203,6 +214,52 @@ def create_customer(
             values=values,
             branch_ids=set(payload.branch_ids),
         )
+    )
+
+
+@customers_router.post(
+    "/import",
+    status_code=status.HTTP_201_CREATED,
+    summary="Importar clientes en lote",
+    responses=_WRITE_RESPONSES,
+)
+def import_customers(
+    payload: ImportCustomersRequest,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: CustomerManageGrant,
+    idempotency_key: IdempotencyKey,
+) -> ImportCustomersResponse:
+    del idempotency_key
+    rows = MasterDataService(database).import_customers(
+        principal=principal,
+        grant=grant,
+        branch_ids=set(payload.branch_ids),
+        items=[item.model_dump(by_alias=False) for item in payload.items],
+    )
+    return ImportCustomersResponse(
+        items=[ImportCustomerRowResult.model_validate(row) for row in rows]
+    )
+
+
+@customers_router.post(
+    "/batch-delete",
+    summary="Archivar clientes en lote",
+    responses=_WRITE_RESPONSES,
+)
+def delete_customers_batch(
+    payload: DeleteCustomersRequest,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: CustomerManageGrant,
+) -> DeleteCustomersResponse:
+    rows = MasterDataService(database).archive_customers(
+        principal=principal,
+        grant=grant,
+        customer_ids=payload.customer_ids,
+    )
+    return DeleteCustomersResponse(
+        items=[DeleteCustomerResultItem.model_validate(row) for row in rows]
     )
 
 
@@ -280,7 +337,7 @@ def list_employees(
     branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
     department: Annotated[str | None, Query(max_length=120)] = None,
     page: Annotated[int, Query(ge=1, le=1_000_000)] = 1,
-    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=100)] = 50,
+    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=500)] = 50,
     sort_by: Annotated[EmployeeSortField, Query(alias="sortBy")] = "name",
     sort_direction: Annotated[SortDirection, Query(alias="sortDirection")] = "asc",
 ) -> PaginatedEmployeesResponse:

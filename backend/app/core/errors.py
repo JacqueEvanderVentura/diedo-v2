@@ -51,6 +51,35 @@ def parameter_from_validation_location(location: tuple[Any, ...]) -> str | None:
     return ".".join(parts) or None
 
 
+_FIELD_LABELS: dict[str, str] = {
+    "displayName": "Nombre para mostrar",
+    "display_name": "Nombre para mostrar",
+    "firstName": "Nombre",
+    "first_name": "Nombre",
+    "lastName": "Apellido",
+    "last_name": "Apellido",
+    "businessName": "Nombre comercial",
+    "business_name": "Nombre comercial",
+    "email": "Correo",
+    "phone": "Teléfono",
+    "customerType": "Tipo de cliente",
+    "customer_type": "Tipo de cliente",
+    "externalId": "ID externo",
+    "external_id": "ID externo",
+    "branchIds": "Sucursales",
+    "branch_ids": "Sucursales",
+}
+
+
+def validation_field_label(parameter: str | None) -> str | None:
+    if not parameter:
+        return None
+    field = parameter.split(".")[-1]
+    if field.startswith("[") and field.endswith("]"):
+        return None
+    return _FIELD_LABELS.get(field, field)
+
+
 def friendly_validation_message(error: dict[str, Any]) -> str:
     error_type = error.get("type")
     if error_type == "missing":
@@ -96,11 +125,16 @@ async def request_validation_exception_handler(
     errors = exc.errors()
     first_error = errors[0] if errors else {}
     location = tuple(first_error.get("loc") or ())
+    parameter = parameter_from_validation_location(location)
+    message = friendly_validation_message(first_error)
+    label = validation_field_label(parameter)
+    if label:
+        message = f"{label}: {message}"
     return JSONResponse(
         status_code=400,
         content={
-            "message": friendly_validation_message(first_error),
-            "parameter": parameter_from_validation_location(location),
+            "message": message,
+            "parameter": parameter,
         },
     )
 

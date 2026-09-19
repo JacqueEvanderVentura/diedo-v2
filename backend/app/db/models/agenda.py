@@ -76,6 +76,81 @@ class AppointmentResource(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Bas
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="active", server_default=text("'active'")
     )
+    description: Mapped[str | None] = mapped_column(String(500))
+    sort_order: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+
+
+class BranchOpeningHour(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
+    """Per-branch weekday opening window for calendar slot generation."""
+
+    __tablename__ = "branch_opening_hours"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "branch_id"],
+            ["branches.workspace_id", "branches.id"],
+            ondelete="RESTRICT",
+            name="fk_branch_opening_hours_workspace_branch",
+        ),
+        UniqueConstraint(
+            "workspace_id",
+            "branch_id",
+            "weekday",
+            name="uq_branch_opening_hours_weekday",
+        ),
+        CheckConstraint(
+            "weekday IN ('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun')",
+            name="weekday_values",
+        ),
+        CheckConstraint("closes_at > opens_at", name="time_order"),
+    )
+
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
+    )
+    branch_id: Mapped[UUID] = mapped_column(nullable=False)
+    weekday: Mapped[str] = mapped_column(String(8), nullable=False)
+    opens_at: Mapped[time] = mapped_column(Time(timezone=False), nullable=False)
+    closes_at: Mapped[time] = mapped_column(Time(timezone=False), nullable=False)
+
+
+class AppointmentResourceAcl(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
+    """Per-user access to a branch appointment resource."""
+
+    __tablename__ = "appointment_resource_acl"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "branch_id", "resource_id"],
+            [
+                "appointment_resources.workspace_id",
+                "appointment_resources.branch_id",
+                "appointment_resources.id",
+            ],
+            ondelete="CASCADE",
+            name="fk_appointment_resource_acl_resource",
+        ),
+        ForeignKeyConstraint(
+            ["platform_user_id"],
+            ["platform_users.id"],
+            ondelete="CASCADE",
+            name="fk_appointment_resource_acl_user",
+        ),
+        UniqueConstraint(
+            "workspace_id",
+            "branch_id",
+            "resource_id",
+            "platform_user_id",
+            name="uq_appointment_resource_acl_user",
+        ),
+        CheckConstraint("access IN ('view', 'use')", name="access_values"),
+    )
+
+    workspace_id: Mapped[UUID] = mapped_column(nullable=False)
+    branch_id: Mapped[UUID] = mapped_column(nullable=False)
+    resource_id: Mapped[UUID] = mapped_column(nullable=False)
+    platform_user_id: Mapped[UUID] = mapped_column(nullable=False)
+    access: Mapped[str] = mapped_column(String(8), nullable=False)
 
 
 class Appointment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):

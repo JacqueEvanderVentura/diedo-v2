@@ -179,8 +179,7 @@ class DemoCrmLeadFixture(ApiModel):
     scraped_at: datetime | None = None
     raw_snippet: str | None = Field(default=None, max_length=4000)
     status: Literal["nuevo", "contactado", "calificado", "descartado", "convertido"]
-    score_manual: int | None = Field(default=None, ge=0, le=100)
-    score_notes: str | None = Field(default=None, max_length=2000)
+    star_rating: Decimal | None = Field(default=None, ge=0, le=5)
     converted_customer_seed_key: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -251,7 +250,6 @@ class DemoCrmActivityFixture(ApiModel):
 
 
 class CrmFixture(ApiModel):
-    scoring_weights: dict[str, float] = Field(default_factory=dict)
     customer_profiles: list[DemoCustomerCrmProfileFixture] = Field(default_factory=list)
     leads: list[DemoCrmLeadFixture] = Field(default_factory=list)
     opportunities: list[DemoCrmOpportunityFixture] = Field(default_factory=list)

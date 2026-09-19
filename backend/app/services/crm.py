@@ -10,9 +10,11 @@ from typing import Any, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.errors import friendly_validation_message
 from app.core.request_context import get_request_id
 from app.db.models import (
     CrmActivity,
@@ -32,14 +34,9 @@ from app.repositories.crm import (
 from app.repositories.master_data import MasterDataRepository
 from app.repositories.pos import Page as PosPage
 from app.repositories.pos import QuoteRecord, SaleRecord
+from app.schemas.crm import ImportPipelineItem
 from app.services.auth import AuthPrincipal
 from app.services.authorization import PermissionGrant
-from app.services.crm_scoring import (
-    DEFAULT_SCORING_WEIGHTS,
-    SERP_HOUR_LIMIT,
-    SERP_MONTH_LIMIT,
-    compute_auto_score,
-)
 from app.services.errors import (
     AuthorizationError,
     ConflictError,
@@ -60,13 +57,6 @@ class PageResult:
 
 
 @dataclass(frozen=True)
-class ScoringSettingsRecord:
-    settings: CrmSettings
-    hour_limit: int = SERP_HOUR_LIMIT
-    month_limit: int = SERP_MONTH_LIMIT
-
-
-@dataclass(frozen=True)
 class OverviewRecord:
     branch_id: UUID | None
     values: OverviewValues
@@ -78,40 +68,6 @@ class CrmService:
         self._session = session
         self._repository = CrmRepository(session)
         self._master_data = MasterDataRepository(session)
-
-    def scoring_settings(self, grant: PermissionGrant) -> ScoringSettingsRecord:
-        return ScoringSettingsRecord(self._required_settings(grant.workspace_id))
-
-    def update_scoring_settings(
-        self,
-        *,
-        principal: AuthPrincipal,
-        grant: PermissionGrant,
-        expected_version: int,
-        weights: dict[str, float],
-    ) -> ScoringSettingsRecord:
-        if not grant.workspace_wide:
-            raise AuthorizationError("Administrar el scoring global requiere alcance de workspace.")
-        settings = self._repository.settings(grant.workspace_id, lock=True)
-        if settings is None:
-            settings = self._new_settings(grant.workspace_id, principal.platform_user_id)
-        self._require_version(settings.version, expected_version)
-        settings.scoring_weights = dict(weights)
-        settings.updated_by_platform_user_id = principal.platform_user_id
-        settings.version += 1
-        for lead in self._repository.workspace_leads(grant.workspace_id):
-            self._apply_score(lead, weights)
-            lead.updated_by_platform_user_id = principal.platform_user_id
-            lead.version += 1
-        self._audit(
-            principal,
-            "crm.settings.update",
-            "crm_settings",
-            settings.id,
-            {"version": settings.version},
-        )
-        self._session.commit()
-        return ScoringSettingsRecord(settings)
 
     def workspace_settings(self, grant: PermissionGrant) -> CrmSettings:
         return self._required_settings(grant.workspace_id)
@@ -151,6 +107,8 @@ class CrmService:
         status: str | None,
         source: str | None,
         search: str | None,
+        sort: str,
+        sort_dir: str,
         page: int,
         page_size: int,
     ) -> PageResult:
@@ -162,6 +120,8 @@ class CrmService:
             status=status,
             source=source,
             search=self._optional_text(search),
+            sort=sort if sort in {"updated_at", "star_rating"} else "updated_at",
+            sort_dir=sort_dir if sort_dir in {"asc", "desc"} else "desc",
             page=page,
             page_size=page_size,
         )
@@ -187,14 +147,12 @@ class CrmService:
             self._require_branch(grant, existing.branch_id)
             self._require_fingerprint(existing.request_fingerprint, fingerprint)
             return self._repository.lead_record(existing)
-        settings = self._required_settings(grant.workspace_id)
         lead = self._build_lead(
             principal=principal,
             grant=grant,
             values=values,
             idempotency_key=idempotency_key,
             fingerprint=fingerprint,
-            weights=cast(dict[str, float], settings.scoring_weights),
         )
         try:
             self._repository.add_lead(lead)
@@ -226,7 +184,6 @@ class CrmService:
     ) -> tuple[LeadRecord, ...]:
         outer_branch = cast(UUID, values["branch_id"])
         self._require_branch(grant, outer_branch)
-        settings = self._required_settings(grant.workspace_id)
         records: list[LeadRecord] = []
         try:
             for index, raw in enumerate(cast(list[dict[str, Any]], values["items"]), start=1):
@@ -248,7 +205,6 @@ class CrmService:
                     values=item,
                     idempotency_key=key,
                     fingerprint=fingerprint,
-                    weights=cast(dict[str, float], settings.scoring_weights),
                 )
                 self._repository.add_lead(lead)
                 records.append(self._repository.lead_record(lead))
@@ -295,8 +251,6 @@ class CrmService:
             "website",
             "location",
             "status",
-            "score_manual",
-            "score_notes",
             "raw_snippet",
         ):
             if field in changes:
@@ -304,12 +258,12 @@ class CrmService:
                 setattr(
                     lead, field, str(value) if field in {"email", "website"} and value else value
                 )
+        if "star_rating" in changes:
+            lead.star_rating = changes["star_rating"]
+        if "acquisition_source" in changes:
+            lead.acquisition_source = changes["acquisition_source"]
         if not lead.name and not lead.company:
             raise InvalidOperationError("El lead requiere nombre o empresa.", "name")
-        self._apply_score(
-            lead,
-            cast(dict[str, float], self._required_settings(grant.workspace_id).scoring_weights),
-        )
         lead.updated_by_platform_user_id = principal.platform_user_id
         lead.version += 1
         self._audit(
@@ -321,6 +275,76 @@ class CrmService:
         )
         self._session.commit()
         return self._repository.lead_record(lead)
+
+    def delete_leads(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        lead_ids: list[UUID],
+    ) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        for lead_id in lead_ids:
+            try:
+                lead = self._repository.lead(
+                    grant.workspace_id, lead_id, grant.allowed_branch_ids, lock=True
+                )
+                if lead is None:
+                    results.append(
+                        {
+                            "lead_id": lead_id,
+                            "status": "error",
+                            "message": "El lead no existe o no tienes acceso.",
+                        }
+                    )
+                    continue
+                if lead.status == "convertido":
+                    results.append(
+                        {
+                            "lead_id": lead_id,
+                            "status": "error",
+                            "message": "No se puede eliminar un lead convertido.",
+                        }
+                    )
+                    continue
+                opportunity = self._repository.opportunity_for_lead(grant.workspace_id, lead.id)
+                if opportunity is not None:
+                    record = self._repository.opportunity_record(opportunity)
+                    if record.quote_count > 0:
+                        results.append(
+                            {
+                                "lead_id": lead_id,
+                                "status": "error",
+                                "message": "El lead tiene cotizaciones vinculadas.",
+                            }
+                        )
+                        continue
+                    self._repository.delete_activities_for_lead(
+                        grant.workspace_id, lead.id, opportunity.id
+                    )
+                    self._repository.remove_opportunity(opportunity)
+                else:
+                    self._repository.delete_activities_for_lead(grant.workspace_id, lead.id, None)
+                self._repository.remove_lead(lead)
+                self._audit(
+                    principal,
+                    "crm.lead.delete",
+                    "crm_lead",
+                    lead_id,
+                    {"branchId": str(lead.branch_id)},
+                )
+                self._session.commit()
+                results.append({"lead_id": lead_id, "status": "deleted", "message": None})
+            except Exception:
+                self._session.rollback()
+                results.append(
+                    {
+                        "lead_id": lead_id,
+                        "status": "error",
+                        "message": "No se pudo eliminar el lead.",
+                    }
+                )
+        return results
 
     def list_opportunities(
         self,
@@ -491,10 +515,9 @@ class CrmService:
             "customer_name": lead.company or lead.name,
             "stage": values.get("stage")
             or ("propuesta" if lead.status == "calificado" else "contactado"),
-            "value": values.get("value")
-            if values.get("value") is not None
-            else Decimal(lead.score * 500),
-            "notes": values.get("notes") or lead.score_notes,
+            "value": values.get("value") if values.get("value") is not None else Decimal("0"),
+            "notes": values.get("notes"),
+            "lost_reason": values.get("lost_reason"),
         }
         return self.create_opportunity(
             principal=principal,
@@ -828,8 +851,7 @@ class CrmService:
                 customer_id=customer_record.id,
                 lifecycle_status=cast(str, values.get("lifecycle_status", "prospecto")),
                 loyalty_points=0,
-                notes=self._optional_text(cast(str | None, values.get("notes")))
-                or lead.score_notes,
+                notes=self._optional_text(cast(str | None, values.get("notes"))),
                 created_by_platform_user_id=principal.platform_user_id,
                 updated_by_platform_user_id=principal.platform_user_id,
             )
@@ -1281,16 +1303,10 @@ class CrmService:
         values: dict[str, Any],
         idempotency_key: str,
         fingerprint: str,
-        weights: dict[str, float],
     ) -> CrmLead:
         branch_id = cast(UUID, values["branch_id"])
         self._require_branch(grant, branch_id)
-        scoring_values = {
-            key: str(values[key]) if key in {"website"} and values.get(key) else values.get(key)
-            for key in ("name", "company", "raw_snippet", "location", "website", "phone")
-        }
-        scoring = compute_auto_score(scoring_values, weights)
-        manual = cast(int | None, values.get("score_manual"))
+        star_rating = values.get("star_rating")
         return CrmLead(
             workspace_id=grant.workspace_id,
             branch_id=branch_id,
@@ -1311,12 +1327,7 @@ class CrmService:
             scraped_at=cast(datetime | None, values.get("scraped_at")),
             raw_snippet=self._optional_text(cast(str | None, values.get("raw_snippet"))),
             status=cast(str, values.get("status", "nuevo")),
-            score_auto=scoring.score,
-            score_manual=manual,
-            score=manual if manual is not None else scoring.score,
-            module_fits=scoring.module_fits,
-            score_reasons=scoring.reasons,
-            score_notes=self._optional_text(cast(str | None, values.get("score_notes"))),
+            star_rating=star_rating,
             converted_customer_id=None,
             converted_at=None,
             creation_idempotency_key=idempotency_key,
@@ -1326,24 +1337,6 @@ class CrmService:
             created_by_platform_user_id=principal.platform_user_id,
             updated_by_platform_user_id=principal.platform_user_id,
         )
-
-    @staticmethod
-    def _apply_score(lead: CrmLead, weights: dict[str, float]) -> None:
-        scoring = compute_auto_score(
-            {
-                "name": lead.name,
-                "company": lead.company,
-                "raw_snippet": lead.raw_snippet,
-                "location": lead.location,
-                "website": lead.website,
-                "phone": lead.phone,
-            },
-            weights,
-        )
-        lead.score_auto = scoring.score
-        lead.score = lead.score_manual if lead.score_manual is not None else scoring.score
-        lead.module_fits = scoring.module_fits
-        lead.score_reasons = scoring.reasons
 
     def _required_settings(self, workspace_id: UUID) -> CrmSettings:
         settings = self._repository.settings(workspace_id)
@@ -1356,7 +1349,6 @@ class CrmService:
     def _new_settings(self, workspace_id: UUID, actor_platform_user_id: UUID | None) -> CrmSettings:
         settings = CrmSettings(
             workspace_id=workspace_id,
-            scoring_weights=dict(DEFAULT_SCORING_WEIGHTS),
             updated_by_platform_user_id=actor_platform_user_id,
         )
         self._repository.add_settings(settings)
@@ -1399,6 +1391,226 @@ class CrmService:
             allowed_legal_entity_ids=None,
             allowed_branch_ids=branch_ids,
         )
+
+    @staticmethod
+    def _import_idempotency_key(prefix: str, external_id: str) -> str:
+        safe = external_id.strip()[:100]
+        return f"{prefix}-{safe}"[:128]
+
+    def import_pipeline(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        customer_grant: PermissionGrant,
+        branch_id: UUID,
+        assigned_membership_id: UUID | None,
+        items: list[dict[str, Any]],
+        batch_idempotency_key: str,
+    ) -> list[dict[str, Any]]:
+        self._require_branch(grant, branch_id)
+        results: list[dict[str, Any]] = []
+        for index, raw in enumerate(items, start=1):
+            try:
+                item = ImportPipelineItem.model_validate(raw).model_dump(by_alias=False)
+            except ValidationError as exc:
+                first = cast(dict[str, Any], exc.errors()[0])
+                message = friendly_validation_message(first)
+                if first.get("type") == "value_error":
+                    raw_msg = str(first.get("msg", ""))
+                    if raw_msg.startswith("Value error, "):
+                        message = raw_msg.removeprefix("Value error, ")
+                    elif raw_msg:
+                        message = raw_msg
+                external_hint = raw.get("external_id") or raw.get("externalId")
+                results.append(
+                    {
+                        "external_id": external_hint,
+                        "lead_id": None,
+                        "opportunity_id": None,
+                        "customer_id": None,
+                        "status": "error",
+                        "message": message,
+                    }
+                )
+                continue
+
+            external_id = str(item.get("external_id") or index)
+            try:
+                lead_key = (
+                    self._import_idempotency_key("pl-lead", external_id)
+                    if item.get("external_id")
+                    else f"{batch_idempotency_key[:118]}:{index}"
+                )
+                existing_lead = self._repository.lead_by_key(grant.workspace_id, lead_key)
+                if existing_lead is None and item.get("external_id"):
+                    existing_lead = self._repository.lead_by_import_external_id(
+                        grant.workspace_id, str(item["external_id"])
+                    )
+                if existing_lead is not None:
+                    self._require_branch(grant, existing_lead.branch_id)
+                    lead_record = self._repository.lead_record(existing_lead)
+                    existing_opp = self._repository.opportunity_for_lead(
+                        grant.workspace_id, lead_record.lead.id
+                    )
+                    opp_id = existing_opp.id if existing_opp is not None else None
+                    results.append(
+                        {
+                            "external_id": item.get("external_id"),
+                            "lead_id": lead_record.lead.id,
+                            "opportunity_id": opp_id,
+                            "customer_id": lead_record.lead.converted_customer_id,
+                            "status": "skipped",
+                            "message": "Ya importado para este externalId.",
+                        }
+                    )
+                    continue
+
+                lead_values = {
+                    "branch_id": branch_id,
+                    "name": item.get("name", ""),
+                    "company": item.get("company", ""),
+                    "email": item.get("email"),
+                    "phone": item.get("phone"),
+                    "website": item.get("website"),
+                    "location": item.get("location"),
+                    "source": "import",
+                    "acquisition_source": item.get("acquisition_source"),
+                    "status": "nuevo",
+                    "raw_snippet": f"kommo:{external_id}" if item.get("external_id") else None,
+                }
+                if assigned_membership_id is not None:
+                    lead_values["assigned_membership_id"] = assigned_membership_id
+                lead_record = self.create_lead(
+                    principal=principal,
+                    grant=grant,
+                    values=lead_values,
+                    idempotency_key=lead_key,
+                )
+                opp_key = self._import_idempotency_key("pl-opp", external_id)
+                existing_opp = self._repository.opportunity_for_lead(
+                    grant.workspace_id, lead_record.lead.id
+                )
+                if existing_opp is not None:
+                    opp_record = self._repository.opportunity_record(existing_opp)
+                else:
+                    lead = lead_record.lead
+                    title = item.get("title") or f"{lead.company or lead.name}"
+                    opp_record = self.create_opportunity_for_lead(
+                        principal=principal,
+                        grant=grant,
+                        lead_id=lead_record.lead.id,
+                        values={
+                            "title": title,
+                            "stage": item.get("stage", "nuevo"),
+                            "value": item.get("value", Decimal("0")),
+                            "notes": item.get("notes"),
+                            "lost_reason": item.get("lost_reason"),
+                        },
+                        idempotency_key=opp_key,
+                    )
+                customer_id = None
+                if item.get("convert"):
+                    convert_key = self._import_idempotency_key("pl-conv", external_id)
+                    customer_record = self.convert_lead(
+                        principal=principal,
+                        crm_grant=grant,
+                        customer_grant=customer_grant,
+                        lead_id=lead_record.lead.id,
+                        values={
+                            "version": lead_record.lead.version,
+                            "customer_type": "person"
+                            if not lead_record.lead.company
+                            else "business",
+                            "branch_ids": [branch_id],
+                        },
+                        idempotency_key=convert_key,
+                    )
+                    customer_id = customer_record.customer.id
+                results.append(
+                    {
+                        "external_id": item.get("external_id"),
+                        "lead_id": lead_record.lead.id,
+                        "opportunity_id": opp_record.opportunity.id,
+                        "customer_id": customer_id,
+                        "status": "created",
+                        "message": None,
+                    }
+                )
+            except Exception as exc:  # noqa: BLE001 - per-row import report
+                results.append(
+                    {
+                        "external_id": item.get("external_id"),
+                        "lead_id": None,
+                        "opportunity_id": None,
+                        "customer_id": None,
+                        "status": "error",
+                        "message": str(exc),
+                    }
+                )
+        return results
+
+    def import_activities(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        branch_id: UUID,
+        items: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        self._require_branch(grant, branch_id)
+        results: list[dict[str, Any]] = []
+        for raw in items:
+            external_id = raw.get("external_id")
+            lead_external_id = raw.get("lead_external_id")
+            try:
+                if not lead_external_id:
+                    raise InvalidOperationError(
+                        "No se pudo vincular la actividad a un lead.", "leadExternalId"
+                    )
+                lead_key = self._import_idempotency_key("pl-lead", str(lead_external_id))
+                lead = self._repository.lead_by_key(grant.workspace_id, lead_key)
+                if lead is None:
+                    raise ResourceNotFoundError("El lead importado no existe.", "leadExternalId")
+                opportunity = self._repository.opportunity_for_lead(grant.workspace_id, lead.id)
+                if opportunity is None:
+                    raise ResourceNotFoundError("El lead no tiene oportunidad.", "leadExternalId")
+                activity_key = self._import_idempotency_key(
+                    "pl-act", str(external_id or f"{lead_external_id}-{raw.get('title')}")
+                )
+                activity = self.create_activity(
+                    principal=principal,
+                    grant=grant,
+                    values={
+                        "branch_id": branch_id,
+                        "lead_id": lead.id,
+                        "opportunity_id": opportunity.id,
+                        "type": "tarea",
+                        "title": raw["title"],
+                        "description": raw.get("description"),
+                        "due_at": raw.get("due_at"),
+                        "customer_name": lead.company or lead.name,
+                    },
+                    idempotency_key=activity_key,
+                )
+                results.append(
+                    {
+                        "external_id": external_id,
+                        "activity_id": activity.id,
+                        "status": "created",
+                        "message": None,
+                    }
+                )
+            except Exception as exc:  # noqa: BLE001 - per-row import report
+                results.append(
+                    {
+                        "external_id": external_id,
+                        "activity_id": None,
+                        "status": "error",
+                        "message": str(exc),
+                    }
+                )
+        return results
 
     def _audit(
         self,

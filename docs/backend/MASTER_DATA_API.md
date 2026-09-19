@@ -24,6 +24,8 @@ tenant scope, and pagination follow that contract.
 |---|---|---|---|
 | `GET` | `/api/v1/customers` | `customer.read` | Filtered, scoped, paginated list |
 | `POST` | `/api/v1/customers` | `customer.manage` | Create and assign to visible branches |
+| `POST` | `/api/v1/customers/import` | `customer.manage` | Import up to 100 customers per request |
+| `POST` | `/api/v1/customers/batch-delete` | `customer.manage` | Archive up to 100 customers per request |
 | `GET` | `/api/v1/customers/{customerId}` | `customer.read` | Scoped detail |
 | `PATCH` | `/api/v1/customers/{customerId}` | `customer.manage` | Versioned update or archive |
 | `GET` | `/api/v1/customers/{customerId}/timeline` | `customer.read` | Stable projection contract for later domain events |
@@ -35,7 +37,8 @@ matches normalized name, phone, and email.
 Customer types are `person` and `business`; statuses are `active`, `inactive`, and `archived`.
 Every customer must be assigned to at least one branch. A branch-scoped actor cannot read or
 assign a customer outside the effective grant. Archiving uses `PATCH { "status": "archived",
-"version": n }`; physical deletion is not exposed.
+"version": n }` or `POST /api/v1/customers/batch-delete` with `{ "customerIds": [...] }` (up to
+100 ids per call); physical deletion is not exposed.
 
 The timeline initially projects master-data lifecycle entries. Sales, appointments, CRM, and
 payments can append authorized projections in later phases without changing the customer API.

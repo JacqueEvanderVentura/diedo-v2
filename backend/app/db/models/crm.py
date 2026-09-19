@@ -2,7 +2,6 @@
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
@@ -17,7 +16,6 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -71,7 +69,7 @@ class CustomerCrmProfile(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base
 
 
 class CrmLead(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
-    """Branch-scoped prospect with deterministic scoring and conversion trace."""
+    """Branch-scoped prospect with optional star rating and conversion trace."""
 
     __tablename__ = "crm_leads"
     __table_args__ = (
@@ -113,11 +111,14 @@ class CrmLead(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
         CheckConstraint(
             "char_length(name) > 0 OR char_length(company) > 0", name="identity_required"
         ),
-        CheckConstraint("score_auto BETWEEN 0 AND 100", name="score_auto_range"),
         CheckConstraint(
-            "score_manual IS NULL OR score_manual BETWEEN 0 AND 100", name="score_manual_range"
+            "star_rating IS NULL OR (star_rating >= 0 AND star_rating <= 5)",
+            name="star_rating_range",
         ),
-        CheckConstraint("score BETWEEN 0 AND 100", name="score_range"),
+        CheckConstraint(
+            "star_rating IS NULL OR (star_rating * 2) = trunc(star_rating * 2)",
+            name="star_rating_half_step",
+        ),
         CheckConstraint(
             "(status = 'convertido' AND converted_customer_id IS NOT NULL AND "
             "converted_at IS NOT NULL AND conversion_idempotency_key IS NOT NULL AND "
@@ -193,16 +194,7 @@ class CrmLead(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="nuevo", server_default=text("'nuevo'")
     )
-    score_auto: Mapped[int] = mapped_column(Integer, nullable=False)
-    score_manual: Mapped[int | None] = mapped_column(Integer)
-    score: Mapped[int] = mapped_column(Integer, nullable=False)
-    module_fits: Mapped[dict[str, int]] = mapped_column(
-        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
-    )
-    score_reasons: Mapped[list[str]] = mapped_column(
-        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
-    )
-    score_notes: Mapped[str | None] = mapped_column(String(2000))
+    star_rating: Mapped[Decimal | None] = mapped_column(Numeric(2, 1), nullable=True)
     converted_customer_id: Mapped[UUID | None] = mapped_column(nullable=True)
     converted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     creation_idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -417,7 +409,7 @@ class CrmActivity(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
 
 
 class CrmSettings(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
-    """Workspace-scoped lead-scoring configuration."""
+    """Workspace-scoped CRM configuration."""
 
     __tablename__ = "crm_settings"
     __table_args__ = (
@@ -430,9 +422,6 @@ class CrmSettings(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
 
     workspace_id: Mapped[UUID] = mapped_column(
         ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
-    )
-    scoring_weights: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
     ui_mode: Mapped[str] = mapped_column(
         String(16), nullable=False, default="standard", server_default=text("'standard'")

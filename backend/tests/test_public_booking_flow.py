@@ -15,6 +15,7 @@ from sqlalchemy import delete, select
 from tests.test_agenda import (
     _bootstrap_and_login,
     _create_branch_agenda_manager,
+    _hq_branch_id,
     _login_as_agenda_manager,
 )
 
@@ -23,7 +24,7 @@ from tests.test_agenda import (
 def booking_setup(client, monkeypatch):
     client._transport.raise_server_exceptions = True
     headers, me = _bootstrap_and_login(client)
-    branch = me["visibleBranches"][0]["id"]
+    branch = _hq_branch_id(me)
     suffix = uuid7().hex[-12:]
     with get_session_factory()() as session:
         primary = session.get(Branch, UUID(branch))
@@ -39,7 +40,11 @@ def booking_setup(client, monkeypatch):
         },
     )
     assert another_branch.status_code == 201, another_branch.text
-    me["visibleBranches"] = [me["visibleBranches"][0], another_branch.json()]
+    hq_branch = next(
+        (item for item in me["visibleBranches"] if item.get("code") == "HQ"),
+        me["visibleBranches"][0],
+    )
+    me["visibleBranches"] = [hq_branch, another_branch.json()]
     employee = client.post(
         "/api/v1/employees",
         headers=headers,

@@ -82,16 +82,6 @@ _UNITS_OF_MEASURE = (
     ("cm", "Centímetro", "cm"),
 )
 
-_CRM_SCORING_WEIGHTS = {
-    "pos": 1,
-    "agenda": 1,
-    "inventarios": 1,
-    "finanzas": 1,
-    "crm": 1,
-    "incidencias": 0.8,
-    "config": 0.6,
-}
-
 _REQUIRED_MODULES = frozenset({"foundation", "iam"})
 _REQUIRED_ADMIN_PERMISSIONS = frozenset(
     {"membership.read", "membership.manage", "role.read", "role.manage"}
@@ -356,7 +346,6 @@ class WorkspaceProvisioningService:
                 self._session.add(
                     CrmSettings(
                         workspace_id=workspace.id,
-                        scoring_weights=dict(_CRM_SCORING_WEIGHTS),
                         updated_by_platform_user_id=owner.id,
                     )
                 )

@@ -7,8 +7,8 @@ también exigen sus permisos equivalentes de Sales para no abrir una vía latera
 
 ## Modelo y propiedad de los datos
 
-- `crm_leads` conserva el prospecto, su procedencia, responsable, scoring y trazabilidad de
-  conversión.
+- `crm_leads` conserva el prospecto, su procedencia, responsable, calificación manual por
+  estrellas (`star_rating`, nullable) y trazabilidad de conversión.
 - `crm_opportunities` representa el pipeline y puede vincularse a un lead, un cliente compartido o
   ambos.
 - `crm_activities` registra llamadas, correos, reuniones, notas y tareas vinculables a lead,
@@ -21,8 +21,6 @@ también exigen sus permisos equivalentes de Sales para no abrir una vía latera
 - `sales_quotes` sigue siendo la única fuente de cotizaciones. Las originadas en CRM llevan
   `origin=crm`, estado comercial y vínculo opcional a oportunidad.
 - `sales` sigue siendo la única fuente de ventas y compras históricas por cliente.
-- `crm_settings` guarda la configuración versionada de scoring por workspace.
-
 Así, una conversión crea un `Customer` real y su perfil CRM dentro de la misma transacción. Una
 cotización CRM utiliza precios, impuestos y descuentos del servicio POS/Sales; una compra aparece
 al completar una venta vinculada al mismo cliente.
@@ -49,9 +47,10 @@ Todos parten de `/api/v1/crm`.
 |---|---|
 | `GET /discovery/capabilities` | Informa disponibilidad, proveedor principal, respaldo y consumo de cuota SERP. |
 | `POST /discovery/search` | Busca leads externos desde el backend con SerpAPI y fallback Serper. |
-| `GET/PATCH /settings/scoring` | Consulta o actualiza pesos de scoring. |
 | `GET/POST /leads` | Lista o crea leads. |
 | `POST /leads/import` | Importa de 1 a 100 leads en una operación. |
+| `POST /import/pipeline` | Importa de 1 a 100 filas con lead + oportunidad (y conversión opcional). |
+| `POST /import/activities` | Importa de 1 a 100 tareas vinculadas por `leadExternalId`. |
 | `GET/PATCH /leads/{id}` | Consulta o actualiza un lead. |
 | `POST /leads/{id}/opportunity` | Crea la oportunidad única del lead. |
 | `POST /leads/{id}/convert` | Convierte el lead en cliente maestro. |
@@ -74,7 +73,9 @@ Todos parten de `/api/v1/crm`.
 | `GET /overview` | Agrega KPIs de todas las fuentes anteriores. |
 
 Las listas aceptan `branchId`, `page` y `pageSize` según corresponda. Leads permiten `status`,
-`source` y `search`; oportunidades `stage`, `customerId` y `search`; actividades `type`,
+`source`, `search`, `sort=star_rating` y `sortDir=asc|desc` (los leads sin calificar van al final con
+`NULLS LAST`). En create/update, `starRating` acepta `null` o valores de `0` a `5` en pasos de `0.5`.
+Oportunidades `stage`, `customerId` y `search`; actividades `type`,
 `completed`, `overdue`, `opportunityId` y `customerId`; clientes `status` y `search`; cotizaciones
 `customerId` y `status`; ventas `customerId`, `status`, `dateFrom` y `dateTo`.
 

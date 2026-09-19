@@ -6,8 +6,15 @@ transaccional en PostgreSQL. Todos los recursos y citas pertenecen a un `workspa
 
 ## Modelo
 
-- `appointment_resources`: cabinas u otros recursos exclusivos de una sucursal. Cada sucursal
-  recibe las cinco cabinas del flujo actual al crearse.
+- `appointment_resources`: cabinas u otros recursos exclusivos de una sucursal (`description`,
+  `sort_order`, CRUD vía API). Las sucursales nuevas ya no se siembran con cabinas por defecto;
+  el demo/local bootstrap puede seguir cargando el set Charm.
+- `branch_opening_hours`: ventana laboral por día (`mon`…`sun`) usada para recortar slots de
+  reserva pública y la grilla diaria del calendario. Sin filas, el frontend asume 08:00–20:00.
+- `appointment_resource_acl`: permisos por usuario (`view` | `use`). Si un recurso no tiene
+  filas ACL, se comporta como abierto para quien tenga `appointment.read` / `appointment.manage`.
+  En cuanto existe al menos una fila, solo los usuarios listados ven la cabina y sus citas;
+  crear, mover o eliminar citas en esa cabina exige `use`.
 - `appointments`: horario local y zona horaria de la sucursal, ventana UTC, snapshots de cliente,
   servicio y precio, empleado/recurso, estado operativo, estado activo/inactivo del registro,
   recurrencia, versión optimista e idempotencia.
@@ -56,7 +63,31 @@ rol administrador del workspace por defecto.
 
 `GET /api/v1/appointment-resources?branchId={uuid}`
 
-Devuelve `{ "items": [...] }`. La respuesta lleva `Cache-Control: no-store`.
+Devuelve `{ "items": [...] }` ordenados por `sortOrder`, con `description`, `access` (`view` |
+`use`, solo para el usuario actual) y `version`. Filtra por ACL salvo que el caller tenga
+`appointment.manage` en la sucursal (configuración). `Cache-Control: no-store`.
+
+`POST /api/v1/appointment-resources` — crear (`appointment.manage`).
+
+`PATCH /api/v1/appointment-resources/{id}?branchId=` — actualizar nombre, descripción o estado.
+
+`DELETE /api/v1/appointment-resources/{id}?branchId=&version=` — archivar.
+
+`PUT /api/v1/appointment-resources/order` — cuerpo `{ branchId, resourceIds: [...] }` con todos
+los ids activos de la sucursal.
+
+### Horarios de sucursal
+
+`GET /api/v1/branches/{branchId}/opening-hours`
+
+`PUT /api/v1/branches/{branchId}/opening-hours` — reemplaza la lista completa de días.
+
+### Permisos de cabina
+
+`GET /api/v1/appointment-resources/{id}/acl?branchId=`
+
+`PUT /api/v1/appointment-resources/{id}/acl?branchId=` — matriz `{ items: [{ userId, access }] }`
+donde `access` es `view`, `use` o `null` (sin fila).
 
 ### Calendario y gestión
 

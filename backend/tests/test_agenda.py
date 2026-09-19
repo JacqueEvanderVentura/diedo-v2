@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from threading import Barrier
+from typing import cast
 from uuid import UUID, uuid7
 from zoneinfo import ZoneInfo
 
@@ -20,7 +21,13 @@ from app.db.models import (
     WorkspaceMembership,
 )
 from app.db.session import get_session_factory, session_scope
-from app.schemas.agenda import CreateAppointmentRequest, UpdateAppointmentRequest
+from app.schemas.agenda import (
+    CreateAppointmentRequest,
+    CreateAppointmentResourceRequest,
+    ReorderAppointmentResourcesRequest,
+    ReplaceBranchOpeningHoursRequest,
+    UpdateAppointmentRequest,
+)
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -30,6 +37,12 @@ from sqlalchemy.exc import IntegrityError
 _OWNER_EMAIL = "owner@erp.dev"
 _OWNER_PASSWORD = "agenda-owner-password-not-a-secret"
 _AGENDA_MANAGER_PASSWORD = "agenda-manager-password-not-a-secret"
+
+
+def _hq_branch_id(session: dict[str, object]) -> str:
+    branches = cast(list[dict[str, object]], session["visibleBranches"])
+    hq = next((branch for branch in branches if branch.get("code") == "HQ"), branches[0])
+    return str(hq["id"])
 
 
 def _bootstrap_and_login(client: TestClient) -> tuple[dict[str, str], dict[str, object]]:
@@ -185,12 +198,38 @@ def test_agenda_schemas_reject_ambiguous_recurrence_money_and_empty_updates() ->
         UpdateAppointmentRequest(version=1)
 
 
+def test_agenda_resource_and_hours_schemas_validate() -> None:
+    CreateAppointmentResourceRequest(branchId=uuid7(), name="Cabina VIP")
+    duplicate_id = uuid7()
+    with pytest.raises(ValidationError):
+        ReorderAppointmentResourcesRequest(
+            branchId=uuid7(),
+            resourceIds=[duplicate_id, duplicate_id],
+        )
+    ReplaceBranchOpeningHoursRequest(
+        items=[
+            {
+                "weekday": "mon",
+                "opensAt": time(8, 0),
+                "closesAt": time(20, 0),
+            }
+        ]
+    )
+    with pytest.raises(ValidationError):
+        ReplaceBranchOpeningHoursRequest(
+            items=[
+                {"weekday": "mon", "opensAt": time(8, 0), "closesAt": time(20, 0)},
+                {"weekday": "mon", "opensAt": time(9, 0), "closesAt": time(18, 0)},
+            ]
+        )
+
+
 @pytest.mark.integration
 def test_agenda_calendar_management_conflicts_recurrence_and_fresh_reads(
     client: TestClient,
 ) -> None:
     headers, session = _bootstrap_and_login(client)
-    branch_id = str(session["visibleBranches"][0]["id"])
+    branch_id = _hq_branch_id(session)
     resources_response = client.get(
         "/api/v1/appointment-resources",
         headers=headers,
@@ -468,7 +507,7 @@ def test_agenda_financial_changes_require_receivables_permission_and_cancel_debt
 ) -> None:
     owner_headers, context = _bootstrap_and_login(client)
     workspace_id = UUID(str(context["workspaceId"]))
-    branch_id = UUID(str(context["visibleBranches"][0]["id"]))
+    branch_id = UUID(_hq_branch_id(context))
     resources_response = client.get(
         "/api/v1/appointment-resources",
         headers=owner_headers,
@@ -622,7 +661,7 @@ def test_appointment_delete_requires_permission_soft_deletes_and_frees_slot(
 ) -> None:
     owner_headers, context = _bootstrap_and_login(client)
     workspace_id = UUID(str(context["workspaceId"]))
-    branch_id = UUID(str(context["visibleBranches"][0]["id"]))
+    branch_id = UUID(_hq_branch_id(context))
     resources_response = client.get(
         "/api/v1/appointment-resources",
         headers=owner_headers,
@@ -739,8 +778,7 @@ def test_database_exclusion_constraint_serializes_concurrent_room_booking(
     client: TestClient,
 ) -> None:
     headers, session_context = _bootstrap_and_login(client)
-    branch = session_context["visibleBranches"][0]
-    branch_id = UUID(str(branch["id"]))
+    branch_id = UUID(_hq_branch_id(session_context))
     workspace_id = UUID(str(session_context["workspaceId"]))
     actor_id = UUID(str(session_context["userId"]))
     resources_response = client.get(

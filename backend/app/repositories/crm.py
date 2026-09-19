@@ -178,6 +178,15 @@ class CrmRepository:
             )
         )
 
+    def lead_by_import_external_id(self, workspace_id: UUID, external_id: str) -> CrmLead | None:
+        tag = f"kommo:{external_id.strip()}"
+        return self._session.scalar(
+            select(CrmLead).where(
+                CrmLead.workspace_id == workspace_id,
+                CrmLead.raw_snippet == tag,
+            )
+        )
+
     def lead(
         self,
         workspace_id: UUID,
@@ -223,6 +232,8 @@ class CrmRepository:
         status: str | None,
         source: str | None,
         search: str | None,
+        sort: str,
+        sort_dir: str,
         page: int,
         page_size: int,
     ) -> EntityPage:
@@ -247,10 +258,18 @@ class CrmRepository:
                 )
             )
         total = int(self._session.scalar(select(func.count()).select_from(query.subquery())) or 0)
+        order_clauses: list[Any]
+        if sort == "star_rating":
+            rating_order = CrmLead.star_rating.desc().nulls_last()
+            if sort_dir == "asc":
+                rating_order = CrmLead.star_rating.asc().nulls_last()
+            order_clauses = [rating_order, CrmLead.updated_at.desc(), CrmLead.id.desc()]
+        else:
+            order_clauses = [CrmLead.updated_at.desc(), CrmLead.id.desc()]
+            if sort_dir == "asc":
+                order_clauses = [CrmLead.updated_at.asc(), CrmLead.id.asc()]
         rows = self._session.scalars(
-            query.order_by(CrmLead.updated_at.desc(), CrmLead.id.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
+            query.order_by(*order_clauses).offset((page - 1) * page_size).limit(page_size)
         ).all()
         opportunity_rows = (
             self._session.execute(
@@ -775,3 +794,30 @@ class CrmRepository:
             sales_this_month=int(sale_row[0]),
             sales_value_this_month=Decimal(sale_row[1]),
         )
+
+    def delete_activities_for_lead(
+        self,
+        workspace_id: UUID,
+        lead_id: UUID,
+        opportunity_id: UUID | None,
+    ) -> None:
+        query = select(CrmActivity).where(CrmActivity.workspace_id == workspace_id)
+        if opportunity_id is not None:
+            query = query.where(
+                or_(
+                    CrmActivity.lead_id == lead_id,
+                    CrmActivity.opportunity_id == opportunity_id,
+                )
+            )
+        else:
+            query = query.where(CrmActivity.lead_id == lead_id)
+        for activity in self._session.scalars(query):
+            self._session.delete(activity)
+
+    def remove_opportunity(self, opportunity: CrmOpportunity) -> None:
+        self._session.delete(opportunity)
+        self._session.flush()
+
+    def remove_lead(self, lead: CrmLead) -> None:
+        self._session.delete(lead)
+        self._session.flush()

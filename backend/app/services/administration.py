@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from app.core.request_context import get_request_id
 from app.db.models import (
     AccessScope,
-    AppointmentResource,
     Branch,
     InventoryWarehouse,
     LegalEntity,
@@ -18,7 +17,6 @@ from app.db.models import (
     PaymentMethod,
     Workspace,
 )
-from app.db.models.agenda import DEFAULT_APPOINTMENT_RESOURCES
 from app.repositories.administration import (
     AdministrationRepository,
     LegalEntityFiscalRecord,
@@ -450,19 +448,6 @@ class AdministrationService:
                     is_default=True,
                     status="active",
                 )
-            )
-            self._session.add_all(
-                [
-                    AppointmentResource(
-                        workspace_id=workspace_id,
-                        branch_id=branch.id,
-                        code=resource_code,
-                        name=resource_name,
-                        resource_type="room",
-                        status="active",
-                    )
-                    for resource_code, resource_name in DEFAULT_APPOINTMENT_RESOURCES
-                ]
             )
             self._repository.add_access_scope(
                 AccessScope(

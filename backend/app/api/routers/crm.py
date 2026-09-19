@@ -48,14 +48,25 @@ from app.schemas.crm import (
     CustomerLifecycleStatus,
     CustomerPurchaseResponse,
     CustomerPurchasesResponse,
+    DeleteLeadResultItem,
+    DeleteLeadsRequest,
+    DeleteLeadsResponse,
+    ImportActivitiesRequest,
+    ImportActivitiesResponse,
+    ImportActivityRowResult,
     ImportedLeadsResponse,
     ImportLeadsRequest,
+    ImportPipelineRequest,
+    ImportPipelineResponse,
+    ImportPipelineRowResult,
     InvoiceCrmQuoteRequest,
     LeadDiscoveryCandidateResponse,
     LeadDiscoveryCapabilitiesResponse,
     LeadDiscoverySearchRequest,
     LeadDiscoverySearchResponse,
     LeadResponse,
+    LeadSortDirection,
+    LeadSortField,
     LeadSource,
     LeadStatus,
     OpportunityResponse,
@@ -65,14 +76,12 @@ from app.schemas.crm import (
     PaginatedCrmQuotesResponse,
     PaginatedLeadsResponse,
     PaginatedOpportunitiesResponse,
-    ScoringSettingsResponse,
     UpdateActivityRequest,
     UpdateCrmQuoteRequest,
     UpdateCrmWorkspaceSettingsRequest,
     UpdateCustomerCrmProfileRequest,
     UpdateLeadRequest,
     UpdateOpportunityRequest,
-    UpdateScoringSettingsRequest,
 )
 from app.schemas.pos import (
     CheckoutResponse,
@@ -81,7 +90,7 @@ from app.schemas.pos import (
     SaleStatus,
     VoidRequest,
 )
-from app.services.crm import CrmService, ScoringSettingsRecord
+from app.services.crm import CrmService
 from app.services.crm_discovery import CrmDiscoveryService, LeadDiscoveryQuery
 
 router = APIRouter(prefix="/api/v1/crm", tags=["CRM"])
@@ -176,12 +185,7 @@ def _lead_response(record: LeadRecord) -> LeadResponse:
         scraped_at=lead.scraped_at,
         raw_snippet=lead.raw_snippet,
         status=cast(Any, lead.status),
-        score_auto=lead.score_auto,
-        score_manual=lead.score_manual,
-        score=lead.score,
-        module_fits=lead.module_fits,
-        score_reasons=lead.score_reasons,
-        score_notes=lead.score_notes,
+        star_rating=lead.star_rating,
         customer_id=lead.converted_customer_id,
         opportunity_id=record.opportunity_id,
         converted_at=lead.converted_at,
@@ -231,16 +235,6 @@ def _activity_response(activity: Any) -> ActivityResponse:
         version=activity.version,
         created_at=activity.created_at,
         updated_at=activity.updated_at,
-    )
-
-
-def _settings_response(record: ScoringSettingsRecord) -> ScoringSettingsResponse:
-    return ScoringSettingsResponse(
-        weights={key: float(value) for key, value in record.settings.scoring_weights.items()},
-        hour_limit=record.hour_limit,
-        month_limit=record.month_limit,
-        version=record.settings.version,
-        updated_at=record.settings.updated_at,
     )
 
 
@@ -315,33 +309,6 @@ def _crm_quote_response(record: QuoteRecord) -> CrmQuoteResponse:
     )
 
 
-@router.get("/settings/scoring", responses=_RESPONSES)
-def get_scoring_settings(
-    response: Response,
-    database: DatabaseSession,
-    grant: CrmReadGrant,
-) -> ScoringSettingsResponse:
-    response.headers["Cache-Control"] = "no-store"
-    return _settings_response(CrmService(database).scoring_settings(grant))
-
-
-@router.patch("/settings/scoring", responses=_RESPONSES)
-def update_scoring_settings(
-    payload: UpdateScoringSettingsRequest,
-    database: DatabaseSession,
-    principal: CurrentPrincipal,
-    grant: CrmManageGrant,
-) -> ScoringSettingsResponse:
-    return _settings_response(
-        CrmService(database).update_scoring_settings(
-            principal=principal,
-            grant=grant,
-            expected_version=payload.version,
-            weights=payload.weights,
-        )
-    )
-
-
 @router.get("/settings/workspace", responses=_RESPONSES)
 def get_workspace_settings(
     response: Response,
@@ -378,8 +345,10 @@ def list_leads(
     status_filter: Annotated[LeadStatus | None, Query(alias="status")] = None,
     source: LeadSource | None = None,
     search: Annotated[str | None, Query(max_length=200)] = None,
+    sort: Annotated[LeadSortField, Query(alias="sort")] = "updated_at",
+    sort_dir: Annotated[LeadSortDirection, Query(alias="sortDir")] = "desc",
     page: Annotated[int, Query(ge=1, le=1_000_000)] = 1,
-    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=200)] = 50,
+    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=500)] = 50,
 ) -> PaginatedLeadsResponse:
     response.headers["Cache-Control"] = "no-store"
     result = CrmService(database).list_leads(
@@ -388,6 +357,8 @@ def list_leads(
         status=status_filter,
         source=source,
         search=search,
+        sort=sort,
+        sort_dir=sort_dir,
         page=page,
         page_size=page_size,
     )
@@ -435,6 +406,57 @@ def import_leads(
     return ImportedLeadsResponse(items=[_lead_response(record) for record in records])
 
 
+@router.post(
+    "/import/pipeline",
+    status_code=status.HTTP_201_CREATED,
+    responses=_RESPONSES,
+)
+def import_pipeline(
+    payload: ImportPipelineRequest,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    crm_grant: CrmManageGrant,
+    customer_grant: CustomerManageGrant,
+    idempotency_key: IdempotencyKey,
+) -> ImportPipelineResponse:
+    rows = CrmService(database).import_pipeline(
+        principal=principal,
+        grant=crm_grant,
+        customer_grant=customer_grant,
+        branch_id=payload.branch_id,
+        assigned_membership_id=payload.assigned_membership_id,
+        items=payload.items,
+        batch_idempotency_key=idempotency_key,
+    )
+    return ImportPipelineResponse(
+        items=[ImportPipelineRowResult.model_validate(row) for row in rows]
+    )
+
+
+@router.post(
+    "/import/activities",
+    status_code=status.HTTP_201_CREATED,
+    responses=_RESPONSES,
+)
+def import_activities(
+    payload: ImportActivitiesRequest,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: CrmManageGrant,
+    idempotency_key: IdempotencyKey,
+) -> ImportActivitiesResponse:
+    del idempotency_key
+    rows = CrmService(database).import_activities(
+        principal=principal,
+        grant=grant,
+        branch_id=payload.branch_id,
+        items=[item.model_dump(by_alias=False) for item in payload.items],
+    )
+    return ImportActivitiesResponse(
+        items=[ImportActivityRowResult.model_validate(row) for row in rows]
+    )
+
+
 @router.get("/leads/{lead_id}", responses=_RESPONSES)
 def get_lead(
     lead_id: UUID,
@@ -461,6 +483,21 @@ def update_lead(
             changes=payload.model_dump(exclude_unset=True, exclude={"version"}, by_alias=False),
         )
     )
+
+
+@router.post("/leads/batch-delete", responses=_RESPONSES)
+def delete_leads_batch(
+    payload: DeleteLeadsRequest,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: CrmManageGrant,
+) -> DeleteLeadsResponse:
+    rows = CrmService(database).delete_leads(
+        principal=principal,
+        grant=grant,
+        lead_ids=payload.lead_ids,
+    )
+    return DeleteLeadsResponse(items=[DeleteLeadResultItem.model_validate(row) for row in rows])
 
 
 @router.post("/leads/{lead_id}/convert", responses=_RESPONSES)
@@ -522,7 +559,7 @@ def list_opportunities(
     updated_after: Annotated[datetime | None, Query(alias="updatedAfter")] = None,
     updated_before: Annotated[datetime | None, Query(alias="updatedBefore")] = None,
     page: Annotated[int, Query(ge=1, le=1_000_000)] = 1,
-    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=200)] = 50,
+    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=500)] = 50,
 ) -> PaginatedOpportunitiesResponse:
     response.headers["Cache-Control"] = "no-store"
     result = CrmService(database).list_opportunities(
@@ -604,7 +641,7 @@ def list_activities(
     opportunity_id: Annotated[UUID | None, Query(alias="opportunityId")] = None,
     customer_id: Annotated[UUID | None, Query(alias="customerId")] = None,
     page: Annotated[int, Query(ge=1, le=1_000_000)] = 1,
-    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=200)] = 50,
+    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=500)] = 50,
 ) -> PaginatedActivitiesResponse:
     response.headers["Cache-Control"] = "no-store"
     result = CrmService(database).list_activities(
@@ -720,7 +757,7 @@ def list_customers(
     lifecycle_status: Annotated[CustomerLifecycleStatus | None, Query(alias="status")] = None,
     search: Annotated[str | None, Query(max_length=200)] = None,
     page: Annotated[int, Query(ge=1, le=1_000_000)] = 1,
-    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=200)] = 50,
+    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=500)] = 50,
 ) -> PaginatedCrmCustomersResponse:
     response.headers["Cache-Control"] = "no-store"
     result = CrmService(database).list_customers(
@@ -806,7 +843,7 @@ def list_quotes(
     customer_id: Annotated[UUID | None, Query(alias="customerId")] = None,
     crm_status: Annotated[CrmQuoteStatus | None, Query(alias="status")] = None,
     page: Annotated[int, Query(ge=1, le=1_000_000)] = 1,
-    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=200)] = 50,
+    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=500)] = 50,
 ) -> PaginatedCrmQuotesResponse:
     response.headers["Cache-Control"] = "no-store"
     result = CrmService(database).list_quotes(
@@ -949,7 +986,7 @@ def list_sales(
     date_from: Annotated[date | None, Query(alias="dateFrom")] = None,
     date_to: Annotated[date | None, Query(alias="dateTo")] = None,
     page: Annotated[int, Query(ge=1, le=1_000_000)] = 1,
-    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=200)] = 50,
+    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=500)] = 50,
 ) -> PaginatedSalesResponse:
     response.headers["Cache-Control"] = "no-store"
     result = CrmService(database).list_sales(
@@ -1004,6 +1041,8 @@ def get_crm_state(
         status=None,
         source=None,
         search=None,
+        sort="updated_at",
+        sort_dir="desc",
         page=1,
         page_size=200,
     )
@@ -1040,7 +1079,7 @@ def get_crm_state(
         page_size=200,
     )
     return CrmStateResponse(
-        settings=_settings_response(service.scoring_settings(crm_grant)),
+        settings=_workspace_settings_response(service.workspace_settings(crm_grant)),
         leads=[_lead_response(item) for item in leads.items],
         opportunities=[_opportunity_response(item) for item in opportunities.items],
         activities=[_activity_response(item) for item in activities.items],

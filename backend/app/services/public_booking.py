@@ -31,7 +31,7 @@ from app.services.agenda import AgendaService
 from app.services.appointment_reminders import AppointmentReminderService
 from app.services.auth import AuthPrincipal
 from app.services.authorization import PermissionGrant
-from app.services.booking_availability import get_available_slots
+from app.services.booking_availability import fits_schedule, get_available_slots
 from app.services.booking_tokens import (
     issue_appointment_management_token,
     verify_appointment_management_token,
@@ -137,6 +137,9 @@ class PublicBookingService:
         resources = self._active_resources(branch)
         if not resources:
             return {}
+        branch_schedule = AgendaService(self._session).branch_opening_schedule(
+            branch.workspace_id, branch.id
+        )
         schedule = self._agenda.employee_schedule(branch.workspace_id, employee.id)
         branch_zone = ZoneInfo(branch.timezone)
         schedule_zone = ZoneInfo(schedule.timezone) if schedule else branch_zone
@@ -172,6 +175,10 @@ class PublicBookingService:
                 on_approved_vacation=on_leave,
             )
             for slot in candidates:
+                if branch_schedule and not fits_schedule(
+                    slot, duration, branch_schedule, schedule_date
+                ):
+                    continue
                 local = datetime.combine(schedule_date, time.fromisoformat(slot), schedule_zone)
                 start = local.astimezone(UTC)
                 if start.astimezone(schedule_zone).replace(tzinfo=None) != local.replace(

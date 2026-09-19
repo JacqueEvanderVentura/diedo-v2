@@ -26,7 +26,7 @@ from app.services.crm_discovery import (
     LeadDiscoveryCandidate,
     LeadDiscoveryQuery,
 )
-from app.services.crm_scoring import DEFAULT_SCORING_WEIGHTS, SERP_HOUR_LIMIT, compute_auto_score
+from app.services.crm_discovery_limits import SERP_HOUR_LIMIT
 from app.services.demo_seed import seed_demo_data
 from app.services.errors import RateLimitExceededError, ServiceUnavailableError
 from app.services.local_bootstrap import bootstrap_local_foundation
@@ -60,25 +60,6 @@ class _DiscoveryProvider:
         if self.error is not None:
             raise self.error
         return self.items
-
-
-def test_crm_scoring_detects_vertical_signals_and_respects_manual_boundaries() -> None:
-    result = compute_auto_score(
-        {
-            "company": "Zen Spa",
-            "raw_snippet": "Spa de masajes con reservas, citas, clientes y sitio web",
-            "website": "https://zen.example.com",
-            "phone": "809-555-0101",
-        },
-        DEFAULT_SCORING_WEIGHTS,
-    )
-
-    assert 0 <= result.score <= 100
-    assert result.module_fits["agenda"] == 100
-    assert result.module_fits["crm"] == 100
-    assert "Vertical detectada: spa" in result.reasons
-    assert "Tiene sitio web" in result.reasons
-    assert "Teléfono disponible" in result.reasons
 
 
 @pytest.mark.integration
@@ -185,6 +166,8 @@ def test_seeded_crm_has_complete_commercial_trace_and_overview() -> None:
                 status=None,
                 source=None,
                 search=None,
+                sort="updated_at",
+                sort_dir="desc",
                 page=1,
                 page_size=100,
             )
@@ -346,15 +329,6 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
     assert unavailable_search.status_code == 503, unavailable_search.text
     assert unavailable_search.json()["parameter"] == "provider"
 
-    scoring = client.get("/api/v1/crm/settings/scoring", headers=headers)
-    assert scoring.status_code == 200, scoring.text
-    updated_scoring = client.patch(
-        "/api/v1/crm/settings/scoring",
-        headers=headers,
-        json={"version": scoring.json()["version"], "weights": scoring.json()["weights"]},
-    )
-    assert updated_scoring.status_code == 200, updated_scoring.text
-
     creation_headers = {**headers, "Idempotency-Key": f"crm-lead-{suffix}"}
     lead_payload = {
         "branchId": branch_id_text,
@@ -424,12 +398,11 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
             "version": imported_lead["version"],
             "assignedMembershipId": membership_id_text,
             "status": "contactado",
-            "scoreManual": 72,
-            "scoreNotes": "Prioridad revisada por ventas",
+            "starRating": "3.5",
         },
     )
     assert changed_lead.status_code == 200, changed_lead.text
-    assert changed_lead.json()["score"] == 72
+    assert changed_lead.json()["starRating"] == "3.5"
     assert (
         client.get(f"/api/v1/crm/leads/{changed_lead.json()['id']}", headers=headers).status_code
         == 200
@@ -446,16 +419,6 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
     )
     assert filtered_leads.status_code == 200, filtered_leads.text
     assert filtered_leads.json()["totalItems"] == 1
-    rescored = client.patch(
-        "/api/v1/crm/settings/scoring",
-        headers=headers,
-        json={
-            "version": updated_scoring.json()["version"],
-            "weights": updated_scoring.json()["weights"],
-        },
-    )
-    assert rescored.status_code == 200, rescored.text
-
     opportunity = client.post(
         f"/api/v1/crm/leads/{lead['id']}/opportunity",
         headers={**headers, "Idempotency-Key": f"crm-opp-{suffix}"},
@@ -800,12 +763,20 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
     assert sales.status_code == 200, sales.text
     assert overview.json()["totalLeads"] >= 1
     assert sales.json()["totalItems"] == 1
+    workspace_settings = client.get("/api/v1/crm/settings/workspace", headers=headers)
+    assert workspace_settings.status_code == 200, workspace_settings.text
     stale_settings = client.patch(
-        "/api/v1/crm/settings/scoring",
+        "/api/v1/crm/settings/workspace",
         headers=headers,
-        json={"version": scoring.json()["version"], "weights": scoring.json()["weights"]},
+        json={"version": workspace_settings.json()["version"], "uiMode": "simplified"},
     )
-    assert stale_settings.status_code == 409
+    assert stale_settings.status_code == 200, stale_settings.text
+    stale_replay = client.patch(
+        "/api/v1/crm/settings/workspace",
+        headers=headers,
+        json={"version": workspace_settings.json()["version"], "uiMode": "standard"},
+    )
+    assert stale_replay.status_code == 409
     changed_replay = client.post(
         "/api/v1/crm/leads",
         headers=creation_headers,
@@ -879,14 +850,6 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
             f"/api/v1/crm/activities/{customer_activity.json()['id']}",
             headers=headers,
             json={"version": customer_activity.json()["version"]},
-        ).status_code
-        == 400
-    )
-    assert (
-        client.patch(
-            "/api/v1/crm/settings/scoring",
-            headers=headers,
-            json={"version": rescored.json()["version"], "weights": {"crm": 1}},
         ).status_code
         == 400
     )
@@ -1235,25 +1198,6 @@ def session_scalar_count(model: type[object]) -> int:
         return int(session.scalar(select(func.count()).select_from(model)) or 0)
 
 
-def test_scoring_rejects_scoped_permission_before_mutating() -> None:
-    from unittest.mock import Mock
-
-    from app.services.errors import AuthorizationError
-
-    session = Mock()
-    grant = PermissionGrant("crm.manage", uuid7(), uuid7(), frozenset(), frozenset({uuid7()}))
-    with pytest.raises(AuthorizationError):
-        CrmService(session).update_scoring_settings(
-            principal=Mock(),
-            grant=grant,
-            expected_version=1,
-            weights=DEFAULT_SCORING_WEIGHTS,
-        )
-    session.execute.assert_not_called()
-    session.scalar.assert_not_called()
-    session.commit.assert_not_called()
-
-
 @pytest.mark.integration
 def test_crm_workspace_ui_mode_roundtrip(client: TestClient) -> None:
     with session_scope() as session:
@@ -1285,3 +1229,153 @@ def test_crm_workspace_ui_mode_roundtrip(client: TestClient) -> None:
     )
     assert restored.status_code == 200, restored.text
     assert restored.json()["uiMode"] == "standard"
+
+
+def test_import_pipeline_creates_lead_and_opportunity(client: TestClient) -> None:
+    suffix = uuid7().hex[-12:]
+    with session_scope() as session:
+        seeded = bootstrap_local_foundation(session, hash_password(_PASSWORD))
+        branch_id = session.scalar(
+            select(Branch.id).where(
+                Branch.workspace_id == seeded.workspace_id,
+                Branch.status == "active",
+            )
+        )
+        assert branch_id is not None
+
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@erp.dev", "password": _PASSWORD},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['accessToken']}"}
+    imported = client.post(
+        "/api/v1/crm/import/pipeline",
+        headers={**headers, "Idempotency-Key": f"pipe-{suffix}"},
+        json={
+            "branchId": str(branch_id),
+            "items": [
+                {
+                    "externalId": f"kommo-{suffix}",
+                    "name": f"Importado {suffix}",
+                    "phone": "8095554321",
+                    "stage": "propuesta",
+                    "value": "1500",
+                }
+            ],
+        },
+    )
+    assert imported.status_code == 201, imported.text
+    body = imported.json()["items"][0]
+    assert body["status"] == "created"
+    assert body["leadId"]
+    assert body["opportunityId"]
+
+    opportunities = client.get(
+        "/api/v1/crm/opportunities",
+        headers=headers,
+        params={"stage": "propuesta", "search": str(suffix)},
+    )
+    assert opportunities.status_code == 200, opportunities.text
+    assert opportunities.json()["totalItems"] >= 1
+
+    invalid_email = client.post(
+        "/api/v1/crm/import/pipeline",
+        headers={**headers, "Idempotency-Key": f"pipe-email-{suffix}"},
+        json={
+            "branchId": str(branch_id),
+            "items": [
+                {
+                    "externalId": f"kommo-bad-email-{suffix}",
+                    "name": f"Sin email valido {suffix}",
+                    "email": "levantamiento 18/10/25",
+                    "phone": "8095551111",
+                    "stage": "contactado",
+                }
+            ],
+        },
+    )
+    assert invalid_email.status_code == 201, invalid_email.text
+    assert invalid_email.json()["items"][0]["status"] == "created"
+
+    duplicate = client.post(
+        "/api/v1/crm/import/pipeline",
+        headers={**headers, "Idempotency-Key": f"pipe-dup-{suffix}"},
+        json={
+            "branchId": str(branch_id),
+            "items": [
+                {
+                    "externalId": f"kommo-{suffix}",
+                    "name": f"Importado {suffix}",
+                    "phone": "8095554321",
+                    "stage": "propuesta",
+                    "value": "1500",
+                }
+            ],
+        },
+    )
+    assert duplicate.status_code == 201, duplicate.text
+    assert duplicate.json()["items"][0]["status"] == "skipped"
+
+    mixed_batch = client.post(
+        "/api/v1/crm/import/pipeline",
+        headers={**headers, "Idempotency-Key": f"pipe-mixed-{suffix}"},
+        json={
+            "branchId": str(branch_id),
+            "items": [
+                {"name": "", "company": "", "stage": "contactado"},
+                {
+                    "externalId": f"kommo-mixed-{suffix}",
+                    "name": f"Fila valida {suffix}",
+                    "stage": "contactado",
+                },
+            ],
+        },
+    )
+    assert mixed_batch.status_code == 201, mixed_batch.text
+    statuses = [item["status"] for item in mixed_batch.json()["items"]]
+    assert statuses == ["error", "created"]
+
+
+@pytest.mark.integration
+def test_lead_star_rating_sort_nulls_last(client: TestClient) -> None:
+    suffix = uuid7().hex[-12:]
+    with session_scope() as session:
+        seeded = bootstrap_local_foundation(session, hash_password(_PASSWORD))
+        branch_id = session.scalar(
+            select(Branch.id).where(
+                Branch.workspace_id == seeded.workspace_id,
+                Branch.status == "active",
+            )
+        )
+        assert branch_id is not None
+
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@erp.dev", "password": _PASSWORD},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['accessToken']}"}
+
+    for rating, label in (("5", "cinco"), (None, "sin"), ("2.5", "dos")):
+        payload = {
+            "branchId": str(branch_id),
+            "name": f"Lead {label} {suffix}",
+            "phone": "8095550000",
+        }
+        if rating is not None:
+            payload["starRating"] = rating
+        response = client.post(
+            "/api/v1/crm/leads",
+            headers={**headers, "Idempotency-Key": f"star-{label}-{suffix}"},
+            json=payload,
+        )
+        assert response.status_code == 201, response.text
+
+    listed = client.get(
+        "/api/v1/crm/leads",
+        headers=headers,
+        params={"sort": "star_rating", "sortDir": "desc", "search": suffix},
+    )
+    assert listed.status_code == 200, listed.text
+    ratings = [item.get("starRating") for item in listed.json()["items"]]
+    assert ratings[0] == "5"
+    assert ratings[-1] is None

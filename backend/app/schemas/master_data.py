@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Literal, Self
+from typing import Any, Literal, Self
 from uuid import UUID
 
 from pydantic import EmailStr, Field, field_validator, model_validator
@@ -26,6 +26,43 @@ def normalize_optional_text(value: str | None) -> str | None:
         return None
     normalized = " ".join(value.split())
     return normalized or None
+
+
+def _import_row_text(data: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = data.get(key)
+        if value is None:
+            continue
+        text = normalize_optional_text(str(value))
+        if text:
+            return text
+    return ""
+
+
+def derive_import_customer_display_name(data: dict[str, Any]) -> str:
+    display = _import_row_text(data, "display_name", "displayName")
+    if len(display) >= 2:
+        return display[:200]
+    business = _import_row_text(data, "business_name", "businessName")
+    if len(business) >= 2:
+        return business[:200]
+    person = " ".join(
+        part
+        for part in (
+            _import_row_text(data, "first_name", "firstName"),
+            _import_row_text(data, "last_name", "lastName"),
+        )
+        if part
+    ).strip()
+    if len(person) >= 2:
+        return person[:200]
+    phone = _import_row_text(data, "phone")
+    if len(phone) >= 2:
+        return phone[:200]
+    external_id = _import_row_text(data, "external_id", "externalId")
+    if external_id:
+        return f"Cliente {external_id}"[:200]
+    return "Cliente sin nombre"
 
 
 class BranchReference(ApiModel):
@@ -105,6 +142,53 @@ class PaginatedCustomersResponse(ApiModel):
     total_pages: int
 
 
+class ImportCustomerItem(ApiModel):
+    external_id: str | None = Field(default=None, max_length=64)
+    customer_type: CustomerType = "person"
+    display_name: str = Field(min_length=2, max_length=200)
+    first_name: str | None = Field(default=None, max_length=100)
+    last_name: str | None = Field(default=None, max_length=100)
+    business_name: str | None = Field(default=None, max_length=200)
+    email: EmailStr | None = None
+    phone: str | None = Field(default=None, max_length=40)
+    acquisition_source: AcquisitionSource | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_display_name(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        payload = dict(data)
+        payload["display_name"] = derive_import_customer_display_name(payload)
+        return payload
+
+    @field_validator("display_name")
+    @classmethod
+    def normalize_display_name(cls, value: str) -> str:
+        return normalize_text(value)
+
+    @field_validator("first_name", "last_name", "business_name", "phone")
+    @classmethod
+    def normalize_optional_fields(cls, value: str | None) -> str | None:
+        return normalize_optional_text(value)
+
+
+class ImportCustomersRequest(ApiModel):
+    branch_ids: list[UUID] = Field(min_length=1, max_length=100)
+    items: list[ImportCustomerItem] = Field(min_length=1, max_length=100)
+
+
+class ImportCustomerRowResult(ApiModel):
+    external_id: str | None = None
+    customer_id: UUID | None = None
+    status: Literal["created", "skipped", "error"]
+    message: str | None = None
+
+
+class ImportCustomersResponse(ApiModel):
+    items: list[ImportCustomerRowResult]
+
+
 class CreateCustomerRequest(ApiModel):
     customer_type: CustomerType = "person"
     display_name: str = Field(min_length=2, max_length=200)
@@ -141,6 +225,20 @@ class CreateCustomerRequest(ApiModel):
         if (self.document_type is None) ^ (self.document_id is None):
             raise ValueError("documentType y documentId deben enviarse juntos.")
         return self
+
+
+class DeleteCustomersRequest(ApiModel):
+    customer_ids: list[UUID] = Field(alias="customerIds", min_length=1, max_length=100)
+
+
+class DeleteCustomerResultItem(ApiModel):
+    customer_id: UUID = Field(alias="customerId")
+    status: Literal["deleted", "error"]
+    message: str | None = None
+
+
+class DeleteCustomersResponse(ApiModel):
+    items: list[DeleteCustomerResultItem]
 
 
 class UpdateCustomerRequest(ApiModel):

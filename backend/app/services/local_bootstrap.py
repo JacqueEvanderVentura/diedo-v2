@@ -888,7 +888,6 @@ def bootstrap_local_foundation(
     )
     if branch is None:
         raise RuntimeError("Local branch could not be loaded after bootstrap.")
-    _upsert_appointment_resources(session, workspace.id, branch.id)
     active_branch_ids = session.scalars(
         select(Branch.id).where(
             Branch.workspace_id == workspace.id,
@@ -896,6 +895,7 @@ def bootstrap_local_foundation(
         )
     ).all()
     for active_branch_id in active_branch_ids:
+        _upsert_appointment_resources(session, workspace.id, active_branch_id)
         _upsert_inventory_defaults(session, workspace.id, active_branch_id)
 
     _insert_do_nothing(
@@ -1030,18 +1030,14 @@ def bootstrap_local_foundation(
         CrmSettings,
         {
             "workspace_id": workspace.id,
-            "scoring_weights": {
-                "pos": 1,
-                "agenda": 1,
-                "inventarios": 1,
-                "finanzas": 1,
-                "crm": 1,
-                "incidencias": 0.8,
-                "config": 0.6,
-            },
             "updated_by_platform_user_id": user.id,
         },
     )
+    crm_settings = session.scalar(
+        select(CrmSettings).where(CrmSettings.workspace_id == workspace.id)
+    )
+    if crm_settings is not None:
+        crm_settings.ui_mode = "standard"
 
     from app.config import settings
     from app.core.security import hash_password

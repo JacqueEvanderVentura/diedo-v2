@@ -140,6 +140,89 @@ class MasterDataService:
             raise ResourceNotFoundError("El cliente no existe.", "customerId")
         return self._repository.customer_record(customer)
 
+    def import_customers(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        branch_ids: set[UUID],
+        items: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        self._validate_branches(grant, branch_ids)
+        results: list[dict[str, object]] = []
+        for raw in items:
+            external_id = raw.get("external_id")
+            try:
+                phone = raw.get("phone")
+                if phone:
+                    existing_page = self._repository.list_customers(
+                        workspace_id=grant.workspace_id,
+                        allowed_branch_ids=grant.allowed_branch_ids,
+                        search=None,
+                        name=None,
+                        phone=normalize_phone(str(phone)),
+                        email=None,
+                        document_id=None,
+                        customer_type=None,
+                        status="active",
+                        branch_id=None,
+                        page=1,
+                        page_size=1,
+                        sort_by="name",
+                        sort_direction="asc",
+                    )
+                    if existing_page.items:
+                        customer = existing_page.items[0]
+                        results.append(
+                            {
+                                "external_id": external_id,
+                                "customer_id": customer.id,
+                                "status": "skipped",
+                                "message": "Cliente existente con el mismo teléfono.",
+                            }
+                        )
+                        continue
+                prepared = self._prepare_customer_values(
+                    {
+                        "customer_type": raw.get("customer_type", "person"),
+                        "display_name": raw.get("display_name"),
+                        "first_name": raw.get("first_name"),
+                        "last_name": raw.get("last_name"),
+                        "business_name": raw.get("business_name"),
+                        "email": raw.get("email"),
+                        "phone": raw.get("phone"),
+                        "acquisition_source": raw.get("acquisition_source"),
+                        "status": "active",
+                    }
+                )
+                record = self._repository.create_customer(
+                    workspace_id=grant.workspace_id,
+                    actor_platform_user_id=principal.platform_user_id,
+                    values=prepared,
+                    branch_ids=branch_ids,
+                    request_id=get_request_id(),
+                )
+                self._session.commit()
+                results.append(
+                    {
+                        "external_id": external_id,
+                        "customer_id": record.id,
+                        "status": "created",
+                        "message": None,
+                    }
+                )
+            except Exception as exc:  # noqa: BLE001 - per-row import report
+                self._session.rollback()
+                results.append(
+                    {
+                        "external_id": external_id,
+                        "customer_id": None,
+                        "status": "error",
+                        "message": str(exc),
+                    }
+                )
+        return results
+
     def create_customer(
         self,
         *,
@@ -206,6 +289,63 @@ class MasterDataService:
                 "Ya existe un cliente con ese documento en el workspace.",
                 "documentId",
             ) from exc
+
+    def archive_customers(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        customer_ids: list[UUID],
+    ) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        for customer_id in customer_ids:
+            try:
+                customer = self._repository.get_customer(
+                    grant.workspace_id, customer_id, grant.allowed_branch_ids
+                )
+                if customer is None:
+                    results.append(
+                        {
+                            "customer_id": customer_id,
+                            "status": "error",
+                            "message": "El cliente no existe o no tienes acceso.",
+                        }
+                    )
+                    continue
+                if customer.status == "archived":
+                    results.append(
+                        {
+                            "customer_id": customer_id,
+                            "status": "deleted",
+                            "message": None,
+                        }
+                    )
+                    continue
+                self._repository.update_customer(
+                    customer=customer,
+                    changes={"status": "archived"},
+                    branch_ids=None,
+                    actor_platform_user_id=principal.platform_user_id,
+                    request_id=get_request_id(),
+                )
+                self._session.commit()
+                results.append(
+                    {
+                        "customer_id": customer_id,
+                        "status": "deleted",
+                        "message": None,
+                    }
+                )
+            except Exception:
+                self._session.rollback()
+                results.append(
+                    {
+                        "customer_id": customer_id,
+                        "status": "error",
+                        "message": "No se pudo eliminar el cliente.",
+                    }
+                )
+        return results
 
     def customer_timeline(
         self, grant: PermissionGrant, customer_id: UUID

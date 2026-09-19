@@ -16,13 +16,21 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.request_context import get_request_id
-from app.db.models import Appointment, Branch, Customer, Workspace
+from app.db.models import (
+    Appointment,
+    AppointmentResource,
+    Branch,
+    BranchOpeningHour,
+    Customer,
+    Workspace,
+)
 from app.db.models.agenda import ACTIVE_APPOINTMENT_STATUSES
 from app.db.models.email_notifications import EmailNotification
 from app.repositories.agenda import (
     AgendaRepository,
     AppointmentListResult,
     AppointmentRecord,
+    ListedAppointmentResource,
 )
 from app.services.auth import AuthPrincipal
 from app.services.authorization import AuthorizationService, PermissionGrant
@@ -121,19 +129,39 @@ class AgendaService:
             for record in records
         )
 
-    def list_resources(self, grant: PermissionGrant, branch_id: UUID) -> tuple[Any, ...]:
+    def list_resources(
+        self,
+        grant: PermissionGrant,
+        branch_id: UUID,
+        *,
+        principal: AuthPrincipal | None = None,
+        bypass_resource_acl: bool = False,
+    ) -> tuple[ListedAppointmentResource, ...]:
         self._require_branch_access(grant, branch_id)
         if self._repository.branch(grant.workspace_id, branch_id) is None:
             raise ResourceNotFoundError("La sucursal no existe o no está activa.", "branchId")
-        return self._repository.list_resources(
+        resources = self._repository.list_resources(
             workspace_id=grant.workspace_id,
             branch_id=branch_id,
+        )
+        if bypass_resource_acl or principal is None:
+            return tuple(
+                ListedAppointmentResource(resource=resource, access="use") for resource in resources
+            )
+        return self._filter_listed_resources(
+            workspace_id=grant.workspace_id,
+            branch_id=branch_id,
+            platform_user_id=principal.platform_user_id,
+            resources=resources,
+            bypass_resource_acl=bypass_resource_acl,
         )
 
     def list_appointments(
         self,
         *,
         grant: PermissionGrant,
+        principal: AuthPrincipal | None = None,
+        bypass_resource_acl: bool = False,
         branch_id: UUID | None,
         date_from: date | None,
         date_to: date | None,
@@ -157,6 +185,14 @@ class AgendaService:
                     "El rango de calendario no puede superar 366 días.", "dateTo"
                 )
         normalized_search = " ".join(search.split()) if search else None
+        allowed_resource_ids = None
+        if principal is not None and not bypass_resource_acl:
+            allowed_resource_ids = self._visible_resource_ids(
+                workspace_id=grant.workspace_id,
+                branch_id=branch_id,
+                allowed_branch_ids=grant.allowed_branch_ids,
+                platform_user_id=principal.platform_user_id,
+            )
         return self._repository.list_appointments(
             workspace_id=grant.workspace_id,
             allowed_branch_ids=grant.allowed_branch_ids,
@@ -170,7 +206,190 @@ class AgendaService:
             page_size=page_size,
             sort_by=sort_by,
             sort_direction=sort_direction,
+            allowed_resource_ids=allowed_resource_ids,
         )
+
+    def create_appointment_resource(
+        self,
+        *,
+        grant: PermissionGrant,
+        branch_id: UUID,
+        name: str,
+        description: str | None,
+    ) -> AppointmentResource:
+        self._require_branch_access(grant, branch_id)
+        if self._repository.branch(grant.workspace_id, branch_id) is None:
+            raise ResourceNotFoundError("La sucursal no existe o no está activa.", "branchId")
+        code = f"cab-{uuid7().hex[:10]}"
+        resource = AppointmentResource(
+            workspace_id=grant.workspace_id,
+            branch_id=branch_id,
+            code=code,
+            name=name,
+            description=description,
+            resource_type="room",
+            status="active",
+            sort_order=self._repository.next_resource_sort_order(grant.workspace_id, branch_id),
+        )
+        self._repository.add_resource(resource)
+        self._session.commit()
+        return resource
+
+    def update_appointment_resource(
+        self,
+        *,
+        grant: PermissionGrant,
+        branch_id: UUID,
+        resource_id: UUID,
+        expected_version: int,
+        changes: dict[str, Any],
+    ) -> AppointmentResource:
+        self._require_branch_access(grant, branch_id)
+        resource = self._repository.get_resource_any_status(
+            grant.workspace_id, branch_id, resource_id
+        )
+        if resource is None:
+            raise ResourceNotFoundError("La cabina no existe.", "resourceId")
+        if resource.version != expected_version:
+            raise ConflictError("La cabina cambió desde la última lectura.", "version")
+        if "name" in changes and changes["name"] is not None:
+            resource.name = cast(str, changes["name"])
+        if "description" in changes:
+            resource.description = cast(str | None, changes["description"])
+        if "status" in changes and changes["status"] is not None:
+            resource.status = cast(str, changes["status"])
+        self._session.commit()
+        return resource
+
+    def archive_appointment_resource(
+        self,
+        *,
+        grant: PermissionGrant,
+        branch_id: UUID,
+        resource_id: UUID,
+        expected_version: int,
+    ) -> None:
+        self.update_appointment_resource(
+            grant=grant,
+            branch_id=branch_id,
+            resource_id=resource_id,
+            expected_version=expected_version,
+            changes={"status": "archived"},
+        )
+
+    def reorder_appointment_resources(
+        self,
+        *,
+        grant: PermissionGrant,
+        branch_id: UUID,
+        resource_ids: list[UUID],
+    ) -> tuple[AppointmentResource, ...]:
+        self._require_branch_access(grant, branch_id)
+        resources = self._repository.list_resources(
+            workspace_id=grant.workspace_id,
+            branch_id=branch_id,
+        )
+        by_id = {resource.id: resource for resource in resources}
+        if set(resource_ids) != set(by_id):
+            raise InvalidOperationError(
+                "Debes enviar todas las cabinas activas de la sucursal en el nuevo orden.",
+                "resourceIds",
+            )
+        for index, resource_id in enumerate(resource_ids):
+            by_id[resource_id].sort_order = index
+        self._session.commit()
+        return self._repository.list_resources(
+            workspace_id=grant.workspace_id,
+            branch_id=branch_id,
+        )
+
+    def get_branch_opening_hours(
+        self, grant: PermissionGrant, branch_id: UUID
+    ) -> tuple[BranchOpeningHour, ...]:
+        self._require_branch_access(grant, branch_id)
+        if self._repository.branch(grant.workspace_id, branch_id) is None:
+            raise ResourceNotFoundError("La sucursal no existe o no está activa.", "branchId")
+        return self._repository.list_opening_hours(grant.workspace_id, branch_id)
+
+    def replace_branch_opening_hours(
+        self,
+        *,
+        grant: PermissionGrant,
+        branch_id: UUID,
+        items: list[dict[str, Any]],
+    ) -> tuple[BranchOpeningHour, ...]:
+        self._require_branch_access(grant, branch_id)
+        if self._repository.branch(grant.workspace_id, branch_id) is None:
+            raise ResourceNotFoundError("La sucursal no existe o no está activa.", "branchId")
+        rows = tuple(
+            (
+                cast(str, item["weekday"]),
+                cast(time, item["opens_at"]),
+                cast(time, item["closes_at"]),
+            )
+            for item in items
+        )
+        result = self._repository.replace_opening_hours(
+            workspace_id=grant.workspace_id,
+            branch_id=branch_id,
+            rows=rows,
+        )
+        self._session.commit()
+        return result
+
+    def get_resource_acl(
+        self, grant: PermissionGrant, branch_id: UUID, resource_id: UUID
+    ) -> tuple[Any, ...]:
+        self._require_branch_access(grant, branch_id)
+        if (
+            self._repository.get_resource_any_status(grant.workspace_id, branch_id, resource_id)
+            is None
+        ):
+            raise ResourceNotFoundError("La cabina no existe.", "resourceId")
+        return self._repository.acl_rows_for_resource(grant.workspace_id, branch_id, resource_id)
+
+    def replace_resource_acl(
+        self,
+        *,
+        grant: PermissionGrant,
+        branch_id: UUID,
+        resource_id: UUID,
+        entries: list[dict[str, Any]],
+    ) -> tuple[Any, ...]:
+        self._require_branch_access(grant, branch_id)
+        if (
+            self._repository.get_resource_any_status(grant.workspace_id, branch_id, resource_id)
+            is None
+        ):
+            raise ResourceNotFoundError("La cabina no existe.", "resourceId")
+        normalized = tuple(
+            (cast(UUID, entry["user_id"]), cast(str | None, entry.get("access")))
+            for entry in entries
+        )
+        rows = self._repository.replace_resource_acl(
+            workspace_id=grant.workspace_id,
+            branch_id=branch_id,
+            resource_id=resource_id,
+            entries=normalized,
+        )
+        self._session.commit()
+        return rows
+
+    def branch_opening_schedule(
+        self, workspace_id: UUID, branch_id: UUID
+    ) -> dict[str, list[dict[str, str]]] | None:
+        hours = self._repository.list_opening_hours(workspace_id, branch_id)
+        if not hours:
+            return None
+        schedule: dict[str, list[dict[str, str]]] = {}
+        for row in hours:
+            schedule[row.weekday] = [
+                {
+                    "start": row.opens_at.strftime("%H:%M"),
+                    "end": row.closes_at.strftime("%H:%M"),
+                }
+            ]
+        return schedule
 
     def create_appointments(
         self,
@@ -215,6 +434,12 @@ class AgendaService:
             employee_id=employee_id,
             customer_id=customer_id,
             service_id=service_id,
+        )
+        self._require_resource_use(
+            workspace_id=grant.workspace_id,
+            branch_id=branch_id,
+            resource_id=resource_id,
+            platform_user_id=principal.platform_user_id,
         )
         self._validate_money(values)
 
@@ -297,6 +522,7 @@ class AgendaService:
                     updated_by_platform_user_id=principal.platform_user_id,
                 )
                 self._repository.add_appointment(appointment)
+                self._session.flush()
                 if workspace is not None and status == "confirmed":
                     queued = self._enqueue_notification(
                         appointment, "appointment.confirmed", branch, workspace
@@ -417,6 +643,27 @@ class AgendaService:
             customer_id=customer_id,
             service_id=service_id,
         )
+        schedule_changed = (
+            resource_id != appointment.resource_id
+            or branch_id != appointment.branch_id
+            or "date" in changes
+            or "time" in changes
+            or "duration" in changes
+        )
+        if schedule_changed or resource_id != appointment.resource_id:
+            self._require_resource_use(
+                workspace_id=grant.workspace_id,
+                branch_id=branch_id,
+                resource_id=resource_id,
+                platform_user_id=principal.platform_user_id,
+            )
+        elif not self._resource_visible(
+            workspace_id=grant.workspace_id,
+            branch_id=branch_id,
+            resource_id=appointment.resource_id,
+            platform_user_id=principal.platform_user_id,
+        ):
+            raise AuthorizationError("No tienes acceso a esta cita.")
 
         scheduled_date = cast(date, changes.get("date", appointment.scheduled_date))
         scheduled_time = cast(time, changes.get("time", appointment.scheduled_time))
@@ -618,6 +865,19 @@ class AgendaService:
             raise ResourceNotFoundError("La cita no existe.", "appointmentId")
         if appointment.version != expected_version:
             raise ConflictError("La cita cambió desde la última lectura.", "version")
+        if not self._resource_visible(
+            workspace_id=grant.workspace_id,
+            branch_id=appointment.branch_id,
+            resource_id=appointment.resource_id,
+            platform_user_id=principal.platform_user_id,
+        ):
+            raise AuthorizationError("No tienes acceso a esta cita.")
+        self._require_resource_use(
+            workspace_id=grant.workspace_id,
+            branch_id=appointment.branch_id,
+            resource_id=appointment.resource_id,
+            platform_user_id=principal.platform_user_id,
+        )
         had_pending_balance = self._has_pending_balance(
             status=appointment.status,
             pending_payment=appointment.pending_payment,
@@ -926,3 +1186,132 @@ class AgendaService:
     def _require_branch_access(grant: PermissionGrant, branch_id: UUID) -> None:
         if grant.allowed_branch_ids is not None and branch_id not in grant.allowed_branch_ids:
             raise AuthorizationError("No puedes usar una sucursal fuera de tu alcance.")
+
+    def _resource_access(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID,
+        resource_id: UUID,
+        platform_user_id: UUID,
+        resources_with_acl: frozenset[UUID],
+        acl_by_resource: dict[UUID, dict[UUID, str]],
+    ) -> str | None:
+        if resource_id not in resources_with_acl:
+            return "use"
+        user_access = acl_by_resource.get(resource_id, {}).get(platform_user_id)
+        return user_access
+
+    def _resource_visible(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID,
+        resource_id: UUID,
+        platform_user_id: UUID,
+    ) -> bool:
+        resources_with_acl = self._repository.resource_ids_with_acl_rows(workspace_id, branch_id)
+        acl_rows = self._repository.acl_rows_for_branch(workspace_id, branch_id)
+        acl_by_resource: dict[UUID, dict[UUID, str]] = {}
+        for row in acl_rows:
+            acl_by_resource.setdefault(row.resource_id, {})[row.platform_user_id] = row.access
+        access = self._resource_access(
+            workspace_id=workspace_id,
+            branch_id=branch_id,
+            resource_id=resource_id,
+            platform_user_id=platform_user_id,
+            resources_with_acl=resources_with_acl,
+            acl_by_resource=acl_by_resource,
+        )
+        return access in {"view", "use"}
+
+    def _require_resource_use(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID,
+        resource_id: UUID,
+        platform_user_id: UUID,
+    ) -> None:
+        resources_with_acl = self._repository.resource_ids_with_acl_rows(workspace_id, branch_id)
+        acl_rows = self._repository.acl_rows_for_branch(workspace_id, branch_id)
+        acl_by_resource: dict[UUID, dict[UUID, str]] = {}
+        for row in acl_rows:
+            acl_by_resource.setdefault(row.resource_id, {})[row.platform_user_id] = row.access
+        access = self._resource_access(
+            workspace_id=workspace_id,
+            branch_id=branch_id,
+            resource_id=resource_id,
+            platform_user_id=platform_user_id,
+            resources_with_acl=resources_with_acl,
+            acl_by_resource=acl_by_resource,
+        )
+        if access != "use":
+            raise AuthorizationError("No tienes permiso para usar esta cabina.")
+
+    def _filter_listed_resources(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID,
+        platform_user_id: UUID,
+        resources: tuple[AppointmentResource, ...],
+        bypass_resource_acl: bool,
+    ) -> tuple[ListedAppointmentResource, ...]:
+        if bypass_resource_acl:
+            return tuple(
+                ListedAppointmentResource(resource=resource, access="use") for resource in resources
+            )
+        resources_with_acl = self._repository.resource_ids_with_acl_rows(workspace_id, branch_id)
+        acl_rows = self._repository.acl_rows_for_branch(workspace_id, branch_id)
+        acl_by_resource: dict[UUID, dict[UUID, str]] = {}
+        for row in acl_rows:
+            acl_by_resource.setdefault(row.resource_id, {})[row.platform_user_id] = row.access
+        listed: list[ListedAppointmentResource] = []
+        for resource in resources:
+            access = self._resource_access(
+                workspace_id=workspace_id,
+                branch_id=branch_id,
+                resource_id=resource.id,
+                platform_user_id=platform_user_id,
+                resources_with_acl=resources_with_acl,
+                acl_by_resource=acl_by_resource,
+            )
+            if access in {"view", "use"}:
+                listed.append(ListedAppointmentResource(resource=resource, access=access))
+        return tuple(listed)
+
+    def _visible_resource_ids(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID | None,
+        allowed_branch_ids: frozenset[UUID] | None,
+        platform_user_id: UUID,
+    ) -> frozenset[UUID]:
+        if branch_id is not None:
+            branch_ids = frozenset({branch_id})
+        elif allowed_branch_ids is not None:
+            branch_ids = allowed_branch_ids
+        else:
+            branches = self._session.scalars(
+                select(Branch.id).where(
+                    Branch.workspace_id == workspace_id,
+                    Branch.status == "active",
+                )
+            )
+            branch_ids = frozenset(branches)
+        resources = self._repository.list_resources_in_branches(
+            workspace_id=workspace_id,
+            branch_ids=branch_ids,
+        )
+        visible: set[UUID] = set()
+        for resource in resources:
+            if self._resource_visible(
+                workspace_id=workspace_id,
+                branch_id=resource.branch_id,
+                resource_id=resource.id,
+                platform_user_id=platform_user_id,
+            ):
+                visible.add(resource.id)
+        return frozenset(visible)

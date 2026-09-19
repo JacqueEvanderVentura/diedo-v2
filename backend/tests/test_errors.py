@@ -38,7 +38,7 @@ def test_validation_error_uses_public_error_contract() -> None:
 
     assert response.status_code == 400
     assert response.json() == {
-        "message": "Este campo es obligatorio.",
+        "message": "itemName: Este campo es obligatorio.",
         "parameter": "itemName",
     }
 

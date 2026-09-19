@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, Literal, Self
+from typing import Annotated, Any, Literal, Self
 from uuid import UUID
 
 from pydantic import EmailStr, Field, HttpUrl, PlainSerializer, field_validator, model_validator
@@ -73,7 +73,10 @@ CrmSortDirection = Literal["asc", "desc"]
 
 
 def _serialize_decimal(value: Decimal) -> str:
-    return format(value, "f")
+    text = format(value, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text
 
 
 DecimalString = Annotated[
@@ -93,6 +96,27 @@ def _normalize_optional_text(value: str | None) -> str | None:
     return normalized or None
 
 
+def _coerce_optional_email(value: object) -> str | None:
+    if value is None or value == "":
+        return None
+    text = str(value).strip()
+    if "@" not in text:
+        return None
+    return text
+
+
+def _validate_star_rating(value: Decimal | float | int | str | None) -> Decimal | None:
+    if value is None or value == "":
+        return None
+    rating = Decimal(str(value))
+    if rating < 0 or rating > 5:
+        raise ValueError("La calificación debe estar entre 0 y 5.")
+    doubled = rating * 2
+    if doubled != doubled.to_integral_value():
+        raise ValueError("Usa medios puntos (0, 0.5, 1, …, 5).")
+    return rating.quantize(Decimal("0.1"))
+
+
 class LeadInput(ApiModel):
     branch_id: UUID
     assigned_membership_id: UUID | None = None
@@ -108,15 +132,19 @@ class LeadInput(ApiModel):
     scraped_at: datetime | None = None
     raw_snippet: str | None = Field(default=None, max_length=4000)
     status: EditableLeadStatus = "nuevo"
-    score_manual: int | None = Field(default=None, ge=0, le=100)
-    score_notes: str | None = Field(default=None, max_length=2000)
+    star_rating: Decimal | None = None
+
+    @field_validator("star_rating", mode="before")
+    @classmethod
+    def coerce_star_rating(cls, value: object) -> Decimal | None:
+        return _validate_star_rating(value)  # type: ignore[arg-type]
 
     @field_validator("name", "company")
     @classmethod
     def normalize_names(cls, value: str) -> str:
         return _normalize_required_text(value)
 
-    @field_validator("phone", "location", "raw_snippet", "score_notes")
+    @field_validator("phone", "location", "raw_snippet")
     @classmethod
     def normalize_optional_fields(cls, value: str | None) -> str | None:
         return _normalize_optional_text(value)
@@ -150,16 +178,20 @@ class UpdateLeadRequest(ApiModel):
     location: str | None = Field(default=None, max_length=240)
     acquisition_source: AcquisitionSource | None = None
     status: EditableLeadStatus | None = None
-    score_manual: int | None = Field(default=None, ge=0, le=100)
-    score_notes: str | None = Field(default=None, max_length=2000)
+    star_rating: Decimal | None = None
     raw_snippet: str | None = Field(default=None, max_length=4000)
+
+    @field_validator("star_rating", mode="before")
+    @classmethod
+    def coerce_star_rating(cls, value: object) -> Decimal | None:
+        return _validate_star_rating(value)  # type: ignore[arg-type]
 
     @field_validator("name", "company")
     @classmethod
     def normalize_names(cls, value: str | None) -> str | None:
         return _normalize_required_text(value) if value is not None else None
 
-    @field_validator("phone", "location", "score_notes", "raw_snippet")
+    @field_validator("phone", "location", "raw_snippet")
     @classmethod
     def normalize_optional_fields(cls, value: str | None) -> str | None:
         return _normalize_optional_text(value)
@@ -169,6 +201,20 @@ class UpdateLeadRequest(ApiModel):
         if not self.model_fields_set - {"version"}:
             raise ValueError("Debes enviar al menos un cambio.")
         return self
+
+
+class DeleteLeadsRequest(ApiModel):
+    lead_ids: list[UUID] = Field(alias="leadIds", min_length=1, max_length=100)
+
+
+class DeleteLeadResultItem(ApiModel):
+    lead_id: UUID = Field(alias="leadId")
+    status: Literal["deleted", "error"]
+    message: str | None = None
+
+
+class DeleteLeadsResponse(ApiModel):
+    items: list[DeleteLeadResultItem]
 
 
 class ConvertLeadRequest(ApiModel):
@@ -214,12 +260,7 @@ class LeadResponse(ApiModel):
     scraped_at: datetime | None
     raw_snippet: str | None
     status: LeadStatus
-    score_auto: int
-    score_manual: int | None
-    score: int
-    module_fits: dict[str, int]
-    score_reasons: list[str]
-    score_notes: str | None
+    star_rating: DecimalString | None
     customer_id: UUID | None
     opportunity_id: UUID | None
     converted_at: datetime | None
@@ -238,6 +279,100 @@ class PaginatedLeadsResponse(ApiModel):
 
 class ImportedLeadsResponse(ApiModel):
     items: list[LeadResponse]
+
+
+class ImportPipelineItem(ApiModel):
+    external_id: str | None = Field(default=None, max_length=64)
+    name: str = Field(default="", max_length=200)
+    company: str = Field(default="", max_length=200)
+    email: EmailStr | None = None
+    phone: str | None = Field(default=None, max_length=40)
+    website: HttpUrl | None = Field(default=None, max_length=500)
+    location: str | None = Field(default=None, max_length=240)
+    acquisition_source: AcquisitionSource | None = None
+    stage: OpportunityStage = "nuevo"
+    value: Decimal = Field(default=Decimal("0"), ge=0, max_digits=14, decimal_places=2)
+    notes: str | None = Field(default=None, max_length=2000)
+    lost_reason: str | None = Field(default=None, max_length=1000)
+    convert: bool = False
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def coerce_import_email(cls, value: object) -> str | None:
+        return _coerce_optional_email(value)
+
+    @field_validator("name", "company", mode="before")
+    @classmethod
+    def normalize_names(cls, value: str | None) -> str:
+        if value is None:
+            return ""
+        return _normalize_required_text(value)
+
+    @field_validator("phone", "location", "notes", "lost_reason")
+    @classmethod
+    def normalize_optional_fields(cls, value: str | None) -> str | None:
+        return _normalize_optional_text(value)
+
+    @model_validator(mode="after")
+    def require_identity(self) -> Self:
+        if not self.name and not self.company:
+            raise ValueError("Debes indicar el nombre o la empresa del lead.")
+        if self.stage == "perdido" and not self.lost_reason:
+            raise ValueError("Una oportunidad perdida requiere motivo.")
+        return self
+
+
+class ImportPipelineRequest(ApiModel):
+    branch_id: UUID
+    assigned_membership_id: UUID | None = None
+    items: list[dict[str, Any]] = Field(min_length=1, max_length=100)
+
+
+class ImportPipelineRowResult(ApiModel):
+    external_id: str | None = None
+    lead_id: UUID | None = None
+    opportunity_id: UUID | None = None
+    customer_id: UUID | None = None
+    status: Literal["created", "skipped", "error"]
+    message: str | None = None
+
+
+class ImportPipelineResponse(ApiModel):
+    items: list[ImportPipelineRowResult]
+
+
+class ImportActivityItem(ApiModel):
+    external_id: str | None = Field(default=None, max_length=64)
+    lead_external_id: str | None = Field(default=None, max_length=64)
+    title: str = Field(min_length=2, max_length=240)
+    description: str | None = Field(default=None, max_length=2000)
+    due_at: datetime | None = None
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        return _normalize_required_text(value)
+
+    @field_validator("description")
+    @classmethod
+    def normalize_description(cls, value: str | None) -> str | None:
+        return _normalize_optional_text(value)
+
+
+class ImportActivitiesRequest(ApiModel):
+    branch_id: UUID
+    items: list[ImportActivityItem] = Field(min_length=1, max_length=100)
+
+
+class ImportActivityRowResult(ApiModel):
+    external_id: str | None = None
+    activity_id: UUID | None = None
+    status: Literal["created", "skipped", "error"]
+    message: str | None = None
+
+
+class ImportActivitiesResponse(ApiModel):
+    items: list[ImportActivityRowResult]
 
 
 class CreateOpportunityRequest(ApiModel):
@@ -274,6 +409,7 @@ class CreateLeadOpportunityRequest(ApiModel):
     stage: OpportunityStage | None = None
     value: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
     notes: str | None = Field(default=None, max_length=2000)
+    lost_reason: str | None = Field(default=None, max_length=1000)
 
 
 class UpdateOpportunityRequest(ApiModel):
@@ -397,15 +533,9 @@ class PaginatedActivitiesResponse(ApiModel):
     total_pages: int
 
 
-class ScoringSettingsResponse(ApiModel):
-    weights: dict[str, float]
-    hour_limit: int
-    month_limit: int
-    version: int
-    updated_at: datetime
-
-
 CrmUiMode = Literal["standard", "simplified"]
+LeadSortField = Literal["updated_at", "star_rating"]
+LeadSortDirection = Literal["asc", "desc"]
 
 
 class CrmWorkspaceSettingsResponse(ApiModel):
@@ -417,21 +547,6 @@ class CrmWorkspaceSettingsResponse(ApiModel):
 class UpdateCrmWorkspaceSettingsRequest(ApiModel):
     version: int = Field(ge=1)
     ui_mode: CrmUiMode
-
-
-class UpdateScoringSettingsRequest(ApiModel):
-    version: int = Field(ge=1)
-    weights: dict[str, float] = Field(min_length=7, max_length=7)
-
-    @field_validator("weights")
-    @classmethod
-    def validate_weights(cls, value: dict[str, float]) -> dict[str, float]:
-        expected = {"pos", "agenda", "inventarios", "finanzas", "crm", "incidencias", "config"}
-        if set(value) != expected:
-            raise ValueError("Debes configurar exactamente los siete módulos de scoring.")
-        if any(weight < 0 or weight > 5 for weight in value.values()):
-            raise ValueError("Cada peso debe estar entre 0 y 5.")
-        return value
 
 
 class UpdateCustomerCrmProfileRequest(ApiModel):
@@ -517,7 +632,7 @@ class CrmOverviewResponse(ApiModel):
 
 
 class CrmStateResponse(ApiModel):
-    settings: ScoringSettingsResponse
+    settings: CrmWorkspaceSettingsResponse
     leads: list[LeadResponse]
     opportunities: list[OpportunityResponse]
     activities: list[ActivityResponse]

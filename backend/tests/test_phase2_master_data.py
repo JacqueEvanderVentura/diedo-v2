@@ -12,6 +12,7 @@ from app.main import app
 from app.schemas.master_data import (
     CreateCustomerRequest,
     CreateEmployeeRequest,
+    ImportCustomerItem,
     UpdateCustomerRequest,
     UpdateEmployeeRequest,
     WeeklySchedule,
@@ -57,6 +58,12 @@ def test_phase2_request_schemas_normalize_and_reject_ambiguous_changes() -> None
 
     with pytest.raises(ValidationError, match="posterior"):
         WorkBlock(start="10:00", end="09:00")
+    import_row = ImportCustomerItem(
+        externalId="kommo-1",
+        firstName="María",
+        lastName="García",
+    )
+    assert import_row.display_name == "María García"
     with pytest.raises(ValidationError, match="No repitas sucursales"):
         CreateCustomerRequest(displayName="Cliente", branchIds=[branch_id, branch_id])
     customer = CreateCustomerRequest(
@@ -218,6 +225,35 @@ def test_phase2_customers_employees_schedules_and_attachments(
     )
     assert stale.status_code == 409
     assert stale.json()["parameter"] == "version"
+
+    other_customer = client.post(
+        "/api/v1/customers",
+        headers=headers,
+        json={
+            "customerType": "person",
+            "displayName": f"Otro Cliente {suffix}",
+            "branchIds": [branch_id],
+        },
+    )
+    assert other_customer.status_code == 201, other_customer.text
+    other_id = other_customer.json()["id"]
+
+    missing_id = uuid7()
+    batch_delete = client.post(
+        "/api/v1/customers/batch-delete",
+        headers=headers,
+        json={"customerIds": [other_id, str(missing_id)]},
+    )
+    assert batch_delete.status_code == 200, batch_delete.text
+    batch_items = {item["customerId"]: item for item in batch_delete.json()["items"]}
+    assert batch_items[other_id]["status"] == "deleted"
+    assert batch_items[str(missing_id)]["status"] == "error"
+
+    list_after = client.get("/api/v1/customers", headers=headers, params={"branchId": branch_id})
+    assert list_after.status_code == 200
+    active_ids = {item["id"] for item in list_after.json()["items"]}
+    assert customer["id"] in active_ids
+    assert other_id not in active_ids
 
     storage = LocalAttachmentStorage(tmp_path / "attachments")
     app.dependency_overrides[get_attachment_storage] = lambda: storage

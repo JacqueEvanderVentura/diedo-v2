@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.models import CrmDiscoveryUsage
-from app.services.crm_scoring import SERP_HOUR_LIMIT, SERP_MONTH_LIMIT
+from app.services.crm_discovery_limits import SERP_HOUR_LIMIT, SERP_MONTH_LIMIT
 from app.services.errors import RateLimitExceededError, ServiceUnavailableError
 
 ProviderName = Literal["serpapi", "serper"]

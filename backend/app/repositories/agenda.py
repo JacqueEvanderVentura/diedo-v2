@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Any
 from uuid import UUID
 
@@ -13,8 +13,10 @@ from app.db.models import (
     Appointment,
     AppointmentEvent,
     AppointmentResource,
+    AppointmentResourceAcl,
     AuditEntry,
     Branch,
+    BranchOpeningHour,
     Customer,
     CustomerBranchAssignment,
     Employee,
@@ -56,6 +58,12 @@ class AppointmentListResult:
     total_items: int
 
 
+@dataclass(frozen=True)
+class ListedAppointmentResource:
+    resource: AppointmentResource
+    access: str
+
+
 class AgendaRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -74,9 +82,187 @@ class AgendaRepository:
                     AppointmentResource.branch_id == branch_id,
                     AppointmentResource.status != "archived",
                 )
-                .order_by(AppointmentResource.name, AppointmentResource.id)
+                .order_by(
+                    AppointmentResource.sort_order,
+                    AppointmentResource.name,
+                    AppointmentResource.id,
+                )
             )
         )
+
+    def list_resources_in_branches(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_ids: frozenset[UUID],
+    ) -> tuple[AppointmentResource, ...]:
+        if not branch_ids:
+            return ()
+        return tuple(
+            self._session.scalars(
+                select(AppointmentResource).where(
+                    AppointmentResource.workspace_id == workspace_id,
+                    AppointmentResource.branch_id.in_(branch_ids),
+                    AppointmentResource.status != "archived",
+                )
+            )
+        )
+
+    def resource_ids_with_acl_rows(self, workspace_id: UUID, branch_id: UUID) -> frozenset[UUID]:
+        rows = self._session.scalars(
+            select(AppointmentResourceAcl.resource_id).where(
+                AppointmentResourceAcl.workspace_id == workspace_id,
+                AppointmentResourceAcl.branch_id == branch_id,
+            )
+        )
+        return frozenset(rows)
+
+    def acl_rows_for_branch(
+        self, workspace_id: UUID, branch_id: UUID
+    ) -> tuple[AppointmentResourceAcl, ...]:
+        return tuple(
+            self._session.scalars(
+                select(AppointmentResourceAcl).where(
+                    AppointmentResourceAcl.workspace_id == workspace_id,
+                    AppointmentResourceAcl.branch_id == branch_id,
+                )
+            )
+        )
+
+    def acl_rows_for_resource(
+        self, workspace_id: UUID, branch_id: UUID, resource_id: UUID
+    ) -> tuple[AppointmentResourceAcl, ...]:
+        return tuple(
+            self._session.scalars(
+                select(AppointmentResourceAcl).where(
+                    AppointmentResourceAcl.workspace_id == workspace_id,
+                    AppointmentResourceAcl.branch_id == branch_id,
+                    AppointmentResourceAcl.resource_id == resource_id,
+                )
+            )
+        )
+
+    def acl_for_user(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID,
+        resource_id: UUID,
+        platform_user_id: UUID,
+    ) -> AppointmentResourceAcl | None:
+        return self._session.scalar(
+            select(AppointmentResourceAcl).where(
+                AppointmentResourceAcl.workspace_id == workspace_id,
+                AppointmentResourceAcl.branch_id == branch_id,
+                AppointmentResourceAcl.resource_id == resource_id,
+                AppointmentResourceAcl.platform_user_id == platform_user_id,
+            )
+        )
+
+    def replace_resource_acl(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID,
+        resource_id: UUID,
+        entries: tuple[tuple[UUID, str | None], ...],
+    ) -> tuple[AppointmentResourceAcl, ...]:
+        existing = self.acl_rows_for_resource(workspace_id, branch_id, resource_id)
+        by_user = {row.platform_user_id: row for row in existing}
+        for user_id, access in entries:
+            if access is None:
+                row = by_user.pop(user_id, None)
+                if row is not None:
+                    self._session.delete(row)
+                continue
+            row = by_user.get(user_id)
+            if row is None:
+                self._session.add(
+                    AppointmentResourceAcl(
+                        workspace_id=workspace_id,
+                        branch_id=branch_id,
+                        resource_id=resource_id,
+                        platform_user_id=user_id,
+                        access=access,
+                    )
+                )
+            else:
+                row.access = access
+        self._session.flush()
+        return self.acl_rows_for_resource(workspace_id, branch_id, resource_id)
+
+    def list_opening_hours(
+        self, workspace_id: UUID, branch_id: UUID
+    ) -> tuple[BranchOpeningHour, ...]:
+        return tuple(
+            self._session.scalars(
+                select(BranchOpeningHour)
+                .where(
+                    BranchOpeningHour.workspace_id == workspace_id,
+                    BranchOpeningHour.branch_id == branch_id,
+                )
+                .order_by(BranchOpeningHour.weekday)
+            )
+        )
+
+    def replace_opening_hours(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID,
+        rows: tuple[tuple[str, time, time], ...],
+    ) -> tuple[BranchOpeningHour, ...]:
+        existing = {
+            row.weekday: row
+            for row in self._session.scalars(
+                select(BranchOpeningHour).where(
+                    BranchOpeningHour.workspace_id == workspace_id,
+                    BranchOpeningHour.branch_id == branch_id,
+                )
+            )
+        }
+        keep = {weekday for weekday, _, _ in rows}
+        for weekday, row in list(existing.items()):
+            if weekday not in keep:
+                self._session.delete(row)
+        for weekday, opens_at, closes_at in rows:
+            hour_row = existing.get(weekday)
+            if hour_row is None:
+                self._session.add(
+                    BranchOpeningHour(
+                        workspace_id=workspace_id,
+                        branch_id=branch_id,
+                        weekday=weekday,
+                        opens_at=opens_at,
+                        closes_at=closes_at,
+                    )
+                )
+            else:
+                hour_row.opens_at = opens_at
+                hour_row.closes_at = closes_at
+        self._session.flush()
+        return self.list_opening_hours(workspace_id, branch_id)
+
+    def get_resource_any_status(
+        self, workspace_id: UUID, branch_id: UUID, resource_id: UUID
+    ) -> AppointmentResource | None:
+        return self._session.scalar(
+            select(AppointmentResource).where(
+                AppointmentResource.workspace_id == workspace_id,
+                AppointmentResource.branch_id == branch_id,
+                AppointmentResource.id == resource_id,
+                AppointmentResource.status != "archived",
+            )
+        )
+
+    def next_resource_sort_order(self, workspace_id: UUID, branch_id: UUID) -> int:
+        current = self._session.scalar(
+            select(func.max(AppointmentResource.sort_order)).where(
+                AppointmentResource.workspace_id == workspace_id,
+                AppointmentResource.branch_id == branch_id,
+            )
+        )
+        return int(current or 0) + 1
 
     def list_appointments(
         self,
@@ -93,11 +279,16 @@ class AgendaRepository:
         page_size: int,
         sort_by: str,
         sort_direction: str,
+        allowed_resource_ids: frozenset[UUID] | None = None,
     ) -> AppointmentListResult:
         filters = [
             Appointment.workspace_id == workspace_id,
             Appointment.record_status == "active",
         ]
+        if allowed_resource_ids is not None:
+            if not allowed_resource_ids:
+                return AppointmentListResult(items=(), total_items=0)
+            filters.append(Appointment.resource_id.in_(allowed_resource_ids))
         if allowed_branch_ids is not None:
             filters.append(Appointment.branch_id.in_(allowed_branch_ids))
         if branch_id is not None:
@@ -329,6 +520,10 @@ class AgendaRepository:
 
     def add_appointment(self, appointment: Appointment) -> None:
         self._session.add(appointment)
+
+    def add_resource(self, resource: AppointmentResource) -> None:
+        self._session.add(resource)
+        self._session.flush()
         self._session.flush()
 
     def add_event(

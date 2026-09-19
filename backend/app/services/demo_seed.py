@@ -74,7 +74,6 @@ from app.db.models import (
     WorkspaceMembership,
 )
 from app.db.models.agenda import DEFAULT_APPOINTMENT_RESOURCES
-from app.services.crm_scoring import DEFAULT_SCORING_WEIGHTS, compute_auto_score
 from app.services.demo_manifest import (
     DemoBundle,
     DemoEmployeeFixture,
@@ -2296,7 +2295,6 @@ def _seed_crm(
 ) -> tuple[int, int, int, int]:
     """Seed an understandable CRM journey before quotes and sales are installed."""
 
-    weights = {**DEFAULT_SCORING_WEIGHTS, **bundle.crm.scoring_weights}
     admin_id = _stable_id(bundle.manifest.seed_version, "platform_user", "admin")
     settings_row = session.scalar(
         select(CrmSettings).where(CrmSettings.workspace_id == workspace_id)
@@ -2305,12 +2303,10 @@ def _seed_crm(
         settings_row = CrmSettings(
             id=_stable_id(bundle.manifest.seed_version, "crm_settings", "default"),
             workspace_id=workspace_id,
-            scoring_weights=weights,
             updated_by_platform_user_id=admin_id,
         )
         session.add(settings_row)
     else:
-        settings_row.scoring_weights = weights
         settings_row.updated_by_platform_user_id = admin_id
 
     customer_fixtures = {item.seed_key: item for item in bundle.customers.items}
@@ -2387,7 +2383,6 @@ def _seed_crm(
     leads: dict[str, CrmLead] = {}
     for lead_fixture in bundle.crm.leads:
         payload = lead_fixture.model_dump(mode="json")
-        scoring = compute_auto_score(payload, weights)
         converted_customer = (
             _required_demo_customer(
                 session,
@@ -2406,9 +2401,6 @@ def _seed_crm(
             "leadSeedKey": lead_fixture.seed_key,
             "customerSeedKey": lead_fixture.converted_customer_seed_key,
         }
-        score = (
-            lead_fixture.score_manual if lead_fixture.score_manual is not None else scoring.score
-        )
         lead_values: dict[str, object] = {
             "workspace_id": workspace_id,
             "branch_id": branches[lead_fixture.branch_code].id,
@@ -2428,12 +2420,7 @@ def _seed_crm(
             "scraped_at": lead_fixture.scraped_at,
             "raw_snippet": lead_fixture.raw_snippet,
             "status": lead_fixture.status,
-            "score_auto": scoring.score,
-            "score_manual": lead_fixture.score_manual,
-            "score": score,
-            "module_fits": scoring.module_fits,
-            "score_reasons": scoring.reasons,
-            "score_notes": lead_fixture.score_notes,
+            "star_rating": lead_fixture.star_rating,
             "converted_customer_id": converted_customer.id if converted_customer else None,
             "converted_at": lead_fixture.updated_at if converted_customer else None,
             "creation_idempotency_key": (
