@@ -188,6 +188,8 @@ class AgendaRepository:
                 )
             else:
                 row.access = access
+        for row in by_user.values():
+            self._session.delete(row)
         self._session.flush()
         return self.acl_rows_for_resource(workspace_id, branch_id, resource_id)
 

@@ -31,6 +31,17 @@ def booking_setup(client, monkeypatch):
         json={"items": []},
     )
     assert cleared_hours.status_code == 200, cleared_hours.text
+    resources = client.get(
+        "/api/v1/appointment-resources", headers=headers, params={"branchId": branch}
+    ).json()["items"]
+    for resource in resources:
+        cleared_acl = client.put(
+            f"/api/v1/appointment-resources/{resource['id']}/acl",
+            headers=headers,
+            params={"branchId": branch},
+            json={"items": []},
+        )
+        assert cleared_acl.status_code == 200, cleared_acl.text
     suffix = uuid7().hex[-12:]
     with get_session_factory()() as session:
         primary = session.get(Branch, UUID(branch))
