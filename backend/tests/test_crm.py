@@ -1395,4 +1395,3 @@ def test_import_activity_item_ignores_contact_name_helper() -> None:
     )
     assert item.title == "Llamada de seguimiento"
     assert item.lead_external_id == "19395785"
-
