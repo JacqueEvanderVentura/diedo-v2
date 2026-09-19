@@ -89,7 +89,7 @@ Login: **`owner@erp.dev`** (password from `LOCAL_BOOTSTRAP_ADMIN_PASSWORD` in `b
 | `docs/backend/FOUNDATION_SCHEMA.md` | Workspace / branch / legal entity model |
 | `backend/README.md` | Runbook, bootstrap, tests |
 
-**Tests:** `cd backend && pytest` (needs Postgres). CI: `.github/workflows/backend-ci.yml`.
+**Tests:** `cd backend && pytest` (needs Postgres). CI: `.github/workflows/ci.yml` (job `backend`).
 
 ---
 

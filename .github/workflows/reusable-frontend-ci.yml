@@ -1,22 +1,15 @@
-name: Frontend CI
+name: Reusable Frontend CI
 
 on:
-  push:
-    branches: [full-stack]
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/frontend-ci.yml'
-  pull_request:
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/frontend-ci.yml'
+  workflow_call:
+
+defaults:
+  run:
+    working-directory: frontend
 
 jobs:
   frontend:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
 
@@ -32,15 +25,15 @@ jobs:
       - name: Build production bundle
         env:
           VITE_API_BASE_URL: /api-backend
-          VITE_DEMO_SEED_ENABLED: 'false'
-          VITE_FEATURE_SELF_BOOKING: 'true'
-          VITE_FEATURE_INVITATIONS: 'true'
-          VITE_FEATURE_CRM_DISCOVERY: 'true'
-          VITE_FEATURE_PAYROLL: 'false'
-          VITE_FEATURE_PERFORMANCE: 'true'
-          VITE_FEATURE_NOTIFICATIONS: 'true'
-          VITE_FEATURE_CALENDAR_SCHEDULES: 'true'
-          VITE_FEATURE_REGIONAL_MODULES: 'true'
+          VITE_DEMO_SEED_ENABLED: "false"
+          VITE_FEATURE_SELF_BOOKING: "true"
+          VITE_FEATURE_INVITATIONS: "true"
+          VITE_FEATURE_CRM_DISCOVERY: "true"
+          VITE_FEATURE_PAYROLL: "false"
+          VITE_FEATURE_PERFORMANCE: "true"
+          VITE_FEATURE_NOTIFICATIONS: "true"
+          VITE_FEATURE_CALENDAR_SCHEDULES: "true"
+          VITE_FEATURE_REGIONAL_MODULES: "true"
         run: npm run build
 
       # cloudflareConfig.test.js validates the generated, versioned assets.

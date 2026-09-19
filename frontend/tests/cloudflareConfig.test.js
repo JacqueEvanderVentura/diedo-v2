@@ -15,8 +15,12 @@ describe('Cloudflare static deployment configuration', () => {
       expect(environment.routes ?? []).toEqual([])
       expect(environment.vars.API_ORIGIN).toBe('https://api-production-b1fb.up.railway.app')
     }
-    for (const workflow of ['deploy-fe-pages.yml', 'frontend-ci.yml']) {
-      const body = fs.readFileSync(path.join('..', '.github', 'workflows', workflow), 'utf8')
+    const workflowsDir = path.join('..', '.github', 'workflows')
+    const ci = fs.readFileSync(path.join(workflowsDir, 'ci.yml'), 'utf8')
+    expect(ci).toContain('reusable-frontend-ci.yml')
+    expect(ci).toContain('reusable-frontend-deploy.yml')
+    for (const workflow of ['reusable-frontend-ci.yml', 'reusable-frontend-deploy.yml']) {
+      const body = fs.readFileSync(path.join(workflowsDir, workflow), 'utf8')
       expect(body).toContain('VITE_API_BASE_URL: /api-backend')
       for (const feature of ['SELF_BOOKING', 'INVITATIONS', 'CRM_DISCOVERY', 'PERFORMANCE', 'NOTIFICATIONS', 'CALENDAR_SCHEDULES', 'REGIONAL_MODULES']) {
         expect(body).toMatch(new RegExp(`VITE_FEATURE_${feature}: ["']true["']`))

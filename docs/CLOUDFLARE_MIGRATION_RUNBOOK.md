@@ -14,7 +14,7 @@ Esta guía sustituye los estados históricos de migración registrados en versio
 
 GitHub Actions tiene el secreto `CLOUDFLARE_API_TOKEN` y la variable `CLOUDFLARE_ACCOUNT_ID` configurados para la cuenta del Worker actual. El token `diedo-github-actions` permite publicar allí; sus permisos sobre la zona pendiente de esa cuenta **no dan acceso al dominio en la cuenta del compañero**. Nunca guardar su valor en el repositorio.
 
-Los cambios de frontend en `full-stack` ejecutan `Deploy frontend to Cloudflare Workers`: instalación, build, pruebas, validación de Wrangler, publicación y comprobaciones HTTP. Los pull requests del mismo repositorio publican en el Worker de preview compartido. `Frontend CI` también valida build, pruebas y configuración.
+Los cambios de frontend en `full-stack` ejecutan el workflow unificado **CI** (job `deploy`): instalación, build, pruebas, validación de Wrangler, publicación y comprobaciones HTTP. Los pull requests del mismo repositorio publican en el Worker de preview compartido. El job `frontend` del mismo workflow valida build, pruebas y configuración sin desplegar.
 
 Railway tiene el servicio `api` del proyecto `diedo-production` conectado al mismo repositorio y rama. Construye `backend/Dockerfile` desde la raíz, espera los checks de GitHub y ejecuta `python -m app.scripts.predeploy` antes del arranque. Su comprobación de disponibilidad es `/health/ready`. Se conservan PostgreSQL, almacenamiento y variables existentes.
 

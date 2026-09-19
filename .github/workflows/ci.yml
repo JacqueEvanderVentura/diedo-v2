@@ -1,0 +1,58 @@
+# Unified CI (scala-payments style): one workflow run, conditional backend / frontend / deploy jobs.
+name: CI
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'demo-data/**'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/reusable-backend-ci.yml'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/reusable-frontend-ci.yml'
+              - '.github/workflows/reusable-frontend-deploy.yml'
+
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    uses: ./.github/workflows/reusable-backend-ci.yml
+
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    uses: ./.github/workflows/reusable-frontend-ci.yml
+
+  deploy:
+    needs: [changes, frontend]
+    if: |
+      needs.changes.outputs.frontend == 'true' &&
+      needs.frontend.result == 'success' &&
+      (
+        (github.event_name == 'push' && github.ref == 'refs/heads/full-stack') ||
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+      )
+    uses: ./.github/workflows/reusable-frontend-deploy.yml
+    secrets: inherit
