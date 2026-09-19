@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import EmailStr, Field, HttpUrl, PlainSerializer, field_validator, model_validator
 
-from app.schemas.common import ApiModel
+from app.schemas.common import ApiModel, ImportRowModel
 from app.schemas.pos import QuoteDetailResponse
 
 LeadStatus = Literal["nuevo", "contactado", "calificado", "descartado", "convertido"]
@@ -281,7 +281,7 @@ class ImportedLeadsResponse(ApiModel):
     items: list[LeadResponse]
 
 
-class ImportPipelineItem(ApiModel):
+class ImportPipelineItem(ImportRowModel):
     external_id: str | None = Field(default=None, max_length=64)
     name: str = Field(default="", max_length=200)
     company: str = Field(default="", max_length=200)
@@ -341,7 +341,7 @@ class ImportPipelineResponse(ApiModel):
     items: list[ImportPipelineRowResult]
 
 
-class ImportActivityItem(ApiModel):
+class ImportActivityItem(ImportRowModel):
     external_id: str | None = Field(default=None, max_length=64)
     lead_external_id: str | None = Field(default=None, max_length=64)
     title: str = Field(min_length=2, max_length=240)

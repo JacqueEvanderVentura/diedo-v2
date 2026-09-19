@@ -19,6 +19,7 @@ from app.db.models import (
     UnitOfMeasure,
 )
 from app.db.session import get_engine, session_scope
+from app.schemas.crm import ImportActivityItem
 from app.services.authorization import PermissionGrant
 from app.services.crm import CrmService
 from app.services.crm_discovery import (
@@ -1379,3 +1380,19 @@ def test_lead_star_rating_sort_nulls_last(client: TestClient) -> None:
     ratings = [item.get("starRating") for item in listed.json()["items"]]
     assert ratings[0] == "5"
     assert ratings[-1] is None
+
+
+def test_import_activity_item_ignores_contact_name_helper() -> None:
+    item = ImportActivityItem.model_validate(
+        {
+            "externalId": "task-1",
+            "leadExternalId": "19395785",
+            "contactName": "Juan Pérez",
+            "title": "Llamada de seguimiento",
+            "description": "Notas",
+            "dueAt": "2026-09-20T10:00:00.000Z",
+        }
+    )
+    assert item.title == "Llamada de seguimiento"
+    assert item.lead_external_id == "19395785"
+

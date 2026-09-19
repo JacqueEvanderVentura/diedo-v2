@@ -64,6 +64,16 @@ def test_phase2_request_schemas_normalize_and_reject_ambiguous_changes() -> None
         lastName="García",
     )
     assert import_row.display_name == "María García"
+    camel_import = ImportCustomerItem.model_validate(
+        {
+            "externalId": "kommo-2",
+            "customerType": "person",
+            "displayName": "Juan Pérez",
+            "firstName": "Juan",
+            "lastName": "Pérez",
+        }
+    )
+    assert camel_import.display_name == "Juan Pérez"
     with pytest.raises(ValidationError, match="No repitas sucursales"):
         CreateCustomerRequest(displayName="Cliente", branchIds=[branch_id, branch_id])
     customer = CreateCustomerRequest(

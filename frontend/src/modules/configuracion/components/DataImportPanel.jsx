@@ -28,7 +28,11 @@ import {
 
   parseCsv,
 
+  prepareActivityRows,
+
   prepareCustomerRows,
+
+  toPipelineImportItem,
 
   validatePipelineRow,
 
@@ -166,7 +170,7 @@ function preparePipelineRows(parsedRows) {
 
   parsedRows.forEach((row, index) => {
 
-    const mapped = mapCsvRowToApi(row)
+    const mapped = toPipelineImportItem(mapCsvRowToApi(row))
 
     const validationError = validatePipelineRow(row, mapped)
 
@@ -466,7 +470,7 @@ export default function DataImportPanel({ embedded = false }) {
 
       } else {
 
-        const mapped = parsed.map(mapCsvRowToApi)
+        const mapped = prepareActivityRows(parsed)
 
         items = await importBatches({
 

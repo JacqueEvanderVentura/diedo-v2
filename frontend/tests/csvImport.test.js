@@ -5,6 +5,7 @@ import {
   formatImportApiError,
   mapCsvRowToApi,
   parseCsv,
+  prepareActivityRows,
   prepareCustomerRows,
 } from '@/modules/configuracion/lib/csvImport'
 
@@ -58,6 +59,26 @@ describe('csvImport', () => {
     expect(validRows[0].displayName).toBe('Juan Pérez')
     expect(validRows[1].displayName).toBe('Cliente 2')
     expect(invalidRows).toHaveLength(0)
+  })
+
+  it('drops helper columns from activity import rows', () => {
+    const rows = prepareActivityRows([
+      {
+        externalId: '1',
+        leadExternalId: '9',
+        contactName: 'Juan Pérez',
+        title: 'Llamada',
+        description: 'Seguimiento',
+        dueAt: '2026-09-20T10:00:00.000Z',
+      },
+    ])
+    expect(rows[0]).toEqual({
+      externalId: '1',
+      leadExternalId: '9',
+      title: 'Llamada',
+      description: 'Seguimiento',
+      dueAt: '2026-09-20T10:00:00.000Z',
+    })
   })
 
   it('labels import api errors with field names', () => {

@@ -15,6 +15,12 @@ class ApiModel(BaseModel):
     )
 
 
+class ImportRowModel(ApiModel):
+    """CSV import rows may include helper columns that are not API fields."""
+
+    model_config = ConfigDict(extra="ignore")
+
+
 class ErrorResponse(ApiModel):
     message: str
     parameter: str | None = None

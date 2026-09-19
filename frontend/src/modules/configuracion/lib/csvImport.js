@@ -129,9 +129,13 @@ export function prepareCustomerRows(parsedRows) {
       })
       return
     }
-    validRows.push(mapped)
+    validRows.push(pickImportKeys(mapped, CUSTOMER_IMPORT_KEYS))
   })
   return { validRows, invalidRows }
+}
+
+export function prepareActivityRows(parsedRows) {
+  return parsedRows.map((row) => pickImportKeys(mapCsvRowToApi(row), ACTIVITY_IMPORT_KEYS))
 }
 
 export function batchErrorResults(batch, chunkIndex, chunkSize, error) {
@@ -172,6 +176,54 @@ export function chunkRows(rows, size = 100) {
 
 function camelKey(key) {
   return key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
+}
+
+const CUSTOMER_IMPORT_KEYS = new Set([
+  'externalId',
+  'customerType',
+  'displayName',
+  'firstName',
+  'lastName',
+  'businessName',
+  'email',
+  'phone',
+  'acquisitionSource',
+])
+
+const ACTIVITY_IMPORT_KEYS = new Set([
+  'externalId',
+  'leadExternalId',
+  'title',
+  'description',
+  'dueAt',
+])
+
+const PIPELINE_IMPORT_KEYS = new Set([
+  'externalId',
+  'name',
+  'company',
+  'email',
+  'phone',
+  'website',
+  'location',
+  'acquisitionSource',
+  'stage',
+  'value',
+  'notes',
+  'lostReason',
+  'convert',
+])
+
+function pickImportKeys(row, allowedKeys) {
+  const picked = {}
+  Object.entries(row).forEach(([key, value]) => {
+    if (allowedKeys.has(key)) picked[key] = value
+  })
+  return picked
+}
+
+export function toPipelineImportItem(mapped) {
+  return pickImportKeys(mapped, PIPELINE_IMPORT_KEYS)
 }
 
 export function mapCsvRowToApi(row) {

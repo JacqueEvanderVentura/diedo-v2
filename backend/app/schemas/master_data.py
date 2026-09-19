@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import EmailStr, Field, field_validator, model_validator
 
-from app.schemas.common import ApiModel
+from app.schemas.common import ApiModel, ImportRowModel
 
 MasterDataStatus = Literal["active", "inactive", "archived"]
 CreateMasterDataStatus = Literal["active", "inactive"]
@@ -142,7 +142,7 @@ class PaginatedCustomersResponse(ApiModel):
     total_pages: int
 
 
-class ImportCustomerItem(ApiModel):
+class ImportCustomerItem(ImportRowModel):
     external_id: str | None = Field(default=None, max_length=64)
     customer_type: CustomerType = "person"
     display_name: str = Field(min_length=2, max_length=200)
@@ -159,7 +159,9 @@ class ImportCustomerItem(ApiModel):
         if not isinstance(data, dict):
             return data
         payload = dict(data)
-        payload["display_name"] = derive_import_customer_display_name(payload)
+        display_name = derive_import_customer_display_name(payload)
+        payload.pop("displayName", None)
+        payload["display_name"] = display_name
         return payload
 
     @field_validator("display_name")
