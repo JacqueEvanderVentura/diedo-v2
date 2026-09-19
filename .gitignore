@@ -84,6 +84,9 @@ agenthub/agents/youtube/db
 
 memory/test_credentials.md
 
+# Client migration exports (PII)
+importDataCortinaje/
+
 # Mobile development
 android-sdk/
 .env
