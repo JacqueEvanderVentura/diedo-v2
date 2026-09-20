@@ -222,6 +222,49 @@ async function loadOnlineSection(section) {
   }
 }
 
+function mergeWorkspaceSettings(current, { uiMode, version }, { authoritative = false } = {}) {
+  const incomingVersion = version || 1
+  const incomingMode = uiMode || 'standard'
+  if (authoritative) {
+    return {
+      uiMode: incomingMode,
+      uiModeVersion: incomingVersion,
+      workspaceSettingsLoaded: true,
+      workspaceSettingsSynced: true,
+    }
+  }
+  const currentVersion = current.uiModeVersion || 1
+  if (incomingVersion < currentVersion) {
+    return {
+      uiMode: current.uiMode || 'standard',
+      uiModeVersion: currentVersion,
+      workspaceSettingsLoaded: true,
+      workspaceSettingsSynced: current.workspaceSettingsSynced,
+    }
+  }
+  return {
+    uiMode: incomingMode,
+    uiModeVersion: incomingVersion,
+    workspaceSettingsLoaded: true,
+    workspaceSettingsSynced: true,
+  }
+}
+
+function workspaceFieldsFromSnapshot(current, snapshot, options) {
+  if (!snapshot) return {}
+  const version = snapshot.uiModeVersion ?? snapshot.version
+  if (version == null && snapshot.uiMode == null) return {}
+  return mergeWorkspaceSettings(
+    current,
+    { uiMode: snapshot.uiMode, version },
+    options
+  )
+}
+
+function isWorkspaceSettingsVersionConflict(error) {
+  return error?.status === 409 || error?.parameter === 'version'
+}
+
 function normalizeLead(raw) {
   const starRating = raw.starRating ?? null
   return {
@@ -360,8 +403,10 @@ export const useCrmStore = create(
           const mapped = mapCrmStateFromApi(stateResponse)
           const customers = mapCrmCustomersPageFromApi(customerResponse)
           const sales = mapCrmSalesPageFromApi(salesResponse)
+          const workspace = workspaceFieldsFromSnapshot(get(), mapped)
           set({
             ...mapped,
+            ...workspace,
             customers,
             sales,
             overview: mapCrmOverviewFromApi(overview),
@@ -411,8 +456,10 @@ export const useCrmStore = create(
               return quote
             })
           }
+          const workspace = workspaceFieldsFromSnapshot(get(), updates)
           set({
             ...updates,
+            ...workspace,
             hydrating: false,
             dataState: { status: 'ready', source: 'api', error: null },
           })
@@ -526,12 +573,11 @@ export const useCrmStore = create(
         }
         try {
           const workspace = await crmApi.workspaceSettings()
-          set({
-            uiMode: workspace.uiMode || 'standard',
-            uiModeVersion: workspace.version || 1,
-            workspaceSettingsLoaded: true,
-            workspaceSettingsSynced: true,
-          })
+          set(mergeWorkspaceSettings(
+            get(),
+            { uiMode: workspace.uiMode, version: workspace.version },
+            { authoritative: true }
+          ))
         } catch (error) {
           set({ workspaceSettingsLoaded: true })
           throw error
@@ -539,7 +585,7 @@ export const useCrmStore = create(
         return get()
       },
 
-      updateUiMode: async (uiMode) => {
+      updateUiMode: async (uiMode, retryAfterVersionConflict = false) => {
         if (!isOnline()) {
           set({
             uiMode,
@@ -548,17 +594,25 @@ export const useCrmStore = create(
           })
           return get()
         }
-        const result = await crmApi.updateWorkspaceSettings({
-          version: get().uiModeVersion,
-          uiMode,
-        })
-        set({
-          uiMode: result.uiMode || uiMode,
-          uiModeVersion: result.version,
-          workspaceSettingsLoaded: true,
-          workspaceSettingsSynced: true,
-        })
-        return get()
+        try {
+          const result = await crmApi.updateWorkspaceSettings({
+            version: get().uiModeVersion,
+            uiMode,
+          })
+          set(mergeWorkspaceSettings(
+            get(),
+            { uiMode: result.uiMode || uiMode, version: result.version },
+            { authoritative: true }
+          ))
+          return get()
+        } catch (error) {
+          if (isWorkspaceSettingsVersionConflict(error) && !retryAfterVersionConflict) {
+            await get().ensureWorkspaceSettings({ force: true })
+            if (get().uiMode === uiMode) return get()
+            return get().updateUiMode(uiMode, true)
+          }
+          throw error
+        }
       },
 
       fetchSimplifiedWorkspaceQueue: async ({
@@ -1541,6 +1595,10 @@ export const useCrmStore = create(
           detailActivities: [],
           detailActivitiesLoading: false,
         },
+        uiMode: 'standard',
+        uiModeVersion: 1,
+        workspaceSettingsLoaded: false,
+        workspaceSettingsSynced: false,
         })
       },
 
@@ -1570,8 +1628,6 @@ export const useCrmStore = create(
       storage: ephemeralJsonStorage,
       version: 4,
       partialize: (state) => ({
-        uiMode: state.uiMode,
-        uiModeVersion: state.uiModeVersion,
         serpHourCount: state.serpHourCount,
         serpHourWindowStart: state.serpHourWindowStart,
         serpMonthCount: state.serpMonthCount,

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { intersectBranchIds } from '@/lib/branches'
 import { dashboardGateway } from '@/services/dashboardApi'
-import { registerSensitiveStateCleaner } from '@/services/storagePolicy'
+import { ephemeralJsonStorage, registerSensitiveStateCleaner } from '@/services/storagePolicy'
 
 let latestRequest = 0
 
@@ -62,11 +62,6 @@ export const useDashboardStore = create(
         if (!nextScope) return
         const { persistScope } = get()
         if (persistScope === nextScope) return
-        const isLegacyUnscoped = persistScope == null
-        if (isLegacyUnscoped) {
-          set({ persistScope: nextScope })
-          return
-        }
         set({
           persistScope: nextScope,
           ...defaultBranchFilters(),
@@ -133,7 +128,8 @@ export const useDashboardStore = create(
     }),
     {
       name: 'diedo-dashboard',
-      version: 4,
+      storage: ephemeralJsonStorage,
+      version: 5,
       migrate: (persisted) => ({
         period: persisted?.period ?? 'week',
         dateFrom: persisted?.dateFrom ?? null,

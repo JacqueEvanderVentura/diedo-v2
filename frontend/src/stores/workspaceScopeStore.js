@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { resolveActiveBranchId } from '@/lib/workspaceBranch'
+import { ephemeralJsonStorage, registerSensitiveStateCleaner } from '@/services/storagePolicy'
 import { usePosStore } from '@/stores/posStore'
 
 function syncPosBranches(branchId) {
@@ -43,11 +44,16 @@ export const useWorkspaceScopeStore = create(
         }
         return next
       },
+
+      clearSensitive: () => set({ activeBranchId: null }),
     }),
     {
       name: 'helios-workspace-scope',
-      version: 1,
+      storage: ephemeralJsonStorage,
+      version: 2,
       partialize: (state) => ({ activeBranchId: state.activeBranchId }),
     }
   )
 )
+
+registerSensitiveStateCleaner(() => useWorkspaceScopeStore.getState().clearSensitive())

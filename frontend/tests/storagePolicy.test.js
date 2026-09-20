@@ -7,6 +7,7 @@ import {
   invalidateLegacySensitiveStorage,
   persistenceNamespace,
 } from '@/services/storagePolicy'
+import { useWorkspaceScopeStore } from '@/stores/workspaceScopeStore'
 
 describe('storagePolicy', () => {
   beforeEach(() => {
@@ -34,5 +35,15 @@ describe('storagePolicy', () => {
       'diedo:v2:workspace-a:user-a:catalog'
     )
     expect(() => persistenceNamespace(null, 'user-a', 'catalog')).toThrow()
+  })
+
+  it('limpia helios-workspace-scope y el store de alcance de sucursal', () => {
+    window.localStorage.setItem('helios-workspace-scope', '{"state":{"activeBranchId":"branch-1"}}')
+    useWorkspaceScopeStore.setState({ activeBranchId: 'branch-1' })
+
+    clearSensitiveLocalState()
+
+    expect(window.localStorage.getItem('helios-workspace-scope')).toBeNull()
+    expect(useWorkspaceScopeStore.getState().activeBranchId).toBeNull()
   })
 })

@@ -28,6 +28,7 @@ const LEGACY_SENSITIVE_KEYS = [
   'diedo-self-booking',
   'diedo-self-doc',
   'diedo-dashboard',
+  'helios-workspace-scope',
 ]
 
 export function invalidateLegacySensitiveStorage(storage = window.localStorage) {
