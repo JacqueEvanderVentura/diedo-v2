@@ -32,6 +32,16 @@ function normalizeSpaShell(html) {
   return html.replace(/\/assets\/[^"]+/g, '/assets/HASH')
 }
 
+async function assetsReady(assets) {
+  for (const asset of assets) {
+    const response = await fetch(`${base}${asset}`, { cache: 'no-store' })
+    if (response.status !== 200) {
+      return { ready: false, asset, status: response.status }
+    }
+  }
+  return { ready: true }
+}
+
 const health = await fetch(`${base}/health`)
 assert.equal(health.status, 200)
 assert.equal((await health.text()).trim(), 'ok')
@@ -44,6 +54,7 @@ assert.match(page.headers.get('cache-control'), /must-revalidate/)
 
 let rootHtml = ''
 let loginHtml = ''
+let verifiedAssets = []
 const maxAttempts = 12
 for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
   rootHtml = fetchSpaShell('/')
@@ -56,9 +67,19 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     rootAssets.join('\0') === loginAssets.join('\0') &&
     normalizeSpaShell(rootHtml) === normalizeSpaShell(loginHtml)
   if (shellsAligned) {
-    break
-  }
-  if (attempt === maxAttempts) {
+    verifiedAssets = rootAssets
+    const readiness = await assetsReady(verifiedAssets)
+    if (readiness.ready) {
+      break
+    }
+    if (attempt === maxAttempts) {
+      assert.equal(
+        readiness.status,
+        200,
+        `Asset ${readiness.asset} must be available after deploy`,
+      )
+    }
+  } else if (attempt === maxAttempts) {
     assert.deepEqual(
       loginAssets,
       rootAssets,
@@ -73,10 +94,9 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
   await sleep(2_000)
 }
 
-const assets = extractAssets(rootHtml)
-assert.ok(assets.length >= 2)
-for (const asset of assets) {
-  const response = await fetch(`${base}${asset}`)
+assert.ok(verifiedAssets.length >= 2)
+for (const asset of verifiedAssets) {
+  const response = await fetch(`${base}${asset}`, { cache: 'no-store' })
   assert.equal(response.status, 200)
   assert.match(
     response.headers.get('content-type'),
