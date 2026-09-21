@@ -52,6 +52,10 @@ class WorkspaceMembership(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Bas
             "status IN ('invited', 'active', 'suspended', 'revoked', 'expired')",
             name="status_values",
         ),
+        CheckConstraint(
+            "crm_ui_mode IN ('standard', 'simplified')",
+            name="membership_crm_ui_mode_values",
+        ),
         Index("ix_memberships_platform_user", "platform_user_id"),
         Index("ix_memberships_workspace_status", "workspace_id", "status"),
         Index(
@@ -75,6 +79,9 @@ class WorkspaceMembership(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Bas
     last_access_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_default: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    crm_ui_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="standard", server_default=text("'standard'")
     )
 
 

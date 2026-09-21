@@ -12,6 +12,8 @@ import { fmtWhen, FINANCE_PERIODS, isRecognizedPosIncome, parseWhen } from '../l
 import { DatePeriodFilter } from '@/components/ui/DatePeriodFilter'
 import { createPeriodFilterState, inDateRange, periodFilterLabel } from '@/lib/datePeriod'
 import { downloadIncomeInvoice, isPosIncome, printIncomeInvoice } from '../lib/incomeInvoice'
+import { incomeHasProofs, incomeProofItems, resolvePosIncomeProofs } from '../lib/incomeProofs'
+import { collectSalePaymentProofs, findReceivableForSale } from '@/modules/crm/lib/saleProofs'
 import { METHOD_LABELS, METHOD_ICON } from '@/modules/crm/lib/crm'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -64,6 +66,8 @@ function incomeMonthKey(v) {
 
 export default function IngresosPage() {
   const sales = usePosStore((s) => s.sales)
+  const receivables = usePosStore((s) => s.receivables)
+  const downloadPaymentProof = usePosStore((s) => s.downloadPaymentProof)
   const manualIncomes = useFinanzasStore((s) => s.manualIncomes)
   const incomeEntries = useFinanzasStore((s) => s.incomeEntries)
   const incomesProjected = useFinanzasStore((s) => s.incomesProjected)
@@ -115,6 +119,7 @@ export default function IngresosPage() {
       reference: s.number || null,
       editable: false,
       version: null,
+      paymentProofs: collectSalePaymentProofs(s, findReceivableForSale(receivables, s.id)),
     }))
     const fromManual = (incomesProjected ? incomeEntries : manualIncomes).map((i) => ({
       ...i,
@@ -129,9 +134,12 @@ export default function IngresosPage() {
       origin: i.origin || (i.source === 'POS' ? 'pos' : 'manual'),
       reference: i.reference || null,
       editable: i.editable !== false,
+      paymentProofs: (i.origin === 'pos' || i.source === 'POS')
+        ? resolvePosIncomeProofs(i.id, { sales, receivables })
+        : [],
     }))
     return [...fromSales, ...fromManual]
-  }, [sales, manualIncomes, incomeEntries, incomesProjected])
+  }, [sales, receivables, manualIncomes, incomeEntries, incomesProjected])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -382,7 +390,7 @@ export default function IngresosPage() {
                         <td className="whitespace-nowrap px-6 py-4 text-right font-heading font-bold text-emerald-600">+ {formatDOP(i.amount)}</td>
                         <td className="px-6 py-4">
                           <div className="flex justify-end gap-1">
-                            {(i.attachments || []).length > 0 && (
+                            {incomeHasProofs(i) && (
                               <button
                                 type="button"
                                 onClick={() => setProofIncome(i)}
@@ -543,7 +551,19 @@ export default function IngresosPage() {
         open={Boolean(proofIncome)}
         onClose={() => setProofIncome(null)}
         title={proofIncome ? `Comprobantes · ${proofIncome.customer}` : 'Comprobantes'}
-        attachments={proofIncome?.attachments}
+        attachments={incomeProofItems(proofIncome)}
+        loadProof={proofIncome?.paymentProofs?.length ? downloadPaymentProof : undefined}
+        onDownload={proofIncome?.paymentProofs?.length
+          ? async (proof) => {
+            const blob = await downloadPaymentProof(proof)
+            const url = URL.createObjectURL(blob)
+            const anchor = document.createElement('a')
+            anchor.href = url
+            anchor.download = proof?.name || 'comprobante'
+            anchor.click()
+            URL.revokeObjectURL(url)
+          }
+          : undefined}
       />
 
       <IncomeFormModal open={modalOpen} onClose={closeForm} income={editingIncome} />

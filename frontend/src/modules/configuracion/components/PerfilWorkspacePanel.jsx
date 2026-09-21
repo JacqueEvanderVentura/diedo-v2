@@ -9,8 +9,9 @@ import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { mapWorkspaceSettingsFromApi } from '../lib/workspaceSettings'
 import { configPageClass } from '../lib/pageShell'
+import { isSettingsBlockVisible } from '../lib/settingsSearch'
 
-export default function PerfilWorkspacePanel({ embedded = false }) {
+export default function PerfilWorkspacePanel({ embedded = false, visibleBlockIds }) {
   const online = useSessionStore((state) => state.status === 'online')
   const user = useSessionStore((state) => state.user)
   const canReadWorkspace = useSessionStore((state) => state.hasPermission('workspace.read'))
@@ -96,25 +97,33 @@ export default function PerfilWorkspacePanel({ embedded = false }) {
 
   const displayName = user?.name || user?.email || 'Usuario'
   const canEditBusiness = !online || canUpdateWorkspace
+  const showIntro = !visibleBlockIds?.length
+  const showAccount = isSettingsBlockVisible(visibleBlockIds, 'account')
+  const showBusiness = isSettingsBlockVisible(visibleBlockIds, 'business-name')
 
   return (
     <div className={configPageClass(embedded, 'max-w-2xl')} data-testid="perfil-workspace-panel">
-      <div className="mb-4">
-        <h3 className="flex items-center gap-2 font-heading text-lg font-bold text-slate-900">
-          <UserCircle className="h-5 w-5 text-indigo-500" />
-          Perfil
-        </h3>
-        <p className="mt-1 text-sm text-slate-500">Tu cuenta y el nombre con el que te presentas a clientes.</p>
-      </div>
+      {showIntro && (
+        <div className="mb-4">
+          <h3 className="flex items-center gap-2 font-heading text-lg font-bold text-slate-900">
+            <UserCircle className="h-5 w-5 text-indigo-500" />
+            Perfil
+          </h3>
+          <p className="mt-1 text-sm text-slate-500">Tu cuenta y el nombre con el que te presentas a clientes.</p>
+        </div>
+      )}
 
-      <Card className="mb-4 p-6">
+      {showAccount && (
+      <Card className="mb-4 p-6" data-settings-block="account">
         <p className="text-sm font-medium text-slate-600">Cuenta</p>
         <p className="mt-1 font-semibold text-slate-900">{displayName}</p>
         {user?.email && <p className="text-sm text-slate-500">{user.email}</p>}
         {user?.role && <p className="mt-2 text-xs text-slate-400">Rol: {user.role}</p>}
       </Card>
+      )}
 
-      <Card className="p-6">
+      {showBusiness && (
+      <Card className="p-6" data-settings-block="business-name">
         <h4 className="font-semibold text-slate-800">Nombre del negocio</h4>
         <p className="mt-1 text-sm text-slate-500">
           Aparece en mensajes de WhatsApp como <code className="text-xs text-slate-600">{'{{empresa}}'} </code>
@@ -139,6 +148,7 @@ export default function PerfilWorkspacePanel({ embedded = false }) {
           </Button>
         </div>
       </Card>
+      )}
     </div>
   )
 }

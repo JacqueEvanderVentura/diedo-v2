@@ -217,21 +217,21 @@ export function GastosVariablesTab() {
                       <td className="px-6 py-4"><Badge tone={e.status === 'pagado' ? 'success' : 'warning'}>{e.status === 'pagado' ? 'Pagado' : 'Pendiente'}</Badge></td>
                       <td className="px-6 py-4">
                         <div className="flex justify-end gap-1">
+                          {(e.attachments || []).length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setProofExpense(e)}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50"
+                              title="Ver comprobante"
+                              data-testid={`gastos-proof-${e.id}`}
+                            >
+                              <FileImage className="h-4 w-4" />
+                            </button>
+                          )}
                           {e.source === 'caja' ? (
                             <span className="text-xs text-slate-400">Desde caja</span>
                           ) : (
                             <>
-                              {(e.attachments || []).length > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() => setProofExpense(e)}
-                                  className="flex h-8 w-8 items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50"
-                                  title="Ver comprobante"
-                                  data-testid={`gastos-proof-${e.id}`}
-                                >
-                                  <FileImage className="h-4 w-4" />
-                                </button>
-                              )}
                               <button onClick={() => openEdit(e)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></button>
                               <button onClick={() => remove(e)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
                             </>
@@ -264,20 +264,22 @@ export function GastosVariablesTab() {
                       <span className="font-heading font-bold text-red-500">− {formatDOP(e.amount)}</span>
                     </MobileField>
                   </MobileCardGrid>
-                  {e.source !== 'caja' && (
-                    <MobileCardFooter>
-                      <span className="text-xs text-slate-400">Acciones</span>
-                      <div className="flex gap-1">
-                        {(e.attachments || []).length > 0 && (
-                          <button type="button" onClick={() => setProofExpense(e)} className="flex h-8 w-8 items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50" title="Ver comprobante">
-                            <FileImage className="h-4 w-4" />
-                          </button>
-                        )}
-                        <button onClick={() => openEdit(e)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></button>
-                        <button onClick={() => remove(e)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
-                      </div>
-                    </MobileCardFooter>
-                  )}
+                  <MobileCardFooter>
+                    <span className="text-xs text-slate-400">{e.source === 'caja' ? 'Desde caja' : 'Acciones'}</span>
+                    <div className="flex gap-1">
+                      {(e.attachments || []).length > 0 && (
+                        <button type="button" onClick={() => setProofExpense(e)} className="flex h-8 w-8 items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50" title="Ver comprobante">
+                          <FileImage className="h-4 w-4" />
+                        </button>
+                      )}
+                      {e.source !== 'caja' && (
+                        <>
+                          <button onClick={() => openEdit(e)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></button>
+                          <button onClick={() => remove(e)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+                        </>
+                      )}
+                    </div>
+                  </MobileCardFooter>
                 </MobileCard>
               ))}
             </ResponsiveCards>

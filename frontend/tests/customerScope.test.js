@@ -26,4 +26,8 @@ describe('customerScope', () => {
     expect(customerActiveAtBranch(customers[2], 'charm-dn')).toBe(false)
     expect(customerActiveAtBranch(customers[3], 'charm-dn')).toBe(true)
   })
+
+  it('acepta snapshots POS sin sucursales asignadas', () => {
+    expect(customerActiveAtBranch({ id: 'uuid-client', name: 'María' }, 'charm-dn')).toBe(true)
+  })
 })

@@ -400,7 +400,7 @@ class Sale(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     )
     branch_id: Mapped[UUID] = mapped_column(nullable=False)
     customer_id: Mapped[UUID | None] = mapped_column(nullable=True)
-    cash_register_id: Mapped[UUID] = mapped_column(nullable=False)
+    cash_register_id: Mapped[UUID | None] = mapped_column(nullable=True)
     quote_id: Mapped[UUID | None] = mapped_column(nullable=True)
     inventory_movement_id: Mapped[UUID | None] = mapped_column(nullable=True)
     sale_number: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -774,7 +774,8 @@ class CustomerPayment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
         CheckConstraint("currency_code = upper(currency_code)", name="currency_code_uppercase"),
         CheckConstraint("amount > 0", name="amount_positive"),
         CheckConstraint(
-            "NOT affects_cash_drawer OR cash_register_id IS NOT NULL",
+            "NOT affects_cash_drawer OR cash_register_id IS NOT NULL "
+            "OR pending_shift_cash_assignment",
             name="cash_payment_requires_register",
         ),
         CheckConstraint(
@@ -818,6 +819,9 @@ class CustomerPayment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     receivable_id: Mapped[UUID] = mapped_column(nullable=False)
     payment_method_id: Mapped[UUID] = mapped_column(nullable=False)
     cash_register_id: Mapped[UUID | None] = mapped_column(nullable=True)
+    pending_shift_cash_assignment: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="posted", server_default=text("'posted'")
     )

@@ -1,5 +1,6 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { Clock, Plus, Search, ChevronLeft, ChevronRight, Link2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { useAgendaStore, todayKey } from '@/stores/agendaStore'
 import { useActiveBranchScope } from '@/hooks/useActiveBranchScope'
 import { Button } from '@/components/ui/Button'
@@ -27,8 +28,10 @@ import {
 } from '../lib/calendar'
 import { cn } from '@/lib/utils'
 import { appointmentsApi } from '@/services/appointmentsApi'
+import { isAppointmentConflict } from '@/services/adapters/appointments'
 import { sortResources } from '@/modules/configuracion/lib/agendaCabinas'
 import { boundsForDate } from '../lib/branchOpeningHours'
+import { explainAppointmentResourceMove } from '../lib/calendarResourceMove'
 
 const VIEWS = [
   { id: 'day', label: 'Día' },
@@ -42,6 +45,7 @@ export default function CalendarioPage() {
   const dataState = useAgendaStore((s) => s.dataState)
   const hydrateAppointments = useAgendaStore((s) => s.hydrateAppointments)
   const hydrateResources = useAgendaStore((s) => s.hydrateResources)
+  const updateAppointment = useAgendaStore((s) => s.updateAppointment)
   const { activeBranchId: branchId, setActiveBranch: setBranchId, branches, selectOptions } = useActiveBranchScope()
   const canManage = useSessionStore((s) => s.hasPermission('appointment.manage'))
   const isDemo = useSessionStore((s) => s.status === 'demo')
@@ -130,6 +134,44 @@ export default function CalendarioPage() {
     setDefaults({})
     setModalOpen(true)
   }
+
+  const handleResourceMove = useCallback(async ({ appointment, resourceId, time }) => {
+    const targetResource = branchResources.find((resource) => resource.id === resourceId) || null
+    const nextTime = time || appointment.time
+    if (targetResource && targetResource.id === appointment.cabinaId && nextTime === appointment.time) {
+      return
+    }
+    const blocked = explainAppointmentResourceMove({
+      appointment,
+      targetResource,
+      targetTime: nextTime,
+      appointments,
+      canManage,
+    })
+    if (blocked) {
+      toast.error(blocked)
+      return
+    }
+    try {
+      await updateAppointment(appointment.id, {
+        cabinaId: targetResource.id,
+        resourceId: targetResource.id,
+        time: nextTime,
+      })
+      const timeChanged = nextTime !== appointment.time
+      toast.success(
+        timeChanged
+          ? `Cita movida a ${targetResource.name} a las ${nextTime}.`
+          : `Cita movida a ${targetResource.name}.`
+      )
+    } catch (error) {
+      if (isAppointmentConflict(error)) {
+        toast.error(error.message || 'Esa cabina ya no está disponible en ese horario.')
+        return
+      }
+      toast.error(error.message || 'No se pudo mover la cita.')
+    }
+  }, [appointments, branchResources, canManage, updateAppointment])
 
   const goToDay = (key) => {
     setCursor(key)
@@ -258,6 +300,8 @@ export default function CalendarioPage() {
             endHour={dayBounds.endHour}
             onSlotClick={canManage ? openNew : undefined}
             onAppointmentClick={openEdit}
+            canDrag={canManage}
+            onResourceMove={handleResourceMove}
           />
         )}
         {view === 'month' && (

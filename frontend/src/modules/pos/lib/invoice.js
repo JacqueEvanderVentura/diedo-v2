@@ -30,7 +30,7 @@ function formatItemPriceHtml(item) {
   const unit = itemUnitPrice(item)
   const list = itemListPrice(item)
   if (isItemDiscounted(item)) {
-    return `<span class="strike">${escapeHtml(formatDOP(list))}</span> ${escapeHtml(formatDOP(unit))}`
+    return `<s class="strike" style="text-decoration:line-through;text-decoration-line:line-through;-webkit-text-decoration-line:line-through;">${escapeHtml(formatDOP(list))}</s> ${escapeHtml(formatDOP(unit))}`
   }
   return escapeHtml(formatDOP(unit))
 }
@@ -160,7 +160,19 @@ export function buildInvoiceHtml(data) {
     td { padding: 10px 0; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
     .item-name { font-weight: 600; }
     .muted { color: #94a3b8; font-size: 11px; margin-top: 2px; }
-    .strike { text-decoration: line-through; color: #94a3b8; margin-right: 4px; }
+    .strike, s.strike {
+      display: inline-block;
+      line-height: 1.25;
+      vertical-align: baseline;
+      text-decoration: line-through;
+      text-decoration-line: line-through;
+      -webkit-text-decoration-line: line-through;
+      text-decoration-color: #94a3b8;
+      text-decoration-thickness: 1px;
+      text-decoration-skip-ink: none;
+      color: #94a3b8;
+      margin-right: 4px;
+    }
     .totals { margin-top: 20px; margin-left: auto; width: 280px; font-size: 13px; }
     .totals div { display: flex; justify-content: space-between; padding: 5px 0; color: #475569; }
     .totals .discount { color: #059669; }

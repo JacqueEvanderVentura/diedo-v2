@@ -18,6 +18,8 @@ export function customersVisibleToSession(customers, user) {
 export function customerActiveAtBranch(customer, branchId) {
   if (!customer || customer.isDefault || customer.id === 'walk-in') return true
   if (!branchId) return true
+  const branchIds = getRowBranchIds(customer)
+  if (!branchIds.length) return true
   return matchesBranches(customer, [branchId], getRowBranchIds)
 }
 

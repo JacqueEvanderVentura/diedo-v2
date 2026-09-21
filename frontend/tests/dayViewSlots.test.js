@@ -5,7 +5,9 @@ import {
   appointmentsOverlappingSlot,
   assignAppointmentLanes,
   isSlotBlockedByAppointment,
+  calendarBlockHeight,
   calendarRowSpan,
+  CALENDAR_ROW_PX,
 } from '@/modules/agenda/lib/dayViewSlots'
 
 const DATE = '2026-09-16'
@@ -57,6 +59,12 @@ describe('dayViewSlots', () => {
     expect(calendarRowSpan(60)).toBe(2)
     expect(calendarRowSpan(30)).toBe(1)
     expect(calendarRowSpan(90)).toBe(3)
+  })
+
+  it('computes proportional block height from duration', () => {
+    expect(calendarBlockHeight(30, CALENDAR_ROW_PX)).toBe(CALENDAR_ROW_PX)
+    expect(calendarBlockHeight(45, CALENDAR_ROW_PX)).toBe(CALENDAR_ROW_PX * 1.5)
+    expect(calendarBlockHeight(60, CALENDAR_ROW_PX)).toBe(CALENDAR_ROW_PX * 2)
   })
 
   it('lists every appointment that overlaps a slot', () => {

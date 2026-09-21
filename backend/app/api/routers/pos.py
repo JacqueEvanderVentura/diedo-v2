@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Any, cast
@@ -437,9 +438,13 @@ def _sale_line_response(line: Any) -> SaleLineResponse:
     )
 
 
-def _sale_payment_response(record: SaleRecord) -> SalePaymentResponse | None:
+def _sale_payment_response(
+    record: SaleRecord,
+    proofs: Sequence[PaymentProof] = (),
+) -> SalePaymentResponse | None:
     sale = record.sale
-    if sale.settlement_policy != "immediate":
+    proof_responses = [_proof_response(proof) for proof in proofs]
+    if sale.settlement_policy != "immediate" and not proof_responses:
         return None
     return SalePaymentResponse(
         payment_method=_payment_snapshot_response(
@@ -454,7 +459,7 @@ def _sale_payment_response(record: SaleRecord) -> SalePaymentResponse | None:
         ),
         amount=sale.total,
         reference=sale.payment_reference,
-        proofs=[],
+        proofs=proof_responses,
     )
 
 
@@ -493,13 +498,16 @@ def _sale_list_response(record: SaleRecord) -> SaleListItemResponse:
     )
 
 
-def _sale_detail_response(record: SaleRecord) -> SaleDetailResponse:
+def _sale_detail_response(
+    record: SaleRecord,
+    proofs: Sequence[PaymentProof] = (),
+) -> SaleDetailResponse:
     sale = record.sale
     values = _sale_list_response(record).model_dump(by_alias=False)
     values.update(
         quote_id=sale.quote_id,
         lines=[_sale_line_response(line) for line in record.lines],
-        payment=_sale_payment_response(record),
+        payment=_sale_payment_response(record, proofs),
         notes=sale.notes,
         void_reason=sale.void_reason,
         voided_by_platform_user_id=sale.voided_by_platform_user_id,
@@ -515,6 +523,7 @@ def _checkout_response(result: Any) -> CheckoutResponse:
     values.update(
         receivable_id=result.receivable_id,
         inventory_movement_id=record.sale.inventory_movement_id,
+        parked_for_next_shift=bool(getattr(result, "parked_for_next_shift", False)),
     )
     return CheckoutResponse.model_validate(values)
 
@@ -1045,7 +1054,10 @@ def get_sale(
     database: DatabaseSession,
     grant: SalesReadGrant,
 ) -> SaleDetailResponse:
-    return _sale_detail_response(PosService(database).get_sale(grant, sale_id))
+    service = PosService(database)
+    record = service.get_sale(grant, sale_id)
+    proofs = service.payment_proofs_for_sale(grant, sale_id)
+    return _sale_detail_response(record, proofs)
 
 
 @router.get("/sales/{sale_id}/receivable", responses=_RESPONSES)

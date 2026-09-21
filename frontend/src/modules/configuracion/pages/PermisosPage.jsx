@@ -15,6 +15,7 @@ import {
   MobileCardHeader,
 } from '@/components/ui/ResponsiveList'
 import { configPageClass } from '../lib/pageShell'
+import { isSettingsBlockVisible } from '../lib/settingsSearch'
 import { DataFilterBar } from '@/components/ui/DataFilterBar'
 import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
 import { useSortedRows } from '@/hooks/useTableControls'
@@ -156,7 +157,7 @@ function ApiPermModuleCard({ mod, roles, grants, onToggle, highlightRoleId, canE
   )
 }
 
-function DemoPermissionMatrix() {
+function DemoPermissionMatrix({ visibleBlockIds }) {
   const permissions = useConfigStore((s) => s.permissions)
   const togglePermission = useConfigStore((s) => s.togglePermission)
   const getPermissionSummary = useConfigStore((s) => s.getPermissionSummary)
@@ -197,6 +198,8 @@ function DemoPermissionMatrix() {
       />
 
       <div className="space-y-6">
+        {isSettingsBlockVisible(visibleBlockIds, 'local-modules') && (
+        <>
         <h3 className="font-heading text-lg font-bold text-slate-800">Módulos locales (POS, Agenda, CRM…)</h3>
         {PERMISSION_MODULES.map((mod) => {
           const modActions = filterActions(mod.actions)
@@ -212,8 +215,11 @@ function DemoPermissionMatrix() {
             />
           )
         })}
+        </>
+        )}
       </div>
 
+      {isSettingsBlockVisible(visibleBlockIds, 'role-summary') && (
       <Card className="p-6" data-testid="permisos-summary">
         <h3 className="mb-4 font-heading text-lg font-bold text-slate-800">Resumen por Rol (local)</h3>
         <div className="space-y-4">
@@ -230,11 +236,12 @@ function DemoPermissionMatrix() {
           ))}
         </div>
       </Card>
+      )}
     </>
   )
 }
 
-export default function PermisosPage({ embedded = false }) {
+export default function PermisosPage({ embedded = false, visibleBlockIds }) {
   const isOnline = useSessionStore((s) => s.isOnline())
   const isDemo = useSessionStore((s) => s.isDemo())
   const hasRoleManagePermission = useSessionStore((s) => s.hasPermission('role.manage'))
@@ -339,7 +346,7 @@ export default function PermisosPage({ embedded = false }) {
         <Button onClick={save} disabled={saving || !canSave} data-testid="permisos-save"><Save className="h-4 w-4" /> {saving ? 'Guardando…' : 'Guardar Cambios'}</Button>
       </div>
 
-      {isOnline && apiMatrix && (
+      {isOnline && apiMatrix && isSettingsBlockVisible(visibleBlockIds, 'api-roles') && (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-semibold uppercase text-slate-400">Roles API</span>
@@ -371,7 +378,7 @@ export default function PermisosPage({ embedded = false }) {
         </div>
       )}
 
-      {isDemo && <DemoPermissionMatrix />}
+      {isDemo && <DemoPermissionMatrix visibleBlockIds={visibleBlockIds} />}
     </div>
   )
 }

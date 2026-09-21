@@ -3,8 +3,10 @@ import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { AttachmentField } from '@/components/ui/AttachmentField'
 import { formatDOP } from '@/lib/format'
 import { usePosStore } from '@/stores/posStore'
+import { saveExpenseAttachments } from '@/modules/finanzas/lib/financeAttachments'
 import { cn } from '@/lib/utils'
 
 const TYPES = [
@@ -16,6 +18,7 @@ export function MovementModal({ open, onClose, defaultType = 'ingreso' }) {
   const [type, setType] = useState(defaultType)
   const [concept, setConcept] = useState('')
   const [amount, setAmount] = useState('')
+  const [attachments, setAttachments] = useState([])
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const addIncome = usePosStore((s) => s.addIncome)
@@ -24,6 +27,7 @@ export function MovementModal({ open, onClose, defaultType = 'ingreso' }) {
   const reset = () => {
     setConcept('')
     setAmount('')
+    setAttachments([])
     setError('')
     setType(defaultType)
   }
@@ -38,7 +42,11 @@ export function MovementModal({ open, onClose, defaultType = 'ingreso' }) {
         await addIncome(payload)
         toast.success(`Ingreso registrado: ${formatDOP(amount)}`)
       } else {
-        await addExpense(payload)
+        const movement = await addExpense(payload)
+        const movementId = movement?.id
+        if (movementId && attachments.length) {
+          saveExpenseAttachments(movementId, attachments)
+        }
         toast.success(`Egreso registrado: ${formatDOP(amount)}`)
       }
       reset()
@@ -76,6 +84,13 @@ export function MovementModal({ open, onClose, defaultType = 'ingreso' }) {
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Monto (RD$)</label>
           <Input type="number" value={amount} onChange={(e) => { setAmount(e.target.value); setError('') }} placeholder="0.00" />
         </div>
+        {type === 'egreso' && (
+          <AttachmentField
+            value={attachments}
+            onChange={setAttachments}
+            testId="caja-movement-attachments"
+          />
+        )}
         {error && <p className="text-sm font-medium text-red-500">{error}</p>}
         <div className="flex gap-3 pt-1">
           <Button variant="secondary" className="flex-1" onClick={() => { reset(); onClose() }}>Cancelar</Button>

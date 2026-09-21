@@ -108,6 +108,7 @@ class PosState:
 class CheckoutResult:
     sale: SaleRecord
     receivable_id: UUID | None
+    parked_for_next_shift: bool = False
 
 
 @dataclass(frozen=True)
@@ -343,6 +344,12 @@ class PosService:
         )
         try:
             self._repository.add_register(register)
+            self._absorb_parked_shift_activity(
+                principal=principal,
+                grant=grant,
+                register=register,
+                branch_id=branch_id,
+            )
             self._repository.add_audit(
                 workspace_id=grant.workspace_id,
                 actor_platform_user_id=principal.platform_user_id,
@@ -1019,6 +1026,12 @@ class PosService:
             raise ResourceNotFoundError("La venta no existe.", "saleId")
         return self._repository.sale_record(sale)
 
+    def payment_proofs_for_sale(
+        self, grant: PermissionGrant, sale_id: UUID
+    ) -> tuple[PaymentProof, ...]:
+        self.get_sale(grant, sale_id)
+        return self._repository.payment_proofs_for_sale(grant.workspace_id, sale_id)
+
     def sales_summary(
         self,
         grant: PermissionGrant,
@@ -1085,6 +1098,7 @@ class PosService:
             return CheckoutResult(
                 self._repository.sale_record(existing),
                 replay_receivable.id if replay_receivable is not None else None,
+                parked_for_next_shift=existing.cash_register_id is None,
             )
 
         method = self._require_payment_method(
@@ -1092,6 +1106,7 @@ class PosService:
         )
         crm_relaxed_register = bool(values.get("crm_relaxed_register"))
         register_id = cast(UUID | None, values.get("register_id"))
+        register: CashRegister | None
         if register_id is not None:
             register = self._locked_open_register(grant, register_id)
         elif crm_relaxed_register:
@@ -1104,8 +1119,9 @@ class PosService:
             )
         else:
             raise InvalidOperationError("Debes indicar la caja de cobro.", "registerId")
-        if register.branch_id != branch_id:
+        if register is not None and register.branch_id != branch_id:
             raise InvalidOperationError("La caja abierta pertenece a otra sucursal.", "registerId")
+        parked_for_next_shift = crm_relaxed_register and register is None
         if method.requires_evidence and method.settlement_policy == "immediate":
             raise InvalidOperationError(
                 "Este método requiere comprobante y debe confirmarse mediante CxC.",
@@ -1185,7 +1201,7 @@ class PosService:
             workspace_id=grant.workspace_id,
             branch_id=branch_id,
             customer_id=customer.id if customer else None,
-            cash_register_id=register.id,
+            cash_register_id=register.id if register is not None else None,
             quote_id=quote.id if quote else None,
             inventory_movement_id=inventory_movement_id,
             sale_number=sale_number,
@@ -1250,49 +1266,34 @@ class PosService:
                 )
                 self._repository.add_receivable(receivable, receivable_lines)
 
-            if method.settlement_policy == "immediate" and method.affects_cash_drawer:
-                if priced.total > 0:
-                    cash_register: CashRegister | None = register
-                    if cash_register is None or cash_register.status != "open":
-                        cash_register = self._repository.current_register(
-                            grant.workspace_id, branch_id, lock=True
-                        )
-                        if cash_register is None:
-                            cash_register = self._resolve_crm_checkout_register(
-                                principal=principal,
-                                grant=grant,
-                                branch_id=branch_id,
-                                method=method,
-                                idempotency_key=self._derived_key(
-                                    "crm-cash-register", idempotency_key
-                                ),
-                            )
-                    if cash_register is None:
-                        raise InvalidOperationError(
-                            "No hay caja abierta para registrar el cobro.",
-                            "registerId",
-                        )
-                    movement = CashMovement(
-                        workspace_id=grant.workspace_id,
-                        branch_id=branch_id,
-                        cash_register_id=cash_register.id,
-                        movement_type="sale",
-                        currency_code=sale.currency_code,
-                        amount=priced.total,
-                        cash_delta=priced.total,
-                        **self._payment_snapshot(method),
-                        sale_id=sale.id,
-                        inventory_movement_id=inventory_movement_id,
-                        concept=f"Venta {sale.sale_number}",
-                        reference=sale.payment_reference,
-                        created_by_membership_id=principal.membership_id,
-                        created_by_platform_user_id=principal.platform_user_id,
-                        created_by_name=principal.display_name,
-                        idempotency_key=self._derived_key("pos-cash-sale", idempotency_key),
-                        request_fingerprint=fingerprint,
-                    )
-                    self._repository.add_movement(movement)
-                    self._apply_cash_effect(cash_register, "sale", priced.total)
+            if (
+                method.settlement_policy == "immediate"
+                and method.affects_cash_drawer
+                and priced.total > 0
+                and register is not None
+                and register.status == "open"
+            ):
+                movement = CashMovement(
+                    workspace_id=grant.workspace_id,
+                    branch_id=branch_id,
+                    cash_register_id=register.id,
+                    movement_type="sale",
+                    currency_code=sale.currency_code,
+                    amount=priced.total,
+                    cash_delta=priced.total,
+                    **self._payment_snapshot(method),
+                    sale_id=sale.id,
+                    inventory_movement_id=inventory_movement_id,
+                    concept=f"Venta {sale.sale_number}",
+                    reference=sale.payment_reference,
+                    created_by_membership_id=principal.membership_id,
+                    created_by_platform_user_id=principal.platform_user_id,
+                    created_by_name=principal.display_name,
+                    idempotency_key=self._derived_key("pos-cash-sale", idempotency_key),
+                    request_fingerprint=fingerprint,
+                )
+                self._repository.add_movement(movement)
+                self._apply_cash_effect(register, "sale", priced.total)
 
             if quote is not None:
                 quote.status = "converted"
@@ -1309,7 +1310,8 @@ class PosService:
                 details={
                     "saleNumber": sale.sale_number,
                     "branchId": str(branch_id),
-                    "registerId": str(register.id),
+                    "registerId": str(register.id) if register is not None else None,
+                    "parkedForNextShift": parked_for_next_shift,
                     "total": str(sale.total),
                     "settlementPolicy": method.settlement_policy,
                     "receivableId": str(receivable.id) if receivable else None,
@@ -1322,6 +1324,7 @@ class PosService:
             return CheckoutResult(
                 self._repository.sale_record(sale),
                 receivable.id if receivable is not None else None,
+                parked_for_next_shift=parked_for_next_shift,
             )
         except IntegrityError as exc:
             self._session.rollback()
@@ -1336,6 +1339,7 @@ class PosService:
                 return CheckoutResult(
                     self._repository.sale_record(replay),
                     concurrent_receivable.id if concurrent_receivable else None,
+                    parked_for_next_shift=replay.cash_register_id is None,
                 )
             raise ConflictError("No se pudo completar la venta.") from exc
 
@@ -1477,6 +1481,7 @@ class PosService:
         content_type: str | None,
         storage: AttachmentStorage,
         max_bytes: int,
+        crm_relaxed_register: bool = False,
     ) -> ReceivableRecord:
         normalized_type = self._proof_content_type(content_type) if evidence_source else None
         digest = (
@@ -1532,21 +1537,26 @@ class PosService:
                 "Adjunta el comprobante requerido por este método de pago.", "file"
             )
         register: CashRegister | None = None
+        pending_shift_cash = False
         if method.affects_cash_drawer:
-            if register_id is None:
+            if register_id is not None:
+                register = self._locked_open_register(grant, register_id)
+                if register.branch_id != receivable.branch_id:
+                    raise InvalidOperationError("La caja pertenece a otra sucursal.", "registerId")
+            elif crm_relaxed_register:
+                pending_shift_cash = True
+            else:
                 raise InvalidOperationError(
                     "Selecciona una caja abierta para registrar el cobro en efectivo.",
                     "registerId",
                 )
-            register = self._locked_open_register(grant, register_id)
-            if register.branch_id != receivable.branch_id:
-                raise InvalidOperationError("La caja pertenece a otra sucursal.", "registerId")
         payment = CustomerPayment(
             workspace_id=grant.workspace_id,
             branch_id=receivable.branch_id,
             receivable_id=receivable.id,
             payment_method_id=method.id,
             cash_register_id=register.id if register else None,
+            pending_shift_cash_assignment=pending_shift_cash,
             status="posted",
             currency_code=receivable.currency_code,
             amount=payment_amount,
@@ -1949,7 +1959,7 @@ class PosService:
         if cash_movement is not None:
             register = self._locked_reversal_register(
                 grant,
-                original_register_id=sale.cash_register_id,
+                original_register_id=cash_movement.cash_register_id,
                 branch_id=sale.branch_id,
             )
             reversal = CashMovement(
@@ -2513,21 +2523,98 @@ class PosService:
         branch_id: UUID,
         method: PaymentMethod,
         idempotency_key: str,
-    ) -> CashRegister:
-        current = self._repository.current_register(grant.workspace_id, branch_id, lock=True)
-        if current is not None:
-            return current
-        if method.settlement_policy != "immediate" or not method.affects_cash_drawer:
-            latest = self._repository.latest_register(grant.workspace_id, branch_id)
-            if latest is not None:
-                return latest
-        opened = self.open_register(
-            principal=principal,
-            grant=grant,
-            values={"branch_id": branch_id, "opening_cash": Decimal("0")},
-            idempotency_key=self._derived_key("crm-auto-register", idempotency_key),
-        )
-        return self._locked_open_register(grant, opened.register.id)
+    ) -> CashRegister | None:
+        return self._repository.current_register(grant.workspace_id, branch_id, lock=True)
+
+    def _absorb_parked_shift_activity(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        register: CashRegister,
+        branch_id: UUID,
+    ) -> None:
+        workspace_id = grant.workspace_id
+        for sale in self._repository.parked_sales_for_branch(workspace_id, branch_id, lock=True):
+            sale.cash_register_id = register.id
+            if (
+                sale.settlement_policy == "immediate"
+                and sale.affects_cash_drawer
+                and sale.total > 0
+                and self._repository.movement_for_sale(workspace_id, sale.id) is None
+            ):
+                movement = CashMovement(
+                    workspace_id=workspace_id,
+                    branch_id=branch_id,
+                    cash_register_id=register.id,
+                    movement_type="sale",
+                    currency_code=sale.currency_code,
+                    amount=sale.total,
+                    cash_delta=sale.total,
+                    payment_method_id=sale.payment_method_id,
+                    payment_method_code=sale.payment_method_code,
+                    payment_method_name=sale.payment_method_name,
+                    payment_channel=sale.payment_channel,
+                    settlement_policy=sale.settlement_policy,
+                    affects_cash_drawer=sale.affects_cash_drawer,
+                    requires_evidence=sale.requires_evidence,
+                    sale_id=sale.id,
+                    inventory_movement_id=sale.inventory_movement_id,
+                    concept=f"Venta {sale.sale_number}",
+                    reference=sale.payment_reference,
+                    created_by_membership_id=sale.sold_by_membership_id,
+                    created_by_platform_user_id=sale.sold_by_platform_user_id,
+                    created_by_name=sale.sold_by_name,
+                    idempotency_key=self._derived_key("pos-parked-sale", str(sale.id)),
+                    request_fingerprint=self._fingerprint(
+                        {"saleId": str(sale.id), "registerId": str(register.id)}
+                    ),
+                )
+                self._repository.add_movement(movement)
+                self._apply_cash_effect(register, "sale", sale.total)
+
+        for payment in self._repository.parked_cash_payments_for_branch(
+            workspace_id, branch_id, lock=True
+        ):
+            payment.cash_register_id = register.id
+            payment.pending_shift_cash_assignment = False
+            if self._repository.movement_for_payment(workspace_id, payment.id) is not None:
+                continue
+            receivable = self._repository.get_receivable(
+                workspace_id,
+                payment.receivable_id,
+                grant.allowed_branch_ids,
+            )
+            if receivable is None:
+                continue
+            movement = CashMovement(
+                workspace_id=workspace_id,
+                branch_id=branch_id,
+                cash_register_id=register.id,
+                movement_type="receivable_payment",
+                currency_code=payment.currency_code,
+                amount=payment.amount,
+                cash_delta=payment.amount,
+                payment_method_id=payment.payment_method_id,
+                payment_method_code=payment.payment_method_code,
+                payment_method_name=payment.payment_method_name,
+                payment_channel=payment.payment_channel,
+                settlement_policy=payment.settlement_policy,
+                affects_cash_drawer=payment.affects_cash_drawer,
+                requires_evidence=payment.requires_evidence,
+                customer_payment_id=payment.id,
+                concept=f"Cobro {receivable.receivable_number}",
+                reference=payment.reference,
+                created_by_membership_id=payment.received_by_membership_id,
+                created_by_platform_user_id=payment.received_by_platform_user_id,
+                created_by_name=payment.received_by_name,
+                idempotency_key=self._derived_key("pos-parked-payment", str(payment.id)),
+                request_fingerprint=self._fingerprint(
+                    {"paymentId": str(payment.id), "registerId": str(register.id)}
+                ),
+            )
+            self._repository.add_movement(movement)
+            self._apply_cash_effect(register, "receivable_payment", payment.amount)
 
     def _locked_open_register(self, grant: PermissionGrant, register_id: UUID) -> CashRegister:
         register = self._repository.get_register(

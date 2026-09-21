@@ -1,0 +1,183 @@
+import {
+  Users,
+  Shield,
+  Store,
+  Tag,
+  CreditCard,
+  PiggyBank,
+  Package,
+  FileText,
+  UserCircle,
+  Bell,
+  Lock,
+  Palette,
+  Globe,
+  Database,
+  MessageCircle,
+  Receipt,
+  HelpCircle,
+  CalendarDays,
+} from 'lucide-react'
+
+export const SETTINGS_SECTIONS = [
+  {
+    title: 'General',
+    items: [
+      {
+        id: 'cotizaciones-facturas',
+        title: 'Cotizaciones y Facturas',
+        subtitle: 'Logo, RNC y datos que salen en PDF',
+        icon: Receipt,
+        kind: 'embed',
+        embed: 'billing-documents',
+        blocks: [
+          { id: 'logo', title: 'Logo', keywords: ['subir logo'] },
+          { id: 'trade-name', title: 'Nombre comercial' },
+          { id: 'legal-name', title: 'Razón social' },
+          { id: 'rnc', title: 'RNC' },
+          { id: 'phone', title: 'Teléfono' },
+          { id: 'address', title: 'Dirección fiscal' },
+          { id: 'email', title: 'Correo' },
+          { id: 'footer', title: 'Nota al pie' },
+        ],
+      },
+      {
+        id: 'crm-mode',
+        title: 'Modo CRM',
+        subtitle: 'Standard con submódulos o Simplificado en una pantalla',
+        icon: Users,
+        kind: 'embed',
+        embed: 'crm-mode',
+        blocks: [
+          { id: 'standard', title: 'CRM Standard' },
+          { id: 'simplified', title: 'CRM Simplificado' },
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Administración',
+    items: [
+      { id: 'usuarios', title: 'Usuarios', subtitle: 'Gestiona los miembros del equipo', icon: Users, kind: 'embed', embed: 'usuarios' },
+      {
+        id: 'permisos',
+        title: 'Permisos',
+        subtitle: 'Roles y niveles de acceso',
+        icon: Shield,
+        kind: 'embed',
+        embed: 'permisos',
+        blocks: [
+          { id: 'api-roles', title: 'Roles API' },
+          { id: 'local-modules', title: 'Módulos locales', keywords: ['POS', 'Agenda', 'CRM'] },
+          { id: 'role-summary', title: 'Resumen por Rol (local)' },
+        ],
+      },
+      {
+        id: 'sucursales',
+        title: 'Sucursales',
+        subtitle: 'Configura tus puntos de venta',
+        icon: Store,
+        kind: 'embed',
+        embed: 'sucursales',
+        blocks: [
+          { id: 'general', title: 'Ajustes generales', keywords: ['nombre del negocio', 'región', 'impuesto default'] },
+          { id: 'list', title: 'Listado de sucursales', keywords: ['nueva sucursal'] },
+        ],
+      },
+      { id: 'categorias', title: 'Categorías', subtitle: 'Categorías de productos y servicios', icon: Tag, kind: 'embed', embed: 'categorias' },
+      { id: 'presupuestos', title: 'Presupuestos', subtitle: 'Configura categorías de presupuesto', icon: PiggyBank, kind: 'navigate', to: '/finanzas/presupuestos' },
+      { id: 'metodos-pago', title: 'Métodos de Pago', subtitle: 'Asocia métodos de pago con categorías', icon: CreditCard, kind: 'embed', embed: 'metodos-pago' },
+      { id: 'productos', title: 'Productos y Servicios', subtitle: 'Gestiona tu catálogo comercial', icon: Package, kind: 'navigate', to: '/inventarios' },
+      { id: 'plantillas-docs', title: 'Plantillas de Documentos', subtitle: 'Formatos base para CRM y RRHH', icon: FileText, kind: 'stub' },
+      { id: 'doc-crm', title: 'Documentación CRM', subtitle: 'Configura requisitos de perfiles', icon: FileText, kind: 'stub' },
+      { id: 'impuestos-nomina', title: 'Impuestos de Nómina', subtitle: 'Configura aportes TSS e INFOTEP', icon: Receipt, kind: 'stub' },
+      {
+        id: 'agenda-cabinas',
+        title: 'Agenda y Cabinas',
+        subtitle: 'Horarios, cabinas y permisos por sucursal',
+        icon: CalendarDays,
+        kind: 'embed',
+        embed: 'agenda-cabinas',
+        blocks: [
+          { id: 'branch', title: 'Sucursal activa' },
+          { id: 'order', title: 'Orden de Cabinas' },
+          { id: 'distribution', title: 'Distribución física' },
+          { id: 'hours', title: 'Horarios Laborales' },
+          { id: 'acl', title: 'Permisos de Usuarios' },
+          { id: 'staff', title: 'Personal de Agenda' },
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Cuenta',
+    items: [
+      {
+        id: 'perfil',
+        title: 'Perfil',
+        subtitle: 'Gestiona tu información personal',
+        icon: UserCircle,
+        kind: 'embed',
+        embed: 'perfil',
+        blocks: [
+          { id: 'account', title: 'Cuenta', keywords: ['rol'] },
+          { id: 'business-name', title: 'Nombre del negocio', keywords: ['nombre comercial', 'empresa'] },
+        ],
+      },
+      { id: 'notificaciones', title: 'Notificaciones', subtitle: 'Configura alertas y preferencias', icon: Bell, kind: 'stub' },
+      { id: 'seguridad', title: 'Seguridad', subtitle: 'Contraseña y autenticación', icon: Lock, kind: 'stub' },
+    ],
+  },
+  {
+    title: 'Aplicación',
+    items: [
+      { id: 'apariencia', title: 'Apariencia', subtitle: 'Temas y personalización visual', icon: Palette, kind: 'stub' },
+      { id: 'idioma', title: 'Idioma y Región', subtitle: 'Preferencias de localización', icon: Globe, kind: 'stub' },
+      {
+        id: 'datos',
+        title: 'Datos',
+        subtitle: 'Exportar e importar información',
+        icon: Database,
+        kind: 'embed',
+        embed: 'datos',
+        blocks: [
+          { id: 'import', title: 'Importar datos CRM' },
+          { id: 'branch', title: 'Sucursal destino' },
+          { id: 'pipeline', title: 'Embudo (leads)' },
+          { id: 'customers', title: 'Clientes' },
+          { id: 'activities', title: 'Actividades' },
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Comunicaciones',
+    items: [
+      {
+        id: 'whatsapp',
+        title: 'Mensajes de WhatsApp',
+        subtitle: 'Plantillas para Agenda, CRM y Clientes',
+        icon: MessageCircle,
+        kind: 'embed',
+        embed: 'whatsapp',
+        blocks: [
+          { id: 'templates', title: 'Plantillas de WhatsApp' },
+          { id: 'variables', title: 'Variables disponibles' },
+          { id: 'agenda', title: 'Agenda' },
+          { id: 'oportunidades', title: 'Oportunidades' },
+          { id: 'clientes', title: 'Clientes' },
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Facturación',
+    items: [{ id: 'plan', title: 'Plan y Pagos', subtitle: 'Gestiona tu suscripción', icon: CreditCard, kind: 'stub' }],
+  },
+  {
+    title: 'Soporte',
+    items: [{ id: 'ayuda', title: 'Centro de Ayuda', subtitle: 'Documentación y tutoriales', icon: HelpCircle, kind: 'stub' }],
+  },
+]
+
+export const SETTINGS_ITEMS = SETTINGS_SECTIONS.flatMap((section) => section.items)

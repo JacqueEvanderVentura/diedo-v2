@@ -803,6 +803,13 @@ def test_terminal_pos_complete_http_flow(client: TestClient, tmp_path: Path) -> 
         assert proof_content.headers["content-type"].startswith("image/png")
         assert proof_content.headers["cache-control"] == "private, no-store"
         assert proof_content.headers["etag"] == f'"{proof["checksum"]}"'
+        sale_with_proof_response = client.get(
+            f"/api/v1/pos/sales/{credit_sale['id']}", headers=headers
+        )
+        assert sale_with_proof_response.status_code == 200, sale_with_proof_response.text
+        sale_payment = sale_with_proof_response.json()["payment"]
+        assert sale_payment is not None
+        assert [item["id"] for item in sale_payment["proofs"]] == [proof["id"]]
         listed_receivables_response = client.get(
             "/api/v1/pos/receivables",
             headers=headers,

@@ -6,10 +6,11 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { configPageClass } from '../lib/pageShell'
 import { DEFAULT_BILLING_DOCUMENTS } from '../lib/billingDocuments'
+import { isSettingsBlockVisible } from '../lib/settingsSearch'
 
 const MAX_LOGO_BYTES = 512 * 1024
 
-export default function BillingDocumentsPanel({ embedded = false }) {
+export default function BillingDocumentsPanel({ embedded = false, visibleBlockIds }) {
   const settings = useConfigStore((s) => s.settings)
   const updateBillingDocuments = useConfigStore((s) => s.updateBillingDocuments)
   const fileRef = useRef(null)
@@ -59,6 +60,7 @@ export default function BillingDocumentsPanel({ embedded = false }) {
       </p>
 
       <div className="space-y-4">
+        {isSettingsBlockVisible(visibleBlockIds, 'logo') && (
         <div className="flex flex-wrap items-start gap-4">
           <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white">
             {draft.logoDataUrl ? (
@@ -79,8 +81,10 @@ export default function BillingDocumentsPanel({ embedded = false }) {
             )}
           </div>
         </div>
+        )}
 
         <div className="grid gap-3 sm:grid-cols-2">
+          {isSettingsBlockVisible(visibleBlockIds, 'trade-name') && (
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500">Nombre comercial</label>
             <Input
@@ -90,6 +94,8 @@ export default function BillingDocumentsPanel({ embedded = false }) {
               data-testid="billing-trade-name"
             />
           </div>
+          )}
+          {isSettingsBlockVisible(visibleBlockIds, 'legal-name') && (
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500">Razón social</label>
             <Input
@@ -99,6 +105,8 @@ export default function BillingDocumentsPanel({ embedded = false }) {
               data-testid="billing-legal-name"
             />
           </div>
+          )}
+          {isSettingsBlockVisible(visibleBlockIds, 'rnc') && (
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500">RNC</label>
             <Input
@@ -108,18 +116,26 @@ export default function BillingDocumentsPanel({ embedded = false }) {
               data-testid="billing-rnc"
             />
           </div>
+          )}
+          {isSettingsBlockVisible(visibleBlockIds, 'phone') && (
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500">Teléfono</label>
             <Input value={draft.phone} onChange={(e) => set('phone', e.target.value)} placeholder="809-555-0000" />
           </div>
+          )}
+          {isSettingsBlockVisible(visibleBlockIds, 'address') && (
           <div className="sm:col-span-2">
             <label className="mb-1 block text-xs font-medium text-slate-500">Dirección fiscal</label>
             <Input value={draft.address} onChange={(e) => set('address', e.target.value)} placeholder="Av. …, Santo Domingo" />
           </div>
+          )}
+          {isSettingsBlockVisible(visibleBlockIds, 'email') && (
           <div className="sm:col-span-2">
             <label className="mb-1 block text-xs font-medium text-slate-500">Correo</label>
             <Input type="email" value={draft.email} onChange={(e) => set('email', e.target.value)} placeholder="facturacion@empresa.com" />
           </div>
+          )}
+          {isSettingsBlockVisible(visibleBlockIds, 'footer') && (
           <div className="sm:col-span-2">
             <label className="mb-1 block text-xs font-medium text-slate-500">Nota al pie (opcional)</label>
             <Input
@@ -128,6 +144,7 @@ export default function BillingDocumentsPanel({ embedded = false }) {
               placeholder="Gracias por su preferencia."
             />
           </div>
+          )}
         </div>
 
         <Button type="button" onClick={save} data-testid="billing-documents-save">

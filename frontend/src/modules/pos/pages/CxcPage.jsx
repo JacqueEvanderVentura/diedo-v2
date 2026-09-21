@@ -366,9 +366,9 @@ export default function CxcPage() {
     const loaded = await ensureAccountDetail(r)
     if (!loaded) return
     if (loaded.kind === 'open-quote') {
-      if (!loadOpenQuoteToCart(loaded.id)) restoreHeldCart(loaded.id)
+      if (!loadOpenQuoteToCart(loaded.id)) await restoreHeldCart(loaded.id)
     } else {
-      restoreHeldCart(loaded.id)
+      await restoreHeldCart(loaded.id)
     }
     navigate('/pos')
     toast.success('Cuenta cargada en el POS')
@@ -382,7 +382,7 @@ export default function CxcPage() {
     }
     const loaded = await ensureAccountDetail(r)
     if (!loaded) return
-    if (!loadOpenQuoteToCart(loaded.id)) restoreHeldCart(loaded.id)
+    if (!loadOpenQuoteToCart(loaded.id)) await restoreHeldCart(loaded.id)
     requestBill()
     navigate('/pos')
     toast.success('Lista para cobrar en el POS')

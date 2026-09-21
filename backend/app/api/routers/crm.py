@@ -23,7 +23,7 @@ from app.api.routers.pos import (
     _sale_detail_response,
     _sale_list_response,
 )
-from app.db.models.crm import CrmSettings
+from app.db.models.identity import WorkspaceMembership
 from app.repositories.crm import CustomerCrmRecord, LeadRecord, OpportunityRecord
 from app.repositories.pos import QuoteRecord
 from app.schemas.common import ErrorResponse
@@ -238,11 +238,11 @@ def _activity_response(activity: Any) -> ActivityResponse:
     )
 
 
-def _workspace_settings_response(settings: CrmSettings) -> CrmWorkspaceSettingsResponse:
+def _workspace_settings_response(membership: WorkspaceMembership) -> CrmWorkspaceSettingsResponse:
     return CrmWorkspaceSettingsResponse(
-        ui_mode=cast(Any, settings.ui_mode),
-        version=settings.version,
-        updated_at=settings.updated_at,
+        ui_mode=cast(Any, membership.crm_ui_mode),
+        version=membership.version,
+        updated_at=membership.updated_at,
     )
 
 
@@ -324,7 +324,7 @@ def update_workspace_settings(
     payload: UpdateCrmWorkspaceSettingsRequest,
     database: DatabaseSession,
     principal: CurrentPrincipal,
-    grant: CrmManageGrant,
+    grant: CrmReadGrant,
 ) -> CrmWorkspaceSettingsResponse:
     return _workspace_settings_response(
         CrmService(database).update_workspace_settings(

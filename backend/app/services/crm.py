@@ -22,6 +22,7 @@ from app.db.models import (
     CrmOpportunity,
     CrmSettings,
     CustomerCrmProfile,
+    WorkspaceMembership,
 )
 from app.repositories.crm import (
     CrmRepository,
@@ -69,8 +70,8 @@ class CrmService:
         self._repository = CrmRepository(session)
         self._master_data = MasterDataRepository(session)
 
-    def workspace_settings(self, grant: PermissionGrant) -> CrmSettings:
-        return self._required_settings(grant.workspace_id)
+    def workspace_settings(self, grant: PermissionGrant) -> WorkspaceMembership:
+        return self._required_membership(grant)
 
     def update_workspace_settings(
         self,
@@ -79,25 +80,22 @@ class CrmService:
         grant: PermissionGrant,
         expected_version: int,
         ui_mode: str,
-    ) -> CrmSettings:
-        if not grant.workspace_wide:
-            raise AuthorizationError("Cambiar el modo del CRM requiere alcance de workspace.")
-        settings = self._repository.settings(grant.workspace_id, lock=True)
-        if settings is None:
-            settings = self._new_settings(grant.workspace_id, principal.platform_user_id)
-        self._require_version(settings.version, expected_version)
-        settings.ui_mode = ui_mode
-        settings.updated_by_platform_user_id = principal.platform_user_id
-        settings.version += 1
+    ) -> WorkspaceMembership:
+        membership = self._repository.membership(grant.workspace_id, grant.membership_id, lock=True)
+        if membership is None:
+            raise ResourceNotFoundError("La membresía activa no existe.", "membershipId")
+        self._require_version(membership.version, expected_version)
+        membership.crm_ui_mode = ui_mode
+        membership.version += 1
         self._audit(
             principal,
-            "crm.settings.ui_mode.update",
-            "crm_settings",
-            settings.id,
-            {"ui_mode": ui_mode, "version": settings.version},
+            "crm.user_ui_mode.update",
+            "workspace_membership",
+            membership.id,
+            {"ui_mode": ui_mode, "version": membership.version},
         )
         self._session.commit()
-        return settings
+        return membership
 
     def list_leads(
         self,
@@ -1337,6 +1335,12 @@ class CrmService:
             created_by_platform_user_id=principal.platform_user_id,
             updated_by_platform_user_id=principal.platform_user_id,
         )
+
+    def _required_membership(self, grant: PermissionGrant) -> WorkspaceMembership:
+        membership = self._repository.membership(grant.workspace_id, grant.membership_id)
+        if membership is None:
+            raise ResourceNotFoundError("La membresía activa no existe.", "membershipId")
+        return membership
 
     def _required_settings(self, workspace_id: UUID) -> CrmSettings:
         settings = self._repository.settings(workspace_id)

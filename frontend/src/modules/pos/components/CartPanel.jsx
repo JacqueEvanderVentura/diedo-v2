@@ -541,22 +541,18 @@ export function CartPanel({ onCheckoutDone }) {
 
 
 
-  const restoreHeld = (id) => {
-
+  const restoreHeld = async (id) => {
     const held = heldCarts.find((h) => h.id === id)
-
-    if (restoreHeldCart(id)) {
-
-      setHeldOpen(false)
-
-      toast.success(
-
-        held?.heldKind === 'quote' ? 'Cotización restaurada al carrito' : 'Venta restaurada al carrito'
-
-      )
-
+    try {
+      if (await restoreHeldCart(id)) {
+        setHeldOpen(false)
+        toast.success(
+          held?.heldKind === 'quote' ? 'Cotización restaurada al carrito' : 'Venta restaurada al carrito'
+        )
+      }
+    } catch (error) {
+      toast.error(error.message || 'No se pudo restaurar la venta retenida.')
     }
-
   }
 
 

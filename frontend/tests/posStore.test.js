@@ -513,7 +513,7 @@ describe('store online de Terminal POS', () => {
       openQuotes: [restored],
       apiContext: { hydrated: true, mode: 'online', branchId: 'branch-id', lastSyncedAt: null },
     })
-    expect(usePosStore.getState().restoreHeldCart('quote-id')).toBe(true)
+    await expect(usePosStore.getState().restoreHeldCart('quote-id')).resolves.toBe(true)
     usePosStore.getState().incItem('item-id')
     usePosStore.getState().setPaymentReference('TRF-NEW')
 
@@ -577,6 +577,95 @@ describe('store online de Terminal POS', () => {
     expect(usePosStore.getState().getShiftMovements()).toEqual([
       expect.objectContaining({ id: 'sale-id', status: 'voided' }),
     ])
+  })
+
+  it('restaura cliente e ítems pidiendo detalle cuando el listado viene sin líneas', async () => {
+    mocks.getQuote.mockResolvedValue({
+      id: 'held-1',
+      kind: 'held',
+      status: 'open',
+      version: 2,
+      customer: { id: 'customer-uuid', name: 'Enid' },
+      lines: [{ itemId: 'item-id', itemName: 'Servicio', quantity: '1', unitPrice: '50' }],
+      paymentMethod: { id: 'cash-id', code: 'cash', name: 'Efectivo' },
+      discountAmount: '0',
+      total: '50',
+      branch: { id: 'branch-id', name: 'Sucursal' },
+    })
+    usePosStore.setState({
+      heldCarts: [{
+        id: 'held-1',
+        apiSynced: true,
+        heldKind: 'park',
+        customer: { id: 'customer-uuid', name: 'Enid' },
+        items: [],
+        detailLoaded: false,
+        discountMode: 'pct',
+        discountValue: 0,
+        paymentMethod: 'efectivo',
+        paymentReference: '',
+        branchId: 'branch-id',
+      }],
+      apiContext: { hydrated: true, mode: 'online', branchId: 'branch-id', lastSyncedAt: null },
+    })
+
+    await usePosStore.getState().restoreHeldCart('held-1')
+
+    expect(mocks.getQuote).toHaveBeenCalledWith('held-1')
+    expect(usePosStore.getState().customer).toMatchObject({ id: 'customer-uuid', name: 'Enid' })
+    expect(usePosStore.getState().items).toHaveLength(1)
+  })
+
+  it('conserva cuatro retenciones con líneas tras hidratar con listado sin líneas', async () => {
+    const buildHeld = (suffix) => ({
+      id: `held-${suffix}`,
+      apiSynced: true,
+      detailLoaded: true,
+      heldKind: 'park',
+      customer: { id: `customer-${suffix}`, name: `Cliente ${suffix}` },
+      items: [{ id: 'item-id', name: 'Servicio', qty: 1, price: 100 }],
+      discountMode: 'pct',
+      discountValue: 0,
+      paymentMethod: 'efectivo',
+      paymentReference: '',
+      status: 'open',
+      branchId: 'branch-id',
+    })
+    const heldCarts = [1, 2, 3, 4].map(buildHeld)
+    usePosStore.setState({
+      branchId: 'branch-id',
+      heldCarts,
+      apiContext: { hydrated: true, mode: 'online', branchId: 'branch-id', lastSyncedAt: null },
+    })
+    mocks.listQuotes.mockResolvedValue({
+      items: heldCarts.map((held) => ({
+        id: held.id,
+        kind: 'held',
+        status: 'open',
+        version: 1,
+        customer: held.customer,
+        customerName: held.customer.name,
+        subtotal: '100',
+        discountAmount: '0',
+        taxAmount: '0',
+        total: '100',
+        branch: { id: 'branch-id', name: 'Sucursal' },
+        paymentMethod: { id: 'cash-id', code: 'cash', name: 'Efectivo' },
+      })),
+      page: 1,
+      pageSize: 50,
+      totalItems: 4,
+      totalPages: 1,
+    })
+    mocks.state.mockResolvedValue(apiState())
+
+    await usePosStore.getState().hydrateFromApi('branch-id', { force: true })
+
+    const nextHeld = usePosStore.getState().heldCarts
+    expect(nextHeld).toHaveLength(4)
+    nextHeld.forEach((held) => {
+      expect(held.items).toHaveLength(1)
+    })
   })
 
   it('marca las ventas demo como ingresos reconocidos al cerrar la caja', async () => {

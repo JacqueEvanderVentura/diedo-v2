@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react'
 import * as Icons from 'lucide-react'
 import { Search, ShoppingBag, Paperclip } from 'lucide-react'
-import { saleHasPaymentProof } from '../lib/saleProofs'
+import { findReceivableForSale, saleHasPaymentProof } from '../lib/saleProofs'
 import { useCrmStore } from '@/stores/crmStore'
+import { SimplifiedCrmSectionNav } from '@/modules/crm/components/SimplifiedCrmSectionNav'
 import { usePosStore } from '@/stores/posStore'
 import { useConfigStore } from '@/stores/configStore'
 import {
@@ -53,8 +54,10 @@ function Chip({ label, value, tone }) {
 }
 
 export default function VentasPage() {
+  const uiMode = useCrmStore((s) => s.uiMode)
   const crmSales = useCrmStore((s) => s.sales)
   const posSales = usePosStore((s) => s.sales)
+  const receivables = usePosStore((s) => s.receivables)
   const sales = useMemo(() => mergeCrmSalesLists(posSales, crmSales), [posSales, crmSales])
   const branches = useConfigStore((s) => s.branches)
   const [query, setQuery] = useState('')
@@ -84,7 +87,6 @@ export default function VentasPage() {
       date: (s) => new Date(s.createdAt),
       customer: (s) => s.customer?.name || '',
       branch: (s) => branchMap[s.branchId] || '',
-      items: (s) => s.items?.length || 0,
       method: (s) => s.method || '',
       status: (s) => s.status || '',
       total: (s) => s.total || 0,
@@ -96,6 +98,7 @@ export default function VentasPage() {
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8">
+      {uiMode === 'simplified' && <SimplifiedCrmSectionNav className="mb-2" />}
       <div className="grid grid-cols-2 gap-4">
         <Chip label="Ventas válidas (filtro actual)" value={stats.count} tone="slate" />
         <Chip label="Monto válido" value={formatDOP(stats.total)} tone="brand" />
@@ -152,16 +155,15 @@ export default function VentasPage() {
           <EmptyState icon={ShoppingBag} title="Sin ventas" description="No hay ventas con esos filtros." className="py-14" />
         </Card>
       ) : (
-        <ResponsiveList minTableWidth={1100} columnCount={9}>
+        <ResponsiveList minTableWidth={1000} columnCount={8}>
           <ResponsiveTable testId="ventas-table">
             <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
-            <table className="w-full min-w-[1020px] text-sm">
+            <table className="w-full min-w-[920px] text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
                   <SortableTh column="date" className="px-6 py-4">Fecha</SortableTh>
                   <SortableTh column="customer" className="px-6 py-4">Cliente</SortableTh>
                   <SortableTh column="branch" className="px-6 py-4">Sucursal</SortableTh>
-                  <SortableTh column="items" className="px-6 py-4">Artículos</SortableTh>
                   <SortableTh column="method" className="px-6 py-4">Método</SortableTh>
                   <SortableTh column="origin" sortable={false} className="px-6 py-4">Origen</SortableTh>
                   <SortableTh column="reference" sortable={false} className="px-6 py-4">Referencia</SortableTh>
@@ -186,7 +188,6 @@ export default function VentasPage() {
                       <td className="whitespace-nowrap px-6 py-4 text-slate-500">{fmtDateTime(s.createdAt)}</td>
                       <td className={cn('whitespace-nowrap px-6 py-4 font-semibold text-slate-800', isVoided && 'text-slate-500 line-through')}>{s.customer?.name || 'Cliente Mostrador'}</td>
                       <td className="whitespace-nowrap px-6 py-4 text-slate-500">{branchMap[s.branchId] || '—'}</td>
-                      <td className="max-w-[200px] truncate px-6 py-4 text-slate-500">{s.items?.map((i) => `${i.qty}× ${i.name}`).join(', ')}</td>
                       <td className="px-6 py-4">
                         <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-slate-600"><Icon className="h-4 w-4 text-slate-400" /> {METHOD_LABELS[s.method] || s.method}</span>
                       </td>
@@ -198,7 +199,7 @@ export default function VentasPage() {
                       <td className="px-6 py-4 text-slate-500">
                         <span className="inline-flex items-center gap-1.5">
                           {saleDisplayReference(s)}
-                          {saleHasPaymentProof(s) && (
+                          {saleHasPaymentProof(s, findReceivableForSale(receivables, s.id)) && (
                             <Paperclip className="h-3.5 w-3.5 text-blue-500" title="Tiene comprobante" data-testid={`ventas-proof-${s.id}`} />
                           )}
                         </span>
@@ -233,11 +234,15 @@ export default function VentasPage() {
                         {METHOD_LABELS[s.method] || s.method}
                       </span>
                     </MobileField>
-                    <MobileField label="Artículos" fullWidth>
-                      {s.items?.map((i) => `${i.qty}× ${i.name}`).join(', ') || '—'}
-                    </MobileField>
                     <MobileField label="Origen">{saleOriginKey(s) === 'pipeline' ? 'Pipeline' : 'POS'}</MobileField>
-                    <MobileField label="Referencia">{saleDisplayReference(s)}</MobileField>
+                    <MobileField label="Referencia">
+                      <span className="inline-flex items-center gap-1.5">
+                        {saleDisplayReference(s)}
+                        {saleHasPaymentProof(s, findReceivableForSale(receivables, s.id)) && (
+                          <Paperclip className="h-3.5 w-3.5 shrink-0 text-blue-500" title="Tiene comprobante" />
+                        )}
+                      </span>
+                    </MobileField>
                   </MobileCardGrid>
                   <MobileCardFooter>
                     <span />

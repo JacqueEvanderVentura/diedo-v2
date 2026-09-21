@@ -2,6 +2,7 @@ import { normalizeAppointmentTime, timeRangesOverlap } from '@/modules/agenda/li
 import { normalizeAppointmentStatus } from '@/modules/agenda/lib/completion'
 
 export const CALENDAR_SLOT_MINUTES = 30
+export const CALENDAR_ROW_PX = 52
 
 function appointmentStartMinutes(appointment) {
   const normalized = normalizeAppointmentTime(appointment?.time)
@@ -84,6 +85,16 @@ export function assignAppointmentLanes(appointments) {
 export function calendarRowSpan(durationMinutes = 30, slotMinutes = CALENDAR_SLOT_MINUTES) {
   const duration = Number(durationMinutes) || slotMinutes
   return Math.max(1, Math.ceil(duration / slotMinutes))
+}
+
+/** Pixel height of an appointment block proportional to duration (not rounded to whole slots). */
+export function calendarBlockHeight(
+  durationMinutes = 30,
+  rowPx = CALENDAR_ROW_PX,
+  slotMinutes = CALENDAR_SLOT_MINUTES,
+) {
+  const duration = Number(durationMinutes) || slotMinutes
+  return (duration / slotMinutes) * rowPx
 }
 
 export function isSlotBlockedByAppointment(appointments, slot) {

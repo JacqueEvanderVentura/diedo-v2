@@ -72,7 +72,8 @@ inventory movements. The scenario includes open and reconciled shifts, discounts
 collections, a reversed collection, and immediate and deferred payment methods. With the flag false
 it does not write fixtures. `seed_local_demo` remains as a compatibility wrapper for local workflows.
 
-Dashboard demo coverage adds nine appointments and eighteen branch-scoped tasks. Together with the
+Dashboard demo coverage adds nine canonical appointments plus, in development, sixty appointments
+per branch per day across a rolling window (seven days back and fourteen ahead). Together with the
 POS and inventory fixtures, these populate every dashboard period, stock alerts, today's agenda,
 and recent activity.
 

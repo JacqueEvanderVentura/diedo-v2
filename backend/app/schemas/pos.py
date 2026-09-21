@@ -465,7 +465,7 @@ class SaleListItemResponse(ApiModel):
     id: UUID
     number: str
     branch: PosBranchReferenceResponse
-    register_id: UUID
+    register_id: UUID | None
     customer: PosCustomerReferenceResponse | None
     status: SaleStatus
     currency: str
@@ -494,6 +494,7 @@ class SaleDetailResponse(SaleListItemResponse):
 class CheckoutResponse(SaleDetailResponse):
     receivable_id: UUID | None
     inventory_movement_id: UUID | None
+    parked_for_next_shift: bool = False
 
 
 class PaginatedSalesResponse(ApiModel):

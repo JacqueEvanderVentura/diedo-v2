@@ -14,8 +14,10 @@ import { PermissionElevationModal } from '@/components/auth/PermissionElevationM
 import { formatDOP } from '@/lib/format'
 import { fmtDateTime, METHOD_LABELS, METHOD_ICON } from '../lib/crm'
 import { buildInvoiceDataFromSale, downloadSaleInvoicePdf, printSaleInvoice } from '../lib/sales'
-import { collectSalePaymentProofs } from '../lib/saleProofs'
-import { ProofImagePreview } from '@/modules/pos/components/ProofImagePreview'
+import { collectSalePaymentProofs, findReceivableForSale } from '../lib/saleProofs'
+import { AttachmentProofSection } from '@/components/ui/AttachmentProofSection'
+import { posApi } from '@/services/posApi'
+import { mapReceivableFromApi } from '@/services/adapters/pos'
 import { cn } from '@/lib/utils'
 
 const VOID_INVOICE_PERMISSION = 'sales.invoice.void'
@@ -40,6 +42,7 @@ export function SaleDetailModal({ open, onClose, sale }) {
   const ensureSaleDetail = useCrmStore((s) => s.ensureSaleDetail)
   const voidSale = usePosStore((s) => s.voidSale)
   const downloadPaymentProof = usePosStore((s) => s.downloadPaymentProof)
+  const receivables = usePosStore((s) => s.receivables)
   const mutating = usePosStore((s) => s.mutating)
   const canVoidInvoice = useSessionStore((s) => s.hasPermission(VOID_INVOICE_PERMISSION))
   const isOnline = useSessionStore((s) => s.status === 'online')
@@ -49,22 +52,41 @@ export function SaleDetailModal({ open, onClose, sale }) {
   const [elevationOpen, setElevationOpen] = useState(false)
   const [voidReason, setVoidReason] = useState('')
   const [voidError, setVoidError] = useState('')
+  const [receivableDetail, setReceivableDetail] = useState(null)
 
   useEffect(() => {
     if (!open || !sale) {
       setDetail(null)
+      setReceivableDetail(null)
       return
     }
     setDetail(sale)
-    if (!isOnline || sale.detailLoaded || sale.items?.length) return
+    setReceivableDetail(findReceivableForSale(receivables, sale.id))
+    let cancelled = false
+    if (isOnline) {
+      posApi.getReceivableForSale(sale.id)
+        .then((response) => {
+          if (!cancelled) setReceivableDetail(mapReceivableFromApi(response))
+        })
+        .catch(() => {
+          if (!cancelled) setReceivableDetail(findReceivableForSale(receivables, sale.id))
+        })
+    }
+    const needsLines = !sale.detailLoaded && !sale.items?.length
+    if (!isOnline || !needsLines) {
+      return () => { cancelled = true }
+    }
     setLoadingDetail(true)
     ensureSaleDetail(sale.id)
       .then((loaded) => {
-        if (loaded) setDetail(loaded)
+        if (loaded && !cancelled) setDetail(loaded)
       })
       .catch(() => toast.error('No se pudo cargar el detalle de la venta'))
-      .finally(() => setLoadingDetail(false))
-  }, [open, sale, isOnline, ensureSaleDetail])
+      .finally(() => {
+        if (!cancelled) setLoadingDetail(false)
+      })
+    return () => { cancelled = true }
+  }, [open, sale, isOnline, ensureSaleDetail, receivables])
 
   const ctx = useMemo(
     () => ({ branches, settings, paymentMethods, customers }),
@@ -78,7 +100,11 @@ export function SaleDetailModal({ open, onClose, sale }) {
   const invoice = buildInvoiceDataFromSale(detail, ctx)
   const isVoided = detail.status === 'voided'
   const documentId = detail.number || detail.id.toUpperCase()
-  const paymentProofs = collectSalePaymentProofs(detail)
+  const paymentProofs = collectSalePaymentProofs(detail, receivableDetail)
+  const proofSubtitle = [
+    METHOD_LABELS[detail.method] || detail.method,
+    detail.reference ? `Ref. ${detail.reference}` : null,
+  ].filter(Boolean).join(' · ')
 
   const handleDownloadProof = async (proof) => {
     try {
@@ -203,19 +229,14 @@ export function SaleDetailModal({ open, onClose, sale }) {
           </table>
         </div>
 
-        {paymentProofs.length > 0 && (
-          <div className="space-y-3" data-testid="sale-detail-proofs">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Comprobantes de pago</p>
-            {paymentProofs.map((proof, index) => (
-              <ProofImagePreview
-                key={proof.id || proof.downloadUrl || index}
-                proof={proof}
-                loadProof={downloadPaymentProof}
-                onDownload={handleDownloadProof}
-              />
-            ))}
-          </div>
-        )}
+        <AttachmentProofSection
+          title="Comprobantes de ingreso"
+          subtitle={proofSubtitle}
+          items={paymentProofs}
+          loadProof={downloadPaymentProof}
+          onDownload={handleDownloadProof}
+          testId="sale-detail-proofs"
+        />
 
         <div className={cn('ml-auto max-w-xs space-y-1.5 text-sm text-slate-600')}>
           <div className="flex justify-between"><span>Subtotal</span><span>{formatDOP(invoice.subtotal)}</span></div>

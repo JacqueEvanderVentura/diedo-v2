@@ -1407,7 +1407,7 @@ export const useCrmStore = create(
               },
               `crm-quote-invoice-${quoteId}`
             )
-            const { sale, receivableId } = mapCheckoutFromApi(response)
+            const { sale, receivableId, parkedForNextShift } = mapCheckoutFromApi(response)
             if (!sale) throw new Error('No se pudo registrar la factura.')
             if (receivableId && proof) {
               const { usePosStore } = await import('@/stores/posStore')
@@ -1513,7 +1513,12 @@ export const useCrmStore = create(
                 }
               }
             }
-            return { sale, quote: updatedQuote, collectionMode: needsReceivableTracking ? 'receivable' : 'now' }
+            return {
+              sale,
+              quote: updatedQuote,
+              collectionMode: needsReceivableTracking ? 'receivable' : 'now',
+              parkedForNextShift: Boolean(parkedForNextShift),
+            }
           } catch (error) {
             reportMutationError(set, error)
             throw error

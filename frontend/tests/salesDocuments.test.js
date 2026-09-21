@@ -41,6 +41,32 @@ describe('documentos de venta y cotización', () => {
     expect(html).not.toContain('<svg')
   })
 
+  it('tacha el precio de lista cuando la línea tiene descuento', () => {
+    const html = buildInvoiceHtml({
+      id: 'FAC-DISC',
+      issuedAt: 'hoy',
+      businessName: 'Charm',
+      branchName: 'DN',
+      region: '',
+      customerName: 'Cliente',
+      customerPhone: '',
+      paymentMethod: 'Efectivo',
+      paymentReference: '',
+      items: [{ name: '1 sesión axilas', qty: 1, price: 720, listPrice: 900 }],
+      subtotal: 720,
+      discountAmt: 0,
+      discountPct: 0,
+      taxPct: 18,
+      taxAmt: 0,
+      total: 720,
+    })
+
+    expect(html).toContain('<s class="strike"')
+    expect(html).toContain('text-decoration:line-through')
+    expect(html).toMatch(/900\.00/)
+    expect(html).toMatch(/720\.00/)
+  })
+
   it('genera cotización CRM con código COT y líneas en HTML/PDF', () => {
     const data = buildInvoiceDataFromQuote({
       id: 'qt-1',

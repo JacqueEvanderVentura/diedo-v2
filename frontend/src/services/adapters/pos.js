@@ -173,7 +173,7 @@ function mapCustomer(customer, fallbackName = 'Cliente Mostrador') {
   }
 }
 
-function mapProof(proof) {
+export function mapProof(proof) {
   if (!proof) return null
   if (typeof proof === 'string') {
     return { id: null, name: proof.split('/').pop() || 'Comprobante', downloadUrl: proof }
@@ -709,6 +709,9 @@ export function mapCheckoutFromApi(response) {
   return {
     sale: mapSaleFromApi(salePayload),
     receivableId: first(root?.receivableId, root?.receivable_id) || null,
+    parkedForNextShift: Boolean(
+      first(root?.parkedForNextShift, root?.parked_for_next_shift)
+    ),
   }
 }
 

@@ -1,30 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import {
-  Users,
-  Shield,
-  Store,
-  Tag,
-  CreditCard,
-  PiggyBank,
-  Package,
-  FileText,
-  UserCircle,
-  Bell,
-  Lock,
-  Palette,
-  Globe,
-  Database,
-  MessageCircle,
-  Receipt,
-  HelpCircle,
-  CalendarDays,
-  ChevronRight,
-  ChevronDown,
-  Settings,
-} from 'lucide-react'
+import { ChevronRight, ChevronDown, Settings, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Input } from '@/components/ui/Input'
 import UsuariosPage from './UsuariosPage'
 import PermisosPage from './PermisosPage'
 import SucursalesPage from './SucursalesPage'
@@ -36,6 +15,8 @@ import CrmModePanel from '../components/CrmModePanel'
 import DataImportPanel from '../components/DataImportPanel'
 import PerfilWorkspacePanel from '../components/PerfilWorkspacePanel'
 import AgendaCabinasPanel from '../components/AgendaCabinasPanel'
+import { SETTINGS_ITEMS, SETTINGS_SECTIONS } from '../lib/settingsHub'
+import { filterSettingsSections, shouldForceExpandSettingsItem } from '../lib/settingsSearch'
 
 const EMBED_MAP = {
   usuarios: UsuariosPage,
@@ -51,101 +32,15 @@ const EMBED_MAP = {
   'agenda-cabinas': AgendaCabinasPanel,
 }
 
-const SECTIONS = [
-  {
-    title: 'General',
-    items: [
-      {
-        id: 'cotizaciones-facturas',
-        title: 'Cotizaciones y Facturas',
-        subtitle: 'Logo, RNC y datos que salen en PDF',
-        icon: Receipt,
-        kind: 'embed',
-        embed: 'billing-documents',
-      },
-      {
-        id: 'crm-mode',
-        title: 'Modo CRM',
-        subtitle: 'Standard con submódulos o Simplificado en una pantalla',
-        icon: Users,
-        kind: 'embed',
-        embed: 'crm-mode',
-      },
-    ],
-  },
-  {
-    title: 'Administración',
-    items: [
-      { id: 'usuarios', title: 'Usuarios', subtitle: 'Gestiona los miembros del equipo', icon: Users, kind: 'embed', embed: 'usuarios' },
-      { id: 'permisos', title: 'Permisos', subtitle: 'Roles y niveles de acceso', icon: Shield, kind: 'embed', embed: 'permisos' },
-      { id: 'sucursales', title: 'Sucursales', subtitle: 'Configura tus puntos de venta', icon: Store, kind: 'embed', embed: 'sucursales' },
-      { id: 'categorias', title: 'Categorías', subtitle: 'Categorías de productos y servicios', icon: Tag, kind: 'embed', embed: 'categorias' },
-      { id: 'presupuestos', title: 'Presupuestos', subtitle: 'Configura categorías de presupuesto', icon: PiggyBank, kind: 'navigate', to: '/finanzas/presupuestos' },
-      { id: 'metodos-pago', title: 'Métodos de Pago', subtitle: 'Asocia métodos de pago con categorías', icon: CreditCard, kind: 'embed', embed: 'metodos-pago' },
-      { id: 'productos', title: 'Productos y Servicios', subtitle: 'Gestiona tu catálogo comercial', icon: Package, kind: 'navigate', to: '/inventarios' },
-      { id: 'plantillas-docs', title: 'Plantillas de Documentos', subtitle: 'Formatos base para CRM y RRHH', icon: FileText, kind: 'stub' },
-      { id: 'doc-crm', title: 'Documentación CRM', subtitle: 'Configura requisitos de perfiles', icon: FileText, kind: 'stub' },
-      { id: 'impuestos-nomina', title: 'Impuestos de Nómina', subtitle: 'Configura aportes TSS e INFOTEP', icon: Receipt, kind: 'stub' },
-      {
-        id: 'agenda-cabinas',
-        title: 'Agenda y Cabinas',
-        subtitle: 'Horarios, cabinas y permisos por sucursal',
-        icon: CalendarDays,
-        kind: 'embed',
-        embed: 'agenda-cabinas',
-      },
-    ],
-  },
-  {
-    title: 'Cuenta',
-    items: [
-      { id: 'perfil', title: 'Perfil', subtitle: 'Gestiona tu información personal', icon: UserCircle, kind: 'embed', embed: 'perfil' },
-      { id: 'notificaciones', title: 'Notificaciones', subtitle: 'Configura alertas y preferencias', icon: Bell, kind: 'stub' },
-      { id: 'seguridad', title: 'Seguridad', subtitle: 'Contraseña y autenticación', icon: Lock, kind: 'stub' },
-    ],
-  },
-  {
-    title: 'Aplicación',
-    items: [
-      { id: 'apariencia', title: 'Apariencia', subtitle: 'Temas y personalización visual', icon: Palette, kind: 'stub' },
-      { id: 'idioma', title: 'Idioma y Región', subtitle: 'Preferencias de localización', icon: Globe, kind: 'stub' },
-      { id: 'datos', title: 'Datos', subtitle: 'Exportar e importar información', icon: Database, kind: 'embed', embed: 'datos' },
-    ],
-  },
-  {
-    title: 'Comunicaciones',
-    items: [
-      {
-        id: 'whatsapp',
-        title: 'Mensajes de WhatsApp',
-        subtitle: 'Plantillas para Agenda, CRM y Clientes',
-        icon: MessageCircle,
-        kind: 'embed',
-        embed: 'whatsapp',
-      },
-    ],
-  },
-  {
-    title: 'Facturación',
-    items: [{ id: 'plan', title: 'Plan y Pagos', subtitle: 'Gestiona tu suscripción', icon: CreditCard, kind: 'stub' }],
-  },
-  {
-    title: 'Soporte',
-    items: [{ id: 'ayuda', title: 'Centro de Ayuda', subtitle: 'Documentación y tutoriales', icon: HelpCircle, kind: 'stub' }],
-  },
-]
-
-const ALL_ITEMS = SECTIONS.flatMap((s) => s.items)
-
-function EmbedPanel({ embedKey }) {
+function EmbedPanel({ embedKey, visibleBlockIds }) {
   const Component = EMBED_MAP[embedKey]
   if (!Component) return null
-  return <Component embedded />
+  return <Component embedded visibleBlockIds={visibleBlockIds} />
 }
 
-function SettingsRow({ item, open, onToggle }) {
+function SettingsRow({ item, open, onToggle, forceOpen, visibleBlockIds }) {
   const Icon = item.icon
-  const isOpen = open === item.id
+  const isOpen = forceOpen || open === item.id
   const isEmbedOrStub = item.kind === 'embed' || item.kind === 'stub'
 
   const rowContent = (
@@ -209,7 +104,7 @@ function SettingsRow({ item, open, onToggle }) {
             >
               <div className="border-t border-slate-100 bg-slate-50/30 px-4 py-4 sm:px-6">
                 {item.kind === 'embed' ? (
-                  <EmbedPanel embedKey={item.embed} />
+                  <EmbedPanel embedKey={item.embed} visibleBlockIds={visibleBlockIds} />
                 ) : (
                   <p className="py-6 text-center text-sm text-slate-400">Próximamente</p>
                 )}
@@ -227,15 +122,19 @@ function SettingsRow({ item, open, onToggle }) {
 export default function ConfiguracionPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const openParam = searchParams.get('open')
+  const [query, setQuery] = useState('')
   const [openId, setOpenId] = useState(() => {
-    if (openParam && ALL_ITEMS.some((i) => i.id === openParam)) return openParam
+    if (openParam && SETTINGS_ITEMS.some((i) => i.id === openParam)) return openParam
     return null
   })
 
-  const hasExpanded = Boolean(openId)
+  const sections = useMemo(() => filterSettingsSections(SETTINGS_SECTIONS, query), [query])
+  const visibleItems = useMemo(() => sections.flatMap((section) => section.items), [sections])
+  const hasForcedExpand = visibleItems.some((item) => shouldForceExpandSettingsItem(item, query))
+  const hasExpanded = Boolean(openId) || hasForcedExpand
 
   useEffect(() => {
-    if (openParam && ALL_ITEMS.some((i) => i.id === openParam) && openParam !== openId) {
+    if (openParam && SETTINGS_ITEMS.some((i) => i.id === openParam) && openParam !== openId) {
       setOpenId(openParam)
     }
   }, [openParam, openId])
@@ -275,16 +174,39 @@ export default function ConfiguracionPage() {
         </div>
       </div>
 
-      {SECTIONS.map((section) => (
-        <section key={section.title}>
-          <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">{section.title}</h3>
-          <div className="space-y-2">
-            {section.items.map((item) => (
-              <SettingsRow key={item.id} item={item} open={openId} onToggle={onToggle} />
-            ))}
-          </div>
-        </section>
-      ))}
+      <div className="max-w-xl">
+        <Input
+          icon={Search}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Buscar ajustes, secciones o campos…"
+          data-testid="config-hub-search"
+        />
+      </div>
+
+      {sections.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500" data-testid="config-hub-empty">
+          No hay ajustes que coincidan con “{query.trim()}”.
+        </p>
+      ) : (
+        sections.map((section) => (
+          <section key={section.title}>
+            <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">{section.title}</h3>
+            <div className="space-y-2">
+              {section.items.map((item) => (
+                <SettingsRow
+                  key={item.id}
+                  item={item}
+                  open={openId}
+                  onToggle={onToggle}
+                  forceOpen={shouldForceExpandSettingsItem(item, query)}
+                  visibleBlockIds={item.visibleBlockIds}
+                />
+              ))}
+            </div>
+          </section>
+        ))
+      )}
 
       <footer className="border-t border-slate-100 pt-6 text-center text-xs text-slate-400">
         <p className="font-semibold text-slate-500">Helios 360 v1.0.0</p>

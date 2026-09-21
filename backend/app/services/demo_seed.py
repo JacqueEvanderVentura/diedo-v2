@@ -3,9 +3,9 @@ from __future__ import annotations
 import base64
 import hashlib
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
-from typing import Any, cast
+from typing import Any, Literal, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -75,6 +75,7 @@ from app.db.models import (
 )
 from app.db.models.agenda import DEFAULT_APPOINTMENT_RESOURCES
 from app.services.demo_manifest import (
+    DemoAppointmentFixture,
     DemoBundle,
     DemoEmployeeFixture,
     DemoInventoryItemProfileFixture,
@@ -94,6 +95,13 @@ from app.services.demo_seed_registry import (
     stable_demo_id as _stable_id,
 )
 from app.services.local_bootstrap import bootstrap_local_foundation
+
+AGENDA_VOLUME_PER_BRANCH_PER_DAY = 60
+AGENDA_VOLUME_DAYS_BEFORE = 7
+AGENDA_VOLUME_DAYS_AFTER = 14
+AGENDA_VOLUME_SLOT_MINUTES = 30
+AGENDA_VOLUME_START_HOUR = 8
+AGENDA_VOLUME_TIMEZONE = "America/Santo_Domingo"
 
 
 @dataclass(frozen=True)
@@ -556,6 +564,118 @@ def _seed_finance(
     )
 
 
+def _agenda_volume_enabled() -> bool:
+    return settings.app_env == "development"
+
+
+def _agenda_volume_today(now: datetime | None = None) -> date:
+    current = now or datetime.now(ZoneInfo(AGENDA_VOLUME_TIMEZONE))
+    return current.astimezone(ZoneInfo(AGENDA_VOLUME_TIMEZONE)).date()
+
+
+def _agenda_volume_slot_time(slot_index: int, resource_count: int) -> time | None:
+    minutes = (slot_index // resource_count) * AGENDA_VOLUME_SLOT_MINUTES
+    hour = AGENDA_VOLUME_START_HOUR + minutes // 60
+    minute = minutes % 60
+    if hour >= 20:
+        return None
+    return time(hour, minute)
+
+
+def build_agenda_volume_appointments(
+    bundle: DemoBundle,
+    *,
+    today: date | None = None,
+    per_branch_per_day: int = AGENDA_VOLUME_PER_BRANCH_PER_DAY,
+) -> list[DemoAppointmentFixture]:
+    day = today or _agenda_volume_today()
+    resource_codes = [code for code, _name in DEFAULT_APPOINTMENT_RESOURCES]
+    customers: list[str | None] = [customer.seed_key for customer in bundle.customers.items] or [
+        None
+    ]
+    employees_by_branch = {
+        branch.code: [
+            employee.seed_key
+            for employee in bundle.employees.items
+            if branch.code in employee.branch_codes
+        ]
+        for branch in bundle.foundation.branches
+    }
+    services_by_branch = {
+        branch.code: [
+            item.seed_key
+            for item in bundle.catalog.items
+            if item.item_type == "service" and branch.code in item.branch_codes
+        ]
+        for branch in bundle.foundation.branches
+    }
+    occupied_resources = {
+        (fixture.branch_code, fixture.resource_code, fixture.date, fixture.time)
+        for fixture in bundle.agenda.items
+        if fixture.status == "confirmed"
+    }
+    occupied_employees: set[tuple[str, str, date, time]] = {
+        (fixture.branch_code, fixture.employee_seed_key, fixture.date, fixture.time)
+        for fixture in bundle.agenda.items
+        if fixture.status == "confirmed" and fixture.employee_seed_key
+    }
+    generated: list[DemoAppointmentFixture] = []
+    for offset in range(-AGENDA_VOLUME_DAYS_BEFORE, AGENDA_VOLUME_DAYS_AFTER + 1):
+        scheduled_date = day + timedelta(days=offset)
+        status: Literal["confirmed", "fulfilled", "no_show", "cancelled"] = (
+            "fulfilled" if scheduled_date < day else "confirmed"
+        )
+        for branch in bundle.foundation.branches:
+            services = services_by_branch.get(branch.code) or [
+                item.seed_key for item in bundle.catalog.items if item.item_type == "service"
+            ]
+            employees = employees_by_branch.get(branch.code) or []
+            placed = 0
+            slot_index = 0
+            while placed < per_branch_per_day:
+                scheduled_time = _agenda_volume_slot_time(slot_index, len(resource_codes))
+                if scheduled_time is None:
+                    break
+                resource_code = resource_codes[slot_index % len(resource_codes)]
+                slot_index += 1
+                resource_key = (branch.code, resource_code, scheduled_date, scheduled_time)
+                if status == "confirmed" and resource_key in occupied_resources:
+                    continue
+                employee_seed_key = None
+                for candidate in employees:
+                    employee_key = (branch.code, candidate, scheduled_date, scheduled_time)
+                    if status == "confirmed" and employee_key in occupied_employees:
+                        continue
+                    employee_seed_key = candidate
+                    occupied_employees.add(employee_key)
+                    break
+                occupied_resources.add(resource_key)
+                generated.append(
+                    DemoAppointmentFixture(
+                        seed_key=(
+                            f"vol-{scheduled_date.isoformat().replace('-', '')}-"
+                            f"{branch.code.lower()}-{placed:02d}"
+                        ),
+                        branch_code=branch.code,
+                        resource_code=resource_code,
+                        customer_seed_key=customers[placed % len(customers)],
+                        employee_seed_key=employee_seed_key,
+                        service_seed_key=services[placed % len(services)] if services else None,
+                        date=scheduled_date,
+                        time=scheduled_time,
+                        duration_minutes=AGENDA_VOLUME_SLOT_MINUTES,
+                        status=status,
+                        created_at=datetime.combine(
+                            scheduled_date,
+                            scheduled_time,
+                            tzinfo=ZoneInfo(AGENDA_VOLUME_TIMEZONE),
+                        ).astimezone(UTC),
+                    )
+                )
+                placed += 1
+    return generated
+
+
 def _seed_agenda(
     session: Session,
     bundle: DemoBundle,
@@ -563,7 +683,10 @@ def _seed_agenda(
     branches: dict[str, Branch],
 ) -> int:
     actor_id = _stable_id(bundle.manifest.seed_version, "platform_user", "admin")
-    for fixture in bundle.agenda.items:
+    fixtures = list(bundle.agenda.items)
+    if _agenda_volume_enabled():
+        fixtures.extend(build_agenda_volume_appointments(bundle))
+    for fixture in fixtures:
         branch = branches.get(fixture.branch_code)
         if branch is None:
             raise RuntimeError("Demo appointment references an unknown branch.")
@@ -718,7 +841,7 @@ def _seed_agenda(
             for event_field, event_value in event_values.items():
                 setattr(event, event_field, event_value)
     session.flush()
-    return len(bundle.agenda.items)
+    return len(fixtures)
 
 
 def _seed_dashboard_tasks(

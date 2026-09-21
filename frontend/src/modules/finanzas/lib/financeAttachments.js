@@ -3,9 +3,14 @@ const STORAGE_KEY = 'diedo-finance-attachment-archive'
 function readArchive() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : { expenses: {}, incomes: {} }
+    const parsed = raw ? JSON.parse(raw) : { expenses: {}, incomes: {}, fixed: {} }
+    return {
+      expenses: parsed.expenses || {},
+      incomes: parsed.incomes || {},
+      fixed: parsed.fixed || {},
+    }
   } catch {
-    return { expenses: {}, incomes: {} }
+    return { expenses: {}, incomes: {}, fixed: {} }
   }
 }
 
@@ -47,6 +52,13 @@ export function saveIncomeAttachments(incomeId, attachments) {
   writeArchive(archive)
 }
 
+export function saveFixedAttachments(fixedId, attachments) {
+  if (!fixedId) return
+  const archive = readArchive()
+  archive.fixed[fixedId] = serializeFinanceAttachments(attachments)
+  writeArchive(archive)
+}
+
 export function loadExpenseAttachments(expenseId) {
   const archive = readArchive()
   return hydrateFinanceAttachments(archive.expenses[expenseId])
@@ -55,6 +67,11 @@ export function loadExpenseAttachments(expenseId) {
 export function loadIncomeAttachments(incomeId) {
   const archive = readArchive()
   return hydrateFinanceAttachments(archive.incomes[incomeId])
+}
+
+export function loadFixedAttachments(fixedId) {
+  const archive = readArchive()
+  return hydrateFinanceAttachments(archive.fixed[fixedId])
 }
 
 export function mergeExpenseAttachments(expense) {
@@ -73,6 +90,15 @@ export function mergeIncomeAttachments(income) {
   const existing = income.attachments || []
   if (existing.length) return income
   return { ...income, attachments: stored }
+}
+
+export function mergeFixedAttachments(fixedExpense) {
+  if (!fixedExpense?.id) return fixedExpense
+  const stored = loadFixedAttachments(fixedExpense.id)
+  if (!stored.length) return fixedExpense
+  const existing = fixedExpense.attachments || []
+  if (existing.length) return fixedExpense
+  return { ...fixedExpense, attachments: stored }
 }
 
 export async function loadFinanceAttachmentBlob(attachment) {

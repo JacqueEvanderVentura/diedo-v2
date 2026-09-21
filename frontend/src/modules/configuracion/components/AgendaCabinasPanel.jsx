@@ -21,6 +21,7 @@ import {
   sortResources,
 } from '../lib/agendaCabinas'
 import { configPageClass } from '../lib/pageShell'
+import { isSettingsBlockVisible } from '../lib/settingsSearch'
 
 const TABS = [
   { id: 'order', label: 'Orden de Cabinas' },
@@ -38,7 +39,7 @@ function initials(name) {
     .join('')
 }
 
-export default function AgendaCabinasPanel({ embedded = false }) {
+export default function AgendaCabinasPanel({ embedded = false, visibleBlockIds }) {
   const online = useSessionStore((state) => state.status === 'online')
   const canManage = useSessionStore((state) => state.hasPermission('appointment.manage'))
   const { activeBranchId, setActiveBranch, branches, selectOptions } = useActiveBranchScope()
@@ -61,7 +62,20 @@ export default function AgendaCabinasPanel({ embedded = false }) {
   const [dayForm, setDayForm] = useState({ weekday: 'mon', opensAt: '08:00', closesAt: '20:00' })
   const [staffModal, setStaffModal] = useState(null)
 
+  useEffect(() => {
+    if (!visibleBlockIds?.length) return
+    if (visibleBlockIds.includes('hours')) setTab('hours')
+    else if (visibleBlockIds.includes('acl')) setTab('acl')
+    else if (visibleBlockIds.includes('staff')) setTab('staff')
+    else if (visibleBlockIds.includes('order') || visibleBlockIds.includes('distribution')) setTab('order')
+  }, [visibleBlockIds])
+
   const sortedResources = useMemo(() => sortResources(resources), [resources])
+  const tabAllowed = (tabId) => {
+    if (!visibleBlockIds?.length) return true
+    if (tabId === 'order') return visibleBlockIds.includes('order') || visibleBlockIds.includes('distribution')
+    return visibleBlockIds.includes(tabId)
+  }
   const branchEmployees = useMemo(
     () => employees.filter(
       (employee) => employee.status !== 'archived'
@@ -281,6 +295,7 @@ export default function AgendaCabinasPanel({ embedded = false }) {
         </div>
       )}
 
+      {isSettingsBlockVisible(visibleBlockIds, 'branch') && (
       <Card className="flex flex-wrap items-center justify-between gap-4 border-slate-100 bg-slate-50/80 p-4">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-blue-600">
@@ -298,9 +313,19 @@ export default function AgendaCabinasPanel({ embedded = false }) {
         </div>
         {loading && <p className="text-sm text-slate-500" role="status">Cargando…</p>}
       </Card>
+      )}
 
+      {(isSettingsBlockVisible(visibleBlockIds, 'order')
+        || isSettingsBlockVisible(visibleBlockIds, 'distribution')
+        || isSettingsBlockVisible(visibleBlockIds, 'hours')
+        || isSettingsBlockVisible(visibleBlockIds, 'acl')
+        || isSettingsBlockVisible(visibleBlockIds, 'staff')) && (
       <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
-        {TABS.map((item) => (
+        {TABS.filter((item) => {
+          if (!visibleBlockIds?.length) return true
+          if (item.id === 'order') return visibleBlockIds.includes('order') || visibleBlockIds.includes('distribution')
+          return visibleBlockIds.includes(item.id)
+        }).map((item) => (
           <button
             key={item.id}
             type="button"
@@ -314,8 +339,9 @@ export default function AgendaCabinasPanel({ embedded = false }) {
           </button>
         ))}
       </div>
+      )}
 
-      {tab === 'order' && (
+      {tab === 'order' && tabAllowed('order') && (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-white p-4 shadow-soft">
             <div>
@@ -364,7 +390,7 @@ export default function AgendaCabinasPanel({ embedded = false }) {
         </div>
       )}
 
-      {tab === 'hours' && (
+      {tab === 'hours' && tabAllowed('hours') && (
         <div className="space-y-4">
           <div className="flex justify-end">
             <Button onClick={() => setDayModalOpen(true)} data-testid="agenda-add-day">
@@ -396,7 +422,7 @@ export default function AgendaCabinasPanel({ embedded = false }) {
         </div>
       )}
 
-      {tab === 'acl' && (
+      {tab === 'acl' && tabAllowed('acl') && (
         <div className="space-y-4">
           <div className="space-y-2">
             <p className="text-sm font-medium text-slate-700">Cabina</p>
@@ -430,7 +456,7 @@ export default function AgendaCabinasPanel({ embedded = false }) {
         </div>
       )}
 
-      {tab === 'staff' && (
+      {tab === 'staff' && tabAllowed('staff') && (
         <div className="space-y-4">
           <div className="flex justify-end">
             <Button onClick={() => setStaffModal({ name: '', position: 'Especialista' })}>

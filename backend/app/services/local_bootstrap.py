@@ -921,6 +921,7 @@ def bootstrap_local_foundation(
     membership.revoked_at = None
     membership.activated_at = membership.activated_at or now
     membership.is_default = True
+    membership.crm_ui_mode = "standard"
 
     for role_code, role_name, is_system in _ROLE_TEMPLATES:
         _insert_do_nothing(
@@ -1033,11 +1034,6 @@ def bootstrap_local_foundation(
             "updated_by_platform_user_id": user.id,
         },
     )
-    crm_settings = session.scalar(
-        select(CrmSettings).where(CrmSettings.workspace_id == workspace.id)
-    )
-    if crm_settings is not None:
-        crm_settings.ui_mode = "standard"
 
     from app.config import settings
     from app.core.security import hash_password

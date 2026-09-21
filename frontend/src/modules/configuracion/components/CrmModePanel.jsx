@@ -5,6 +5,7 @@ import { Users } from 'lucide-react'
 import { useCrmStore } from '@/stores/crmStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { cn } from '@/lib/utils'
+import { isSettingsBlockVisible } from '../lib/settingsSearch'
 
 const OPTIONS = [
   {
@@ -19,13 +20,13 @@ const OPTIONS = [
   },
 ]
 
-export default function CrmModePanel({ embedded = false }) {
+export default function CrmModePanel({ embedded = false, visibleBlockIds }) {
   const navigate = useNavigate()
   const uiMode = useCrmStore((state) => state.uiMode)
   const uiModeVersion = useCrmStore((state) => state.uiModeVersion)
   const ensureWorkspaceSettings = useCrmStore((state) => state.ensureWorkspaceSettings)
   const updateUiMode = useCrmStore((state) => state.updateUiMode)
-  const canManage = useSessionStore((state) => state.hasPermission('crm.manage'))
+  const canEdit = useSessionStore((state) => state.hasPermission('crm.read'))
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -33,7 +34,7 @@ export default function CrmModePanel({ embedded = false }) {
   }, [ensureWorkspaceSettings])
 
   const selectMode = async (nextMode) => {
-    if (!canManage || nextMode === uiMode || saving) return
+    if (!canEdit || nextMode === uiMode || saving) return
     setSaving(true)
     try {
       await updateUiMode(nextMode)
@@ -62,19 +63,21 @@ export default function CrmModePanel({ embedded = false }) {
           </div>
           <div>
             <h3 className="font-heading text-lg font-bold text-slate-900">Modo CRM</h3>
-            <p className="text-sm text-slate-500">Elige la experiencia de ventas para todo el workspace.</p>
+            <p className="text-sm text-slate-500">
+              Elige la experiencia de ventas para tu usuario. Cada persona puede usar un modo distinto.
+            </p>
           </div>
         </div>
       )}
 
       <div className="grid gap-3 sm:grid-cols-2">
-        {OPTIONS.map((option) => {
+        {OPTIONS.filter((option) => isSettingsBlockVisible(visibleBlockIds, option.id)).map((option) => {
           const active = uiMode === option.id
           return (
             <button
               key={option.id}
               type="button"
-              disabled={!canManage || saving}
+              disabled={!canEdit || saving}
               data-testid={`crm-mode-${option.id}`}
               onClick={() => selectMode(option.id)}
               className={cn(
@@ -82,7 +85,7 @@ export default function CrmModePanel({ embedded = false }) {
                 active
                   ? 'border-blue-300 bg-blue-50/80 ring-1 ring-blue-200'
                   : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
-                !canManage && 'cursor-not-allowed opacity-70'
+                !canEdit && 'cursor-not-allowed opacity-70'
               )}
             >
               <p className="font-semibold text-slate-900">{option.title}</p>
@@ -95,8 +98,8 @@ export default function CrmModePanel({ embedded = false }) {
         })}
       </div>
 
-      {!canManage && (
-        <p className="text-sm text-slate-500">Necesitas permiso de administración del CRM para cambiar este ajuste.</p>
+      {!canEdit && (
+        <p className="text-sm text-slate-500">Necesitas permiso de lectura del CRM para cambiar este ajuste.</p>
       )}
 
       <p className="text-xs text-slate-400" data-testid="crm-mode-version">

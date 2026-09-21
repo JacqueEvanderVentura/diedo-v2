@@ -28,7 +28,14 @@ const emptyVariable = () => ({
   activoId: '',
   attachments: [],
 })
-const emptyFixed = () => ({ concept: '', amount: '', category: 'servicios', branchId: '', dayOfMonth: '1' })
+const emptyFixed = () => ({
+  concept: '',
+  amount: '',
+  category: 'servicios',
+  branchId: '',
+  dayOfMonth: '1',
+  attachments: [],
+})
 
 export function ExpenseFormModal({ open, onClose, expense, mode = 'variable' }) {
   const { addExpense, updateExpense, addFixed, updateFixed } = useFinanzasStore()
@@ -199,13 +206,11 @@ export function ExpenseFormModal({ open, onClose, expense, mode = 'variable' }) 
           </div>
         )}
 
-        {!fixed && (
-          <AttachmentField
-            value={form.attachments}
-            onChange={(attachments) => set('attachments', attachments)}
-            testId="expense-attachments"
-          />
-        )}
+        <AttachmentField
+          value={form.attachments}
+          onChange={(attachments) => set('attachments', attachments)}
+          testId="expense-attachments"
+        />
 
         {err && <p className="text-sm font-medium text-red-500" data-testid="expense-form-error">{err}</p>}
 

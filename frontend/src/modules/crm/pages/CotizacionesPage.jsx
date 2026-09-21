@@ -248,12 +248,15 @@ export default function CotizacionesPage() {
         proof,
       })
       const status = result.quote?.invoiceCollection
+      const parkedHint = result.parkedForNextShift
+        ? ' La caja está cerrada: esta venta y sus comprobantes irán al cuadre del próximo turno.'
+        : ''
       toast.success(
-        status === 'pending_validation'
+        (status === 'pending_validation'
           ? `Factura ${result.sale.number} emitida · pendiente de validación`
           : status === 'receivable'
             ? `Factura ${result.sale.number} emitida · queda por cobrar`
-            : `Factura ${result.sale.number} emitida y cobrada`
+            : `Factura ${result.sale.number} emitida y cobrada`) + parkedHint
       )
       setInvoiceQuoteRow(null)
     } catch (error) {

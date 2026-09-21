@@ -12,12 +12,21 @@ const TONES = {
   cancelled: 'bg-slate-100 border-slate-200 text-slate-400 line-through',
 }
 
-export function AppointmentChip({ apt, onClick, compact }) {
+export function AppointmentChip({
+  apt,
+  onClick,
+  compact,
+  spanFullHeight = false,
+  canDrag = false,
+  dragging = false,
+  onPointerDown,
+}) {
   const tone = aptTone(apt)
   return (
     <div
       role="button"
       tabIndex={0}
+      onPointerDown={(event) => onPointerDown?.(event, apt)}
       onClick={(e) => {
         e.stopPropagation()
         onClick?.(apt)
@@ -32,25 +41,29 @@ export function AppointmentChip({ apt, onClick, compact }) {
       }}
       data-testid={`calendar-apt-${apt.id}`}
       className={cn(
-        'w-full cursor-pointer rounded-lg border p-2 text-left shadow-sm transition-colors',
+        'w-full cursor-pointer rounded-lg border text-left shadow-sm transition-colors',
         TONES[tone],
-        compact ? 'mb-1.5 p-1.5' : 'mb-2'
+        spanFullHeight ? 'h-full p-1.5' : compact ? 'mb-1.5 p-1.5' : 'mb-2 p-2',
+        canDrag && 'cursor-grab touch-none',
+        dragging && 'cursor-grabbing opacity-50'
       )}
     >
       <div className="flex items-start justify-between gap-1">
         <span className={cn('truncate font-semibold', compact ? 'text-[11px]' : 'text-xs')}>{apt.customerName}</span>
-        <WhatsAppMenuButton
-          phone={apt.customerPhone}
-          context="agenda"
-          size="xs"
-          className="opacity-70 hover:opacity-100"
-          variables={{
-            ...buildWhatsAppVariables({ name: apt.customerName, phone: apt.customerPhone }),
-            ...appointmentWhatsAppFields(apt),
-            enlace: buildBookingUrl(apt.branchId),
-          }}
-          data-testid={`calendar-apt-wa-${apt.id}`}
-        />
+        <span data-no-calendar-drag onPointerDown={(event) => event.stopPropagation()}>
+          <WhatsAppMenuButton
+            phone={apt.customerPhone}
+            context="agenda"
+            size="xs"
+            className="opacity-70 hover:opacity-100"
+            variables={{
+              ...buildWhatsAppVariables({ name: apt.customerName, phone: apt.customerPhone }),
+              ...appointmentWhatsAppFields(apt),
+              enlace: buildBookingUrl(apt.branchId),
+            }}
+            data-testid={`calendar-apt-wa-${apt.id}`}
+          />
+        </span>
       </div>
       {apt.serviceName && (
         <p className={cn('truncate opacity-80', compact ? 'text-[10px]' : 'text-[11px]')}>{apt.serviceName}</p>

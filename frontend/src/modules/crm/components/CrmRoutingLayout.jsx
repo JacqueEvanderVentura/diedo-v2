@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useCrmStore } from '@/stores/crmStore'
-import { isStandardCrmPath } from '@/modules/crm/lib/crmNavigation'
+import { isSimplifiedBlockedCrmPath } from '@/modules/crm/lib/crmNavigation'
 
 export function CrmRoutingLayout() {
   const location = useLocation()
@@ -24,7 +24,7 @@ export function CrmRoutingLayout() {
     )
   }
 
-  if (uiMode === 'simplified' && isStandardCrmPath(pathname)) {
+  if (uiMode === 'simplified' && isSimplifiedBlockedCrmPath(pathname)) {
     return <Navigate to="/crm/workspace" replace />
   }
 

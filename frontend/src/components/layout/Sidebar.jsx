@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { NAV_GROUPS, BACKOFFICE_NAV } from '@/data/navigation'
-import { resolveCrmNavGroup } from '@/modules/crm/lib/crmNavigation'
+import { isCrmSidebarItemActive, resolveCrmNavGroup } from '@/modules/crm/lib/crmNavigation'
 import { useCrmStore } from '@/stores/crmStore'
 import { useUiStore } from '@/stores/uiStore'
 import { usePosStore } from '@/stores/posStore'
@@ -56,10 +56,10 @@ function ActivePill({ box, animate }) {
   )
 }
 
-function SingleItem({ item, collapsed, onNavigate }) {
+function SingleItem({ item, collapsed, onNavigate, crmUiMode }) {
   const Icon = Icons[item.icon] || Icons.Circle
   const { pathname } = useLocation()
-  const active = isItemActive(item, pathname)
+  const active = isCrmSidebarItemActive(item, pathname, crmUiMode)
 
   return (
     <NavLink
@@ -346,7 +346,7 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
                 onNavigate={onNavigate}
               />
             ) : (
-              <SingleItem key={g.id} item={g} collapsed={collapsed} onNavigate={onNavigate} />
+              <SingleItem key={g.id} item={g} collapsed={collapsed} onNavigate={onNavigate} crmUiMode={crmUiMode} />
             )
           )}
         </div>

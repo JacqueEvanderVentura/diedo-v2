@@ -20,7 +20,7 @@ export function HeldCartsModal({ open, onClose, heldCarts, taxPct, onRestore, on
             const total = held.total != null
               ? Number(held.total) || 0
               : calcSnapshotTotal({ ...held, taxPct })
-            const itemCount = held.items.reduce((n, i) => n + i.qty, 0)
+            const itemCount = (held.items || []).reduce((n, i) => n + i.qty, 0)
             const isQuote = held.heldKind === 'quote'
             return (
               <div
@@ -39,7 +39,7 @@ export function HeldCartsModal({ open, onClose, heldCarts, taxPct, onRestore, on
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-slate-800">
                     <User className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                    {held.label}
+                    {held.label || held.customer?.name || 'Sin cliente'}
                   </p>
                   <p className="text-xs text-slate-500">
                     <span

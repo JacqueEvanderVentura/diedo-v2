@@ -412,19 +412,10 @@ class CrmSettings(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     """Workspace-scoped CRM configuration."""
 
     __tablename__ = "crm_settings"
-    __table_args__ = (
-        UniqueConstraint("workspace_id", name="uq_crm_settings_workspace"),
-        CheckConstraint(
-            "ui_mode IN ('standard', 'simplified')",
-            name="ui_mode_values",
-        ),
-    )
+    __table_args__ = (UniqueConstraint("workspace_id", name="uq_crm_settings_workspace"),)
 
     workspace_id: Mapped[UUID] = mapped_column(
         ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
-    )
-    ui_mode: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="standard", server_default=text("'standard'")
     )
     updated_by_platform_user_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("platform_users.id", ondelete="RESTRICT")

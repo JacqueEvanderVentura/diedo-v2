@@ -37,6 +37,7 @@ import {
   validatePipelineRow,
 
 } from '@/modules/configuracion/lib/csvImport'
+import { isSettingsBlockVisible } from '@/modules/configuracion/lib/settingsSearch'
 
 
 
@@ -342,7 +343,7 @@ function ImportDetailModal({ open, onClose, title, rows }) {
 
 
 
-export default function DataImportPanel({ embedded = false }) {
+export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
   const branches = useConfigStore((state) => state.branches)
 
@@ -526,6 +527,7 @@ export default function DataImportPanel({ embedded = false }) {
 
     <div className={embedded ? 'space-y-6' : 'mx-auto max-w-[900px] space-y-6 p-6'} data-testid="data-import-panel">
 
+      {isSettingsBlockVisible(visibleBlockIds, 'import') && (
       <div>
 
         <h2 className="font-heading text-lg font-bold text-slate-900">Importar datos CRM</h2>
@@ -537,9 +539,11 @@ export default function DataImportPanel({ embedded = false }) {
         </p>
 
       </div>
+      )}
 
 
 
+      {isSettingsBlockVisible(visibleBlockIds, 'branch') && (
       <div>
 
         <label className="mb-1.5 block text-sm font-medium text-slate-600">Sucursal destino</label>
@@ -563,12 +567,13 @@ export default function DataImportPanel({ embedded = false }) {
         />
 
       </div>
+      )}
 
 
 
       <div className="grid gap-4 md:grid-cols-3">
 
-        {['pipeline', 'customers', 'activities'].map((kind) => (
+        {['pipeline', 'customers', 'activities'].filter((kind) => isSettingsBlockVisible(visibleBlockIds, kind)).map((kind) => (
 
           <div key={kind} className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft">
 

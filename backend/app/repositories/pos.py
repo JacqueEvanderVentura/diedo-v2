@@ -481,6 +481,48 @@ class PosRepository:
             )
         )
 
+    def parked_sales_for_branch(
+        self,
+        workspace_id: UUID,
+        branch_id: UUID,
+        *,
+        lock: bool = False,
+    ) -> tuple[Sale, ...]:
+        statement = (
+            select(Sale)
+            .where(
+                Sale.workspace_id == workspace_id,
+                Sale.branch_id == branch_id,
+                Sale.cash_register_id.is_(None),
+                Sale.status == "completed",
+            )
+            .order_by(Sale.completed_at, Sale.id)
+        )
+        if lock:
+            statement = statement.with_for_update(of=Sale)
+        return tuple(self._session.scalars(statement))
+
+    def parked_cash_payments_for_branch(
+        self,
+        workspace_id: UUID,
+        branch_id: UUID,
+        *,
+        lock: bool = False,
+    ) -> tuple[CustomerPayment, ...]:
+        statement = (
+            select(CustomerPayment)
+            .where(
+                CustomerPayment.workspace_id == workspace_id,
+                CustomerPayment.branch_id == branch_id,
+                CustomerPayment.pending_shift_cash_assignment.is_(True),
+                CustomerPayment.status == "posted",
+            )
+            .order_by(CustomerPayment.posted_at, CustomerPayment.id)
+        )
+        if lock:
+            statement = statement.with_for_update(of=CustomerPayment)
+        return tuple(self._session.scalars(statement))
+
     def add_movement(
         self,
         movement: CashMovement,
@@ -1075,6 +1117,48 @@ class PosRepository:
         if allowed_branch_ids is not None:
             statement = statement.where(PaymentProof.branch_id.in_(allowed_branch_ids))
         return self._session.scalar(statement)
+
+    def payment_proofs_for_sale(
+        self, workspace_id: UUID, sale_id: UUID
+    ) -> tuple[PaymentProof, ...]:
+        receivable = self.receivable_for_sale(workspace_id, sale_id)
+        if receivable is None:
+            return ()
+        proofs: list[PaymentProof] = []
+        seen: set[UUID] = set()
+        for proof in self._session.scalars(
+            select(PaymentProof)
+            .where(
+                PaymentProof.workspace_id == workspace_id,
+                PaymentProof.receivable_id == receivable.id,
+            )
+            .order_by(PaymentProof.created_at, PaymentProof.id)
+        ):
+            if proof.id not in seen:
+                seen.add(proof.id)
+                proofs.append(proof)
+        payment_ids = [
+            payment.id
+            for payment in self._session.scalars(
+                select(CustomerPayment).where(
+                    CustomerPayment.workspace_id == workspace_id,
+                    CustomerPayment.receivable_id == receivable.id,
+                )
+            )
+        ]
+        if payment_ids:
+            for proof in self._session.scalars(
+                select(PaymentProof)
+                .where(
+                    PaymentProof.workspace_id == workspace_id,
+                    PaymentProof.customer_payment_id.in_(payment_ids),
+                )
+                .order_by(PaymentProof.created_at, PaymentProof.id)
+            ):
+                if proof.id not in seen:
+                    seen.add(proof.id)
+                    proofs.append(proof)
+        return tuple(proofs)
 
     def appointment(
         self, workspace_id: UUID, appointment_id: UUID, *, lock: bool = False

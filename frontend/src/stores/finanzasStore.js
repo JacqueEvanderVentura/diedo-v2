@@ -23,6 +23,8 @@ import { useSessionStore } from '@/stores/sessionStore'
 import { isRecognizedPosIncome, isThisMonth } from '@/modules/finanzas/lib/finanzas'
 import {
   mergeExpenseAttachments,
+  mergeFixedAttachments,
+  saveFixedAttachments,
   mergeIncomeAttachments,
   saveExpenseAttachments,
   saveIncomeAttachments,
@@ -283,7 +285,9 @@ export const useFinanzasStore = create(
             const expenses = (expenseResponse.items || [])
               .map(mapFinanceExpenseFromApi)
               .map(mergeExpenseAttachments)
-            const fixedExpenses = (fixedResponse.items || []).map(mapFinanceFixedExpenseFromApi)
+            const fixedExpenses = (fixedResponse.items || [])
+              .map(mapFinanceFixedExpenseFromApi)
+              .map(mergeFixedAttachments)
             const pasivos = (liabilityResponse.items || []).map(mapFinanceLiabilityFromApi)
             const budgets = (budgetResponse.items || []).map(mapFinanceBudgetFromApi)
             const accounts = (accountResponse.items || []).map(mapFinanceAccountFromApi)
@@ -402,29 +406,44 @@ export const useFinanzasStore = create(
       },
 
       addFixed: async (data) => {
+        const attachments = data.attachments || []
         if (!isOnline()) {
           const expense = {
             id: genId('fix'),
             ...fixedExpenseToApiPayload(data),
             paidMonths: [],
+            attachments,
           }
+          saveFixedAttachments(expense.id, attachments)
           set((state) => ({ fixedExpenses: [expense, ...state.fixedExpenses] }))
           return expense
         }
-        const expense = mapFinanceFixedExpenseFromApi(
+        const expense = mergeFixedAttachments(mapFinanceFixedExpenseFromApi(
           await financeApi.createFixedExpense(fixedExpenseToApiPayload(data))
-        )
-        set((state) => ({ fixedExpenses: [expense, ...state.fixedExpenses] }))
+        ))
+        saveFixedAttachments(expense.id, attachments)
+        set((state) => ({
+          fixedExpenses: replaceById(state.fixedExpenses, { ...expense, attachments }),
+        }))
         await get().hydrateFromApi({ force: true })
         return expense
       },
 
       updateFixed: async (id, data) => {
         if (!isOnline()) {
+          const nextAttachments = data.attachments ?? undefined
           set((state) => ({
-            fixedExpenses: state.fixedExpenses.map((item) => item.id === id
-              ? { ...item, ...data, amount: Number(data.amount ?? item.amount) || 0 }
-              : item),
+            fixedExpenses: state.fixedExpenses.map((item) => {
+              if (item.id !== id) return item
+              const merged = {
+                ...item,
+                ...data,
+                amount: Number(data.amount ?? item.amount) || 0,
+                attachments: nextAttachments ?? item.attachments ?? [],
+              }
+              saveFixedAttachments(id, merged.attachments)
+              return merged
+            }),
           }))
           return get().fixedExpenses.find((item) => item.id === id)
         }
@@ -434,7 +453,11 @@ export const useFinanzasStore = create(
           version: current.version,
           ...fixedExpenseToApiPayload({ ...current, ...data }),
         }))
-        set((state) => ({ fixedExpenses: replaceById(state.fixedExpenses, expense) }))
+        const mergedAttachments = data.attachments ?? current.attachments ?? []
+        saveFixedAttachments(expense.id, mergedAttachments)
+        set((state) => ({
+          fixedExpenses: replaceById(state.fixedExpenses, { ...expense, attachments: mergedAttachments }),
+        }))
         await get().hydrateFromApi({ force: true })
         return expense
       },

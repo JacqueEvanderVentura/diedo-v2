@@ -3,26 +3,38 @@ import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { AttachmentField } from '@/components/ui/AttachmentField'
 import { formatDOP } from '@/lib/format'
 import { usePosStore } from '@/stores/posStore'
+import { saveExpenseAttachments } from '@/modules/finanzas/lib/financeAttachments'
 
 export function ExpenseModal({ open, onClose }) {
   const [concept, setConcept] = useState('')
   const [amount, setAmount] = useState('')
+  const [attachments, setAttachments] = useState([])
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const addExpense = usePosStore((s) => s.addExpense)
+
+  const reset = () => {
+    setConcept('')
+    setAmount('')
+    setAttachments([])
+    setError('')
+  }
 
   const submit = async () => {
     if (!concept.trim()) return setError('Ingresa un concepto para el gasto.')
     if (!amount || Number(amount) <= 0) return setError('Ingresa un monto válido.')
     setSubmitting(true)
     try {
-      await addExpense({ concept: concept.trim(), amount: Number(amount) })
+      const movement = await addExpense({ concept: concept.trim(), amount: Number(amount) })
+      const movementId = movement?.id
+      if (movementId && attachments.length) {
+        saveExpenseAttachments(movementId, attachments)
+      }
       toast.success(`Gasto registrado: ${concept} · ${formatDOP(amount)}`)
-      setConcept('')
-      setAmount('')
-      setError('')
+      reset()
       onClose()
     } catch (operationError) {
       setError(operationError.message || 'No se pudo registrar el gasto.')
@@ -59,6 +71,11 @@ export function ExpenseModal({ open, onClose }) {
             data-testid="expense-amount"
           />
         </div>
+        <AttachmentField
+          value={attachments}
+          onChange={setAttachments}
+          testId="pos-expense-attachments"
+        />
         {error && (
           <p className="text-sm font-medium text-red-500" data-testid="expense-error">
             {error}

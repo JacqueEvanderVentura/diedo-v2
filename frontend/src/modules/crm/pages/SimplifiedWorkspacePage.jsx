@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 
 import { Loader2, Plus, Search, Pencil, Trash2, CheckSquare, Square } from 'lucide-react'
 import { toast } from 'sonner'
@@ -25,6 +26,8 @@ import { LeadFormModal } from '@/modules/crm/components/LeadFormModal'
 
 import { SimplifiedLeadActions } from '@/modules/crm/components/SimplifiedLeadActions'
 import { SimplifiedCustomersPanel } from '@/modules/crm/components/SimplifiedCustomersPanel'
+import { SimplifiedCrmSectionNav } from '@/modules/crm/components/SimplifiedCrmSectionNav'
+import { resolveSimplifiedCrmSection } from '@/modules/crm/lib/crmNavigation'
 import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
 import { BulkSelectionBar } from '@/components/ui/BulkSelectionBar'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
@@ -43,13 +46,6 @@ import {
   defaultSimplifiedDateFilter,
 
 } from '@/modules/crm/lib/simplifiedWorkspaceQuery'
-
-
-
-const WORKSPACE_SECTIONS = [
-  { id: 'prospectos', label: 'Prospectos' },
-  { id: 'clientes', label: 'Clientes' },
-]
 
 const SIMPLIFIED_TABS = [
 
@@ -79,6 +75,11 @@ function opportunityTitle(opportunity, leads) {
 
 export default function SimplifiedWorkspacePage() {
   const can = useCrmCapabilities()
+  const { search } = useLocation()
+  const workspaceSection = useMemo(
+    () => resolveSimplifiedCrmSection('/crm/workspace', search),
+    [search]
+  )
   const leads = useCrmStore((state) => state.leads)
   const deleteLeads = useCrmStore((state) => state.deleteLeads)
 
@@ -108,7 +109,6 @@ export default function SimplifiedWorkspacePage() {
   const [dateFilter, setDateFilter] = useState(() => defaultSimplifiedDateFilter())
 
   const [page, setPage] = useState(1)
-  const [workspaceSection, setWorkspaceSection] = useState('prospectos')
   const [selectMode, setSelectMode] = useState(false)
   const [selectedLeadIds, setSelectedLeadIds] = useState(() => new Set())
   const [deleting, setDeleting] = useState(false)
@@ -277,35 +277,16 @@ export default function SimplifiedWorkspacePage() {
 
     <div className="mx-auto w-full max-w-[1600px] space-y-4 p-4 sm:space-y-6 sm:p-8" data-testid="crm-simplified-workspace">
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-2" data-testid="crm-simplified-sections">
-          {WORKSPACE_SECTIONS.map((section) => (
-            <button
-              key={section.id}
-              type="button"
-              onClick={() => {
-                setWorkspaceSection(section.id)
-                exitSelectMode()
-                setSelectedId(null)
-              }}
-              className={cn(
-                'rounded-full px-4 py-2 text-sm font-semibold transition-colors',
-                workspaceSection === section.id
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
-              )}
-            >
-              {section.label}
-            </button>
-          ))}
-        </div>
-        {workspaceSection === 'prospectos' && (
-          <Button className="w-full sm:w-auto" onClick={() => setLeadModalOpen(true)} data-testid="crm-simplified-register-lead">
-            <Plus className="h-4 w-4" />
-            Registrar lead
-          </Button>
-        )}
-      </div>
+      <SimplifiedCrmSectionNav
+        trailing={
+          workspaceSection === 'prospectos' ? (
+            <Button className="w-full sm:w-auto" onClick={() => setLeadModalOpen(true)} data-testid="crm-simplified-register-lead">
+              <Plus className="h-4 w-4" />
+              Registrar lead
+            </Button>
+          ) : null
+        }
+      />
 
       {workspaceSection === 'clientes' ? (
         <SimplifiedCustomersPanel />

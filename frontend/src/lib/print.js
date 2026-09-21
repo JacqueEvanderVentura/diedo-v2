@@ -58,6 +58,15 @@ export async function downloadHtmlAsPdf(html, filename) {
       backgroundColor: '#ffffff',
       logging: false,
       windowWidth: PDF_RENDER_WIDTH_PX,
+      onclone: (documentClone) => {
+        documentClone.querySelectorAll('s.strike, .strike').forEach((node) => {
+          node.style.setProperty('text-decoration', 'line-through', 'important')
+          node.style.setProperty('text-decoration-line', 'line-through', 'important')
+          node.style.setProperty('-webkit-text-decoration-line', 'line-through', 'important')
+          node.style.setProperty('display', 'inline-block', 'important')
+          node.style.setProperty('line-height', '1.25', 'important')
+        })
+      },
     })
 
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })

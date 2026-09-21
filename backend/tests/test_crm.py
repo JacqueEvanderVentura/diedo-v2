@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid7
 
@@ -660,7 +660,7 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
             "branchId": branch_id_text,
             "lines": [{"itemId": str(item_id), "quantity": "1"}],
             "status": "enviada",
-            "validUntil": "2026-09-20T03:59:59Z",
+            "validUntil": (datetime.now(UTC) + timedelta(days=14)).strftime("%Y-%m-%dT%H:%M:%SZ"),
         },
     )
     assert quote.status_code == 201, quote.text
@@ -778,6 +778,12 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
         json={"version": workspace_settings.json()["version"], "uiMode": "standard"},
     )
     assert stale_replay.status_code == 409
+    restored_settings = client.patch(
+        "/api/v1/crm/settings/workspace",
+        headers=headers,
+        json={"version": stale_settings.json()["version"], "uiMode": "standard"},
+    )
+    assert restored_settings.status_code == 200, restored_settings.text
     changed_replay = client.post(
         "/api/v1/crm/leads",
         headers=creation_headers,
@@ -1230,6 +1236,87 @@ def test_crm_workspace_ui_mode_roundtrip(client: TestClient) -> None:
     )
     assert restored.status_code == 200, restored.text
     assert restored.json()["uiMode"] == "standard"
+
+
+def _crm_auth_headers(client: TestClient, email: str, password: str) -> dict[str, str]:
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": password},
+    )
+    assert login.status_code == 200, login.text
+    return {"Authorization": f"Bearer {login.json()['accessToken']}"}
+
+
+@pytest.mark.integration
+def test_crm_ui_mode_is_per_membership(client: TestClient) -> None:
+    seller_password = "Seller!crm-ui-mode-not-secret"
+    with session_scope() as session:
+        bootstrap_local_foundation(session, hash_password(_PASSWORD))
+    owner_headers = _crm_auth_headers(client, "owner@erp.dev", _PASSWORD)
+    options = client.get("/api/v1/users/form-options", headers=owner_headers)
+    assert options.status_code == 200, options.text
+    options_body = options.json()
+    seller_role = next(role for role in options_body["roles"] if role["code"] == "seller")
+    branch_id = options_body["branches"][0]["id"]
+    seller_email = f"seller-{uuid7().hex[:12]}@example.com"
+    created = client.post(
+        "/api/v1/users",
+        headers=owner_headers,
+        json={
+            "displayName": "Seller CRM",
+            "email": seller_email,
+            "password": seller_password,
+            "roleAssignments": [
+                {
+                    "roleId": seller_role["id"],
+                    "scopeType": "branch",
+                    "branchId": branch_id,
+                }
+            ],
+        },
+    )
+    assert created.status_code == 201, created.text
+    seller_headers = _crm_auth_headers(client, seller_email, seller_password)
+
+    owner_settings = client.get("/api/v1/crm/settings/workspace", headers=owner_headers)
+    assert owner_settings.status_code == 200, owner_settings.text
+    owner_body = owner_settings.json()
+    assert owner_body["uiMode"] == "standard"
+
+    seller_settings = client.get("/api/v1/crm/settings/workspace", headers=seller_headers)
+    assert seller_settings.status_code == 200, seller_settings.text
+    seller_body = seller_settings.json()
+    assert seller_body["uiMode"] == "standard"
+
+    owner_patch = client.patch(
+        "/api/v1/crm/settings/workspace",
+        headers=owner_headers,
+        json={"version": owner_body["version"], "uiMode": "simplified"},
+    )
+    assert owner_patch.status_code == 200, owner_patch.text
+    assert owner_patch.json()["uiMode"] == "simplified"
+
+    seller_after_owner = client.get("/api/v1/crm/settings/workspace", headers=seller_headers)
+    assert seller_after_owner.status_code == 200, seller_after_owner.text
+    assert seller_after_owner.json()["uiMode"] == "standard"
+
+    seller_patch = client.patch(
+        "/api/v1/crm/settings/workspace",
+        headers=seller_headers,
+        json={"version": seller_body["version"], "uiMode": "simplified"},
+    )
+    assert seller_patch.status_code == 200, seller_patch.text
+
+    owner_unchanged = client.get("/api/v1/crm/settings/workspace", headers=owner_headers)
+    assert owner_unchanged.status_code == 200, owner_unchanged.text
+    assert owner_unchanged.json()["uiMode"] == "simplified"
+
+    stale = client.patch(
+        "/api/v1/crm/settings/workspace",
+        headers=seller_headers,
+        json={"version": seller_body["version"], "uiMode": "standard"},
+    )
+    assert stale.status_code == 409
 
 
 def test_import_pipeline_creates_lead_and_opportunity(client: TestClient) -> None:

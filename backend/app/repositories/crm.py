@@ -100,14 +100,17 @@ class CrmRepository:
             )
         )
 
-    def membership(self, workspace_id: UUID, membership_id: UUID) -> WorkspaceMembership | None:
-        return self._session.scalar(
-            select(WorkspaceMembership).where(
-                WorkspaceMembership.workspace_id == workspace_id,
-                WorkspaceMembership.id == membership_id,
-                WorkspaceMembership.status == "active",
-            )
+    def membership(
+        self, workspace_id: UUID, membership_id: UUID, *, lock: bool = False
+    ) -> WorkspaceMembership | None:
+        query = select(WorkspaceMembership).where(
+            WorkspaceMembership.workspace_id == workspace_id,
+            WorkspaceMembership.id == membership_id,
+            WorkspaceMembership.status == "active",
         )
+        if lock:
+            query = query.with_for_update()
+        return self._session.scalar(query)
 
     def customer(
         self,

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, DollarSign } from 'lucide-react'
+import { Plus, Pencil, Trash2, DollarSign, FileImage } from 'lucide-react'
+import { FinanceAttachmentsModal } from '@/modules/finanzas/components/FinanceAttachmentsModal'
 import { useFinanzasStore, catName } from '@/stores/finanzasStore'
 import { useConfigStore } from '@/stores/configStore'
 import { formatDOP } from '@/lib/format'
@@ -36,6 +37,7 @@ export function GastosFijosTab() {
   const [query, setQuery] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [proofFixed, setProofFixed] = useState(null)
 
   const branchOptions = [{ value: 'all', label: 'Todas las sucursales' }, ...branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))]
 
@@ -154,6 +156,17 @@ export function GastosFijosTab() {
                         <td className="px-6 py-4"><Badge tone={paid ? 'success' : 'warning'}>{paid ? 'Pagado' : 'Pendiente'}</Badge></td>
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-end gap-1">
+                            {(e.attachments || []).length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setProofFixed(e)}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50"
+                                title="Ver comprobante"
+                                data-testid={`gastos-fixed-proof-${e.id}`}
+                              >
+                                <FileImage className="h-4 w-4" />
+                              </button>
+                            )}
                             {!paid && (
                               <Button size="sm" onClick={() => pay(e)} data-testid={`gastos-fixed-pay-${e.id}`}>
                                 <DollarSign className="h-3.5 w-3.5" /> PAGAR
@@ -209,6 +222,13 @@ export function GastosFijosTab() {
       </Card>
 
       <ExpenseFormModal open={modalOpen} onClose={() => setModalOpen(false)} expense={editing} mode="fixed" />
+
+      <FinanceAttachmentsModal
+        open={Boolean(proofFixed)}
+        onClose={() => setProofFixed(null)}
+        title={proofFixed ? `Comprobantes · ${proofFixed.concept}` : 'Comprobantes'}
+        attachments={proofFixed?.attachments}
+      />
     </div>
   )
 }

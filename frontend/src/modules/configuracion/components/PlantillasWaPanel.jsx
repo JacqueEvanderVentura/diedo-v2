@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { cn } from '@/lib/utils'
 import { configPageClass } from '../lib/pageShell'
+import { isSettingsBlockVisible } from '../lib/settingsSearch'
 
 const TABS = [
   { id: 'agenda', label: 'Agenda', icon: Calendar },
@@ -14,7 +15,7 @@ const TABS = [
   { id: 'clientes', label: 'Clientes', icon: Users },
 ]
 
-export default function PlantillasWaPanel({ embedded = false }) {
+export default function PlantillasWaPanel({ embedded = false, visibleBlockIds }) {
   const stored = useConfigStore((s) => s.whatsappTemplates)
   const updateWhatsappTemplates = useConfigStore((s) => s.updateWhatsappTemplates)
 
@@ -25,6 +26,13 @@ export default function PlantillasWaPanel({ embedded = false }) {
   useEffect(() => {
     setDraft(structuredClone(stored))
   }, [stored])
+
+  useEffect(() => {
+    if (!visibleBlockIds?.length) return
+    if (visibleBlockIds.includes('oportunidades')) setTab('oportunidades')
+    else if (visibleBlockIds.includes('clientes')) setTab('clientes')
+    else if (visibleBlockIds.includes('agenda')) setTab('agenda')
+  }, [visibleBlockIds])
 
   const templates = draft[tab] || []
   const variables = WHATSAPP_VARIABLE_CHIPS[tab] || []
@@ -54,6 +62,7 @@ export default function PlantillasWaPanel({ embedded = false }) {
 
   return (
     <div className={configPageClass(embedded, 'max-w-4xl')} data-testid="plantillas-wa-panel">
+      {isSettingsBlockVisible(visibleBlockIds, 'templates') && (
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="flex items-center gap-2 font-heading text-lg font-bold text-slate-900">
@@ -66,9 +75,12 @@ export default function PlantillasWaPanel({ embedded = false }) {
           <Save className="h-4 w-4" /> Guardar cambios
         </Button>
       </div>
+      )}
 
+      {(!visibleBlockIds?.length
+        || visibleBlockIds.some((id) => ['agenda', 'oportunidades', 'clientes', 'templates'].includes(id))) && (
       <div className="grid grid-cols-3 rounded-xl bg-slate-100 p-1">
-        {TABS.map(({ id, label, icon: Icon }) => (
+        {TABS.filter(({ id }) => !visibleBlockIds?.length || visibleBlockIds.includes(id) || visibleBlockIds.includes('templates')).map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             type="button"
@@ -83,8 +95,10 @@ export default function PlantillasWaPanel({ embedded = false }) {
           </button>
         ))}
       </div>
+      )}
 
       <Card className="space-y-6 p-6">
+        {isSettingsBlockVisible(visibleBlockIds, 'variables') && (
         <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
           <h4 className="mb-2 text-sm font-semibold text-slate-700">Variables disponibles</h4>
           <div className="flex flex-wrap gap-2">
@@ -98,7 +112,11 @@ export default function PlantillasWaPanel({ embedded = false }) {
             ))}
           </div>
         </div>
+        )}
 
+        {(!visibleBlockIds?.length
+          || visibleBlockIds.includes('templates')
+          || visibleBlockIds.includes(tab)) && (
         <div className="space-y-5">
           {templates.map((tpl) => (
             <div key={tpl.id}>
@@ -136,6 +154,7 @@ export default function PlantillasWaPanel({ embedded = false }) {
             </div>
           ))}
         </div>
+        )}
       </Card>
     </div>
   )

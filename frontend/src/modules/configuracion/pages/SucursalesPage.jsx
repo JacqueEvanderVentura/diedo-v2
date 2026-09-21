@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/Input'
 import { BranchFormModal } from '../components/BranchFormModal'
 import { configPageClass } from '../lib/pageShell'
 import { mapWorkspaceSettingsFromApi } from '../lib/workspaceSettings'
+import { isSettingsBlockVisible } from '../lib/settingsSearch'
 
 const EMPTY_SETTINGS = { businessName: '', region: '', taxDefault: 0, version: 1 }
 
@@ -76,7 +77,7 @@ function GeneralSettings({ settings, online, canMutate, onSaved }) {
   )
 }
 
-export default function SucursalesPage({ embedded = false }) {
+export default function SucursalesPage({ embedded = false, visibleBlockIds }) {
   const online = useSessionStore((state) => state.status === 'online')
   const sessionUser = useSessionStore((state) => state.user)
   const canManageBranch = useSessionStore((state) => state.hasPermission('branch.manage'))
@@ -266,9 +267,12 @@ export default function SucursalesPage({ embedded = false }) {
     setModalOpen(true)
   }
 
+  const showGeneral = isSettingsBlockVisible(visibleBlockIds, 'general')
+  const showList = isSettingsBlockVisible(visibleBlockIds, 'list')
+
   return (
     <div className={configPageClass(embedded)} data-testid="sucursales-page">
-      {(!online || canReadWorkspace) && (
+      {showGeneral && (!online || canReadWorkspace) && (
         <GeneralSettings
           settings={settings}
           online={online}
@@ -276,8 +280,10 @@ export default function SucursalesPage({ embedded = false }) {
           onSaved={setApiSettings}
         />
       )}
-      {online && <p className="text-xs text-slate-400">Estado: {state.status} · fuente: {state.source || '—'}</p>}
-      {state.error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-600">{state.error.message}</p>}
+      {showList && online && <p className="text-xs text-slate-400">Estado: {state.status} · fuente: {state.source || '—'}</p>}
+      {showList && state.error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-600">{state.error.message}</p>}
+      {showList && (
+      <>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card className="p-4"><p className="text-xs font-bold uppercase text-slate-400">Total</p><p className="mt-1 text-2xl font-bold">{visibleBranches.length}</p></Card>
         <Card className="p-4"><p className="text-xs font-bold uppercase text-slate-400">Activas</p><p className="mt-1 text-2xl font-bold text-emerald-600">{visibleBranches.filter((branch) => branch.active).length}</p></Card>
@@ -310,6 +316,8 @@ export default function SucursalesPage({ embedded = false }) {
           </Card>
         ))}
       </div>
+      </>
+      )}
       <BranchFormModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}

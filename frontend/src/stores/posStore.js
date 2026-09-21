@@ -1,13 +1,14 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { ephemeralJsonStorage, registerSensitiveStateCleaner } from '@/services/storagePolicy'
-import { WALK_IN_CUSTOMER } from '@/stores/customersStore'
+import { WALK_IN_CUSTOMER, useCustomersStore } from '@/stores/customersStore'
 import { useCatalogStore, isPosSellable } from '@/stores/catalogStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { posApi, createPosIdempotencyKey } from '@/services/posApi'
 import {
   checkoutToApiPayload,
+  mapCashMovementFromApi,
   mapCashMovementsPageFromApi,
   mapPaymentMethodsFromApi,
   mapPaymentProofMutationResponse,
@@ -269,6 +270,64 @@ function replaceById(items, next) {
 function appendUniqueById(items, additions) {
   const seen = new Set(items.map((item) => item.id))
   return [...items, ...additions.filter((item) => !seen.has(item.id))]
+}
+
+function quoteHasLineItems(quote) {
+  return Array.isArray(quote?.items) && quote.items.length > 0
+}
+
+function mergeQuoteRecord(existing, incoming) {
+  if (!incoming?.id) return existing
+  if (!existing?.id) return incoming
+  const existingRich = quoteHasLineItems(existing) || existing.detailLoaded
+  const incomingRich = quoteHasLineItems(incoming) || incoming.detailLoaded
+  if (existingRich && !incomingRich) return existing
+  if (incomingRich && !existingRich) return incoming
+  const merged = { ...existing, ...incoming }
+  if (quoteHasLineItems(existing) && !quoteHasLineItems(incoming)) {
+    merged.items = existing.items
+    merged.detailLoaded = existing.detailLoaded ?? incoming.detailLoaded
+  }
+  const existingCustomer = existing.customer
+  const incomingCustomer = incoming.customer
+  if (
+    existingCustomer?.id
+    && existingCustomer.id !== 'walk-in'
+    && (!incomingCustomer?.id || incomingCustomer.id === 'walk-in')
+  ) {
+    merged.customer = existingCustomer
+  }
+  return merged
+}
+
+function mergeQuoteLists(current = [], additions = []) {
+  const byId = new Map((current || []).filter((item) => item?.id).map((item) => [item.id, item]))
+  for (const item of additions || []) {
+    if (!item?.id) continue
+    const previous = byId.get(item.id)
+    byId.set(item.id, previous ? mergeQuoteRecord(previous, item) : item)
+  }
+  const additionIds = new Set((additions || []).map((item) => item?.id).filter(Boolean))
+  const ordered = (additions || [])
+    .filter((item) => item?.id)
+    .map((item) => byId.get(item.id))
+  for (const item of current || []) {
+    if (!item?.id || additionIds.has(item.id)) continue
+    ordered.push(byId.get(item.id))
+  }
+  return ordered
+}
+
+function resolveHeldCustomer(snapshot) {
+  if (!snapshot || snapshot.isDefault || snapshot.id === 'walk-in') return DEFAULT_CUSTOMER
+  const fromStore = useCustomersStore.getState().customers.find((item) => item.id === snapshot.id)
+  if (fromStore) return fromStore
+  return {
+    id: snapshot.id,
+    name: snapshot.name || 'Cliente',
+    phone: snapshot.phone || null,
+    email: snapshot.email || null,
+  }
 }
 
 function emptyPage() {
@@ -569,7 +628,11 @@ export const usePosStore = create(
             const receivablesPage = mapReceivablesPageFromApi(receivablesResponse || { items: [] })
             const quotesPage = mapQuotesPageFromApi(quotesResponse || { items: [] })
             const movementCollections = splitCashMovements(movementsPage.items)
-            const quoteCollections = splitQuotes(quotesPage.items)
+            const mergedQuoteItems = mergeQuoteLists(
+              mergeQuoteLists(get().heldCarts, mapped.heldCarts || []),
+              quotesPage.items
+            )
+            const quoteCollections = splitQuotes(mergedQuoteItems)
             const registerSummary = mapped.register?.id ? mapped.register.summary : null
             Object.assign(mapped, {
               sales: salesPage.items,
@@ -716,10 +779,11 @@ export const usePosStore = create(
         }),
         mapPage: mapQuotesPageFromApi,
         merge: (state, items) => {
-          const collections = splitQuotes(items)
+          const merged = mergeQuoteLists(state.heldCarts, items)
+          const collections = splitQuotes(merged)
           return {
-            heldCarts: appendUniqueById(state.heldCarts, collections.heldCarts),
-            openQuotes: appendUniqueById(state.openQuotes, collections.openQuotes),
+            heldCarts: collections.heldCarts,
+            openQuotes: collections.openQuotes,
           }
         },
       }),
@@ -831,7 +895,7 @@ export const usePosStore = create(
             receivables: receivablesPage.items,
             receivableSummary: mapReceivableSummaryFromApi(summaryRes),
             openQuotes: quoteCollections.openQuotes,
-            heldCarts: appendUniqueById(state.heldCarts, quoteCollections.heldCarts),
+            heldCarts: mergeQuoteLists(state.heldCarts, quoteCollections.heldCarts),
             quoteSummary: mapQuoteSummaryFromApi(quoteSummaryRes),
             pagination: {
               ...state.pagination,
@@ -1233,13 +1297,16 @@ export const usePosStore = create(
         return true
       },
 
-      restoreHeldCart: (id) => {
+      restoreHeldCart: async (id) => {
         const s = get()
-        const held = s.heldCarts.find((h) => h.id === id)
+        let held = s.heldCarts.find((h) => h.id === id)
         if (!held) return false
+        if (isOnlineMode() && held.apiSynced && !quoteHasLineItems(held)) {
+          held = await get().ensureQuoteDetail(id) || held
+        }
         set({
-          customer: held.customer,
-          items: held.items.map((i) => ({ ...i })),
+          customer: resolveHeldCustomer(held.customer),
+          items: (held.items || []).map((i) => ({ ...i })),
           discountMode: held.discountMode,
           discountValue: held.discountValue,
           paymentMethod: held.paymentMethod,
@@ -1800,23 +1867,21 @@ export const usePosStore = create(
             payload,
             refreshScope: 'caja',
             request: (idempotencyKey) => posApi.createRegisterMovement(register.id, payload, { idempotencyKey }),
-          })
+          }).then((response) => mapCashMovementFromApi(response))
+        }
+        const entry = {
+          id: genId('exp'),
+          concept,
+          amount: Number(amount) || 0,
+          items: items || null,
+          method: method || null,
+          reference: reference || null,
+          createdAt: now(),
         }
         set((s) => ({
-          expenses: [
-            {
-              id: genId('exp'),
-              concept,
-              amount: Number(amount) || 0,
-              items: items || null,
-              method: method || null,
-              reference: reference || null,
-              createdAt: now(),
-            },
-            ...s.expenses,
-          ],
+          expenses: [entry, ...s.expenses],
         }))
-        return true
+        return entry
       },
 
       recordSale: ({ total, method, customer, reference, items, subtotal, discountAmt, discountPct, taxPct, taxAmt }) => {
