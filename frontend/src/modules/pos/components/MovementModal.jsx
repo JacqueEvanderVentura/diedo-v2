@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input'
 import { AttachmentField } from '@/components/ui/AttachmentField'
 import { formatDOP } from '@/lib/format'
 import { usePosStore } from '@/stores/posStore'
+import { uploadCashMovementAttachments } from '@/lib/documentAttachments'
 import { saveExpenseAttachments } from '@/modules/finanzas/lib/financeAttachments'
 import { cn } from '@/lib/utils'
 
@@ -23,6 +24,7 @@ export function MovementModal({ open, onClose, defaultType = 'ingreso' }) {
   const [submitting, setSubmitting] = useState(false)
   const addIncome = usePosStore((s) => s.addIncome)
   const addExpense = usePosStore((s) => s.addExpense)
+  const register = usePosStore((s) => s.register)
 
   const reset = () => {
     setConcept('')
@@ -45,7 +47,15 @@ export function MovementModal({ open, onClose, defaultType = 'ingreso' }) {
         const movement = await addExpense(payload)
         const movementId = movement?.id
         if (movementId && attachments.length) {
-          saveExpenseAttachments(movementId, attachments)
+          if (register?.id) {
+            try {
+              await uploadCashMovementAttachments(register.id, movementId, attachments)
+            } catch {
+              saveExpenseAttachments(movementId, attachments)
+            }
+          } else {
+            saveExpenseAttachments(movementId, attachments)
+          }
         }
         toast.success(`Egreso registrado: ${formatDOP(amount)}`)
       }

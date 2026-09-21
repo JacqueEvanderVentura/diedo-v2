@@ -2,7 +2,7 @@ import { normalizeAppointmentTime, timeRangesOverlap } from '@/modules/agenda/li
 import { normalizeAppointmentStatus } from '@/modules/agenda/lib/completion'
 
 export const CALENDAR_SLOT_MINUTES = 30
-export const CALENDAR_ROW_PX = 52
+export const CALENDAR_ROW_PX = 88
 /** Vertical padding on slot cells (`p-1` = 8px total). */
 export const CALENDAR_SLOT_PAD_PX = 8
 

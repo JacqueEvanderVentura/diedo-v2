@@ -75,7 +75,7 @@ export function DayView({
           <div className="min-w-[900px] overflow-visible">
             <div
               className="grid gap-0 overflow-visible"
-              style={{ gridTemplateColumns: `80px repeat(${resources.length}, minmax(120px, 1fr))` }}
+              style={{ gridTemplateColumns: `80px repeat(${resources.length}, minmax(160px, 1fr))` }}
             >
               <div className="border-b border-slate-100 bg-slate-50 px-2 py-3 text-xs font-bold uppercase text-slate-400">
                 Hora

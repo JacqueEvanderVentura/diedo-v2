@@ -1,15 +1,19 @@
+import { mapDocumentAttachmentsFromApi } from '@/services/adapters/documentAttachments'
+
 const amount = (value) => Number(value) || 0
 
 export const mapFinanceExpenseFromApi = (item) => ({
   ...item,
   amount: amount(item.amount),
   budgetId: item.budgetId || null,
+  attachments: mapDocumentAttachmentsFromApi(item.attachments),
 })
 
 export const mapFinanceFixedExpenseFromApi = (item) => ({
   ...item,
   amount: amount(item.amount),
   paidMonths: item.paidPeriods || [],
+  attachments: mapDocumentAttachmentsFromApi(item.attachments),
 })
 
 export const mapFinanceLiabilityFromApi = (item) => ({
@@ -40,6 +44,7 @@ export const mapFinanceAccountFromApi = (item) => ({
 export const mapFinanceIncomeFromApi = (item) => ({
   ...item,
   amount: amount(item.amount),
+  attachments: mapDocumentAttachmentsFromApi(item.attachments),
 })
 
 export const mapFinanceOverviewFromApi = (item) => ({

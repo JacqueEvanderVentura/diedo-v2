@@ -795,3 +795,52 @@ def test_finance_pos_income_correction_and_exclusion_preserve_original_sale(
         )
     )
     assert audit_actions == {"finance.pos_income.correct", "finance.pos_income.exclude"}
+
+
+_PNG_DOC_ATTACH = b"\x89PNG\r\n\x1a\ndoc-attach-test"
+
+
+def test_finance_expense_attachment_roundtrip(finance_context) -> None:
+    client, _session = finance_context
+    headers, me = _login(client)
+    branch_id = me["visibleBranches"][0]["id"]
+
+    created = client.post(
+        "/api/v1/finance/expenses",
+        headers={**headers, "Idempotency-Key": "doc-attach-expense-test"},
+        json={
+            "concept": "Adjunto test",
+            "amount": "100.00",
+            "category": "otros",
+            "date": date.today().isoformat(),
+            "branchId": str(branch_id),
+            "status": "pagado",
+        },
+    )
+    assert created.status_code == 201, created.text
+    expense_id = created.json()["id"]
+
+    upload = client.post(
+        f"/api/v1/finance/expenses/{expense_id}/attachments",
+        headers=headers,
+        files={"file": ("proof.png", _PNG_DOC_ATTACH, "image/png")},
+    )
+    assert upload.status_code == 201, upload.text
+    body = upload.json()
+    assert body["originalFilename"] == "proof.png"
+    assert body["previewUrl"].endswith("/content")
+
+    listed = client.get(
+        f"/api/v1/finance/expenses/{expense_id}/attachments",
+        headers=headers,
+    )
+    assert listed.status_code == 200
+    assert len(listed.json()) == 1
+
+    content = client.get(body["previewUrl"], headers=headers)
+    assert content.status_code == 200
+    assert content.content == _PNG_DOC_ATTACH
+
+    expense = client.get(f"/api/v1/finance/expenses/{expense_id}", headers=headers)
+    assert expense.status_code == 200
+    assert len(expense.json().get("attachments") or []) == 1

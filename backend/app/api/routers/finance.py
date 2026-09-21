@@ -17,6 +17,7 @@ from app.db.models import (
     FinanceLiability,
     FinanceManualIncome,
 )
+from app.repositories.document_attachments import DocumentAttachmentRecord
 from app.repositories.finance import (
     BudgetRecord,
     ExpenseViewRecord,
@@ -24,6 +25,7 @@ from app.repositories.finance import (
     IncomeViewRecord,
 )
 from app.schemas.common import ErrorResponse
+from app.schemas.document_attachments import DocumentAttachmentResponse
 from app.schemas.finance import (
     AccountSortField,
     AccountType,
@@ -71,6 +73,7 @@ from app.schemas.finance import (
     UpdateFinanceLiabilityRequest,
     UpdateFinanceManualIncomeRequest,
 )
+from app.services.document_attachments import DocumentAttachmentService
 from app.services.finance import FinanceService, page_count
 
 router = APIRouter(prefix="/api/v1/finance", tags=["finance"])
@@ -87,7 +90,53 @@ _MUTATION_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
-def _expense_view_response(record: ExpenseViewRecord) -> FinanceExpenseResponse:
+def _attachment_responses(
+    records: tuple[DocumentAttachmentRecord, ...],
+) -> list[DocumentAttachmentResponse]:
+    return [
+        DocumentAttachmentResponse(
+            id=row.attachment.id,
+            original_filename=row.attachment.original_filename,
+            content_type=row.attachment.content_type,
+            size_bytes=row.attachment.size_bytes,
+            checksum_sha256=row.attachment.checksum_sha256,
+            preview_url=row.preview_url,
+            created_at=row.attachment.created_at,
+        )
+        for row in records
+    ]
+
+
+ExpenseAttachmentMap = dict[UUID, tuple[DocumentAttachmentRecord, ...]]
+
+
+def _expense_attachment_maps(
+    database: DatabaseSession,
+    grant: FinanceReadGrant,
+    records: tuple[ExpenseViewRecord, ...],
+) -> tuple[ExpenseAttachmentMap, ExpenseAttachmentMap]:
+    finanzas_ids = {item.id for item in records if item.source == "finanzas"}
+    caja_ids = {item.id for item in records if item.source == "caja"}
+    service = DocumentAttachmentService(database)
+    return (
+        service.attachments_by_owners(grant.workspace_id, "finance_expense", finanzas_ids),
+        service.attachments_by_owners(grant.workspace_id, "cash_movement", caja_ids),
+    )
+
+
+def _expense_view_response(
+    record: ExpenseViewRecord,
+    *,
+    finanzas_attachments: dict[UUID, tuple[DocumentAttachmentRecord, ...]] | None = None,
+    caja_attachments: dict[UUID, tuple[DocumentAttachmentRecord, ...]] | None = None,
+    attachment_rows: tuple[DocumentAttachmentRecord, ...] | None = None,
+) -> FinanceExpenseResponse:
+    if attachment_rows is not None:
+        attachments = _attachment_responses(attachment_rows)
+    elif record.source == "caja":
+        attachments = _attachment_responses((caja_attachments or {}).get(record.id, ()))
+    else:
+        attachments = _attachment_responses((finanzas_attachments or {}).get(record.id, ()))
     return FinanceExpenseResponse(
         id=record.id,
         concept=record.concept,
@@ -100,12 +149,17 @@ def _expense_view_response(record: ExpenseViewRecord) -> FinanceExpenseResponse:
         source=cast(Any, record.source),
         editable=record.editable,
         version=record.version,
+        attachments=attachments,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
 
 
-def _expense_response(expense: FinanceExpense) -> FinanceExpenseResponse:
+def _expense_response(
+    expense: FinanceExpense,
+    *,
+    attachment_rows: tuple[DocumentAttachmentRecord, ...] = (),
+) -> FinanceExpenseResponse:
     return FinanceExpenseResponse(
         id=expense.id,
         concept=expense.concept,
@@ -118,12 +172,17 @@ def _expense_response(expense: FinanceExpense) -> FinanceExpenseResponse:
         source="finanzas",
         editable=True,
         version=expense.version,
+        attachments=_attachment_responses(attachment_rows),
         created_at=expense.created_at,
         updated_at=expense.updated_at,
     )
 
 
-def _fixed_expense_response(record: FixedExpenseRecord) -> FinanceFixedExpenseResponse:
+def _fixed_expense_response(
+    record: FixedExpenseRecord,
+    *,
+    attachment_rows: tuple[DocumentAttachmentRecord, ...] = (),
+) -> FinanceFixedExpenseResponse:
     expense = record.expense
     payments = [
         FinanceFixedExpensePaymentResponse(
@@ -144,6 +203,7 @@ def _fixed_expense_response(record: FixedExpenseRecord) -> FinanceFixedExpenseRe
         day_of_month=expense.day_of_month,
         paid_periods=[payment.period.strftime("%Y-%m") for payment in record.payments],
         payments=payments,
+        attachments=_attachment_responses(attachment_rows),
         version=expense.version,
         created_at=expense.created_at,
         updated_at=expense.updated_at,
@@ -220,7 +280,18 @@ def _account_response(account: FinanceAccount) -> FinanceAccountResponse:
     )
 
 
-def _income_view_response(record: IncomeViewRecord) -> FinanceIncomeResponse:
+def _income_view_response(
+    record: IncomeViewRecord,
+    *,
+    manual_attachments: dict[UUID, tuple[DocumentAttachmentRecord, ...]] | None = None,
+    attachment_rows: tuple[DocumentAttachmentRecord, ...] | None = None,
+) -> FinanceIncomeResponse:
+    if attachment_rows is not None:
+        attachments = _attachment_responses(attachment_rows)
+    elif record.origin == "manual":
+        attachments = _attachment_responses((manual_attachments or {}).get(record.id, ()))
+    else:
+        attachments = []
     return FinanceIncomeResponse(
         id=record.id,
         date=record.date,
@@ -235,6 +306,7 @@ def _income_view_response(record: IncomeViewRecord) -> FinanceIncomeResponse:
         adjusted=record.adjusted,
         editable=record.editable,
         version=record.version,
+        attachments=attachments,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
@@ -310,8 +382,16 @@ def list_expenses(
         sort_by=sort_by,
         sort_direction=sort_direction,
     )
+    finanzas_map, caja_map = _expense_attachment_maps(database, grant, result.items)
     return PaginatedFinanceExpensesResponse(
-        items=[_expense_view_response(item) for item in result.items],
+        items=[
+            _expense_view_response(
+                item,
+                finanzas_attachments=finanzas_map,
+                caja_attachments=caja_map,
+            )
+            for item in result.items
+        ],
         page=page,
         page_size=page_size,
         total_items=result.total_items,
@@ -347,7 +427,9 @@ def get_expense(
     database: DatabaseSession,
     grant: FinanceReadGrant,
 ) -> FinanceExpenseResponse:
-    return _expense_response(FinanceService(database).get_expense(grant, expense_id))
+    expense = FinanceService(database).get_expense(grant, expense_id)
+    rows = DocumentAttachmentService(database).list_for_owner(grant, "finance_expense", expense_id)
+    return _expense_response(expense, attachment_rows=rows)
 
 
 @router.patch("/expenses/{expense_id}", responses=_MUTATION_RESPONSES)
@@ -412,8 +494,15 @@ def list_fixed_expenses(
         sort_by=sort_by,
         sort_direction=sort_direction,
     )
+    fixed_ids = {item.expense.id for item in result.items}
+    fixed_map = DocumentAttachmentService(database).attachments_by_owners(
+        grant.workspace_id, "finance_fixed_expense", fixed_ids
+    )
     return PaginatedFinanceFixedExpensesResponse(
-        items=[_fixed_expense_response(item) for item in result.items],
+        items=[
+            _fixed_expense_response(item, attachment_rows=fixed_map.get(item.expense.id, ()))
+            for item in result.items
+        ],
         page=page,
         page_size=page_size,
         total_items=result.total_items,
@@ -868,8 +957,12 @@ def list_incomes(
         sort_by=sort_by,
         sort_direction=sort_direction,
     )
+    manual_ids = {item.id for item in result.items if item.origin == "manual"}
+    manual_map = DocumentAttachmentService(database).attachments_by_owners(
+        grant.workspace_id, "finance_manual_income", manual_ids
+    )
     return PaginatedFinanceIncomesResponse(
-        items=[_income_view_response(item) for item in result.items],
+        items=[_income_view_response(item, manual_attachments=manual_map) for item in result.items],
         page=page,
         page_size=page_size,
         total_items=result.total_items,

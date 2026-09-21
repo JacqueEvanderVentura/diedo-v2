@@ -44,7 +44,7 @@ export function AppointmentChip({
         'w-full cursor-pointer rounded-lg border text-left shadow-sm transition-colors',
         TONES[tone],
         spanFullHeight
-          ? 'flex h-full min-h-0 flex-col overflow-hidden p-1 leading-tight'
+          ? 'flex h-full min-h-0 flex-col p-1.5 leading-tight'
           : compact
             ? 'mb-1.5 p-1.5'
             : 'mb-2 p-2',
@@ -69,8 +69,16 @@ export function AppointmentChip({
           />
         </span>
       </div>
-      {apt.serviceName && (
-        <p className={cn('min-w-0 truncate opacity-80', compact ? 'text-[10px]' : 'text-[11px]')}>{apt.serviceName}</p>
+      {(spanFullHeight || apt.serviceName) && (
+        <p
+          className={cn(
+            'min-w-0 truncate opacity-80',
+            spanFullHeight ? 'text-[11px]' : compact ? 'text-[10px]' : 'text-[11px]'
+          )}
+          title={apt.serviceName || 'Servicio'}
+        >
+          {apt.serviceName || 'Servicio'}
+        </p>
       )}
       <div
         className={cn(

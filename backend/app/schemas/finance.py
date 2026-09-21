@@ -9,6 +9,7 @@ from uuid import UUID
 from pydantic import Field, StringConstraints, field_validator, model_validator
 
 from app.schemas.common import ApiModel
+from app.schemas.document_attachments import DocumentAttachmentResponse
 
 ExpenseCategory = Literal[
     "alquiler",
@@ -54,6 +55,7 @@ class FinanceExpenseResponse(ApiModel):
     source: Literal["finanzas", "caja"]
     editable: bool
     version: int | None
+    attachments: list[DocumentAttachmentResponse] = []
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -110,6 +112,7 @@ class FinanceFixedExpenseResponse(ApiModel):
     day_of_month: int
     paid_periods: list[str]
     payments: list[FinanceFixedExpensePaymentResponse]
+    attachments: list[DocumentAttachmentResponse] = []
     version: int
     created_at: datetime
     updated_at: datetime
@@ -373,6 +376,7 @@ class FinanceIncomeResponse(ApiModel):
     adjusted: bool
     editable: bool
     version: int | None
+    attachments: list[DocumentAttachmentResponse] = []
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

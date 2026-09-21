@@ -14,6 +14,7 @@ import {
   mergePurchaseRequestExtras,
   savePurchaseRequestExtras,
 } from '@/modules/compras/lib/purchaseRequestExtras'
+import { uploadPurchaseQuote } from '@/lib/documentAttachments'
 import { receivePurchaseRequestInventory } from '@/modules/compras/lib/receivePurchaseInventory'
 
 const genId = (prefix) => `${prefix}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
@@ -281,6 +282,11 @@ export const useComprasStore = create(
         const current = get().purchaseRequests.find((request) => request.id === id)
         if (!current) throw new Error('Solicitud no encontrada.')
         if (isOnline && current.version) {
+          if (quoteFile?.pendingFile) {
+            await uploadPurchaseQuote(id, quoteFile)
+            await get().hydrateFromApi({ force: true })
+            return get().purchaseRequests.find((request) => request.id === id)
+          }
           return get().updatePurchaseRequest(id, { quoteFile }, { isOnline })
         }
         const nextQuote = quoteFile?.name ? { name: quoteFile.name } : quoteFile

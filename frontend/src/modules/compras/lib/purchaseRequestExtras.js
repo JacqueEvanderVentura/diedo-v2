@@ -75,7 +75,12 @@ export function mergePurchaseRequestExtras(request) {
 }
 
 export async function loadPurchaseQuoteBlob(quoteFile) {
-  if (!quoteFile?.dataUrl) throw new Error('Cotización no disponible para vista previa.')
+  if (!quoteFile) throw new Error('Cotización no disponible para vista previa.')
+  if (quoteFile.previewUrl || quoteFile.downloadUrl) {
+    const { loadDocumentAttachmentBlob } = await import('@/lib/documentAttachments')
+    return loadDocumentAttachmentBlob(quoteFile)
+  }
+  if (!quoteFile.dataUrl) throw new Error('Cotización no disponible para vista previa.')
   const response = await fetch(quoteFile.dataUrl)
   return response.blob()
 }

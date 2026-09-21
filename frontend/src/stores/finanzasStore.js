@@ -22,6 +22,12 @@ import { ephemeralJsonStorage, registerSensitiveStateCleaner } from '@/services/
 import { useSessionStore } from '@/stores/sessionStore'
 import { isRecognizedPosIncome, isThisMonth } from '@/modules/finanzas/lib/finanzas'
 import {
+  mergeUploadedAttachments,
+  uploadFinanceExpenseAttachments,
+  uploadFinanceFixedAttachments,
+  uploadFinanceIncomeAttachments,
+} from '@/lib/documentAttachments'
+import {
   mergeExpenseAttachments,
   mergeFixedAttachments,
   saveFixedAttachments,
@@ -359,11 +365,15 @@ export const useFinanzasStore = create(
         const expense = mergeExpenseAttachments(mapFinanceExpenseFromApi(
           await financeApi.createExpense(expenseToApiPayload(data))
         ))
-        saveExpenseAttachments(expense.id, data.attachments || [])
+        const uploaded = await uploadFinanceExpenseAttachments(expense.id, data.attachments || [])
+        const attachments = mergeUploadedAttachments(data.attachments, uploaded)
+        if (!uploaded.length && (data.attachments || []).length) {
+          saveExpenseAttachments(expense.id, data.attachments || [])
+        }
         set((state) => ({
           expenses: replaceById(state.expenses, {
             ...expense,
-            attachments: data.attachments?.length ? data.attachments : expense.attachments,
+            attachments: attachments.length ? attachments : expense.attachments,
           }),
         }))
         await get().hydrateFromApi({ force: true })
@@ -385,8 +395,12 @@ export const useFinanzasStore = create(
           version: current.version,
           ...expenseToApiPayload({ ...current, ...data }),
         })))
-        const attachments = data.attachments ?? current.attachments ?? []
-        saveExpenseAttachments(expense.id, attachments)
+        const attachmentsInput = data.attachments ?? current.attachments ?? []
+        const uploaded = await uploadFinanceExpenseAttachments(expense.id, attachmentsInput)
+        const attachments = mergeUploadedAttachments(attachmentsInput, uploaded)
+        if (!uploaded.length && attachmentsInput.length) {
+          saveExpenseAttachments(expense.id, attachmentsInput)
+        }
         set((state) => ({
           expenses: replaceById(state.expenses, { ...expense, attachments }),
         }))
@@ -421,9 +435,13 @@ export const useFinanzasStore = create(
         const expense = mergeFixedAttachments(mapFinanceFixedExpenseFromApi(
           await financeApi.createFixedExpense(fixedExpenseToApiPayload(data))
         ))
-        saveFixedAttachments(expense.id, attachments)
+        const uploaded = await uploadFinanceFixedAttachments(expense.id, attachments)
+        const mergedAttachments = mergeUploadedAttachments(attachments, uploaded)
+        if (!uploaded.length && attachments.length) {
+          saveFixedAttachments(expense.id, attachments)
+        }
         set((state) => ({
-          fixedExpenses: replaceById(state.fixedExpenses, { ...expense, attachments }),
+          fixedExpenses: replaceById(state.fixedExpenses, { ...expense, attachments: mergedAttachments }),
         }))
         await get().hydrateFromApi({ force: true })
         return expense
@@ -453,8 +471,12 @@ export const useFinanzasStore = create(
           version: current.version,
           ...fixedExpenseToApiPayload({ ...current, ...data }),
         }))
-        const mergedAttachments = data.attachments ?? current.attachments ?? []
-        saveFixedAttachments(expense.id, mergedAttachments)
+        const mergedAttachmentsInput = data.attachments ?? current.attachments ?? []
+        const uploaded = await uploadFinanceFixedAttachments(expense.id, mergedAttachmentsInput)
+        const mergedAttachments = mergeUploadedAttachments(mergedAttachmentsInput, uploaded)
+        if (!uploaded.length && mergedAttachmentsInput.length) {
+          saveFixedAttachments(expense.id, mergedAttachmentsInput)
+        }
         set((state) => ({
           fixedExpenses: replaceById(state.fixedExpenses, { ...expense, attachments: mergedAttachments }),
         }))
@@ -639,7 +661,17 @@ export const useFinanzasStore = create(
         const income = mergeIncomeAttachments(mapFinanceIncomeFromApi(
           await financeApi.createManualIncome(manualIncomeToApiPayload(data))
         ))
-        saveIncomeAttachments(income.id, data.attachments || [])
+        const uploaded = await uploadFinanceIncomeAttachments(income.id, data.attachments || [])
+        const attachments = mergeUploadedAttachments(data.attachments, uploaded)
+        if (!uploaded.length && (data.attachments || []).length) {
+          saveIncomeAttachments(income.id, data.attachments || [])
+        }
+        if (attachments.length) {
+          set((state) => ({
+            manualIncomes: replaceById(state.manualIncomes, { ...income, attachments }),
+            incomeEntries: replaceById(state.incomeEntries, { ...income, attachments }),
+          }))
+        }
         await get().hydrateFromApi({ force: true })
         return income
       },
@@ -664,8 +696,16 @@ export const useFinanzasStore = create(
           version: current.version,
           ...manualIncomeToApiPayload({ ...current, ...data }),
         })))
-        const attachments = data.attachments ?? current.attachments ?? []
-        saveIncomeAttachments(income.id, attachments)
+        const attachmentsInput = data.attachments ?? current.attachments ?? []
+        const uploaded = await uploadFinanceIncomeAttachments(income.id, attachmentsInput)
+        const attachments = mergeUploadedAttachments(attachmentsInput, uploaded)
+        if (!uploaded.length && attachmentsInput.length) {
+          saveIncomeAttachments(income.id, attachmentsInput)
+        }
+        set((state) => ({
+          manualIncomes: replaceById(state.manualIncomes, { ...income, attachments }),
+          incomeEntries: replaceById(state.incomeEntries, { ...income, attachments }),
+        }))
         await get().hydrateFromApi({ force: true })
         return income
       },

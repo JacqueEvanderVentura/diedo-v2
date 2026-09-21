@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input'
 import { AttachmentField } from '@/components/ui/AttachmentField'
 import { formatDOP } from '@/lib/format'
 import { usePosStore } from '@/stores/posStore'
+import { uploadCashMovementAttachments } from '@/lib/documentAttachments'
 import { saveExpenseAttachments } from '@/modules/finanzas/lib/financeAttachments'
 
 export function ExpenseModal({ open, onClose }) {
@@ -15,6 +16,7 @@ export function ExpenseModal({ open, onClose }) {
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const addExpense = usePosStore((s) => s.addExpense)
+  const register = usePosStore((s) => s.register)
 
   const reset = () => {
     setConcept('')
@@ -31,7 +33,15 @@ export function ExpenseModal({ open, onClose }) {
       const movement = await addExpense({ concept: concept.trim(), amount: Number(amount) })
       const movementId = movement?.id
       if (movementId && attachments.length) {
-        saveExpenseAttachments(movementId, attachments)
+        if (register?.id) {
+          try {
+            await uploadCashMovementAttachments(register.id, movementId, attachments)
+          } catch {
+            saveExpenseAttachments(movementId, attachments)
+          }
+        } else {
+          saveExpenseAttachments(movementId, attachments)
+        }
       }
       toast.success(`Gasto registrado: ${concept} · ${formatDOP(amount)}`)
       reset()

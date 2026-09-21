@@ -76,10 +76,10 @@ export function loadFixedAttachments(fixedId) {
 
 export function mergeExpenseAttachments(expense) {
   if (!expense?.id) return expense
-  const stored = loadExpenseAttachments(expense.id)
-  if (!stored.length) return expense
   const existing = expense.attachments || []
   if (existing.length) return expense
+  const stored = loadExpenseAttachments(expense.id)
+  if (!stored.length) return expense
   return { ...expense, attachments: stored }
 }
 
@@ -103,6 +103,10 @@ export function mergeFixedAttachments(fixedExpense) {
 
 export async function loadFinanceAttachmentBlob(attachment) {
   if (!attachment) throw new Error('Adjunto no disponible.')
+  if (attachment.previewUrl || attachment.downloadUrl) {
+    const { loadDocumentAttachmentBlob } = await import('@/lib/documentAttachments')
+    return loadDocumentAttachmentBlob(attachment)
+  }
   if (attachment.dataUrl) {
     const response = await fetch(attachment.dataUrl)
     return response.blob()
