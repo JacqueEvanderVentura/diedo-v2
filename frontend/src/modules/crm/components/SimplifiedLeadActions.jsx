@@ -6,7 +6,6 @@ import {
   Copy,
   CreditCard,
   Instagram,
-  XCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -36,6 +35,10 @@ import { customersForOpportunityBranch, opportunityCustomerDefaults } from '@/mo
 import { ensureCustomerForQuote } from '@/modules/crm/lib/quoteCustomer'
 import { SIMPLIFIED_LOST_REASONS } from '@/modules/crm/lib/lostReasons'
 import { formatOpportunityOfferText, resolveInstagramUrl } from '@/modules/crm/lib/simplifiedOffer'
+import {
+  SIMPLIFIED_STAGE_LOST_OPTION_VALUE,
+  simplifiedStageSelectOptions,
+} from '@/modules/crm/lib/simplifiedStageMove'
 
 function toLocalInput(iso) {
   if (!iso) return ''
@@ -44,7 +47,14 @@ function toLocalInput(iso) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-export function SimplifiedLeadActions({ opportunity, lead, onActionComplete }) {
+export function SimplifiedLeadActions({
+  opportunity,
+  lead,
+  onActionComplete,
+  requestPaymentForId = null,
+  onPaymentRequestHandled,
+  onStageMove,
+}) {
   const branches = useConfigStore((state) => state.branches)
   const settings = useConfigStore((state) => state.settings)
   const paymentMethods = useConfigStore((state) => state.paymentMethods)
@@ -69,6 +79,7 @@ export function SimplifiedLeadActions({ opportunity, lead, onActionComplete }) {
   const [lostOpen, setLostOpen] = useState(false)
   const [lostReason, setLostReason] = useState(SIMPLIFIED_LOST_REASONS[0])
   const [lostBusy, setLostBusy] = useState(false)
+  const [stageBusy, setStageBusy] = useState(false)
 
   const [appointmentOpen, setAppointmentOpen] = useState(false)
   const [appointmentCustomerId, setAppointmentCustomerId] = useState('')
@@ -141,6 +152,18 @@ export function SimplifiedLeadActions({ opportunity, lead, onActionComplete }) {
   }, [elevationOpen, pendingClose, canInvoice])
 
   useEffect(() => {
+    if (!requestPaymentForId || requestPaymentForId !== liveOpportunity?.id) return
+    if (!canInvoice) {
+      setPendingClose(true)
+      setElevationOpen(true)
+    } else {
+      setPendingClose(true)
+      setClosePaymentMethod('efectivo')
+    }
+    onPaymentRequestHandled?.()
+  }, [requestPaymentForId, liveOpportunity?.id, canInvoice, onPaymentRequestHandled])
+
+  useEffect(() => {
     if (!liveOpportunity?.customerId) return
     const match = resolveCustomerForOpportunity(liveOpportunity, activeCustomers)
     if (!match) return
@@ -210,6 +233,26 @@ export function SimplifiedLeadActions({ opportunity, lead, onActionComplete }) {
     }
     setPendingClose(true)
     setClosePaymentMethod('efectivo')
+  }
+
+  const handleStageSelect = async (nextStage) => {
+    if (!liveOpportunity || stageBusy) return
+    if (nextStage === liveOpportunity.stage) return
+    if (nextStage === SIMPLIFIED_STAGE_LOST_OPTION_VALUE) {
+      setLostOpen(true)
+      return
+    }
+    if (nextStage === 'cerrado') {
+      openPayment()
+      return
+    }
+    if (!onStageMove) return
+    setStageBusy(true)
+    try {
+      await onStageMove(liveOpportunity.id, nextStage)
+    } finally {
+      setStageBusy(false)
+    }
   }
 
   const handleCloseCreateQuote = async (payload) => {
@@ -375,7 +418,7 @@ export function SimplifiedLeadActions({ opportunity, lead, onActionComplete }) {
 
   return (
     <div className="space-y-4" data-testid="crm-simplified-actions">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 max-w-full">
         {lead?.phone && (
           <WhatsAppMenuButton
             phone={lead.phone}
@@ -409,11 +452,11 @@ export function SimplifiedLeadActions({ opportunity, lead, onActionComplete }) {
         </Button>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className="grid grid-cols-2 gap-2">
         <Button
           type="button"
           variant="secondary"
-          className="justify-start"
+          className="h-auto min-h-[4.25rem] flex-col items-center justify-center gap-1.5 px-2 py-3 text-center text-xs leading-snug sm:text-sm"
           onClick={() => {
             setFollowUpForm((current) => ({
               ...current,
@@ -423,39 +466,38 @@ export function SimplifiedLeadActions({ opportunity, lead, onActionComplete }) {
           }}
           data-testid="crm-simplified-follow-up"
         >
-          <CalendarClock className="h-4 w-4" />
+          <CalendarClock className="h-4 w-4 shrink-0" />
           Programar seguimiento
         </Button>
         <Button
           type="button"
           variant="secondary"
-          className="justify-start"
+          className="h-auto min-h-[4.25rem] flex-col items-center justify-center gap-1.5 px-2 py-3 text-center text-xs leading-snug sm:text-sm"
           onClick={openPayment}
           data-testid="crm-simplified-payment"
         >
-          <CreditCard className="h-4 w-4" />
+          <CreditCard className="h-4 w-4 shrink-0" />
           Registrar pago
         </Button>
         <Button
           type="button"
           variant="secondary"
-          className="justify-start"
+          className="h-auto min-h-[4.25rem] flex-col items-center justify-center gap-1.5 px-2 py-3 text-center text-xs leading-snug sm:text-sm"
           onClick={openAppointment}
           data-testid="crm-simplified-appointment"
         >
-          <CalendarPlus className="h-4 w-4" />
+          <CalendarPlus className="h-4 w-4 shrink-0" />
           Agendar primera cita
         </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          className="justify-start text-red-700 hover:bg-red-50"
-          onClick={() => setLostOpen(true)}
-          data-testid="crm-simplified-lost"
-        >
-          <XCircle className="h-4 w-4" />
-          Marcar perdido
-        </Button>
+        <div className="flex min-h-[4.25rem] flex-col justify-center rounded-xl border border-slate-200 bg-white px-2 py-2 shadow-sm">
+          <Select
+            value={liveOpportunity.stage}
+            onChange={handleStageSelect}
+            disabled={stageBusy}
+            options={simplifiedStageSelectOptions()}
+            data-testid="crm-simplified-stage"
+          />
+        </div>
       </div>
 
       <Modal

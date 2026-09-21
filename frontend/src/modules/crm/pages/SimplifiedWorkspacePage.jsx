@@ -46,20 +46,14 @@ import {
   defaultSimplifiedDateFilter,
 
 } from '@/modules/crm/lib/simplifiedWorkspaceQuery'
+import { usePointerKanban } from '@/modules/crm/hooks/usePointerKanban'
+import {
+  SIMPLIFIED_STAGE_TABS,
+  applySimplifiedOpportunityStageMove,
+  resolveSimplifiedStageDrop,
+} from '@/modules/crm/lib/simplifiedStageMove'
 
-const SIMPLIFIED_TABS = [
-
-  { id: 'nuevo', label: 'Nuevos' },
-
-  { id: 'contactado', label: 'Contactados' },
-
-  { id: 'propuesta', label: 'Interesados' },
-
-  { id: 'negociacion', label: 'Seguimiento' },
-
-  { id: 'cerrado', label: 'Ganados' },
-
-]
+const SIMPLIFIED_TABS = SIMPLIFIED_STAGE_TABS
 
 
 
@@ -82,6 +76,8 @@ export default function SimplifiedWorkspacePage() {
   )
   const leads = useCrmStore((state) => state.leads)
   const deleteLeads = useCrmStore((state) => state.deleteLeads)
+  const updateOpportunity = useCrmStore((state) => state.updateOpportunity)
+  const updateLead = useCrmStore((state) => state.updateLead)
 
   const simplifiedWorkspace = useCrmStore((state) => state.simplifiedWorkspace)
 
@@ -115,6 +111,7 @@ export default function SimplifiedWorkspacePage() {
   const [confirm, setConfirm] = useState(null)
   const [editLeadOpen, setEditLeadOpen] = useState(false)
   const [editingLead, setEditingLead] = useState(null)
+  const [paymentRequestId, setPaymentRequestId] = useState(null)
 
   const {
 
@@ -273,9 +270,61 @@ export default function SimplifiedWorkspacePage() {
     })
   }
 
+  const handleSimplifiedStageMove = useCallback(async (opportunityId, toStage) => {
+    const item = queueItems.find((row) => row.id === opportunityId)
+      || useCrmStore.getState().opportunities.find((row) => row.id === opportunityId)
+    if (!item) return
+    const lead = item.leadId ? leads.find((row) => row.id === item.leadId) : null
+    try {
+      const result = await applySimplifiedOpportunityStageMove({
+        opportunityId: item.id,
+        leadId: item.leadId,
+        fromStage: item.stage,
+        toStage,
+        updateOpportunity,
+        updateLead,
+      })
+      if (result.type === 'noop') return
+      if (result.type === 'requires_payment') {
+        toast.message('Para marcar como ganado, registra el pago en la ficha.')
+        setSelectedId(item.id)
+        setPaymentRequestId(item.id)
+        return
+      }
+      if (result.type === 'requires_lost_reason') {
+        toast.message('Usa «Marcar perdido» y elige un motivo.')
+        return
+      }
+      if (result.type === 'invalid') {
+        toast.error('Etapa no válida')
+        return
+      }
+      const tab = SIMPLIFIED_TABS.find((row) => row.id === result.stage)
+      toast.success(`Movido a ${tab?.label || result.stage}`)
+      setStageTab(result.stage)
+      setSelectedId(item.id)
+      await refreshWorkspace()
+    } catch (error) {
+      toast.error(error.message || 'No se pudo cambiar la etapa')
+    }
+  }, [leads, queueItems, refreshWorkspace, updateLead, updateOpportunity])
+
+  const {
+    dragState,
+    hoverStage,
+    startDrag,
+    moveDrag,
+    endDrag,
+    cancelDrag,
+  } = usePointerKanban({
+    onMove: handleSimplifiedStageMove,
+    isDisabled: !can.manage || selectMode,
+    resolveStage: resolveSimplifiedStageDrop,
+  })
+
   return (
 
-    <div className="mx-auto w-full max-w-[1600px] space-y-4 p-4 sm:space-y-6 sm:p-8" data-testid="crm-simplified-workspace">
+    <div className="mx-auto w-full max-w-[1600px] min-w-0 space-y-4 overflow-x-hidden p-4 sm:space-y-6 sm:p-8" data-testid="crm-simplified-workspace">
 
       <SimplifiedCrmSectionNav
         trailing={
@@ -291,10 +340,15 @@ export default function SimplifiedWorkspacePage() {
       {workspaceSection === 'clientes' ? (
         <SimplifiedCustomersPanel />
       ) : (
-        <>
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+        <div
+          className="flex min-w-0 flex-col gap-4"
+          onPointerMove={moveDrag}
+          onPointerUp={endDrag}
+          onPointerCancel={cancelDrag}
+        >
+      <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center">
 
-        <div className="relative flex-1 min-w-72">
+        <div className="relative min-w-0 w-full flex-1 xl:min-w-[18rem]">
 
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
@@ -384,60 +438,49 @@ export default function SimplifiedWorkspacePage() {
         />
       )}
 
-      <div className="flex flex-wrap gap-2" data-testid="crm-simplified-tabs">
-
-        {SIMPLIFIED_TABS.map((tab) => (
-
-          <button
-
-            key={tab.id}
-
-            type="button"
-
-            onClick={() => {
-
-              setStageTab(tab.id)
-
-              setPage(1)
-
-              setSelectedId(null)
-
-            }}
-
-            className={cn(
-
-              'rounded-full px-4 py-2 text-sm font-semibold transition-colors',
-
-              stageTab === tab.id
-
-                ? 'bg-slate-900 text-white'
-
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-
-            )}
-
-          >
-
-            {tab.label}
-
-            <span className="ml-2 rounded-full bg-white/20 px-2 py-0.5 text-xs">
-
-              {stageCounts[tab.id] ?? '—'}
-
-            </span>
-
-          </button>
-
-        ))}
-
+      <div className="relative z-0 min-w-0 w-full" data-testid="crm-simplified-tabs">
+        <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Etapa</p>
+        <div
+          className="flex gap-1.5 overflow-x-auto overscroll-x-contain rounded-xl border border-slate-100 bg-white p-1.5 shadow-soft scrollbar-thin"
+        >
+          {SIMPLIFIED_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              data-simplified-stage={tab.id}
+              onClick={() => {
+                setStageTab(tab.id)
+                setPage(1)
+                setSelectedId(null)
+              }}
+              className={cn(
+                'shrink-0 rounded-lg px-3 py-2 text-sm font-semibold whitespace-nowrap transition-colors',
+                stageTab === tab.id
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-slate-50',
+                hoverStage === tab.id && 'ring-2 ring-inset ring-blue-500',
+              )}
+            >
+              {tab.label}
+              <span
+                className={cn(
+                  'ml-1.5 rounded-full px-1.5 py-0.5 text-xs font-semibold tabular-nums',
+                  stageTab === tab.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600',
+                )}
+              >
+                {stageCounts[tab.id] ?? '—'}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
 
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(260px,320px)_1fr] lg:items-stretch">
+      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(260px,320px)_1fr] lg:items-stretch">
 
         <Card
-          className="flex min-h-[min(32rem,70vh)] flex-col overflow-hidden p-0 lg:min-h-[32rem]"
+          className="flex min-h-[min(16rem,40vh)] flex-col overflow-hidden p-0 lg:min-h-[32rem]"
           data-testid="crm-simplified-queue"
         >
 
@@ -503,11 +546,24 @@ export default function SimplifiedWorkspacePage() {
 
                           onClick={() => setSelectedId(item.id)}
 
+                          onPointerDown={(event) => {
+                            if (selectMode || !can.manage) return
+                            startDrag(event, {
+                              id: item.id,
+                              stage: item.stage,
+                              label: title,
+                            })
+                          }}
+
                           className={cn(
 
                             'flex min-w-0 flex-1 flex-col gap-1 px-4 py-3 text-left transition-colors',
 
-                            active ? 'bg-blue-50' : 'hover:bg-slate-50'
+                            active ? 'bg-blue-50' : 'hover:bg-slate-50',
+
+                            can.manage && !selectMode && 'cursor-grab touch-none active:cursor-grabbing',
+
+                            dragState?.id === item.id && 'opacity-50',
 
                           )}
 
@@ -568,7 +624,7 @@ export default function SimplifiedWorkspacePage() {
 
 
 
-        <Card className="p-6" data-testid="crm-simplified-detail">
+        <Card className="min-w-0 p-4 sm:p-6" data-testid="crm-simplified-detail">
 
           {loading && !selected ? (
 
@@ -729,6 +785,12 @@ export default function SimplifiedWorkspacePage() {
 
                 lead={selectedLead}
 
+                requestPaymentForId={paymentRequestId}
+
+                onPaymentRequestHandled={() => setPaymentRequestId(null)}
+
+                onStageMove={handleSimplifiedStageMove}
+
                 onActionComplete={(stage) => {
 
                   if (stage === 'negociacion') setStageTab('negociacion')
@@ -763,6 +825,20 @@ export default function SimplifiedWorkspacePage() {
         onSaved={() => refreshWorkspace()}
       />
 
+      {dragState && (
+        <div
+          className="pointer-events-none fixed z-50 rounded-xl border border-blue-200 bg-white px-3 py-2 shadow-2xl"
+          style={{
+            width: Math.max(160, dragState.width),
+            left: dragState.x - Math.max(160, dragState.width) / 2,
+            top: dragState.y - 20,
+          }}
+          data-testid="crm-simplified-drag-ghost"
+        >
+          <p className="text-sm font-semibold text-slate-900">{dragState.label}</p>
+        </div>
+      )}
+
       <LeadFormModal
         open={editLeadOpen}
         onClose={() => {
@@ -787,7 +863,7 @@ export default function SimplifiedWorkspacePage() {
         busy={deleting}
         testId="crm-simplified-confirm-delete"
       />
-        </>
+        </div>
       )}
 
     </div>

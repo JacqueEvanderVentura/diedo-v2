@@ -32,7 +32,11 @@ function resolvePipelineStage(clientX, clientY) {
   return null
 }
 
-export function usePointerKanban({ onMove, isDisabled = false }) {
+export function usePointerKanban({
+  onMove,
+  isDisabled = false,
+  resolveStage = resolvePipelineStage,
+}) {
   const [dragState, setDragState] = useState(null)
   const [hoverStage, setHoverStage] = useState(null)
 
@@ -56,12 +60,12 @@ export function usePointerKanban({ onMove, isDisabled = false }) {
   const moveDrag = useCallback((event) => {
     if (!dragState) return
     setDragState((current) => ({ ...current, x: event.clientX, y: event.clientY }))
-    setHoverStage(resolvePipelineStage(event.clientX, event.clientY))
-  }, [dragState])
+    setHoverStage(resolveStage(event.clientX, event.clientY))
+  }, [dragState, resolveStage])
 
   const endDrag = useCallback(async (event) => {
     if (!dragState) return
-    const nextStage = resolvePipelineStage(event.clientX, event.clientY)
+    const nextStage = resolveStage(event.clientX, event.clientY)
     event.currentTarget?.releasePointerCapture?.(event.pointerId)
     setHoverStage(null)
     const current = dragState
@@ -69,7 +73,7 @@ export function usePointerKanban({ onMove, isDisabled = false }) {
     if (nextStage && nextStage !== current.stage) {
       await onMove(current.id, nextStage)
     }
-  }, [dragState, onMove])
+  }, [dragState, onMove, resolveStage])
 
   const cancelDrag = useCallback(() => {
     setDragState(null)
