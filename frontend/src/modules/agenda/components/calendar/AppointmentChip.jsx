@@ -43,13 +43,17 @@ export function AppointmentChip({
       className={cn(
         'w-full cursor-pointer rounded-lg border text-left shadow-sm transition-colors',
         TONES[tone],
-        spanFullHeight ? 'h-full p-1.5' : compact ? 'mb-1.5 p-1.5' : 'mb-2 p-2',
+        spanFullHeight
+          ? 'flex h-full min-h-0 flex-col overflow-hidden p-1 leading-tight'
+          : compact
+            ? 'mb-1.5 p-1.5'
+            : 'mb-2 p-2',
         canDrag && 'cursor-grab touch-none',
         dragging && 'cursor-grabbing opacity-50'
       )}
     >
-      <div className="flex items-start justify-between gap-1">
-        <span className={cn('truncate font-semibold', compact ? 'text-[11px]' : 'text-xs')}>{apt.customerName}</span>
+      <div className="flex min-w-0 items-start justify-between gap-1">
+        <span className={cn('min-w-0 truncate font-semibold', compact ? 'text-[11px]' : 'text-xs')}>{apt.customerName}</span>
         <span data-no-calendar-drag onPointerDown={(event) => event.stopPropagation()}>
           <WhatsAppMenuButton
             phone={apt.customerPhone}
@@ -66,9 +70,14 @@ export function AppointmentChip({
         </span>
       </div>
       {apt.serviceName && (
-        <p className={cn('truncate opacity-80', compact ? 'text-[10px]' : 'text-[11px]')}>{apt.serviceName}</p>
+        <p className={cn('min-w-0 truncate opacity-80', compact ? 'text-[10px]' : 'text-[11px]')}>{apt.serviceName}</p>
       )}
-      <div className="mt-1 flex items-center justify-between gap-1">
+      <div
+        className={cn(
+          'flex items-center justify-between gap-1',
+          spanFullHeight ? 'mt-auto shrink-0' : 'mt-1'
+        )}
+      >
         <span className={cn('font-bold', compact ? 'text-[10px]' : 'text-[11px]')}>{apt.time}</span>
         {apt.pendingPayment && apt.pendingAmount > 0 && (
           <span className="text-[10px] font-semibold text-red-600">Pendiente {formatDOP(apt.pendingAmount)}</span>

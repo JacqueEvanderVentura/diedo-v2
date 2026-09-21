@@ -148,7 +148,7 @@ export function DayView({
                                   <div
                                     key={laneIndex}
                                     className="relative min-w-0 flex-1 overflow-visible"
-                                    style={{ minHeight: SLOT_CELL_MIN_PX - 8 }}
+                                    style={{ minHeight: blockHeight }}
                                   >
                                     <div
                                       className="absolute inset-x-0 top-0 z-20"

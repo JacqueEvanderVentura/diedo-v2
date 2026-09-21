@@ -3,6 +3,8 @@ import { normalizeAppointmentStatus } from '@/modules/agenda/lib/completion'
 
 export const CALENDAR_SLOT_MINUTES = 30
 export const CALENDAR_ROW_PX = 52
+/** Vertical padding on slot cells (`p-1` = 8px total). */
+export const CALENDAR_SLOT_PAD_PX = 8
 
 function appointmentStartMinutes(appointment) {
   const normalized = normalizeAppointmentTime(appointment?.time)
@@ -92,9 +94,11 @@ export function calendarBlockHeight(
   durationMinutes = 30,
   rowPx = CALENDAR_ROW_PX,
   slotMinutes = CALENDAR_SLOT_MINUTES,
+  padPx = CALENDAR_SLOT_PAD_PX,
 ) {
   const duration = Number(durationMinutes) || slotMinutes
-  return (duration / slotMinutes) * rowPx
+  const contentRowPx = rowPx - padPx
+  return (duration / slotMinutes) * contentRowPx
 }
 
 export function isSlotBlockedByAppointment(appointments, slot) {
