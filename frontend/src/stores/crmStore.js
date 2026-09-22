@@ -100,6 +100,7 @@ function leadPayload(data) {
     email: data.email || null,
     phone: data.phone || null,
     website: data.website || null,
+    instagramUrl: data.instagramUrl || null,
     location: data.location || null,
     source: data.source || 'manual',
     acquisitionSource: data.acquisitionSource || null,
@@ -270,10 +271,11 @@ function normalizeLead(raw) {
   return {
     id: raw.id || genId('lead'),
     name: raw.name || '',
-    company: raw.company || raw.name || '',
+    company: raw.company ?? raw.name ?? '',
     email: raw.email || null,
     phone: raw.phone || null,
     website: raw.website || null,
+    instagramUrl: raw.instagramUrl || null,
     location: raw.location || '',
     source: raw.source || 'manual',
     acquisitionSource: raw.acquisitionSource || null,
@@ -366,7 +368,9 @@ export const useCrmStore = create(
         totalPages: 1,
         stageCounts: {},
         loading: false,
+        error: null,
         countsLoading: false,
+        countsError: null,
         detailActivities: [],
         detailActivitiesLoading: false,
       },
@@ -490,6 +494,7 @@ export const useCrmStore = create(
             search: searchKey,
             branchId: branchKey,
             loading: true,
+            error: null,
             loadingMore: false,
           },
         })
@@ -633,17 +638,16 @@ export const useCrmStore = create(
         }))
         try {
           if (!isOnline()) {
-            const { start, end } = resolvePeriodRange(dateFilter)
+            const range = dateFilter?.period === 'all' ? null : resolvePeriodRange(dateFilter)
             const q = search.trim().toLowerCase()
             const leads = get().leads.length ? get().leads : buildSeedLeads()
             const opportunities = get().opportunities.length ? get().opportunities : SEED_OPPORTUNITIES
             const filtered = opportunities
-              .filter((item) => !['perdido'].includes(item.stage))
               .filter((item) => item.stage === stage)
               .filter((item) => matchesBranches(item.branchId, branchIds))
               .filter((item) => {
                 const updated = new Date(item.updatedAt || item.createdAt || 0)
-                return updated >= start && updated <= end
+                return !range || (updated >= range.start && updated <= range.end)
               })
               .filter((item) => {
                 if (!q) return true
@@ -662,6 +666,7 @@ export const useCrmStore = create(
                 totalItems: slice.total,
                 totalPages: slice.totalPages,
                 loading: false,
+                error: null,
               },
               opportunities: upsertById(state.opportunities, slice.items),
             }))
@@ -692,6 +697,7 @@ export const useCrmStore = create(
               totalItems: mapped.totalItems,
               totalPages: mapped.totalPages,
               loading: false,
+              error: null,
             },
             opportunities: upsertById(state.opportunities, mapped.items),
             leads: upsertById(state.leads, leadsFetched),
@@ -699,7 +705,7 @@ export const useCrmStore = create(
           return get().simplifiedWorkspace
         } catch (error) {
           set((state) => ({
-            simplifiedWorkspace: { ...state.simplifiedWorkspace, loading: false },
+            simplifiedWorkspace: { ...state.simplifiedWorkspace, loading: false, error },
             error,
           }))
           throw error
@@ -708,21 +714,20 @@ export const useCrmStore = create(
 
       fetchSimplifiedWorkspaceStageCounts: async ({ search = '', branchIds = [], dateFilter }) => {
         set((state) => ({
-          simplifiedWorkspace: { ...state.simplifiedWorkspace, countsLoading: true },
+          simplifiedWorkspace: { ...state.simplifiedWorkspace, countsLoading: true, countsError: null },
         }))
         try {
           if (!isOnline()) {
-            const { start, end } = resolvePeriodRange(dateFilter)
+            const range = dateFilter?.period === 'all' ? null : resolvePeriodRange(dateFilter)
             const q = search.trim().toLowerCase()
             const leads = get().leads.length ? get().leads : buildSeedLeads()
             const opportunities = get().opportunities.length ? get().opportunities : SEED_OPPORTUNITIES
             const stageCounts = Object.fromEntries(SIMPLIFIED_WORKSPACE_STAGES.map((id) => [id, 0]))
             opportunities
-              .filter((item) => !['perdido'].includes(item.stage))
               .filter((item) => matchesBranches(item.branchId, branchIds))
               .filter((item) => {
                 const updated = new Date(item.updatedAt || item.createdAt || 0)
-                return updated >= start && updated <= end
+                return !range || (updated >= range.start && updated <= range.end)
               })
               .filter((item) => {
                 if (!q) return true
@@ -735,7 +740,7 @@ export const useCrmStore = create(
                 if (stageCounts[item.stage] !== undefined) stageCounts[item.stage] += 1
               })
             set((state) => ({
-              simplifiedWorkspace: { ...state.simplifiedWorkspace, stageCounts, countsLoading: false },
+              simplifiedWorkspace: { ...state.simplifiedWorkspace, stageCounts, countsLoading: false, countsError: null },
             }))
             return stageCounts
           }
@@ -758,12 +763,12 @@ export const useCrmStore = create(
             })
           )
           set((state) => ({
-            simplifiedWorkspace: { ...state.simplifiedWorkspace, stageCounts, countsLoading: false },
+            simplifiedWorkspace: { ...state.simplifiedWorkspace, stageCounts, countsLoading: false, countsError: null },
           }))
           return stageCounts
         } catch (error) {
           set((state) => ({
-            simplifiedWorkspace: { ...state.simplifiedWorkspace, countsLoading: false },
+            simplifiedWorkspace: { ...state.simplifiedWorkspace, countsLoading: false, countsError: error },
           }))
           throw error
         }
@@ -906,7 +911,7 @@ export const useCrmStore = create(
         if (isOnline()) {
           const payload = { version: current.version }
           const fields = [
-            'name', 'company', 'email', 'phone', 'website', 'location', 'status',
+            'name', 'company', 'email', 'phone', 'website', 'instagramUrl', 'location', 'status',
             'starRating', 'rawSnippet', 'acquisitionSource',
           ]
           fields.forEach((field) => {
@@ -918,6 +923,9 @@ export const useCrmStore = create(
             set((s) => ({ leads: replaceById(s.leads, saved) }))
             return saved
           } catch (error) {
+            set((state) => ({
+              leads: state.leads.map((lead) => (lead.id === id ? current : lead)),
+            }))
             reportMutationError(set, error)
             throw error
           }
@@ -1175,7 +1183,13 @@ export const useCrmStore = create(
           }
         }
         if (!current) return null
-        const updated = { ...current, ...data, updatedAt: now() }
+        const updated = {
+          ...current, ...data, updatedAt: now(),
+          ...(data.stage === 'perdido' ? { closedAt: current.closedAt || now() } : {}),
+          ...(data.stage && !['perdido', 'cerrado'].includes(data.stage)
+            ? { lostReason: null, closedAt: null }
+            : {}),
+        }
         set((s) => ({ opportunities: replaceById(s.opportunities, updated) }))
         return updated
       },
@@ -1596,7 +1610,9 @@ export const useCrmStore = create(
           totalPages: 1,
           stageCounts: {},
           loading: false,
+          error: null,
           countsLoading: false,
+          countsError: null,
           detailActivities: [],
           detailActivitiesLoading: false,
         },

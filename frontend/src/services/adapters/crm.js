@@ -91,6 +91,7 @@ export function mapCrmCustomerFromApi(customer) {
     businessName: customer.businessName,
     phone: customer.phone,
     email: customer.email,
+    instagramUrl: customer.instagramUrl || null,
     customerType: customer.customerType === 'business' ? 'b2b' : 'b2c',
     customerStatus: customer.lifecycleStatus,
     notes: customer.notes || '',

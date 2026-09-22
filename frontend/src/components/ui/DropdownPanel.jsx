@@ -42,9 +42,7 @@ export function DropdownPanel({
           style={{
             position: 'fixed',
             top: style.top,
-            bottom: style.bottom,
             left: style.left,
-            right: style.right,
             zIndex,
             width: width || undefined,
           }}

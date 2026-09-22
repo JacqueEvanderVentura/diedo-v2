@@ -27,11 +27,18 @@ export function formatOpportunityOfferText(quotes, opportunityId, { customerName
   return lines.join('\n')
 }
 
-export function resolveInstagramUrl(lead) {
-  const raw = String(lead?.website || '').trim()
-  if (!raw) return null
-  if (/instagram\.com/i.test(raw)) {
-    return raw.startsWith('http') ? raw : `https://${raw}`
+export function resolveInstagramUrl(record) {
+  for (const value of [record?.instagramUrl, record?.website]) {
+    const raw = String(value || '').trim()
+    if (!raw) continue
+    try {
+      const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`)
+      if (['instagram.com', 'www.instagram.com'].includes(url.hostname.toLowerCase())) {
+        return url.href
+      }
+    } catch {
+      // Ignore malformed historical URLs.
+    }
   }
   return null
 }

@@ -34,4 +34,10 @@ describe('formulario de clientes CRM', () => {
     expect(assigned).toEqual(['branch-main', 'branch-north'])
     expect(toggleCustomerBranch(assigned, 'branch-main')).toEqual(['branch-north'])
   })
+
+  it('conserva IG al abrir la edición de un cliente', () => {
+    expect(createCustomerFormState({
+      name: 'Cliente', instagramUrl: 'https://www.instagram.com/cliente/',
+    }).instagramUrl).toBe('https://www.instagram.com/cliente/')
+  })
 })

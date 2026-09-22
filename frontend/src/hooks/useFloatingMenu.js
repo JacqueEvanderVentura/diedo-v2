@@ -13,9 +13,7 @@ export function useFloatingMenu({
 }) {
   const [style, setStyle] = useState({
     top: undefined,
-    bottom: undefined,
     left: undefined,
-    right: undefined,
     flip: false,
   })
 
@@ -48,13 +46,17 @@ export function useFloatingMenu({
     if (!open) return
     const onScroll = () => update()
     const onResize = () => update()
-    window.addEventListener('scroll', onScroll, true)
+    window.addEventListener('scroll', onScroll, { capture: true, passive: true })
     window.addEventListener('resize', onResize)
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update)
+    if (anchorRef.current) observer?.observe(anchorRef.current)
+    if (menuRef.current) observer?.observe(menuRef.current)
     return () => {
       window.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('resize', onResize)
+      observer?.disconnect()
     }
-  }, [open, update])
+  }, [anchorRef, menuRef, open, update])
 
   return style
 }

@@ -25,4 +25,13 @@ describe('simplifiedOffer', () => {
     expect(resolveInstagramUrl({ website: 'https://www.instagram.com/charm' })).toContain('instagram.com')
     expect(resolveInstagramUrl({ website: 'example.com' })).toBeNull()
   })
+
+  it('prioriza IG independiente y acepta un cliente convertido', () => {
+    expect(resolveInstagramUrl({
+      website: 'https://empresa.example',
+      instagramUrl: 'https://www.instagram.com/empresa/',
+    })).toBe('https://www.instagram.com/empresa/')
+    expect(resolveInstagramUrl({ instagramUrl: 'https://www.instagram.com/cliente/' }))
+      .toBe('https://www.instagram.com/cliente/')
+  })
 })

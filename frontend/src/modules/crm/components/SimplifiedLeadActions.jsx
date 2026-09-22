@@ -34,9 +34,12 @@ import {
 import { customersForOpportunityBranch, opportunityCustomerDefaults } from '@/modules/crm/lib/pipelineForm'
 import { ensureCustomerForQuote } from '@/modules/crm/lib/quoteCustomer'
 import { SIMPLIFIED_LOST_REASONS } from '@/modules/crm/lib/lostReasons'
+import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
 import { formatOpportunityOfferText, resolveInstagramUrl } from '@/modules/crm/lib/simplifiedOffer'
 import {
   SIMPLIFIED_STAGE_LOST_OPTION_VALUE,
+  SIMPLIFIED_DIRECT_MOVE_STAGES,
+  SIMPLIFIED_STAGE_TABS,
   simplifiedStageSelectOptions,
 } from '@/modules/crm/lib/simplifiedStageMove'
 
@@ -71,6 +74,7 @@ export function SimplifiedLeadActions({
   const updateOpportunity = useCrmStore((state) => state.updateOpportunity)
   const convertToCustomer = useCrmStore((state) => state.convertToCustomer)
   const canInvoice = useSessionStore((state) => state.hasPermission(PIPELINE_INVOICE_PERMISSION))
+  const can = useCrmCapabilities()
 
   const [followUpOpen, setFollowUpOpen] = useState(false)
   const [followUpForm, setFollowUpForm] = useState({ title: 'Seguimiento comercial', description: '', dueAt: '' })
@@ -79,6 +83,9 @@ export function SimplifiedLeadActions({
   const [lostOpen, setLostOpen] = useState(false)
   const [lostReason, setLostReason] = useState(SIMPLIFIED_LOST_REASONS[0])
   const [lostBusy, setLostBusy] = useState(false)
+  const [reopenOpen, setReopenOpen] = useState(false)
+  const [reopenStage, setReopenStage] = useState('propuesta')
+  const [reopenBusy, setReopenBusy] = useState(false)
   const [stageBusy, setStageBusy] = useState(false)
 
   const [appointmentOpen, setAppointmentOpen] = useState(false)
@@ -144,6 +151,7 @@ export function SimplifiedLeadActions({
   )
 
   const instagramUrl = resolveInstagramUrl(lead)
+    || resolveInstagramUrl(activeCustomers.find((item) => item.id === liveOpportunity?.customerId))
 
   useEffect(() => {
     if (!elevationOpen && pendingClose && !canInvoice) {
@@ -170,6 +178,12 @@ export function SimplifiedLeadActions({
     const nextName = match.name || match.displayName || ''
     const currentName = liveOpportunity.customerName || ''
     if (liveOpportunity.customerId === match.id && currentName === nextName) return
+    if (
+      liveOpportunity.customerId === match.id
+      && currentName
+      && currentName !== lead?.company
+      && currentName !== lead?.name
+    ) return
     updateOpportunity(liveOpportunity.id, {
       customerId: match.id,
       customerName: nextName,
@@ -178,6 +192,8 @@ export function SimplifiedLeadActions({
     liveOpportunity?.id,
     liveOpportunity?.customerId,
     liveOpportunity?.customerName,
+    lead?.company,
+    lead?.name,
     activeCustomers,
     updateOpportunity,
   ])
@@ -186,9 +202,75 @@ export function SimplifiedLeadActions({
 
   if (['cerrado', 'perdido'].includes(liveOpportunity.stage)) {
     return (
-      <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600" data-testid="crm-simplified-actions-closed">
-        Esta oportunidad ya está cerrada. Cambia de etapa en el pipeline estándar si necesitas reabrirla.
-      </p>
+      <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600" data-testid="crm-simplified-actions-closed">
+        {liveOpportunity.stage === 'perdido' ? (
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Motivo de pérdida</p>
+              <p className="mt-1 font-medium text-slate-800">{liveOpportunity.lostReason || 'Sin motivo registrado'}</p>
+              {liveOpportunity.closedAt && (
+                <p className="mt-1 text-xs text-slate-500">
+                  Fecha de pérdida: {new Date(liveOpportunity.closedAt).toLocaleString('es-DO')}
+                </p>
+              )}
+            </div>
+            {can.manage && (
+              <Button size="sm" variant="secondary" onClick={() => {
+                setReopenStage('propuesta')
+                setReopenOpen(true)
+              }}>
+                Reabrir oportunidad
+              </Button>
+            )}
+          </div>
+        ) : (
+          <p>Esta oportunidad ya está cerrada. Cambia de etapa en el pipeline estándar si necesitas reabrirla.</p>
+        )}
+        {instagramUrl && (
+          <a href={instagramUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 font-medium text-blue-600 hover:underline" data-testid="crm-simplified-ig">
+            <Instagram className="h-3.5 w-3.5" /> IG
+          </a>
+        )}
+        <Modal
+          open={reopenOpen}
+          onClose={() => !reopenBusy && setReopenOpen(false)}
+          title="Reabrir oportunidad"
+          testId="crm-simplified-reopen-modal"
+        >
+          <div className="space-y-4">
+            <p>Elige la etapa a la que regresará esta oportunidad.</p>
+            <Select
+              value={reopenStage}
+              onChange={setReopenStage}
+              options={SIMPLIFIED_STAGE_TABS
+                .filter((tab) => SIMPLIFIED_DIRECT_MOVE_STAGES.includes(tab.id))
+                .map((tab) => ({ value: tab.id, label: tab.label }))}
+              data-testid="crm-simplified-reopen-stage"
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" disabled={reopenBusy} onClick={() => setReopenOpen(false)}>Cancelar</Button>
+              <Button
+                disabled={reopenBusy}
+                onClick={async () => {
+                  setReopenBusy(true)
+                  try {
+                    await updateOpportunity(liveOpportunity.id, { stage: reopenStage })
+                    toast.success('Oportunidad reabierta')
+                    setReopenOpen(false)
+                    onActionComplete?.(reopenStage)
+                  } catch (error) {
+                    toast.error(error.message || 'No se pudo reabrir la oportunidad')
+                  } finally {
+                    setReopenBusy(false)
+                  }
+                }}
+              >
+                {reopenBusy ? 'Reabriendo…' : 'Confirmar reapertura'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      </div>
     )
   }
 

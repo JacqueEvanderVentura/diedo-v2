@@ -4,6 +4,7 @@ export const SIMPLIFIED_WORKSPACE_DATE_PERIODS = [
   { id: 'week', label: 'Esta semana' },
   { id: 'month', label: 'Este mes' },
   { id: 'quarter', label: 'Este trimestre' },
+  { id: 'all', label: 'Todo el historial' },
 ]
 
 export const SIMPLIFIED_WORKSPACE_STAGES = [
@@ -12,6 +13,7 @@ export const SIMPLIFIED_WORKSPACE_STAGES = [
   'propuesta',
   'negociacion',
   'cerrado',
+  'perdido',
 ]
 
 export function defaultSimplifiedDateFilter() {
@@ -26,13 +28,15 @@ export function buildSimplifiedOpportunityQuery({
   branchIds,
   dateFilter,
 }) {
-  const { start, end } = resolvePeriodRange(dateFilter || defaultSimplifiedDateFilter())
   const params = {
     stage,
     page,
     pageSize,
-    updatedAfter: start.toISOString(),
-    updatedBefore: end.toISOString(),
+  }
+  if (dateFilter?.period !== 'all') {
+    const { start, end } = resolvePeriodRange(dateFilter || defaultSimplifiedDateFilter())
+    params.updatedAfter = start.toISOString()
+    params.updatedBefore = end.toISOString()
   }
   const q = (search || '').trim()
   if (q) params.search = q

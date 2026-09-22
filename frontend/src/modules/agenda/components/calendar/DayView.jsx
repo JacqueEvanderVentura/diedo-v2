@@ -71,13 +71,19 @@ export function DayView({
           No hay cabinas o recursos activos configurados para esta sucursal.
         </p>
       ) : (
-        <div className="overflow-x-auto overflow-y-visible scrollbar-thin">
+        <div
+          className="overflow-x-auto overflow-y-visible scrollbar-thin"
+          data-testid="calendar-day-scroll"
+        >
           <div className="min-w-[900px] overflow-visible">
             <div
               className="grid gap-0 overflow-visible"
               style={{ gridTemplateColumns: `80px repeat(${resources.length}, minmax(160px, 1fr))` }}
             >
-              <div className="border-b border-slate-100 bg-slate-50 px-2 py-3 text-xs font-bold uppercase text-slate-400">
+              <div
+                className="sticky left-0 z-40 border-b border-r border-slate-200 bg-slate-50 px-2 py-3 text-xs font-bold uppercase text-slate-400 shadow-[4px_0_8px_-6px_rgba(15,23,42,0.5)]"
+                data-testid="calendar-time-heading"
+              >
                 Hora
               </div>
               {resources.map((c) => (
@@ -95,7 +101,12 @@ export function DayView({
 
               {slots.map((slot) => (
                 <div key={slot} className="contents">
-                  <div className="border-b border-slate-100 px-2 py-3 text-xs font-medium text-slate-400">{slot}</div>
+                  <div
+                    className="sticky left-0 z-30 border-b border-r border-slate-200 bg-white px-2 py-3 text-xs font-medium text-slate-400 shadow-[4px_0_8px_-6px_rgba(15,23,42,0.4)]"
+                    data-testid={`calendar-time-${slot}`}
+                  >
+                    {slot}
+                  </div>
                   {resources.map((c) => {
                     const canBook = c.access !== 'view'
                     const resourceAppointments = activeAppointmentsForResource(appointments, dateKey, c.id)
@@ -162,6 +173,7 @@ export function DayView({
                                         dragging={dragState?.id === laneAppointment.id}
                                         onPointerDown={startDrag}
                                         onClick={handleChipClick}
+                                        showDayNote
                                       />
                                     </div>
                                   </div>

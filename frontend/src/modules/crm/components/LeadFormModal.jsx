@@ -10,6 +10,7 @@ import { useConfigStore } from '@/stores/configStore'
 import { useCrmStore } from '@/stores/crmStore'
 import { ACQUISITION_SOURCES, ACQUISITION_SOURCE_LABELS } from '@/data/crm'
 import { cn } from '@/lib/utils'
+import { resolveInstagramUrl } from '../lib/simplifiedOffer'
 
 const emptyForm = (branchId = '') => ({
   branchId,
@@ -18,6 +19,7 @@ const emptyForm = (branchId = '') => ({
   email: '',
   phone: '',
   website: '',
+  instagramUrl: '',
   location: '',
   acquisitionSource: 'whatsapp',
 })
@@ -31,6 +33,7 @@ function formFromLead(lead, defaultBranch) {
     email: lead.email || '',
     phone: lead.phone || '',
     website: lead.website || '',
+    instagramUrl: lead.instagramUrl || resolveInstagramUrl(lead) || '',
     location: lead.location || '',
     acquisitionSource: lead.acquisitionSource || 'whatsapp',
   }
@@ -67,6 +70,7 @@ export function LeadFormModal({ open, onClose, onSaved, lead = null }) {
         email: form.email.trim() || null,
         phone: form.phone.trim() || null,
         website: form.website.trim() || null,
+        instagramUrl: form.instagramUrl.trim() || null,
         location: form.location.trim() || null,
         acquisitionSource: form.acquisitionSource || null,
       }
@@ -133,6 +137,10 @@ export function LeadFormModal({ open, onClose, onSaved, lead = null }) {
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Sitio web</label>
           <Input type="url" value={form.website} onChange={(event) => set('website', event.target.value)} placeholder="https://empresa.com" />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-600">IG</label>
+          <Input type="url" value={form.instagramUrl} onChange={(event) => set('instagramUrl', event.target.value)} placeholder="https://www.instagram.com/usuario" data-testid="lead-instagram" />
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Ubicación</label>

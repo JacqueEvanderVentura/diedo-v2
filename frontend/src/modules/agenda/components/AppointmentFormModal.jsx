@@ -24,8 +24,10 @@ import { useBranchStaff } from '@/modules/rrhh/lib/staff'
 import { getAvailableSlots, fitsInSchedule, isSlotAvailable } from '../lib/selfBooking'
 import { useAvailabilityAppointments } from '../hooks/useAvailabilityAppointments'
 import { formatDOP } from '@/lib/format'
+import { cn } from '@/lib/utils'
 import { isAppointmentConflict } from '@/services/adapters/appointments'
 import { emailResultMessage } from '../lib/notification'
+import { APPOINTMENT_NOTES_MAX_LENGTH } from '../lib/appointments'
 import { useSessionStore } from '@/stores/sessionStore'
 import { servicesForBranch } from '../lib/serviceAvailability'
 import {
@@ -80,6 +82,11 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
   const [saving, setSaving] = useState(false)
   const appointments = useAvailabilityAppointments(form.date, form.employeeId)
   const editing = !!appointment
+  const notesLength = Array.from(form.notes || '').length
+  const originalNotes = appointment?.notes || ''
+  const notesChanged = !editing || form.notes !== originalNotes
+  const notesTooLong = notesLength > APPOINTMENT_NOTES_MAX_LENGTH
+  const legacyNotes = editing && notesTooLong && !notesChanged
   const servicesReady = sessionStatus === 'demo' || catalogHydrated
   const services = useMemo(
     () => servicesForBranch(allProducts, form.branchId, { online: sessionStatus === 'online' }),
@@ -243,6 +250,9 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     if (!selectedService) return setErr('Selecciona un servicio disponible en esa sucursal.')
     if (!form.date) return setErr('Selecciona una fecha.')
     if (!form.time) return setErr('Selecciona una hora.')
+    if (notesTooLong && notesChanged) {
+      return setErr(`Las notas admiten un máximo de ${APPOINTMENT_NOTES_MAX_LENGTH} caracteres.`)
+    }
     if (
       selectedEmployee &&
       !fitsInSchedule({
@@ -421,8 +431,36 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
         </div>
 
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-slate-600">Notas</label>
-          <Input value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Notas adicionales" data-testid="appointment-field-notes" />
+          <div className="mb-1.5 flex items-center justify-between gap-3">
+            <label className="block text-sm font-medium text-slate-600">Notas</label>
+            <span
+              className={cn(
+                'text-xs tabular-nums',
+                notesTooLong ? 'font-semibold text-amber-600' : 'text-slate-400'
+              )}
+              data-testid="appointment-notes-count"
+            >
+              {notesLength}/{APPOINTMENT_NOTES_MAX_LENGTH}
+            </span>
+          </div>
+          <Input
+            value={form.notes}
+            onChange={(e) => set('notes', e.target.value)}
+            maxLength={legacyNotes ? undefined : APPOINTMENT_NOTES_MAX_LENGTH}
+            aria-describedby={notesTooLong ? 'appointment-notes-help' : undefined}
+            placeholder="Notas adicionales"
+            data-testid="appointment-field-notes"
+          />
+          {legacyNotes && (
+            <p id="appointment-notes-help" className="mt-1.5 text-xs text-amber-600">
+              Esta nota histórica se conservará. Para modificarla, redúcela a 60 caracteres o menos.
+            </p>
+          )}
+          {notesTooLong && notesChanged && (
+            <p id="appointment-notes-help" className="mt-1.5 text-xs font-medium text-red-600">
+              Reduce la nota a 60 caracteres o menos antes de guardar.
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

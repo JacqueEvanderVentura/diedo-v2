@@ -51,6 +51,7 @@ class CustomerRecord:
     business_name: str | None
     email: str | None
     phone: str | None
+    instagram_url: str | None
     acquisition_source: str | None
     document_type: str | None
     document_id: str | None
@@ -306,6 +307,7 @@ class MasterDataRepository:
             "normalized_email",
             "phone",
             "normalized_phone",
+            "instagram_url",
             "document_type",
             "document_id",
             "normalized_document_id",
@@ -798,6 +800,7 @@ class MasterDataRepository:
                 business_name=customer.business_name,
                 email=customer.email,
                 phone=customer.phone,
+                instagram_url=customer.instagram_url,
                 acquisition_source=customer.acquisition_source,
                 document_type=customer.document_type,
                 document_id=customer.document_id,

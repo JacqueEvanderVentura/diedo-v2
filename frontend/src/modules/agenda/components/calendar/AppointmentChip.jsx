@@ -4,6 +4,7 @@ import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
 import { aptTone } from '../../lib/calendar'
 import { appointmentWhatsAppFields, buildWhatsAppVariables } from '@/lib/whatsappVariables'
 import { buildBookingUrl } from '../../lib/selfBooking'
+import { appointmentCardNote, normalizeAppointmentNote } from '../../lib/appointments'
 
 const TONES = {
   default: 'bg-blue-50 border-blue-100 text-blue-900 hover:bg-blue-100',
@@ -20,8 +21,10 @@ export function AppointmentChip({
   canDrag = false,
   dragging = false,
   onPointerDown,
+  showDayNote = false,
 }) {
   const tone = aptTone(apt)
+  const fullNote = normalizeAppointmentNote(apt.notes)
   return (
     <div
       role="button"
@@ -86,7 +89,17 @@ export function AppointmentChip({
           spanFullHeight ? 'mt-auto shrink-0' : 'mt-1'
         )}
       >
-        <span className={cn('font-bold', compact ? 'text-[10px]' : 'text-[11px]')}>{apt.time}</span>
+        <span
+          className={cn(
+            'min-w-0 truncate font-bold',
+            compact ? 'text-[10px]' : 'text-[11px]',
+            showDayNote && !fullNote && 'font-medium italic opacity-60'
+          )}
+          title={showDayNote && fullNote ? fullNote : undefined}
+          aria-label={showDayNote ? `Nota: ${fullNote || 'Sin nota'}` : undefined}
+        >
+          {showDayNote ? appointmentCardNote(fullNote) : apt.time}
+        </span>
         {apt.pendingPayment && apt.pendingAmount > 0 && (
           <span className="text-[10px] font-semibold text-red-600">Pendiente {formatDOP(apt.pendingAmount)}</span>
         )}

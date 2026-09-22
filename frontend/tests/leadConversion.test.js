@@ -17,4 +17,9 @@ describe('leadConversion', () => {
     })
     expect(buildLeadOfflineCustomer(lead).customerType).toBe('b2b')
   })
+
+  it('conserva el enlace de Instagram en la conversión offline', () => {
+    const lead = { id: 'l1', name: 'Carla', instagramUrl: 'https://www.instagram.com/carla/' }
+    expect(buildLeadOfflineCustomer(lead).instagramUrl).toBe(lead.instagramUrl)
+  })
 })

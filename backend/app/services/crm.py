@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from math import ceil
 from typing import Any, cast
+from urllib.parse import urlsplit
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -55,6 +56,19 @@ class PageResult:
     page_size: int
     total_items: int
     total_pages: int
+
+
+def _lead_instagram_url(lead: CrmLead) -> str | None:
+    if lead.instagram_url:
+        return lead.instagram_url
+    if lead.website:
+        candidate = lead.website if "://" in lead.website else f"https://{lead.website}"
+        try:
+            if urlsplit(candidate).hostname in {"instagram.com", "www.instagram.com"}:
+                return candidate
+        except ValueError:
+            pass
+    return None
 
 
 @dataclass(frozen=True)
@@ -236,6 +250,7 @@ class CrmService:
         if lead.status == "convertido":
             raise ConflictError("Un lead convertido ya no puede editarse.", "status")
         self._require_version(lead.version, expected_version)
+        previous_name = lead.company or lead.name
         if "assigned_membership_id" in changes:
             assignee = changes["assigned_membership_id"]
             lead.assigned_membership_id = self._assignee(
@@ -247,6 +262,7 @@ class CrmService:
             "email",
             "phone",
             "website",
+            "instagram_url",
             "location",
             "status",
             "raw_snippet",
@@ -254,7 +270,11 @@ class CrmService:
             if field in changes:
                 value = changes[field]
                 setattr(
-                    lead, field, str(value) if field in {"email", "website"} and value else value
+                    lead,
+                    field,
+                    str(value)
+                    if field in {"email", "website", "instagram_url"} and value
+                    else value,
                 )
         if "star_rating" in changes:
             lead.star_rating = changes["star_rating"]
@@ -262,6 +282,16 @@ class CrmService:
             lead.acquisition_source = changes["acquisition_source"]
         if not lead.name and not lead.company:
             raise InvalidOperationError("El lead requiere nombre o empresa.", "name")
+        current_name = lead.company or lead.name
+        opportunity = self._repository.opportunity_for_lead(grant.workspace_id, lead.id)
+        if (
+            opportunity is not None
+            and current_name != previous_name
+            and opportunity.customer_name == previous_name
+        ):
+            opportunity.customer_name = current_name
+            opportunity.updated_by_platform_user_id = principal.platform_user_id
+            opportunity.version += 1
         lead.updated_by_platform_user_id = principal.platform_user_id
         lead.version += 1
         self._audit(
@@ -539,6 +569,8 @@ class CrmService:
         if opportunity is None:
             raise ResourceNotFoundError("La oportunidad no existe.", "opportunityId")
         self._require_version(opportunity.version, expected_version)
+        previous_stage = opportunity.stage
+        previous_lost_reason = opportunity.lost_reason
         if "assigned_membership_id" in changes:
             opportunity.assigned_membership_id = self._assignee(
                 grant.workspace_id,
@@ -571,15 +603,65 @@ class CrmService:
             raise InvalidOperationError("Una oportunidad perdida requiere motivo.", "lostReason")
         opportunity.stage = stage
         opportunity.lost_reason = lost_reason if stage == "perdido" else None
-        opportunity.closed_at = datetime.now(UTC) if stage in {"cerrado", "perdido"} else None
+        if stage in {"cerrado", "perdido"}:
+            if stage != previous_stage or opportunity.closed_at is None:
+                opportunity.closed_at = datetime.now(UTC)
+        else:
+            opportunity.closed_at = None
+        if (
+            previous_stage == "perdido"
+            and stage in {"nuevo", "contactado", "propuesta", "negociacion"}
+            and opportunity.lead_id
+        ):
+            lead = self._repository.lead(
+                grant.workspace_id, opportunity.lead_id, grant.allowed_branch_ids, lock=True
+            )
+            if lead is not None and lead.status != "convertido":
+                lead_status = {
+                    "nuevo": "nuevo",
+                    "contactado": "contactado",
+                    "propuesta": "calificado",
+                    "negociacion": "calificado",
+                }[stage]
+                if lead.status != lead_status:
+                    lead.status = lead_status
+                    lead.updated_by_platform_user_id = principal.platform_user_id
+                    lead.version += 1
+        if stage == "cerrado" and opportunity.customer_id and opportunity.lead_id:
+            customer = self._repository.customer(
+                grant.workspace_id,
+                opportunity.customer_id,
+                branch_id=opportunity.branch_id,
+                allowed_branch_ids=grant.allowed_branch_ids,
+            )
+            lead = self._repository.lead(
+                grant.workspace_id, opportunity.lead_id, grant.allowed_branch_ids
+            )
+            if customer is not None and lead is not None and not customer.instagram_url:
+                instagram_url = _lead_instagram_url(lead)
+                if instagram_url:
+                    customer.instagram_url = instagram_url
+                    customer.updated_by_platform_user_id = principal.platform_user_id
+                    customer.version += 1
         opportunity.updated_by_platform_user_id = principal.platform_user_id
         opportunity.version += 1
+        audit_details: dict[str, Any] = {
+            "changedFields": sorted(changes),
+            "stage": stage,
+            "version": opportunity.version,
+        }
+        if stage != previous_stage:
+            audit_details["previousStage"] = previous_stage
+        if stage == "perdido":
+            audit_details["lostReason"] = lost_reason
+        if previous_stage == "perdido" and stage != "perdido":
+            audit_details["previousLostReason"] = previous_lost_reason
         self._audit(
             principal,
             "crm.opportunity.update",
             "crm_opportunity",
             opportunity.id,
-            {"changedFields": sorted(changes), "stage": stage, "version": opportunity.version},
+            audit_details,
         )
         self._session.commit()
         return self._repository.opportunity_record(opportunity)
@@ -833,6 +915,7 @@ class CrmService:
             ),
             "acquisition_source": cast(str | None, values.get("acquisition_source"))
             or lead.acquisition_source,
+            "instagram_url": _lead_instagram_url(lead),
             "status": "active",
         }
         try:
@@ -864,7 +947,11 @@ class CrmService:
             opportunity = self._repository.opportunity_for_lead(crm_grant.workspace_id, lead.id)
             if opportunity is not None:
                 opportunity.customer_id = customer_record.id
-                opportunity.customer_name = display_name
+                if (
+                    opportunity.customer_name == lead.company
+                    or opportunity.customer_name == lead.name
+                ):
+                    opportunity.customer_name = display_name
                 opportunity.updated_by_platform_user_id = principal.platform_user_id
                 opportunity.version += 1
             self._audit(
@@ -1318,6 +1405,7 @@ class CrmService:
             email=str(values["email"]) if values.get("email") else None,
             phone=self._optional_text(cast(str | None, values.get("phone"))),
             website=str(values["website"]) if values.get("website") else None,
+            instagram_url=str(values["instagram_url"]) if values.get("instagram_url") else None,
             location=self._optional_text(cast(str | None, values.get("location"))),
             source=cast(str, values.get("source", "manual")),
             acquisition_source=cast(str | None, values.get("acquisition_source")),
@@ -1477,6 +1565,7 @@ class CrmService:
                     "email": item.get("email"),
                     "phone": item.get("phone"),
                     "website": item.get("website"),
+                    "instagram_url": item.get("instagram_url"),
                     "location": item.get("location"),
                     "source": "import",
                     "acquisition_source": item.get("acquisition_source"),

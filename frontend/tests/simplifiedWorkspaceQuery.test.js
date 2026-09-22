@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   buildSimplifiedOpportunityQuery,
   defaultSimplifiedDateFilter,
+  SIMPLIFIED_WORKSPACE_DATE_PERIODS,
+  SIMPLIFIED_WORKSPACE_STAGES,
 } from '@/modules/crm/lib/simplifiedWorkspaceQuery'
 
 describe('simplifiedWorkspaceQuery', () => {
@@ -34,5 +36,17 @@ describe('simplifiedWorkspaceQuery', () => {
     })
     expect(params.search).toBe('809')
     expect(params.branchIds).toEqual(['branch-a', 'branch-b'])
+  })
+
+  it('incluye pérdidas y permite consultar todo el historial sin límites de fecha', () => {
+    expect(SIMPLIFIED_WORKSPACE_STAGES).toContain('perdido')
+    expect(SIMPLIFIED_WORKSPACE_DATE_PERIODS).toContainEqual({ id: 'all', label: 'Todo el historial' })
+    const params = buildSimplifiedOpportunityQuery({
+      stage: 'perdido', page: 1, pageSize: 25, search: '', branchIds: [],
+      dateFilter: { period: 'all', dateFrom: null, dateTo: null },
+    })
+    expect(params).toMatchObject({ stage: 'perdido', page: 1, pageSize: 25 })
+    expect(params).not.toHaveProperty('updatedAfter')
+    expect(params).not.toHaveProperty('updatedBefore')
   })
 })

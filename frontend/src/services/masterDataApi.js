@@ -7,6 +7,7 @@ import { useSessionStore } from '@/stores/sessionStore'
 
 export const masterDataApi = {
   customersPage: (params = {}) => apiClient.get('/api/v1/customers', params),
+  customer: (id) => apiClient.get(`/api/v1/customers/${id}`),
   customers: async (params = {}) => (await readAllPages((query) => apiClient.get('/api/v1/customers', query), { pageSize: 100, ...params })).items,
   createCustomer: (payload) => apiClient.post('/api/v1/customers', payload),
   importCustomers: (payload, key) => apiClient.post(

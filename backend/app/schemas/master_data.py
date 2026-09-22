@@ -2,9 +2,10 @@ from datetime import date, datetime
 from typing import Any, Literal, Self
 from uuid import UUID
 
-from pydantic import EmailStr, Field, field_validator, model_validator
+from pydantic import EmailStr, Field, HttpUrl, field_validator, model_validator
 
 from app.schemas.common import ApiModel, ImportRowModel
+from app.schemas.instagram import validate_instagram_url
 
 MasterDataStatus = Literal["active", "inactive", "archived"]
 CreateMasterDataStatus = Literal["active", "inactive"]
@@ -123,6 +124,7 @@ class CustomerResponse(ApiModel):
     business_name: str | None
     email: EmailStr | None
     phone: str | None
+    instagram_url: str | None
     acquisition_source: AcquisitionSource | None = None
     document_type: CustomerDocumentType | None = None
     document_id: str | None = None
@@ -151,7 +153,13 @@ class ImportCustomerItem(ImportRowModel):
     business_name: str | None = Field(default=None, max_length=200)
     email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=40)
+    instagram_url: HttpUrl | None = Field(default=None, max_length=500)
     acquisition_source: AcquisitionSource | None = None
+
+    @field_validator("instagram_url")
+    @classmethod
+    def validate_instagram(cls, value: HttpUrl | None) -> HttpUrl | None:
+        return validate_instagram_url(value)
 
     @model_validator(mode="before")
     @classmethod
@@ -199,11 +207,17 @@ class CreateCustomerRequest(ApiModel):
     business_name: str | None = Field(default=None, max_length=200)
     email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=40)
+    instagram_url: HttpUrl | None = Field(default=None, max_length=500)
     acquisition_source: AcquisitionSource | None = None
     document_type: CustomerDocumentType | None = None
     document_id: str | None = Field(default=None, max_length=64)
     branch_ids: list[UUID] = Field(min_length=1, max_length=100)
     status: CreateMasterDataStatus = "active"
+
+    @field_validator("instagram_url")
+    @classmethod
+    def validate_instagram(cls, value: HttpUrl | None) -> HttpUrl | None:
+        return validate_instagram_url(value)
 
     @field_validator("display_name")
     @classmethod
@@ -252,11 +266,17 @@ class UpdateCustomerRequest(ApiModel):
     business_name: str | None = Field(default=None, max_length=200)
     email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=40)
+    instagram_url: HttpUrl | None = Field(default=None, max_length=500)
     acquisition_source: AcquisitionSource | None = None
     document_type: CustomerDocumentType | None = None
     document_id: str | None = Field(default=None, max_length=64)
     branch_ids: list[UUID] | None = Field(default=None, min_length=1, max_length=100)
     status: MasterDataStatus | None = None
+
+    @field_validator("instagram_url")
+    @classmethod
+    def validate_instagram(cls, value: HttpUrl | None) -> HttpUrl | None:
+        return validate_instagram_url(value)
 
     @field_validator("display_name")
     @classmethod

@@ -5,6 +5,7 @@ import {
   simplifiedStageMoveResult,
   simplifiedStageSelectOptions,
   SIMPLIFIED_STAGE_LOST_OPTION_VALUE,
+  SIMPLIFIED_STAGE_TABS,
 } from '@/modules/crm/lib/simplifiedStageMove'
 
 describe('simplifiedStageMove', () => {
@@ -16,8 +17,9 @@ describe('simplifiedStageMove', () => {
   })
 
   it('includes marcar como perdido in detail select options', () => {
+    expect(SIMPLIFIED_STAGE_TABS).toContainEqual({ id: 'perdido', label: 'Perdidos' })
     const options = simplifiedStageSelectOptions()
-    expect(options.some((row) => row.value === SIMPLIFIED_STAGE_LOST_OPTION_VALUE)).toBe(true)
+    expect(options.filter((row) => row.value === SIMPLIFIED_STAGE_LOST_OPTION_VALUE)).toHaveLength(1)
     expect(options.filter((row) => row.value === 'cerrado')).toHaveLength(1)
   })
 
@@ -42,6 +44,18 @@ describe('simplifiedStageMove', () => {
     expect(result).toEqual({ type: 'moved', stage: 'contactado' })
     expect(updateOpportunity).toHaveBeenCalledWith('opp-1', { stage: 'contactado' })
     expect(updateLead).toHaveBeenCalledWith('lead-1', { status: 'contactado' })
+  })
+
+  it('mueve una oportunidad con lead convertido sin intentar cambiar su estado', async () => {
+    const updateOpportunity = vi.fn().mockResolvedValue({})
+    const updateLead = vi.fn()
+    const result = await applySimplifiedOpportunityStageMove({
+      opportunityId: 'opp-1', leadId: 'lead-1', leadStatus: 'convertido',
+      fromStage: 'propuesta', toStage: 'negociacion', updateOpportunity, updateLead,
+    })
+    expect(result).toEqual({ type: 'moved', stage: 'negociacion' })
+    expect(updateOpportunity).toHaveBeenCalledWith('opp-1', { stage: 'negociacion' })
+    expect(updateLead).not.toHaveBeenCalled()
   })
 
   it('does not patch when moving to ganados', async () => {

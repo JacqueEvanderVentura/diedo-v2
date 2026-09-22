@@ -279,6 +279,89 @@ def test_agenda_schemas_reject_ambiguous_recurrence_money_and_empty_updates() ->
         UpdateAppointmentRequest(version=1)
 
 
+@pytest.mark.integration
+def test_appointment_notes_enforce_new_limit_and_preserve_legacy_values(
+    client: TestClient,
+) -> None:
+    owner_headers, context = _bootstrap_and_login(client)
+    branch_id = _hq_branch_id(context)
+    suffix = uuid7().hex[-10:]
+    resource = client.post(
+        "/api/v1/appointment-resources",
+        headers=owner_headers,
+        json={"branchId": branch_id, "name": f"Cabina notas {suffix}"},
+    )
+    assert resource.status_code == 201, resource.text
+    resource_id = resource.json()["id"]
+    scheduled_date = date.today() + timedelta(days=80_000 + uuid7().int % 5_000)
+    too_long_note = "N" * 61
+
+    rejected_create = client.post(
+        "/api/v1/appointments",
+        headers={**owner_headers, "Idempotency-Key": f"agenda-notes-long-{suffix}"},
+        json={
+            **_appointment_payload(
+                branch_id=branch_id,
+                resource_id=resource_id,
+                scheduled_date=scheduled_date,
+                scheduled_time="10:00",
+                customer_name=f"Cliente notas {suffix}",
+            ),
+            "notes": too_long_note,
+        },
+    )
+    assert rejected_create.status_code == 400, rejected_create.text
+    assert rejected_create.json()["parameter"] == "notes"
+
+    created = client.post(
+        "/api/v1/appointments",
+        headers={**owner_headers, "Idempotency-Key": f"agenda-notes-valid-{suffix}"},
+        json={
+            **_appointment_payload(
+                branch_id=branch_id,
+                resource_id=resource_id,
+                scheduled_date=scheduled_date,
+                scheduled_time="11:30",
+                customer_name=f"Cliente legado {suffix}",
+            ),
+            "notes": "Nota válida",
+        },
+    )
+    assert created.status_code == 201, created.text
+    appointment = created.json()["items"][0]
+    legacy_note = "Nota histórica que debe conservarse aunque supere el nuevo límite de sesenta."
+    assert len(legacy_note) > 60
+    with session_scope() as session:
+        stored = session.scalar(
+            select(Appointment).where(Appointment.id == UUID(appointment["id"]))
+        )
+        assert stored is not None
+        stored.notes = legacy_note
+
+    unrelated_update = client.patch(
+        f"/api/v1/appointments/{appointment['id']}",
+        headers=owner_headers,
+        json={
+            "version": appointment["version"],
+            "customerName": f"Cliente legado editado {suffix}",
+            "notes": legacy_note,
+        },
+    )
+    assert unrelated_update.status_code == 200, unrelated_update.text
+    assert unrelated_update.json()["notes"] == legacy_note
+
+    rejected_update = client.patch(
+        f"/api/v1/appointments/{appointment['id']}",
+        headers=owner_headers,
+        json={
+            "version": unrelated_update.json()["version"],
+            "notes": "Cambio diferente que todavía supera deliberadamente los sesenta caracteres.",
+        },
+    )
+    assert rejected_update.status_code == 400, rejected_update.text
+    assert rejected_update.json()["parameter"] == "notes"
+
+
 def test_agenda_resource_and_hours_schemas_validate() -> None:
     CreateAppointmentResourceRequest(branchId=uuid7(), name="Cabina VIP")
     duplicate_id = uuid7()
