@@ -6,6 +6,8 @@ from app.api.routers import (
     auth,
     backoffice,
     catalog,
+    chat,
+    chat_channel_accounts,
     crm,
     dashboard,
     document_attachments,
@@ -15,6 +17,7 @@ from app.api.routers import (
     incidents,
     inventory,
     lookups,
+    meta_webhooks,
     master_data,
     permissions,
     pos,
@@ -26,6 +29,7 @@ from app.api.routers import (
 
 api_router = APIRouter()
 api_router.include_router(health.router)
+api_router.include_router(meta_webhooks.router)
 api_router.include_router(auth.router)
 api_router.include_router(backoffice.router)
 api_router.include_router(administration.router)
@@ -33,6 +37,9 @@ api_router.include_router(agenda.router)
 api_router.include_router(public_booking.router)
 api_router.include_router(catalog.router)
 api_router.include_router(crm.router)
+api_router.include_router(chat.router)
+api_router.include_router(chat_channel_accounts.router)
+api_router.include_router(chat_channel_accounts.oauth_router)
 api_router.include_router(dashboard.router)
 api_router.include_router(finance.router)
 api_router.include_router(document_attachments.router)

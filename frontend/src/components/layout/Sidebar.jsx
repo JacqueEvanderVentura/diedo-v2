@@ -11,6 +11,7 @@ import { usePosStore } from '@/stores/posStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { isModuleAvailable } from '@/services/moduleAvailability'
+import { FEATURES } from '@/config/features'
 import { HeliosIcon, PRODUCT_NAME } from '@/components/brand/HeliosIcon'
 
 const PILL_SPRING = { type: 'spring', stiffness: 420, damping: 34 }
@@ -224,7 +225,12 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
     const modules = new Set(enabledModules || [])
     const permissions = new Set(effectivePermissionCodes || [])
     return withCrmMode(
-      NAV_GROUPS.filter((group) => isModuleAvailable(group.module, modules))
+      NAV_GROUPS.filter((group) => {
+        if (group.feature && !FEATURES[group.feature]) return false
+        if (!isModuleAvailable(group.module, modules)) return false
+        if (!group.children && group.permission && !permissions.has(group.permission)) return false
+        return true
+      })
         .map((group) => ({
           ...group,
           children: group.children?.filter((child) => {

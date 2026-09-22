@@ -15,6 +15,7 @@ import CrmModePanel from '../components/CrmModePanel'
 import DataImportPanel from '../components/DataImportPanel'
 import PerfilWorkspacePanel from '../components/PerfilWorkspacePanel'
 import AgendaCabinasPanel from '../components/AgendaCabinasPanel'
+import ChatChannelsPanel from '../components/ChatChannelsPanel'
 import { SETTINGS_ITEMS, SETTINGS_SECTIONS } from '../lib/settingsHub'
 import { filterSettingsSections, shouldForceExpandSettingsItem } from '../lib/settingsSearch'
 
@@ -30,6 +31,7 @@ const EMBED_MAP = {
   datos: DataImportPanel,
   perfil: PerfilWorkspacePanel,
   'agenda-cabinas': AgendaCabinasPanel,
+  'chat-canales': ChatChannelsPanel,
 }
 
 function EmbedPanel({ embedKey, visibleBlockIds }) {

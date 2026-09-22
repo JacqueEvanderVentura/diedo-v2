@@ -1,0 +1,20 @@
+{
+  "object": "instagram",
+  "entry": [
+    {
+      "id": "17841400000000000",
+      "time": 1727000000,
+      "messaging": [
+        {
+          "sender": { "id": "1234567890" },
+          "recipient": { "id": "demo-ig-page-id" },
+          "timestamp": 1727000001000,
+          "message": {
+            "mid": "mid.DEMO_IG_INBOUND_001",
+            "text": "Hola desde Instagram"
+          }
+        }
+      ]
+    }
+  ]
+}

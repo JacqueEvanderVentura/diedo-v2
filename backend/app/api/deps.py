@@ -210,6 +210,14 @@ IncidentManageGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("incidents.manage")),
 ]
+ChatReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("chat.read")),
+]
+ChatSendGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("chat.send")),
+]
 FinanceReadGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("finance.read")),

@@ -1,0 +1,340 @@
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import Any, Literal
+from urllib.parse import urlencode
+from uuid import UUID
+
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.db.models.chat import ChatChannelAccount, ChatOauthState
+from app.services.chat.graph_clients import GraphHttpClient, _default_graph_client
+from app.services.errors import InvalidOperationError, ResourceNotFoundError
+
+logger = logging.getLogger(__name__)
+
+Channel = Literal["instagram", "whatsapp"]
+
+_OAUTH_TTL = timedelta(minutes=20)
+
+_SCOPES: dict[Channel, str] = {
+    "instagram": (
+        "pages_show_list,pages_messaging,instagram_basic,instagram_manage_messages"
+    ),
+    "whatsapp": "whatsapp_business_management,whatsapp_business_messaging,business_management",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class OauthCandidate:
+    provider_account_id: str
+    display_name: str
+
+
+@dataclass(frozen=True, slots=True)
+class OauthStartResult:
+    authorization_url: str
+    state_id: UUID
+
+
+class MetaOauthService:
+    def __init__(
+        self,
+        session: Session,
+        *,
+        http_client: GraphHttpClient | None = None,
+    ) -> None:
+        self._session = session
+        self._http = http_client or _default_graph_client()
+
+    def start(self, *, workspace_id: UUID, channel: Channel) -> OauthStartResult:
+        self._require_meta_app_configured()
+        state = ChatOauthState(
+            workspace_id=workspace_id,
+            channel=channel,
+            candidates_json=[],
+            tokens_json=None,
+            expires_at=datetime.now(UTC) + _OAUTH_TTL,
+        )
+        self._session.add(state)
+        self._session.flush()
+        params = {
+            "client_id": settings.meta_app_id,
+            "redirect_uri": settings.meta_oauth_redirect_uri,
+            "state": str(state.id),
+            "scope": _SCOPES[channel],
+            "response_type": "code",
+        }
+        version = settings.meta_graph_api_version
+        url = f"https://www.facebook.com/{version}/dialog/oauth?{urlencode(params)}"
+        return OauthStartResult(authorization_url=url, state_id=state.id)
+
+    def handle_callback(
+        self,
+        *,
+        state_id: UUID,
+        code: str | None,
+        error: str | None,
+    ) -> tuple[UUID, Channel, list[OauthCandidate], bool]:
+        """Returns workspace_id, channel, candidates, auto_connected."""
+        if error:
+            raise InvalidOperationError(f"Meta OAuth cancelado: {error}", "oauth")
+        if not code:
+            raise InvalidOperationError("Meta OAuth no devolvió código.", "oauth")
+
+        state = self._load_state(state_id)
+        short_token = self._exchange_code(code)
+        access_token = self._to_long_lived_token(short_token)
+        candidates, tokens = self._discover_accounts(state.channel, access_token)
+        if not candidates:
+            raise InvalidOperationError(
+                "No se encontró ninguna cuenta de Meta para este canal.",
+                "channel",
+            )
+
+        state.candidates_json = [
+            {"provider_account_id": c.provider_account_id, "display_name": c.display_name}
+            for c in candidates
+        ]
+        state.tokens_json = json.dumps(tokens)
+
+        if len(candidates) == 1:
+            candidate = candidates[0]
+            self._upsert_connected_account(
+                workspace_id=state.workspace_id,
+                channel=state.channel,
+                provider_account_id=candidate.provider_account_id,
+                display_name=candidate.display_name,
+                access_token=tokens[candidate.provider_account_id],
+            )
+            self._session.delete(state)
+            return state.workspace_id, state.channel, candidates, True
+
+        return state.workspace_id, state.channel, candidates, False
+
+    def complete_selection(
+        self,
+        *,
+        workspace_id: UUID,
+        state_id: UUID,
+        provider_account_id: str,
+    ) -> ChatChannelAccount:
+        state = self._load_state(state_id)
+        if state.workspace_id != workspace_id:
+            raise ResourceNotFoundError("La sesión OAuth no existe.", "oauthStateId")
+
+        tokens = self._tokens_from_state(state)
+        token = tokens.get(provider_account_id)
+        if token is None:
+            raise InvalidOperationError("Cuenta no válida para esta sesión OAuth.", "providerAccountId")
+
+        candidate = next(
+            (
+                item
+                for item in state.candidates_json
+                if str(item.get("provider_account_id")) == provider_account_id
+            ),
+            None,
+        )
+        display_name = str((candidate or {}).get("display_name") or provider_account_id)
+
+        account = self._upsert_connected_account(
+            workspace_id=workspace_id,
+            channel=state.channel,
+            provider_account_id=provider_account_id,
+            display_name=display_name,
+            access_token=token,
+        )
+        self._session.delete(state)
+        return account
+
+    def oauth_state_candidates(
+        self, *, workspace_id: UUID, state_id: UUID
+    ) -> tuple[Channel, list[OauthCandidate]]:
+        state = self._load_state(state_id)
+        if state.workspace_id != workspace_id:
+            raise ResourceNotFoundError("La sesión OAuth no existe.", "oauthStateId")
+        return state.channel, [
+            OauthCandidate(
+                provider_account_id=str(item["provider_account_id"]),
+                display_name=str(item.get("display_name") or item["provider_account_id"]),
+            )
+            for item in state.candidates_json
+        ]
+
+    def _upsert_connected_account(
+        self,
+        *,
+        workspace_id: UUID,
+        channel: Channel,
+        provider_account_id: str,
+        display_name: str,
+        access_token: str,
+    ) -> ChatChannelAccount:
+        account = self._session.scalar(
+            select(ChatChannelAccount).where(
+                ChatChannelAccount.workspace_id == workspace_id,
+                ChatChannelAccount.channel == channel,
+                ChatChannelAccount.provider_account_id == provider_account_id,
+            )
+        )
+        if account is None:
+            account = ChatChannelAccount(
+                workspace_id=workspace_id,
+                channel=channel,
+                provider_account_id=provider_account_id,
+                display_name=display_name,
+            )
+            self._session.add(account)
+        account.display_name = display_name
+        account.access_token_ciphertext = access_token
+        account.connection_status = "connected"
+        account.token_expires_at = None
+        self._session.flush()
+        return account
+
+    def _load_state(self, state_id: UUID) -> ChatOauthState:
+        state = self._session.scalar(
+            select(ChatOauthState).where(ChatOauthState.id == state_id)
+        )
+        if state is None:
+            raise ResourceNotFoundError("La sesión OAuth no existe o expiró.", "oauthStateId")
+        if state.expires_at < datetime.now(UTC):
+            self._session.delete(state)
+            self._session.flush()
+            raise ResourceNotFoundError("La sesión OAuth expiró.", "oauthStateId")
+        return state
+
+    def _tokens_from_state(self, state: ChatOauthState) -> dict[str, str]:
+        if not state.tokens_json:
+            return {}
+        payload = json.loads(state.tokens_json)
+        if not isinstance(payload, dict):
+            return {}
+        return {str(key): str(value) for key, value in payload.items()}
+
+    def _require_meta_app_configured(self) -> None:
+        if not settings.meta_app_id or settings.meta_app_secret is None:
+            raise InvalidOperationError(
+                "Meta App no configurada (META_APP_ID / META_APP_SECRET).",
+                "meta",
+            )
+
+    def _graph_get(self, path: str, access_token: str, params: dict[str, Any] | None = None) -> dict:
+        version = settings.meta_graph_api_version
+        query = urlencode(params or {})
+        suffix = f"?{query}" if query else ""
+        url = f"https://graph.facebook.com/{version}/{path}{suffix}"
+        return self._http.request(
+            "GET",
+            url,
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+    def _exchange_code(self, code: str) -> str:
+        version = settings.meta_graph_api_version
+        app_secret = settings.meta_app_secret.get_secret_value()  # type: ignore[union-attr]
+        params = urlencode(
+            {
+                "client_id": settings.meta_app_id,
+                "client_secret": app_secret,
+                "redirect_uri": settings.meta_oauth_redirect_uri,
+                "code": code,
+            }
+        )
+        url = f"https://graph.facebook.com/{version}/oauth/access_token?{params}"
+        payload = self._http.request("GET", url)
+        token = payload.get("access_token")
+        if not token:
+            raise InvalidOperationError("No se pudo intercambiar el código OAuth.", "oauth")
+        return str(token)
+
+    def _to_long_lived_token(self, short_token: str) -> str:
+        version = settings.meta_graph_api_version
+        app_secret = settings.meta_app_secret.get_secret_value()  # type: ignore[union-attr]
+        params = urlencode(
+            {
+                "grant_type": "fb_exchange_token",
+                "client_id": settings.meta_app_id,
+                "client_secret": app_secret,
+                "fb_exchange_token": short_token,
+            }
+        )
+        url = f"https://graph.facebook.com/{version}/oauth/access_token?{params}"
+        payload = self._http.request("GET", url)
+        token = payload.get("access_token")
+        return str(token or short_token)
+
+    def _discover_accounts(
+        self, channel: Channel, access_token: str
+    ) -> tuple[list[OauthCandidate], dict[str, str]]:
+        if channel == "whatsapp":
+            return self._discover_whatsapp(access_token)
+        return self._discover_instagram(access_token)
+
+    def _discover_whatsapp(
+        self, access_token: str
+    ) -> tuple[list[OauthCandidate], dict[str, str]]:
+        payload = self._graph_get(
+            "me/businesses",
+            access_token,
+            {
+                "fields": (
+                    "owned_whatsapp_business_accounts{"
+                    "id,name,phone_numbers{id,display_phone_number,verified_name}"
+                    "}"
+                ),
+            },
+        )
+        candidates: list[OauthCandidate] = []
+        tokens: dict[str, str] = {}
+        for business in payload.get("data") or []:
+            for waba in (business.get("owned_whatsapp_business_accounts") or {}).get("data") or []:
+                for phone in waba.get("phone_numbers", {}).get("data") or []:
+                    phone_id = str(phone.get("id") or "")
+                    if not phone_id:
+                        continue
+                    label = str(
+                        phone.get("verified_name")
+                        or phone.get("display_phone_number")
+                        or waba.get("name")
+                        or phone_id
+                    )
+                    candidates.append(
+                        OauthCandidate(provider_account_id=phone_id, display_name=label)
+                    )
+                    tokens[phone_id] = access_token
+        return candidates, tokens
+
+    def _discover_instagram(
+        self, access_token: str
+    ) -> tuple[list[OauthCandidate], dict[str, str]]:
+        payload = self._graph_get(
+            "me/accounts",
+            access_token,
+            {"fields": "id,name,access_token,instagram_business_account{id,username}"},
+        )
+        candidates: list[OauthCandidate] = []
+        tokens: dict[str, str] = {}
+        for page in payload.get("data") or []:
+            ig = page.get("instagram_business_account") or {}
+            ig_id = str(ig.get("id") or "")
+            if not ig_id:
+                continue
+            username = str(ig.get("username") or page.get("name") or ig_id)
+            display = f"@{username}" if username and not username.startswith("@") else username
+            page_token = str(page.get("access_token") or access_token)
+            candidates.append(OauthCandidate(provider_account_id=ig_id, display_name=display))
+            tokens[ig_id] = page_token
+        return candidates, tokens
+
+    @staticmethod
+    def purge_expired(session: Session) -> int:
+        now = datetime.now(UTC)
+        result = session.execute(delete(ChatOauthState).where(ChatOauthState.expires_at < now))
+        return int(result.rowcount or 0)

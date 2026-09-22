@@ -68,6 +68,13 @@ class Settings(BaseSettings):
     incident_image_max_bytes: int = Field(default=5 * 1024 * 1024, ge=1, le=10 * 1024 * 1024)
     incident_image_max_files: int = Field(default=5, ge=1, le=20)
 
+    # Meta Graph (Instagram Messaging + WhatsApp Cloud). Optional until chat OAuth / webhooks (phase 2+).
+    meta_app_id: str | None = None
+    meta_app_secret: SecretStr | None = None
+    meta_webhook_verify_token: SecretStr | None = None
+    meta_graph_api_version: str = "v21.0"
+    meta_oauth_redirect_uri: str = "http://127.0.0.1:8000/api/v1/chat/oauth/meta/callback"
+
     @field_validator("database_url", mode="before")
     @classmethod
     def normalize_postgresql_driver(cls, value: object) -> object:

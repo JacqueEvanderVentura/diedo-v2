@@ -8,6 +8,7 @@ const API_CONNECTED_MODULE_SET = new Set([
   'appointments',
   'purchasing',
   'incidents',
+  'chat',
   'sales',
   'pos',
   'finance',
@@ -55,6 +56,9 @@ export function routeRequirement(pathname) {
   }
   if (pathname === '/incidencias' || pathname.startsWith('/incidencias/')) {
     return { module: 'incidents', permission: 'incidents.read' }
+  }
+  if (pathname === '/chat' || pathname.startsWith('/chat/')) {
+    return { module: 'chat', permission: 'chat.read' }
   }
   if (pathname === '/compras' || pathname.startsWith('/compras/')) {
     return { module: 'purchasing', permission: 'purchasing.read' }

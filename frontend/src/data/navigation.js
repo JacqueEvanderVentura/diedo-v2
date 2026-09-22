@@ -54,6 +54,15 @@ export const NAV_GROUPS = [
   { id: 'compras', module: 'purchasing', label: 'Compras', to: '/compras', icon: 'Truck' },
   { id: 'incidencias', module: 'incidents', label: 'Incidencias', to: '/incidencias', icon: 'LifeBuoy' },
   {
+    id: 'chat',
+    module: 'chat',
+    label: 'Chat',
+    to: '/chat',
+    icon: 'MessagesSquare',
+    feature: 'chat',
+    permission: 'chat.read',
+  },
+  {
     id: 'finanzas',
     module: 'accounting',
     label: 'Finanzas',
@@ -116,6 +125,7 @@ export const PAGE_META = {
   '/inventarios': { title: 'Inventarios', subtitle: 'Control y gestión de productos, activos y movimientos.' },
   '/compras': { title: 'Gestión de Compras', subtitle: 'Proveedores, solicitudes y flujos de aprobación.' },
   '/incidencias': { title: 'Incidencias', subtitle: 'Gestión de reportes, seguimiento y resolución de incidencias.' },
+  '/chat': { title: 'Chat', subtitle: 'Mensajes de Instagram y WhatsApp por sucursal.' },
   '/agenda/calendario': { title: 'Agenda', subtitle: 'Calendario de citas por día, semana y mes.' },
   '/agenda/gestion': { title: 'Agenda', subtitle: 'Gestión de citas y estados.' },
   '/crm': { title: 'CRM', subtitle: 'Centro de gestión de relaciones con clientes.' },

@@ -154,6 +154,19 @@ export const SETTINGS_SECTIONS = [
     title: 'Comunicaciones',
     items: [
       {
+        id: 'chat-canales',
+        title: 'Canales de chat',
+        subtitle: 'Instagram y WhatsApp por sucursal (inbox ERP)',
+        icon: MessageCircle,
+        kind: 'embed',
+        embed: 'chat-canales',
+        blocks: [
+          { id: 'instagram', title: 'Instagram' },
+          { id: 'whatsapp', title: 'WhatsApp' },
+          { id: 'branches', title: 'Asignación por sucursal' },
+        ],
+      },
+      {
         id: 'whatsapp',
         title: 'Mensajes de WhatsApp',
         subtitle: 'Plantillas para Agenda, CRM y Clientes',

@@ -1,0 +1,35 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "WABA_DEMO",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15550001111",
+              "phone_number_id": "demo-phone-number-id"
+            },
+            "contacts": [
+              {
+                "profile": { "name": "Cliente WA" },
+                "wa_id": "18095551234"
+              }
+            ],
+            "messages": [
+              {
+                "from": "18095551234",
+                "id": "wamid.DEMO_INBOUND_001",
+                "timestamp": "1727000000",
+                "text": { "body": "Hola desde WhatsApp" },
+                "type": "text"
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

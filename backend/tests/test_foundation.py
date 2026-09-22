@@ -162,6 +162,7 @@ def test_development_foundation_endpoint_reports_seeded_database(client: TestCli
     assert body["enabledModules"] == [
         "appointments",
         "catalog",
+        "chat",
         "crm",
         "dashboard",
         "finance",

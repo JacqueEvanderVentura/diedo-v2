@@ -10,6 +10,13 @@ from app.db.models.agenda import (
 )
 from app.db.models.audit import AuditEntry
 from app.db.models.catalog import Item, ItemBranchAssignment, ItemCategory, UnitOfMeasure
+from app.db.models.chat import (
+    ChatChannelAccount,
+    ChatChannelAccountBranch,
+    ChatConversation,
+    ChatMessage,
+    ChatOauthState,
+)
 from app.db.models.crm import (
     CrmActivity,
     CrmDiscoveryUsage,
@@ -125,6 +132,11 @@ __all__ = [
     "CashMovement",
     "CashMovementLine",
     "CashRegister",
+    "ChatChannelAccount",
+    "ChatChannelAccountBranch",
+    "ChatConversation",
+    "ChatMessage",
+    "ChatOauthState",
     "CrmActivity",
     "CrmDiscoveryUsage",
     "CrmLead",

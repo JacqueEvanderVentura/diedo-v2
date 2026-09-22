@@ -13,4 +13,5 @@ export const FEATURES = Object.freeze({
   notifications: resolveFeatureFlag(import.meta.env.VITE_FEATURE_NOTIFICATIONS),
   calendarSchedules: resolveFeatureFlag(import.meta.env.VITE_FEATURE_CALENDAR_SCHEDULES),
   regionalModules: resolveFeatureFlag(import.meta.env.VITE_FEATURE_REGIONAL_MODULES),
+  chat: resolveFeatureFlag(import.meta.env.VITE_FEATURE_CHAT),
 })
