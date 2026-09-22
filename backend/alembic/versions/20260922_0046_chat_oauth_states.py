@@ -1,7 +1,7 @@
 """Temporary Meta OAuth sessions for channel account connection (phase 5).
 
-Revision ID: 20260922_0045
-Revises: 20260922_0044
+Revision ID: 20260922_0046
+Revises: 20260922_0045
 """
 
 from collections.abc import Sequence
@@ -9,8 +9,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "20260922_0045"
-down_revision: str | Sequence[str] | None = "20260922_0044"
+revision: str = "20260922_0046"
+down_revision: str | Sequence[str] | None = "20260922_0045"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
