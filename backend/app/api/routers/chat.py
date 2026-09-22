@@ -1,12 +1,16 @@
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Response, status
 
 from app.api.deps import ChatReadGrant, ChatSendGrant, DatabaseSession
+from app.db.models.chat import ChatMessage
+from app.repositories.chat import ConversationListRecord
 from app.schemas.chat import (
     ChatChannel,
     ChatConversationResponse,
+    ChatDeliveryStatus,
+    ChatDirection,
     ChatMessageResponse,
     PaginatedChatConversationsResponse,
     PaginatedChatMessagesResponse,
@@ -29,12 +33,14 @@ _WRITE_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
-def _conversation_response(service: ChatService, record) -> ChatConversationResponse:
+def _conversation_response(
+    service: ChatService, record: ConversationListRecord
+) -> ChatConversationResponse:
     conversation = record.conversation
     return ChatConversationResponse(
         id=conversation.id,
         channel_account_id=conversation.channel_account_id,
-        channel=record.channel,
+        channel=cast(ChatChannel, record.channel),
         participant_provider_id=conversation.participant_provider_id,
         participant_display_name=conversation.participant_display_name,
         last_message_at=conversation.last_message_at,
@@ -51,13 +57,13 @@ def _conversation_response(service: ChatService, record) -> ChatConversationResp
     )
 
 
-def _message_response(message) -> ChatMessageResponse:
+def _message_response(message: ChatMessage) -> ChatMessageResponse:
     return ChatMessageResponse(
         id=message.id,
         conversation_id=message.conversation_id,
-        direction=message.direction,
+        direction=cast(ChatDirection, message.direction),
         body_text=message.body_text,
-        delivery_status=message.delivery_status,
+        delivery_status=cast(ChatDeliveryStatus, message.delivery_status),
         created_at=message.created_at,
     )
 

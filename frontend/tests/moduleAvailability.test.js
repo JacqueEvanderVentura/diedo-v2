@@ -21,6 +21,7 @@ describe('moduleAvailability', () => {
       'appointments',
       'purchasing',
       'incidents',
+      'chat',
       'sales',
       'pos',
       'finance',
@@ -97,6 +98,10 @@ describe('moduleAvailability', () => {
     expect(routeRequirement('/incidencias')).toEqual({
       module: 'incidents',
       permission: 'incidents.read',
+    })
+    expect(routeRequirement('/chat')).toEqual({
+      module: 'chat',
+      permission: 'chat.read',
     })
     expect(routeRequirement('/agenda/calendario')).toEqual({
       module: 'appointments',

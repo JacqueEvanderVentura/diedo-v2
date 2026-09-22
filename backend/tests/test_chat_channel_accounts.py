@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, urlparse
 from uuid import UUID, uuid7
 
 import pytest
+from app.config import settings
 from app.core.security import hash_password
 from app.db.models import ChatChannelAccount, ChatOauthState
 from app.db.session import session_scope
@@ -13,8 +14,6 @@ from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy import select
-
-from app.config import settings
 
 _OWNER_EMAIL = "owner@erp.dev"
 _OWNER_PASSWORD = "chat-oauth-owner-password-not-a-secret"
@@ -204,9 +203,7 @@ def test_update_branches_and_disconnect(client: TestClient, meta_oauth_settings)
     assert branches.json()["assignedBranchIds"] == [str(branch_id)]
 
     listed = client.get("/api/v1/chat/channel-accounts", headers=headers)
-    listed_account = next(
-        item for item in listed.json()["items"] if item["id"] == str(account_id)
-    )
+    listed_account = next(item for item in listed.json()["items"] if item["id"] == str(account_id))
     assert listed_account["connectionStatus"] == "connected"
 
     disconnected = client.post(

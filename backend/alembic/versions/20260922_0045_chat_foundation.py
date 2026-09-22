@@ -113,11 +113,6 @@ def upgrade() -> None:
             "branch_id",
             name=op.f("pk_chat_channel_account_branches"),
         ),
-        sa.UniqueConstraint(
-            "channel_account_id",
-            "branch_id",
-            name="uq_chat_channel_account_branches_account_branch",
-        ),
     )
     op.create_index(
         "ix_chat_channel_account_branches_workspace_branch",

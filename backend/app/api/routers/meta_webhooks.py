@@ -46,7 +46,10 @@ async def receive_meta_webhook(request: Request, database: DatabaseSession) -> d
     )
     if not app_secret:
         logger.warning("meta webhook rejected: META_APP_SECRET is not configured")
-        raise HTTPException(status_code=403, detail={"message": "Webhook signature not configured."})
+        raise HTTPException(
+            status_code=403,
+            detail={"message": "Webhook signature not configured."},
+        )
 
     signature = request.headers.get("X-Hub-Signature-256")
     if not verify_meta_signature(body, signature, app_secret):
@@ -57,7 +60,10 @@ async def receive_meta_webhook(request: Request, database: DatabaseSession) -> d
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail={"message": "Invalid JSON payload."}) from None
     if not isinstance(payload, dict):
-        raise HTTPException(status_code=400, detail={"message": "Webhook payload must be an object."})
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "Webhook payload must be an object."},
+        )
 
     try:
         ingested = _inbound_service.ingest_webhook_payload(database, payload)

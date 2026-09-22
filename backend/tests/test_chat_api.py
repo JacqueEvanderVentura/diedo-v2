@@ -15,6 +15,7 @@ from app.services.chat.graph_clients import WhatsAppCloudClient
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
 from sqlalchemy import select, update
+
 from tests.chat_test_helpers import seed_whatsapp_conversation
 
 _OWNER_EMAIL = "owner@erp.dev"

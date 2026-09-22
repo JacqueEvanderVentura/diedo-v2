@@ -6,7 +6,12 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.db.models.chat import ChatMessage
-from app.repositories.chat import ChatRepository, ConversationListRecord, ConversationPage, MessagePage
+from app.repositories.chat import (
+    ChatRepository,
+    ConversationListRecord,
+    ConversationPage,
+    MessagePage,
+)
 from app.services.authorization import PermissionGrant
 from app.services.chat.graph_clients import InstagramMessagingClient, WhatsAppCloudClient
 from app.services.chat.meta_parsers import message_preview

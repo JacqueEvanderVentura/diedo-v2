@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     incident_image_max_bytes: int = Field(default=5 * 1024 * 1024, ge=1, le=10 * 1024 * 1024)
     incident_image_max_files: int = Field(default=5, ge=1, le=20)
 
-    # Meta Graph (Instagram Messaging + WhatsApp Cloud). Optional until chat OAuth / webhooks (phase 2+).
+    # Meta Graph (Instagram Messaging + WhatsApp Cloud). Optional until OAuth/webhooks.
     meta_app_id: str | None = None
     meta_app_secret: SecretStr | None = None
     meta_webhook_verify_token: SecretStr | None = None

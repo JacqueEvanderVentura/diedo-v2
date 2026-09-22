@@ -8,7 +8,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models.chat import ChatChannelAccount, ChatConversation, ChatMessage
-from app.services.chat.meta_parsers import InboundTextMessage, message_preview, parse_meta_webhook_payload
+from app.services.chat.meta_parsers import (
+    InboundTextMessage,
+    message_preview,
+    parse_meta_webhook_payload,
+)
 
 logger = logging.getLogger(__name__)
 

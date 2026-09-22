@@ -79,9 +79,7 @@ class ChatChannelAccountListResponse(ApiModel):
 
 
 class UpdateChatChannelAccountBranchesRequest(ApiModel):
-    branch_ids: list[UUID] = Field(alias="branchIds")
-
-    model_config = {"populate_by_name": True}
+    branch_ids: list[UUID]
 
 
 class ChatOauthStartRequest(ApiModel):
@@ -89,16 +87,12 @@ class ChatOauthStartRequest(ApiModel):
 
 
 class ChatOauthStartResponse(ApiModel):
-    authorization_url: str = Field(alias="authorizationUrl")
-
-    model_config = {"populate_by_name": True}
+    authorization_url: str
 
 
 class ChatOauthCandidateResponse(ApiModel):
-    provider_account_id: str = Field(alias="providerAccountId")
-    display_name: str = Field(alias="displayName")
-
-    model_config = {"populate_by_name": True}
+    provider_account_id: str
+    display_name: str
 
 
 class ChatOauthPendingResponse(ApiModel):
@@ -107,7 +101,5 @@ class ChatOauthPendingResponse(ApiModel):
 
 
 class ChatOauthCompleteRequest(ApiModel):
-    oauth_state_id: UUID = Field(alias="oauthStateId")
-    provider_account_id: str = Field(alias="providerAccountId")
-
-    model_config = {"populate_by_name": True}
+    oauth_state_id: UUID
+    provider_account_id: str

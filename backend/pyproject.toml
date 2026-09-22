@@ -69,5 +69,5 @@ warn_unreachable = true
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
-module = ["boto3.*", "botocore.*", "mangum.*", "resend.*"]
+module = ["boto3.*", "botocore.*", "mangum.*", "resend.*", "httpx"]
 ignore_missing_imports = true

@@ -50,9 +50,7 @@ class ChatRepository:
         if branch_id is not None:
             statement = statement.where(ChatChannelAccountBranch.branch_id == branch_id)
         elif visible_branch_ids is not None:
-            statement = statement.where(
-                ChatChannelAccountBranch.branch_id.in_(visible_branch_ids)
-            )
+            statement = statement.where(ChatChannelAccountBranch.branch_id.in_(visible_branch_ids))
         return set(self._session.scalars(statement.distinct()).all())
 
     def list_conversations(
@@ -104,9 +102,7 @@ class ChatRepository:
             .offset((page - 1) * page_size)
             .limit(page_size)
         ).all()
-        items = [
-            ConversationListRecord(conversation=row[0], channel=str(row[1])) for row in rows
-        ]
+        items = [ConversationListRecord(conversation=row[0], channel=str(row[1])) for row in rows]
         return ConversationPage(items=items, total_items=total_items)
 
     def get_conversation_with_channel(
@@ -166,10 +162,7 @@ class ChatRepository:
             ChatMessage.conversation_id == conversation_id,
         ]
         total_items = int(
-            self._session.scalar(
-                select(func.count()).select_from(ChatMessage).where(*filters)
-            )
-            or 0
+            self._session.scalar(select(func.count()).select_from(ChatMessage).where(*filters)) or 0
         )
         items = list(
             self._session.scalars(
@@ -182,9 +175,7 @@ class ChatRepository:
         )
         return MessagePage(items=items, total_items=total_items)
 
-    def last_inbound_at(
-        self, *, workspace_id: UUID, conversation_id: UUID
-    ) -> datetime | None:
+    def last_inbound_at(self, *, workspace_id: UUID, conversation_id: UUID) -> datetime | None:
         return self._session.scalar(
             select(func.max(ChatMessage.created_at)).where(
                 ChatMessage.workspace_id == workspace_id,

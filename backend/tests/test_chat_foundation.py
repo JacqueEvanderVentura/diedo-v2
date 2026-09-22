@@ -68,6 +68,8 @@ def test_chat_permissions_and_module_installed() -> None:
         assert module.status == "available"
 
         codes = session.scalars(
-            select(Permission.code).where(Permission.module_code == "chat").order_by(Permission.code)
+            select(Permission.code)
+            .where(Permission.module_code == "chat")
+            .order_by(Permission.code)
         ).all()
         assert list(codes) == ["chat.read", "chat.send"]

@@ -1,4 +1,4 @@
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -7,9 +7,12 @@ from fastapi.responses import RedirectResponse
 
 from app.api.deps import DatabaseSession, WorkspaceUpdateGrant
 from app.config import settings
+from app.db.models.chat import ChatChannelAccount
 from app.schemas.chat import (
+    ChatChannel,
     ChatChannelAccountListResponse,
     ChatChannelAccountResponse,
+    ChatConnectionStatus,
     ChatOauthCandidateResponse,
     ChatOauthCompleteRequest,
     ChatOauthPendingResponse,
@@ -18,6 +21,7 @@ from app.schemas.chat import (
     UpdateChatChannelAccountBranchesRequest,
 )
 from app.schemas.common import ErrorResponse
+from app.services.authorization import PermissionGrant
 from app.services.chat.channel_account_service import ChatChannelAccountService
 from app.services.chat.meta_oauth import MetaOauthService
 
@@ -36,15 +40,15 @@ _WRITE_RESPONSES: dict[int | str, dict[str, Any]] = {
 
 def _account_response(
     service: ChatChannelAccountService,
-    grant,
-    account,
+    grant: PermissionGrant,
+    account: ChatChannelAccount,
 ) -> ChatChannelAccountResponse:
     return ChatChannelAccountResponse(
         id=account.id,
-        channel=account.channel,
+        channel=cast(ChatChannel, account.channel),
         provider_account_id=account.provider_account_id,
         display_name=account.display_name,
-        connection_status=account.connection_status,
+        connection_status=cast(ChatConnectionStatus, account.connection_status),
         assigned_branch_ids=service.assigned_branch_ids(grant, account.id),
         version=account.version,
     )
@@ -87,10 +91,10 @@ def update_channel_account_branches(
     account = service.get_account(grant, account_id)
     return ChatChannelAccountResponse(
         id=account.id,
-        channel=account.channel,
+        channel=cast(ChatChannel, account.channel),
         provider_account_id=account.provider_account_id,
         display_name=account.display_name,
-        connection_status=account.connection_status,
+        connection_status=cast(ChatConnectionStatus, account.connection_status),
         assigned_branch_ids=branch_ids,
         version=account.version,
     )
@@ -179,7 +183,8 @@ oauth_router = APIRouter(prefix="/api/v1/chat/oauth", tags=["chat"])
 def _frontend_oauth_return(**params: str) -> str:
     base = settings.public_app_url.rstrip("/")
     query = urlencode({key: value for key, value in params.items() if value})
-    return f"{base}/configuracion?open=chat-canales&{query}" if query else f"{base}/configuracion?open=chat-canales"
+    path = f"{base}/configuracion?open=chat-canales"
+    return f"{path}&{query}" if query else path
 
 
 @oauth_router.get("/meta/callback")

@@ -2,9 +2,9 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     DateTime,
-    ForeignKey,
     ForeignKeyConstraint,
     Index,
     String,
@@ -13,7 +13,6 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -34,11 +33,11 @@ class ChatChannelAccount(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base
         ),
         CheckConstraint(
             "channel IN ('instagram', 'whatsapp')",
-            name="ck_chat_channel_accounts_channel",
+            name="channel",
         ),
         CheckConstraint(
             "connection_status IN ('disconnected', 'connected', 'error')",
-            name="ck_chat_channel_accounts_connection_status",
+            name="connection_status",
         ),
         ForeignKeyConstraint(
             ["workspace_id"],
@@ -58,7 +57,9 @@ class ChatChannelAccount(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base
     provider_account_id: Mapped[str] = mapped_column(String(128), nullable=False)
     display_name: Mapped[str] = mapped_column(String(160), server_default="", nullable=False)
     access_token_ciphertext: Mapped[str | None] = mapped_column(Text, nullable=True)
-    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     connection_status: Mapped[str] = mapped_column(
         String(16), server_default=text("'disconnected'"), nullable=False
     )
@@ -72,7 +73,7 @@ class ChatOauthState(UuidPrimaryKeyMixin, Base):
         UniqueConstraint("workspace_id", "id", name="uq_chat_oauth_states_workspace_id"),
         CheckConstraint(
             "channel IN ('instagram', 'whatsapp')",
-            name="ck_chat_oauth_states_channel",
+            name="channel",
         ),
         ForeignKeyConstraint(
             ["workspace_id"],
@@ -85,7 +86,11 @@ class ChatOauthState(UuidPrimaryKeyMixin, Base):
 
     workspace_id: Mapped[UUID] = mapped_column(nullable=False)
     channel: Mapped[str] = mapped_column(String(16), nullable=False)
-    candidates_json: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'"), nullable=False)
+    candidates_json: Mapped[list] = mapped_column(
+        JSON,
+        server_default=text("'[]'::json"),
+        nullable=False,
+    )
     tokens_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -111,11 +116,6 @@ class ChatChannelAccountBranch(Base):
             ["branches.workspace_id", "branches.id"],
             name="fk_chat_channel_account_branches_workspace_branch",
             ondelete="RESTRICT",
-        ),
-        UniqueConstraint(
-            "channel_account_id",
-            "branch_id",
-            name="uq_chat_channel_account_branches_account_branch",
         ),
         Index(
             "ix_chat_channel_account_branches_workspace_branch",
@@ -177,11 +177,11 @@ class ChatMessage(UuidPrimaryKeyMixin, Base):
         ),
         CheckConstraint(
             "direction IN ('inbound', 'outbound')",
-            name="ck_chat_messages_direction",
+            name="direction",
         ),
         CheckConstraint(
             "delivery_status IN ('received', 'sent', 'failed', 'pending')",
-            name="ck_chat_messages_delivery_status",
+            name="delivery_status",
         ),
         ForeignKeyConstraint(
             ["workspace_id", "conversation_id"],

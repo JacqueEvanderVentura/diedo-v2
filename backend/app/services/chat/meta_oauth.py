@@ -4,7 +4,7 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -23,9 +23,7 @@ Channel = Literal["instagram", "whatsapp"]
 _OAUTH_TTL = timedelta(minutes=20)
 
 _SCOPES: dict[Channel, str] = {
-    "instagram": (
-        "pages_show_list,pages_messaging,instagram_basic,instagram_manage_messages"
-    ),
+    "instagram": ("pages_show_list,pages_messaging,instagram_basic,instagram_manage_messages"),
     "whatsapp": "whatsapp_business_management,whatsapp_business_messaging,business_management",
 }
 
@@ -40,6 +38,12 @@ class OauthCandidate:
 class OauthStartResult:
     authorization_url: str
     state_id: UUID
+
+
+def _as_channel(value: str) -> Channel:
+    if value not in ("instagram", "whatsapp"):
+        raise InvalidOperationError("Canal de chat no soportado.", "channel")
+    return cast(Channel, value)
 
 
 class MetaOauthService:
@@ -90,7 +94,8 @@ class MetaOauthService:
         state = self._load_state(state_id)
         short_token = self._exchange_code(code)
         access_token = self._to_long_lived_token(short_token)
-        candidates, tokens = self._discover_accounts(state.channel, access_token)
+        channel = _as_channel(state.channel)
+        candidates, tokens = self._discover_accounts(channel, access_token)
         if not candidates:
             raise InvalidOperationError(
                 "No se encontró ninguna cuenta de Meta para este canal.",
@@ -107,15 +112,15 @@ class MetaOauthService:
             candidate = candidates[0]
             self._upsert_connected_account(
                 workspace_id=state.workspace_id,
-                channel=state.channel,
+                channel=channel,
                 provider_account_id=candidate.provider_account_id,
                 display_name=candidate.display_name,
                 access_token=tokens[candidate.provider_account_id],
             )
             self._session.delete(state)
-            return state.workspace_id, state.channel, candidates, True
+            return state.workspace_id, channel, candidates, True
 
-        return state.workspace_id, state.channel, candidates, False
+        return state.workspace_id, channel, candidates, False
 
     def complete_selection(
         self,
@@ -131,7 +136,10 @@ class MetaOauthService:
         tokens = self._tokens_from_state(state)
         token = tokens.get(provider_account_id)
         if token is None:
-            raise InvalidOperationError("Cuenta no válida para esta sesión OAuth.", "providerAccountId")
+            raise InvalidOperationError(
+                "Cuenta no válida para esta sesión OAuth.",
+                "providerAccountId",
+            )
 
         candidate = next(
             (
@@ -143,9 +151,10 @@ class MetaOauthService:
         )
         display_name = str((candidate or {}).get("display_name") or provider_account_id)
 
+        channel = _as_channel(state.channel)
         account = self._upsert_connected_account(
             workspace_id=workspace_id,
-            channel=state.channel,
+            channel=channel,
             provider_account_id=provider_account_id,
             display_name=display_name,
             access_token=token,
@@ -159,7 +168,7 @@ class MetaOauthService:
         state = self._load_state(state_id)
         if state.workspace_id != workspace_id:
             raise ResourceNotFoundError("La sesión OAuth no existe.", "oauthStateId")
-        return state.channel, [
+        return _as_channel(state.channel), [
             OauthCandidate(
                 provider_account_id=str(item["provider_account_id"]),
                 display_name=str(item.get("display_name") or item["provider_account_id"]),
@@ -199,9 +208,7 @@ class MetaOauthService:
         return account
 
     def _load_state(self, state_id: UUID) -> ChatOauthState:
-        state = self._session.scalar(
-            select(ChatOauthState).where(ChatOauthState.id == state_id)
-        )
+        state = self._session.scalar(select(ChatOauthState).where(ChatOauthState.id == state_id))
         if state is None:
             raise ResourceNotFoundError("La sesión OAuth no existe o expiró.", "oauthStateId")
         if state.expires_at < datetime.now(UTC):
@@ -225,7 +232,9 @@ class MetaOauthService:
                 "meta",
             )
 
-    def _graph_get(self, path: str, access_token: str, params: dict[str, Any] | None = None) -> dict:
+    def _graph_get(
+        self, path: str, access_token: str, params: dict[str, Any] | None = None
+    ) -> dict:
         version = settings.meta_graph_api_version
         query = urlencode(params or {})
         suffix = f"?{query}" if query else ""
@@ -277,9 +286,7 @@ class MetaOauthService:
             return self._discover_whatsapp(access_token)
         return self._discover_instagram(access_token)
 
-    def _discover_whatsapp(
-        self, access_token: str
-    ) -> tuple[list[OauthCandidate], dict[str, str]]:
+    def _discover_whatsapp(self, access_token: str) -> tuple[list[OauthCandidate], dict[str, str]]:
         payload = self._graph_get(
             "me/businesses",
             access_token,
@@ -311,9 +318,7 @@ class MetaOauthService:
                     tokens[phone_id] = access_token
         return candidates, tokens
 
-    def _discover_instagram(
-        self, access_token: str
-    ) -> tuple[list[OauthCandidate], dict[str, str]]:
+    def _discover_instagram(self, access_token: str) -> tuple[list[OauthCandidate], dict[str, str]]:
         payload = self._graph_get(
             "me/accounts",
             access_token,
@@ -337,4 +342,4 @@ class MetaOauthService:
     def purge_expired(session: Session) -> int:
         now = datetime.now(UTC)
         result = session.execute(delete(ChatOauthState).where(ChatOauthState.expires_at < now))
-        return int(result.rowcount or 0)
+        return int(getattr(result, "rowcount", 0) or 0)

@@ -28,11 +28,10 @@ def _unix_to_datetime(value: Any) -> datetime | None:
     if value is None:
         return None
     try:
-        if isinstance(value, str):
-            seconds = float(value)
-        else:
-            seconds = float(value)
-    except (TypeError, ValueError):
+        seconds = float(value)
+    except TypeError:
+        return None
+    except ValueError:
         return None
     if seconds > 1_000_000_000_000:
         seconds /= 1000.0
@@ -60,9 +59,7 @@ def _parse_whatsapp(payload: dict[str, Any]) -> list[InboundTextMessage]:
             if not phone_number_id:
                 continue
             contacts = {
-                str(contact.get("wa_id", "")): str(
-                    (contact.get("profile") or {}).get("name") or ""
-                )
+                str(contact.get("wa_id", "")): str((contact.get("profile") or {}).get("name") or "")
                 for contact in value.get("contacts") or []
                 if contact.get("wa_id")
             }
