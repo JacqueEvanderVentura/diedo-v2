@@ -46,6 +46,7 @@ from app.services.mailer import render_appointment_email
 from app.services.pos import PosService
 
 _WEEKDAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+_APPOINTMENT_NOTES_MAX_LENGTH = 60
 logger = logging.getLogger(__name__)
 _FIELD_META = {
     "scheduled_date": ("date", "Fecha"),
@@ -401,6 +402,7 @@ class AgendaService:
         commit: bool = True,
     ) -> tuple[AppointmentRecord, ...]:
         branch_id = cast(UUID, values["branch_id"])
+        self._validate_notes(values.get("notes"))
         self._require_branch_access(grant, branch_id)
         branch = self._repository.branch(grant.workspace_id, branch_id)
         if branch is None:
@@ -625,6 +627,8 @@ class AgendaService:
             raise ResourceNotFoundError("La cita no existe.", "appointmentId")
         if appointment.version != expected_version:
             raise ConflictError("La cita cambió desde la última lectura.", "version")
+        if "notes" in changes:
+            self._validate_notes(changes["notes"], existing=appointment.notes)
 
         branch_id = cast(UUID, changes.get("branch_id", appointment.branch_id))
         self._require_branch_access(grant, branch_id)
@@ -1057,6 +1061,16 @@ class AgendaService:
         if not pending_payment and pending_amount != 0:
             raise InvalidOperationError(
                 "Activa pago pendiente antes de indicar un monto.", "pendingAmount"
+            )
+
+    @staticmethod
+    def _validate_notes(notes: Any, *, existing: str | None = None) -> None:
+        if notes == existing:
+            return
+        if len(cast(str | None, notes) or "") > _APPOINTMENT_NOTES_MAX_LENGTH:
+            raise InvalidOperationError(
+                "Las notas de la cita admiten un máximo de 60 caracteres.",
+                "notes",
             )
 
     @staticmethod

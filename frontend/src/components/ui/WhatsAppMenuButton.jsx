@@ -200,7 +200,7 @@ export function WhatsAppMenuButton({
         open={open}
         anchorRef={anchorRef}
         menuRef={menuRef}
-        placement="bottom"
+        placement="auto"
         align="end"
         width={260}
         estimatedHeight={(templates.length + (canCreateTemplate ? 1 : 0)) * 44 + 24}

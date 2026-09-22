@@ -232,7 +232,11 @@ class CreateAppointmentRequest(ApiModel):
     service_name: str = Field(default="", max_length=200)
     price: Decimal = Field(default=Decimal("0"), ge=0, max_digits=14, decimal_places=2)
     status: CreateAppointmentStatus = "confirmed"
-    notes: str | None = Field(default=None, max_length=2000)
+    notes: str | None = Field(
+        default=None,
+        max_length=60,
+        description="Nota operativa de la cita, con un máximo de 60 caracteres.",
+    )
     pending_payment: bool = False
     pending_amount: Decimal = Field(default=Decimal("0"), ge=0, max_digits=14, decimal_places=2)
     first_time: bool = False
@@ -286,7 +290,14 @@ class UpdateAppointmentRequest(ApiModel):
     completion_punctuality: CompletionPunctuality | None = None
     delay_responsibility: DelayResponsibility | None = None
     completion_note: str | None = Field(default=None, max_length=500)
-    notes: str | None = Field(default=None, max_length=2000)
+    notes: str | None = Field(
+        default=None,
+        max_length=2000,
+        description=(
+            "Las notas modificadas admiten hasta 60 caracteres. El límite ampliado de entrada "
+            "permite reenviar sin pérdida una nota histórica sin cambios."
+        ),
+    )
     pending_payment: bool | None = None
     pending_amount: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
     first_time: bool | None = None

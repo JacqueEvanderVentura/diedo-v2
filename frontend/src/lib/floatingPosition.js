@@ -30,33 +30,23 @@ export function computeFloatingPosition({
     flip = false
   }
 
-  let top
-  let bottom
-  let left
-  let right
+  const desiredTop = flip
+    ? anchorRect.top - menuHeight - gap
+    : anchorRect.bottom + gap
+  const maxTop = Math.max(viewportPadding, vh - menuHeight - viewportPadding)
+  const top = Math.min(Math.max(desiredTop, viewportPadding), maxTop)
 
-  if (flip) {
-    bottom = vh - anchorRect.top + gap
-  } else {
-    top = anchorRect.bottom + gap
-  }
+  let desiredLeft
 
   if (align === 'end') {
-    right = vw - anchorRect.right
-    const overflowLeft = anchorRect.right - menuWidth
-    if (overflowLeft < viewportPadding) {
-      right = undefined
-      left = Math.max(viewportPadding, vw - menuWidth - viewportPadding)
-    }
+    desiredLeft = anchorRect.right - menuWidth
   } else if (align === 'center') {
-    left = anchorRect.left + (anchorRect.width - menuWidth) / 2
-    left = Math.min(Math.max(left, viewportPadding), vw - menuWidth - viewportPadding)
+    desiredLeft = anchorRect.left + (anchorRect.width - menuWidth) / 2
   } else {
-    left = anchorRect.left
-    if (left + menuWidth > vw - viewportPadding) {
-      left = Math.max(viewportPadding, vw - menuWidth - viewportPadding)
-    }
+    desiredLeft = anchorRect.left
   }
+  const maxLeft = Math.max(viewportPadding, vw - menuWidth - viewportPadding)
+  const left = Math.min(Math.max(desiredLeft, viewportPadding), maxLeft)
 
-  return { top, bottom, left, right, flip }
+  return { top, left, flip }
 }
