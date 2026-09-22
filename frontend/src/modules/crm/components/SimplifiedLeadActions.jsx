@@ -144,6 +144,7 @@ export function SimplifiedLeadActions({
   )
 
   const instagramUrl = resolveInstagramUrl(lead)
+    || resolveInstagramUrl(activeCustomers.find((item) => item.id === liveOpportunity?.customerId))
 
   useEffect(() => {
     if (!elevationOpen && pendingClose && !canInvoice) {
@@ -170,6 +171,12 @@ export function SimplifiedLeadActions({
     const nextName = match.name || match.displayName || ''
     const currentName = liveOpportunity.customerName || ''
     if (liveOpportunity.customerId === match.id && currentName === nextName) return
+    if (
+      liveOpportunity.customerId === match.id
+      && currentName
+      && currentName !== lead?.company
+      && currentName !== lead?.name
+    ) return
     updateOpportunity(liveOpportunity.id, {
       customerId: match.id,
       customerName: nextName,
@@ -178,6 +185,8 @@ export function SimplifiedLeadActions({
     liveOpportunity?.id,
     liveOpportunity?.customerId,
     liveOpportunity?.customerName,
+    lead?.company,
+    lead?.name,
     activeCustomers,
     updateOpportunity,
   ])
@@ -186,9 +195,14 @@ export function SimplifiedLeadActions({
 
   if (['cerrado', 'perdido'].includes(liveOpportunity.stage)) {
     return (
-      <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600" data-testid="crm-simplified-actions-closed">
-        Esta oportunidad ya está cerrada. Cambia de etapa en el pipeline estándar si necesitas reabrirla.
-      </p>
+      <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600" data-testid="crm-simplified-actions-closed">
+        <p>Esta oportunidad ya está cerrada. Cambia de etapa en el pipeline estándar si necesitas reabrirla.</p>
+        {instagramUrl && (
+          <a href={instagramUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 font-medium text-blue-600 hover:underline" data-testid="crm-simplified-ig">
+            <Instagram className="h-3.5 w-3.5" /> IG
+          </a>
+        )}
+      </div>
     )
   }
 

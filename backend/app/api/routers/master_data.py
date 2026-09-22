@@ -94,6 +94,7 @@ def _customer_response(customer: CustomerRecord) -> CustomerResponse:
         business_name=customer.business_name,
         email=customer.email,
         phone=customer.phone,
+        instagram_url=customer.instagram_url,
         acquisition_source=customer.acquisition_source,  # type: ignore[arg-type]
         document_type=customer.document_type,  # type: ignore[arg-type]
         document_id=customer.document_id,

@@ -40,6 +40,7 @@ export function simplifiedStageMoveResult(fromStage, toStage) {
 export async function applySimplifiedOpportunityStageMove({
   opportunityId,
   leadId,
+  leadStatus,
   fromStage,
   toStage,
   updateOpportunity,
@@ -49,7 +50,7 @@ export async function applySimplifiedOpportunityStageMove({
   if (result.type !== 'moved') return result
 
   await updateOpportunity(opportunityId, { stage: result.stage })
-  if (leadId) {
+  if (leadId && leadStatus !== 'convertido') {
     await updateLead(leadId, { status: opportunityStageToLeadStatus(result.stage) })
   }
   return result

@@ -1,3 +1,5 @@
+import { resolveInstagramUrl } from './simplifiedOffer'
+
 /** Payload para convertir un lead en cliente B2B (API + demo). */
 export function buildLeadConvertRequest(lead) {
   const displayName = (lead?.company || lead?.name || '').trim()
@@ -21,6 +23,7 @@ export function buildLeadOfflineCustomer(lead) {
     company: name,
     phone: lead.phone,
     email: lead.email,
+    instagramUrl: resolveInstagramUrl(lead),
     notes: lead.scoreNotes || '',
     customerType: 'b2b',
     customerStatus: 'prospecto',

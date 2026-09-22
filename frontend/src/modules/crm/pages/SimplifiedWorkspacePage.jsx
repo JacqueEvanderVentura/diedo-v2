@@ -5,6 +5,7 @@ import { Loader2, Plus, Search, Pencil, Trash2, CheckSquare, Square } from 'luci
 import { toast } from 'sonner'
 
 import { useCrmStore } from '@/stores/crmStore'
+import { useCustomersStore } from '@/stores/customersStore'
 
 import { useConfigStore } from '@/stores/configStore'
 
@@ -23,6 +24,7 @@ import { Badge } from '@/components/ui/Badge'
 import { DatePeriodFilter } from '@/components/ui/DatePeriodFilter'
 
 import { LeadFormModal } from '@/modules/crm/components/LeadFormModal'
+import { CustomerFormModal } from '@/modules/crm/components/CustomerFormModal'
 
 import { SimplifiedLeadActions } from '@/modules/crm/components/SimplifiedLeadActions'
 import { SimplifiedCustomersPanel } from '@/modules/crm/components/SimplifiedCustomersPanel'
@@ -78,6 +80,7 @@ export default function SimplifiedWorkspacePage() {
   const deleteLeads = useCrmStore((state) => state.deleteLeads)
   const updateOpportunity = useCrmStore((state) => state.updateOpportunity)
   const updateLead = useCrmStore((state) => state.updateLead)
+  const fetchCustomer = useCustomersStore((state) => state.fetchCustomer)
 
   const simplifiedWorkspace = useCrmStore((state) => state.simplifiedWorkspace)
 
@@ -111,6 +114,9 @@ export default function SimplifiedWorkspacePage() {
   const [confirm, setConfirm] = useState(null)
   const [editLeadOpen, setEditLeadOpen] = useState(false)
   const [editingLead, setEditingLead] = useState(null)
+  const [editingCustomer, setEditingCustomer] = useState(null)
+  const [editCustomerOpen, setEditCustomerOpen] = useState(false)
+  const [editCustomerLoading, setEditCustomerLoading] = useState(false)
   const [paymentRequestId, setPaymentRequestId] = useState(null)
 
   const {
@@ -172,6 +178,31 @@ export default function SimplifiedWorkspacePage() {
     ? leads.find((item) => item.id === selected.leadId)
 
     : null
+
+  const openSelectedEditor = async () => {
+    if (!selectedLead) return
+    if (selectedLead.status !== 'convertido') {
+      setEditingLead(selectedLead)
+      setEditLeadOpen(true)
+      return
+    }
+    const customerId = selected.customerId || selectedLead.customerId
+    if (!customerId) {
+      toast.error('El lead convertido no tiene un cliente vinculado.')
+      return
+    }
+    setEditCustomerLoading(true)
+    try {
+      const customer = await fetchCustomer(customerId)
+      if (!customer) throw new Error('No se encontró el cliente vinculado.')
+      setEditingCustomer(customer)
+      setEditCustomerOpen(true)
+    } catch (error) {
+      toast.error(error.message || 'No se pudo cargar el cliente vinculado.')
+    } finally {
+      setEditCustomerLoading(false)
+    }
+  }
 
 
 
@@ -279,6 +310,7 @@ export default function SimplifiedWorkspacePage() {
       const result = await applySimplifiedOpportunityStageMove({
         opportunityId: item.id,
         leadId: item.leadId,
+        leadStatus: lead?.status,
         fromStage: item.stage,
         toStage,
         updateOpportunity,
@@ -669,13 +701,11 @@ export default function SimplifiedWorkspacePage() {
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => {
-                          setEditingLead(selectedLead)
-                          setEditLeadOpen(true)
-                        }}
+                        onClick={openSelectedEditor}
+                        disabled={editCustomerLoading}
                         data-testid="crm-simplified-edit-lead"
                       >
-                        <Pencil className="h-3.5 w-3.5" /> Editar
+                        <Pencil className="h-3.5 w-3.5" /> {selectedLead.status === 'convertido' ? 'Editar cliente' : 'Editar lead'}
                       </Button>
                       <Button
                         size="sm"
@@ -851,6 +881,16 @@ export default function SimplifiedWorkspacePage() {
           setEditingLead(null)
           refreshWorkspace()
         }}
+      />
+
+      <CustomerFormModal
+        open={editCustomerOpen}
+        onClose={() => {
+          setEditCustomerOpen(false)
+          setEditingCustomer(null)
+          refreshWorkspace()
+        }}
+        customer={editingCustomer}
       />
 
       <ConfirmDialog

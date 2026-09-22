@@ -191,6 +191,7 @@ class MasterDataService:
                         "business_name": raw.get("business_name"),
                         "email": raw.get("email"),
                         "phone": raw.get("phone"),
+                        "instagram_url": raw.get("instagram_url"),
                         "acquisition_source": raw.get("acquisition_source"),
                         "status": "active",
                     }
@@ -701,6 +702,9 @@ class MasterDataService:
             value = prepared["email"]
             prepared["email"] = str(value) if value is not None else None
             prepared["normalized_email"] = normalize_email(cast_optional_str(prepared["email"]))
+        if "instagram_url" in prepared:
+            value = prepared["instagram_url"]
+            prepared["instagram_url"] = str(value) if value is not None else None
         if "phone" in prepared:
             prepared["normalized_phone"] = normalize_phone(cast_optional_str(prepared["phone"]))
         if "document_type" in prepared or "document_id" in prepared:

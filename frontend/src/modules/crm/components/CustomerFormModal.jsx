@@ -16,6 +16,7 @@ const emptyCustomerForm = () => ({
   company: '',
   phone: '',
   email: '',
+  instagramUrl: '',
   notes: '',
   customerType: 'b2c',
   acquisitionSource: '',
@@ -36,6 +37,7 @@ export function createCustomerFormState(customer = null, defaults = null) {
       branchIds: defaults.branchIds?.length ? [...defaults.branchIds] : base.branchIds,
       phone: defaults.phone ?? base.phone,
       email: defaults.email ?? base.email,
+      instagramUrl: defaults.instagramUrl ?? base.instagramUrl,
     }
   }
   return {
@@ -44,6 +46,7 @@ export function createCustomerFormState(customer = null, defaults = null) {
     company: customer.company || customer.businessName || '',
     phone: customer.phone || '',
     email: customer.email || '',
+    instagramUrl: customer.instagramUrl || '',
     notes: customer.notes || '',
     customerType: customer.customerType === 'b2b' ? 'b2b' : 'b2c',
     acquisitionSource: customer.acquisitionSource || '',
@@ -91,6 +94,7 @@ export function CustomerFormModal({ open, onClose, customer, defaults = null, on
         : null,
       phone: form.phone.trim() || null,
       email: form.email.trim() || null,
+      instagramUrl: form.instagramUrl.trim() || null,
       notes: form.notes.trim() || '',
       customerType: form.customerType,
       acquisitionSource: form.acquisitionSource || null,
@@ -190,6 +194,10 @@ export function CustomerFormModal({ open, onClose, customer, defaults = null, on
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Email <span className="text-slate-400">(opcional)</span></label>
           <Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="cliente@correo.com" data-testid="customer-field-email" />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-600">IG <span className="text-slate-400">(opcional)</span></label>
+          <Input type="url" value={form.instagramUrl} onChange={(e) => set('instagramUrl', e.target.value)} placeholder="https://www.instagram.com/usuario" data-testid="customer-field-instagram" />
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Notas <span className="text-slate-400">(opcional)</span></label>

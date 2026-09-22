@@ -100,6 +100,7 @@ function leadPayload(data) {
     email: data.email || null,
     phone: data.phone || null,
     website: data.website || null,
+    instagramUrl: data.instagramUrl || null,
     location: data.location || null,
     source: data.source || 'manual',
     acquisitionSource: data.acquisitionSource || null,
@@ -270,10 +271,11 @@ function normalizeLead(raw) {
   return {
     id: raw.id || genId('lead'),
     name: raw.name || '',
-    company: raw.company || raw.name || '',
+    company: raw.company ?? raw.name ?? '',
     email: raw.email || null,
     phone: raw.phone || null,
     website: raw.website || null,
+    instagramUrl: raw.instagramUrl || null,
     location: raw.location || '',
     source: raw.source || 'manual',
     acquisitionSource: raw.acquisitionSource || null,
@@ -906,7 +908,7 @@ export const useCrmStore = create(
         if (isOnline()) {
           const payload = { version: current.version }
           const fields = [
-            'name', 'company', 'email', 'phone', 'website', 'location', 'status',
+            'name', 'company', 'email', 'phone', 'website', 'instagramUrl', 'location', 'status',
             'starRating', 'rawSnippet', 'acquisitionSource',
           ]
           fields.forEach((field) => {
@@ -918,6 +920,9 @@ export const useCrmStore = create(
             set((s) => ({ leads: replaceById(s.leads, saved) }))
             return saved
           } catch (error) {
+            set((state) => ({
+              leads: state.leads.map((lead) => (lead.id === id ? current : lead)),
+            }))
             reportMutationError(set, error)
             throw error
           }

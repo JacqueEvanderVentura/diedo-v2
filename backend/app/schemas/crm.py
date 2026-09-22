@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import EmailStr, Field, HttpUrl, PlainSerializer, field_validator, model_validator
 
 from app.schemas.common import ApiModel, ImportRowModel
+from app.schemas.instagram import validate_instagram_url
 from app.schemas.pos import QuoteDetailResponse
 
 LeadStatus = Literal["nuevo", "contactado", "calificado", "descartado", "convertido"]
@@ -125,6 +126,7 @@ class LeadInput(ApiModel):
     email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=40)
     website: HttpUrl | None = Field(default=None, max_length=500)
+    instagram_url: HttpUrl | None = Field(default=None, max_length=500)
     location: str | None = Field(default=None, max_length=240)
     source: LeadSource = "manual"
     acquisition_source: AcquisitionSource | None = None
@@ -133,6 +135,11 @@ class LeadInput(ApiModel):
     raw_snippet: str | None = Field(default=None, max_length=4000)
     status: EditableLeadStatus = "nuevo"
     star_rating: Decimal | None = None
+
+    @field_validator("instagram_url")
+    @classmethod
+    def validate_instagram(cls, value: HttpUrl | None) -> HttpUrl | None:
+        return validate_instagram_url(value)
 
     @field_validator("star_rating", mode="before")
     @classmethod
@@ -175,11 +182,17 @@ class UpdateLeadRequest(ApiModel):
     email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=40)
     website: HttpUrl | None = Field(default=None, max_length=500)
+    instagram_url: HttpUrl | None = Field(default=None, max_length=500)
     location: str | None = Field(default=None, max_length=240)
     acquisition_source: AcquisitionSource | None = None
     status: EditableLeadStatus | None = None
     star_rating: Decimal | None = None
     raw_snippet: str | None = Field(default=None, max_length=4000)
+
+    @field_validator("instagram_url")
+    @classmethod
+    def validate_instagram(cls, value: HttpUrl | None) -> HttpUrl | None:
+        return validate_instagram_url(value)
 
     @field_validator("star_rating", mode="before")
     @classmethod
@@ -253,6 +266,7 @@ class LeadResponse(ApiModel):
     email: EmailStr | None
     phone: str | None
     website: str | None
+    instagram_url: str | None
     location: str | None
     source: LeadSource
     acquisition_source: AcquisitionSource | None = None
@@ -288,6 +302,7 @@ class ImportPipelineItem(ImportRowModel):
     email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=40)
     website: HttpUrl | None = Field(default=None, max_length=500)
+    instagram_url: HttpUrl | None = Field(default=None, max_length=500)
     location: str | None = Field(default=None, max_length=240)
     acquisition_source: AcquisitionSource | None = None
     stage: OpportunityStage = "nuevo"
@@ -295,6 +310,11 @@ class ImportPipelineItem(ImportRowModel):
     notes: str | None = Field(default=None, max_length=2000)
     lost_reason: str | None = Field(default=None, max_length=1000)
     convert: bool = False
+
+    @field_validator("instagram_url")
+    @classmethod
+    def validate_instagram(cls, value: HttpUrl | None) -> HttpUrl | None:
+        return validate_instagram_url(value)
 
     @field_validator("email", mode="before")
     @classmethod
@@ -575,6 +595,7 @@ class CustomerCrmResponse(ApiModel):
     business_name: str | None
     email: EmailStr | None
     phone: str | None
+    instagram_url: str | None
     branches: list[CrmBranchReference]
     master_status: Literal["active", "inactive", "archived"]
     lifecycle_status: CustomerLifecycleStatus

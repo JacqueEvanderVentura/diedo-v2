@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import {
   Phone,
   Mail,
+  Instagram,
   ShoppingBag,
   CalendarClock,
   CalendarDays,
@@ -27,6 +28,7 @@ import { formatDOP } from '@/lib/format'
 import { ACQUISITION_SOURCE_LABELS, QUOTE_STATUS_META, STAGE_META } from '@/data/crm'
 import { buildCustomerWhatsAppVariables } from '@/lib/whatsappVariables'
 import { fmtDate, fmtDateTime, METHOD_LABELS } from '../lib/crm'
+import { resolveInstagramUrl } from '../lib/simplifiedOffer'
 import {
   filterCustomerQuotes,
   filterOpenOpportunities,
@@ -120,6 +122,11 @@ export function CustomerDetailModal({
               <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-500">
                 {customer.phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" /> {customer.phone}</span>}
                 {customer.email && <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" /> {customer.email}</span>}
+                {resolveInstagramUrl(customer) && (
+                  <a href={resolveInstagramUrl(customer)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:underline" data-testid="customer-detail-instagram">
+                    <Instagram className="h-3 w-3" /> IG
+                  </a>
+                )}
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">

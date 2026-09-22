@@ -64,6 +64,7 @@ class Customer(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     email: Mapped[str | None] = mapped_column(String(254))
     normalized_email: Mapped[str | None] = mapped_column(String(254))
     phone: Mapped[str | None] = mapped_column(String(40))
+    instagram_url: Mapped[str | None] = mapped_column(String(500))
     normalized_phone: Mapped[str | None] = mapped_column(String(24))
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="active", server_default=text("'active'")

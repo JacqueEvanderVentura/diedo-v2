@@ -178,6 +178,7 @@ def _lead_response(record: LeadRecord) -> LeadResponse:
         email=lead.email,
         phone=lead.phone,
         website=lead.website,
+        instagram_url=lead.instagram_url,
         location=lead.location,
         source=cast(Any, lead.source),
         acquisition_source=cast(Any, lead.acquisition_source),
@@ -255,6 +256,7 @@ def _customer_response(record: CustomerCrmRecord) -> CustomerCrmResponse:
         business_name=customer.business_name,
         email=customer.email,
         phone=customer.phone,
+        instagram_url=customer.instagram_url,
         branches=[
             CrmBranchReference(id=branch.id, code=branch.code, name=branch.name)
             for branch in customer.branches

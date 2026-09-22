@@ -110,6 +110,21 @@ export const useCustomersStore = create((set, get) => ({
 
   },
 
+  fetchCustomer: async (id) => {
+    if (useSessionStore.getState().status === 'demo') {
+      return get().customers.find((customer) => customer.id === id) || null
+    }
+    const { data } = await customersGateway.read('customer', id)
+    const customer = mapCustomerFromApi(data)
+    set((state) => ({
+      customers: state.customers.some((item) => item.id === id)
+        ? state.customers.map((item) => (item.id === id ? customer : item))
+        : [...state.customers, customer],
+      dataState: customersGateway.getState(),
+    }))
+    return customer
+  },
+
 
 
   fetchCustomersPage: async ({
@@ -238,7 +253,7 @@ export const useCustomersStore = create((set, get) => ({
 
 
 
-      const response = await masterDataApi.customersPage(
+      const { data: response } = await customersGateway.read('customersPage',
 
         buildCustomerListApiParams({
 
@@ -288,17 +303,7 @@ export const useCustomersStore = create((set, get) => ({
 
         },
 
-        dataState: {
-
-          ...customersGateway.getState(),
-
-          status: 'ready',
-
-          source: 'api',
-
-          error: null,
-
-        },
+        dataState: customersGateway.getState(),
 
         hydrating: false,
 
