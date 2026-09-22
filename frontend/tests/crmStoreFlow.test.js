@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getSale: vi.fn(),
   createOpportunity: vi.fn(),
   updateOpportunity: vi.fn(),
+  opportunities: vi.fn(),
   createActivity: vi.fn(),
   updateActivity: vi.fn(),
   completeActivity: vi.fn(),
@@ -56,6 +57,7 @@ function opportunity(overrides = {}) {
 describe('flujo conectado del store CRM', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.opportunities.mockReset()
     useSessionStore.setState({
       status: 'online',
       user: { id: membershipId, membershipId, branchIds: [branchId] },
@@ -279,6 +281,41 @@ describe('flujo conectado del store CRM', () => {
       opportunityId,
       expect.objectContaining({ stage: 'perdido', lostReason: 'Precio alto' }),
     )
+  })
+
+  it('consulta la cola y el contador de Perdidos para todo el historial', async () => {
+    const lost = opportunity({ stage: 'perdido', leadId: null, lostReason: 'Precio alto' })
+    mocks.opportunities.mockImplementation(async (params) => ({
+      items: params.pageSize === 1 ? [] : [lost],
+      page: 1,
+      pageSize: params.pageSize,
+      totalItems: params.stage === 'perdido' ? 1 : 0,
+      totalPages: 1,
+    }))
+    const filters = { dateFilter: { period: 'all', dateFrom: null, dateTo: null } }
+    const counts = await useCrmStore.getState().fetchSimplifiedWorkspaceStageCounts(filters)
+    expect(counts.perdido).toBe(1)
+    expect(mocks.opportunities).toHaveBeenCalledWith(expect.objectContaining({ stage: 'perdido' }))
+    expect(mocks.opportunities.mock.calls.every(([params]) => !('updatedAfter' in params))).toBe(true)
+    await useCrmStore.getState().fetchSimplifiedWorkspaceQueue({ stage: 'perdido', ...filters })
+    expect(useCrmStore.getState().simplifiedWorkspace.items[0]).toMatchObject({
+      id: opportunityId, lostReason: 'Precio alto',
+    })
+  })
+
+  it('expone el error de API de la cola y permite reintento', async () => {
+    mocks.opportunities.mockRejectedValueOnce(new Error('API no disponible'))
+    await expect(useCrmStore.getState().fetchSimplifiedWorkspaceQueue({
+      stage: 'perdido', dateFilter: { period: 'all' },
+    })).rejects.toThrow('API no disponible')
+    expect(useCrmStore.getState().simplifiedWorkspace.error.message).toBe('API no disponible')
+    mocks.opportunities.mockResolvedValueOnce({
+      items: [], page: 1, pageSize: 25, totalItems: 0, totalPages: 0,
+    })
+    await useCrmStore.getState().fetchSimplifiedWorkspaceQueue({
+      stage: 'perdido', dateFilter: { period: 'all' },
+    })
+    expect(useCrmStore.getState().simplifiedWorkspace.error).toBeNull()
   })
 
   it('cierra una oportunidad facturada sin volver a emitir la venta', async () => {

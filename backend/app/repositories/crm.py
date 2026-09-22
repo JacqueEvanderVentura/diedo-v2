@@ -372,17 +372,26 @@ class CrmRepository:
             query = query.where(CrmOpportunity.updated_at <= updated_before)
         if search:
             pattern = f"%{search.casefold()}%"
-            query = query.join(
-                CrmLead,
-                (CrmLead.workspace_id == CrmOpportunity.workspace_id)
-                & (CrmLead.id == CrmOpportunity.lead_id),
-            ).where(
-                or_(
-                    func.lower(CrmOpportunity.title).like(pattern),
-                    func.lower(CrmOpportunity.customer_name).like(pattern),
-                    func.lower(CrmLead.name).like(pattern),
-                    func.lower(CrmLead.company).like(pattern),
-                    func.lower(CrmLead.phone).like(pattern),
+            query = (
+                query.outerjoin(
+                    CrmLead,
+                    (CrmLead.workspace_id == CrmOpportunity.workspace_id)
+                    & (CrmLead.id == CrmOpportunity.lead_id),
+                )
+                .outerjoin(
+                    Customer,
+                    (Customer.workspace_id == CrmOpportunity.workspace_id)
+                    & (Customer.id == CrmOpportunity.customer_id),
+                )
+                .where(
+                    or_(
+                        func.lower(CrmOpportunity.title).like(pattern),
+                        func.lower(CrmOpportunity.customer_name).like(pattern),
+                        func.lower(CrmLead.name).like(pattern),
+                        func.lower(CrmLead.company).like(pattern),
+                        func.lower(CrmLead.phone).like(pattern),
+                        func.lower(Customer.phone).like(pattern),
+                    )
                 )
             )
         total = int(self._session.scalar(select(func.count()).select_from(query.subquery())) or 0)

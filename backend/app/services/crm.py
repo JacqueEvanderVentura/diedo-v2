@@ -569,6 +569,8 @@ class CrmService:
         if opportunity is None:
             raise ResourceNotFoundError("La oportunidad no existe.", "opportunityId")
         self._require_version(opportunity.version, expected_version)
+        previous_stage = opportunity.stage
+        previous_lost_reason = opportunity.lost_reason
         if "assigned_membership_id" in changes:
             opportunity.assigned_membership_id = self._assignee(
                 grant.workspace_id,
@@ -601,7 +603,30 @@ class CrmService:
             raise InvalidOperationError("Una oportunidad perdida requiere motivo.", "lostReason")
         opportunity.stage = stage
         opportunity.lost_reason = lost_reason if stage == "perdido" else None
-        opportunity.closed_at = datetime.now(UTC) if stage in {"cerrado", "perdido"} else None
+        if stage in {"cerrado", "perdido"}:
+            if stage != previous_stage or opportunity.closed_at is None:
+                opportunity.closed_at = datetime.now(UTC)
+        else:
+            opportunity.closed_at = None
+        if (
+            previous_stage == "perdido"
+            and stage in {"nuevo", "contactado", "propuesta", "negociacion"}
+            and opportunity.lead_id
+        ):
+            lead = self._repository.lead(
+                grant.workspace_id, opportunity.lead_id, grant.allowed_branch_ids, lock=True
+            )
+            if lead is not None and lead.status != "convertido":
+                lead_status = {
+                    "nuevo": "nuevo",
+                    "contactado": "contactado",
+                    "propuesta": "calificado",
+                    "negociacion": "calificado",
+                }[stage]
+                if lead.status != lead_status:
+                    lead.status = lead_status
+                    lead.updated_by_platform_user_id = principal.platform_user_id
+                    lead.version += 1
         if stage == "cerrado" and opportunity.customer_id and opportunity.lead_id:
             customer = self._repository.customer(
                 grant.workspace_id,
@@ -620,12 +645,23 @@ class CrmService:
                     customer.version += 1
         opportunity.updated_by_platform_user_id = principal.platform_user_id
         opportunity.version += 1
+        audit_details: dict[str, Any] = {
+            "changedFields": sorted(changes),
+            "stage": stage,
+            "version": opportunity.version,
+        }
+        if stage != previous_stage:
+            audit_details["previousStage"] = previous_stage
+        if stage == "perdido":
+            audit_details["lostReason"] = lost_reason
+        if previous_stage == "perdido" and stage != "perdido":
+            audit_details["previousLostReason"] = previous_lost_reason
         self._audit(
             principal,
             "crm.opportunity.update",
             "crm_opportunity",
             opportunity.id,
-            {"changedFields": sorted(changes), "stage": stage, "version": opportunity.version},
+            audit_details,
         )
         self._session.commit()
         return self._repository.opportunity_record(opportunity)

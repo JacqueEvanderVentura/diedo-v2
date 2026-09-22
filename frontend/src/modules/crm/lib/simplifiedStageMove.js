@@ -6,6 +6,7 @@ export const SIMPLIFIED_STAGE_TABS = [
   { id: 'propuesta', label: 'Interesados' },
   { id: 'negociacion', label: 'Seguimiento' },
   { id: 'cerrado', label: 'Ganados' },
+  { id: 'perdido', label: 'Perdidos' },
 ]
 
 export const SIMPLIFIED_STAGE_LOST_OPTION_VALUE = 'perdido'
@@ -13,7 +14,7 @@ export const SIMPLIFIED_STAGE_LOST_OPTION_VALUE = 'perdido'
 /** Options for the detail-panel stage select (includes «Marcar como perdido»). */
 export function simplifiedStageSelectOptions() {
   return [
-    ...SIMPLIFIED_STAGE_TABS.map((tab) => ({ value: tab.id, label: tab.label })),
+    ...SIMPLIFIED_STAGE_TABS.filter((tab) => tab.id !== 'perdido').map((tab) => ({ value: tab.id, label: tab.label })),
     { value: SIMPLIFIED_STAGE_LOST_OPTION_VALUE, label: 'Marcar como perdido' },
   ]
 }

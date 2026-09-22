@@ -51,6 +51,7 @@ import {
 import { usePointerKanban } from '@/modules/crm/hooks/usePointerKanban'
 import {
   SIMPLIFIED_STAGE_TABS,
+  SIMPLIFIED_DIRECT_MOVE_STAGES,
   applySimplifiedOpportunityStageMove,
   resolveSimplifiedStageDrop,
 } from '@/modules/crm/lib/simplifiedStageMove'
@@ -132,6 +133,8 @@ export default function SimplifiedWorkspacePage() {
     stageCounts,
 
     loading,
+    error: queueError,
+    countsError,
 
     detailActivities,
 
@@ -445,7 +448,7 @@ export default function SimplifiedWorkspacePage() {
 
         />
 
-        {can.manage && (
+        {can.manage && stageTab !== 'perdido' && (
           <Button
             type="button"
             variant={selectMode ? 'secondary' : 'ghost'}
@@ -471,6 +474,11 @@ export default function SimplifiedWorkspacePage() {
       )}
 
       <div className="relative z-0 min-w-0 w-full" data-testid="crm-simplified-tabs">
+        {countsError && (
+          <p role="alert" className="mb-2 text-sm text-red-600">
+            No se pudieron cargar los contadores: {countsError.message}
+          </p>
+        )}
         <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Etapa</p>
         <div
           className="flex gap-1.5 overflow-x-auto overscroll-x-contain rounded-xl border border-slate-100 bg-white p-1.5 shadow-soft scrollbar-thin"
@@ -479,11 +487,12 @@ export default function SimplifiedWorkspacePage() {
             <button
               key={tab.id}
               type="button"
-              data-simplified-stage={tab.id}
+              data-simplified-stage={tab.id === 'perdido' ? undefined : tab.id}
               onClick={() => {
                 setStageTab(tab.id)
                 setPage(1)
                 setSelectedId(null)
+                if (tab.id === 'perdido') exitSelectMode()
               }}
               className={cn(
                 'shrink-0 rounded-lg px-3 py-2 text-sm font-semibold whitespace-nowrap transition-colors',
@@ -518,11 +527,20 @@ export default function SimplifiedWorkspacePage() {
 
           <div className="shrink-0 border-b border-slate-100 px-4 py-3">
 
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Por atender</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              {stageTab === 'perdido' ? 'Perdidos' : 'Por atender'}
+            </p>
 
           </div>
 
-          {loading ? (
+          {queueError ? (
+            <div role="alert" className="px-4 py-8 text-sm text-red-700">
+              <p>No se pudo cargar la cola: {queueError.message}</p>
+              <Button size="sm" variant="secondary" className="mt-3" onClick={refreshWorkspace}>
+                Reintentar
+              </Button>
+            </div>
+          ) : loading ? (
 
             <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 py-16 text-sm text-slate-500">
 
@@ -541,9 +559,22 @@ export default function SimplifiedWorkspacePage() {
                 {queueItems.length === 0 ? (
 
                   <li className="px-4 py-8 text-center text-sm text-slate-500">
-
-                    No hay prospectos en esta etapa para el período seleccionado.
-
+                    {stageTab === 'perdido'
+                      ? 'No hay oportunidades perdidas para los filtros seleccionados.'
+                      : 'No hay prospectos en esta etapa para el período seleccionado.'}
+                    {stageTab === 'perdido' && dateFilter.period !== 'all' && (
+                      <button
+                        type="button"
+                        className="mt-2 block w-full font-semibold text-blue-600 hover:underline"
+                        onClick={() => {
+                          setDateFilter({ period: 'all', dateFrom: null, dateTo: null })
+                          setPage(1)
+                          setSelectedId(null)
+                        }}
+                      >
+                        Ver todo el historial
+                      </button>
+                    )}
                   </li>
 
                 ) : (
@@ -555,7 +586,8 @@ export default function SimplifiedWorkspacePage() {
                     const active = selected?.id === item.id
 
                     const lead = item.leadId ? leads.find((row) => row.id === item.leadId) : null
-                    const canSelect = selectMode && can.manage && lead && lead.status !== 'convertido'
+                    const canSelect = selectMode && stageTab !== 'perdido' && can.manage && lead && lead.status !== 'convertido'
+                    const canDrag = can.manage && !selectMode && !['perdido', 'cerrado'].includes(item.stage)
 
                     return (
 
@@ -579,7 +611,7 @@ export default function SimplifiedWorkspacePage() {
                           onClick={() => setSelectedId(item.id)}
 
                           onPointerDown={(event) => {
-                            if (selectMode || !can.manage) return
+                            if (!canDrag) return
                             startDrag(event, {
                               id: item.id,
                               stage: item.stage,
@@ -593,7 +625,7 @@ export default function SimplifiedWorkspacePage() {
 
                             active ? 'bg-blue-50' : 'hover:bg-slate-50',
 
-                            can.manage && !selectMode && 'cursor-grab touch-none active:cursor-grabbing',
+                            canDrag && 'cursor-grab touch-none active:cursor-grabbing',
 
                             dragState?.id === item.id && 'opacity-50',
 
@@ -641,7 +673,7 @@ export default function SimplifiedWorkspacePage() {
 
                   onPageChange={setPage}
                   compact
-                  noun="prospectos"
+                  noun="oportunidades"
                   testId="crm-simplified-pagination"
 
                 />
@@ -696,7 +728,7 @@ export default function SimplifiedWorkspacePage() {
                   <Badge tone={STAGE_META[selected.stage]?.tone || 'neutral'}>
                     {STAGE_META[selected.stage]?.label || selected.stage}
                   </Badge>
-                  {can.manage && selectedLead && !selectMode && (
+                  {can.manage && selectedLead && !selectMode && selected.stage !== 'perdido' && (
                     <>
                       <Button
                         size="sm"
@@ -822,12 +854,15 @@ export default function SimplifiedWorkspacePage() {
                 onStageMove={handleSimplifiedStageMove}
 
                 onActionComplete={(stage) => {
-
-                  if (stage === 'negociacion') setStageTab('negociacion')
-
-                  if (stage === 'cerrado' || stage === 'perdido') setSelectedId(null)
-
-                  refreshWorkspace()
+                  if (stage === 'perdido' || SIMPLIFIED_DIRECT_MOVE_STAGES.includes(stage)) {
+                    setStageTab(stage)
+                    setPage(1)
+                    setSelectedId(selected?.id || null)
+                    if (stage === stageTab) refreshWorkspace()
+                  } else {
+                    if (stage === 'cerrado') setSelectedId(null)
+                    refreshWorkspace()
+                  }
 
                   if (selected?.id) fetchDetailActivities(selected.id).catch(() => {})
 

@@ -5,6 +5,7 @@ import {
   simplifiedStageMoveResult,
   simplifiedStageSelectOptions,
   SIMPLIFIED_STAGE_LOST_OPTION_VALUE,
+  SIMPLIFIED_STAGE_TABS,
 } from '@/modules/crm/lib/simplifiedStageMove'
 
 describe('simplifiedStageMove', () => {
@@ -16,8 +17,9 @@ describe('simplifiedStageMove', () => {
   })
 
   it('includes marcar como perdido in detail select options', () => {
+    expect(SIMPLIFIED_STAGE_TABS).toContainEqual({ id: 'perdido', label: 'Perdidos' })
     const options = simplifiedStageSelectOptions()
-    expect(options.some((row) => row.value === SIMPLIFIED_STAGE_LOST_OPTION_VALUE)).toBe(true)
+    expect(options.filter((row) => row.value === SIMPLIFIED_STAGE_LOST_OPTION_VALUE)).toHaveLength(1)
     expect(options.filter((row) => row.value === 'cerrado')).toHaveLength(1)
   })
 
