@@ -16,6 +16,7 @@ const ciEnv = {
   VITE_FEATURE_NOTIFICATIONS: 'true',
   VITE_FEATURE_CALENDAR_SCHEDULES: 'true',
   VITE_FEATURE_REGIONAL_MODULES: 'true',
+  VITE_FEATURE_CHAT: 'true',
 }
 
 function run(command, args) {

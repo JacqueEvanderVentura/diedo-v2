@@ -23,7 +23,10 @@ Channel = Literal["instagram", "whatsapp"]
 _OAUTH_TTL = timedelta(minutes=20)
 
 _SCOPES: dict[Channel, str] = {
-    "instagram": ("pages_show_list,pages_messaging,instagram_basic,instagram_manage_messages"),
+    "instagram": (
+        "pages_show_list,pages_messaging,"
+        "instagram_business_basic,instagram_business_manage_messages"
+    ),
     "whatsapp": "whatsapp_business_management,whatsapp_business_messaging,business_management",
 }
 

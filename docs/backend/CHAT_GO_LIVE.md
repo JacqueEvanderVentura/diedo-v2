@@ -1,7 +1,7 @@
 # Chat go-live (Fase 6)
 
 Status: Development live path. Tokens never leave the backend. `wa.me` in Agenda/CRM stays as-is.
-`VITE_FEATURE_CHAT` must stay `false` on the production frontend until you explicitly cut over.
+Production frontend CI now builds with `VITE_FEATURE_CHAT=true` (nav `/chat` visible after Worker deploy).
 
 ## Public URLs (Railway API)
 
@@ -97,7 +97,7 @@ Keep the app in **Development** until those are approved. Do not flip `VITE_FEAT
 1. Webhook verify green on Railway URL.
 2. Live Development DM test (IG + WA) on a tester workspace.
 3. App Review **Live** (or accept Development-only testers forever).
-4. Set frontend production `VITE_FEATURE_CHAT=true` and redeploy Workers.
+4. Frontend production already builds with `VITE_FEATURE_CHAT=true` on `full-stack` deploy.
 5. Confirm CORS is unused or `PUBLIC_APP_URL` matches the app host; OAuth still returns to `/configuracion?open=chat-canales`.
 
 ## Out of v1 (do not implement here)

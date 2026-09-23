@@ -22,7 +22,7 @@ describe('Cloudflare static deployment configuration', () => {
     for (const workflow of ['reusable-frontend-ci.yml', 'reusable-frontend-deploy.yml']) {
       const body = fs.readFileSync(path.join(workflowsDir, workflow), 'utf8')
       expect(body).toContain('VITE_API_BASE_URL: /api-backend')
-      for (const feature of ['SELF_BOOKING', 'INVITATIONS', 'CRM_DISCOVERY', 'PERFORMANCE', 'NOTIFICATIONS', 'CALENDAR_SCHEDULES', 'REGIONAL_MODULES']) {
+      for (const feature of ['SELF_BOOKING', 'INVITATIONS', 'CRM_DISCOVERY', 'PERFORMANCE', 'NOTIFICATIONS', 'CALENDAR_SCHEDULES', 'REGIONAL_MODULES', 'CHAT']) {
         expect(body).toMatch(new RegExp(`VITE_FEATURE_${feature}: ["']true["']`))
       }
       expect(body).toMatch(/VITE_FEATURE_PAYROLL: ["']false["']/)

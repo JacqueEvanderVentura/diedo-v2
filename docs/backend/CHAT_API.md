@@ -1,7 +1,7 @@
 # Chat (Instagram + WhatsApp)
 
 Status: **Fase 6** — webhook HTTPS público, runbook de go-live y checklist App Review.
-`VITE_FEATURE_CHAT` permanece `false` en producción hasta el corte. `wa.me` no se reemplaza.
+`wa.me` no se reemplaza. El build de producción del frontend en CI usa `VITE_FEATURE_CHAT=true`.
 
 Runbook: [CHAT_GO_LIVE.md](CHAT_GO_LIVE.md).
 
@@ -41,7 +41,7 @@ Frontend:
 
 |---|---|
 
-| `VITE_FEATURE_CHAT` | `true` / `false`. En producción debe ser `false` hasta go-live. |
+| `VITE_FEATURE_CHAT` | `true` / `false`. El deploy de `full-stack` lo deja en `true`. |
 
 
 

@@ -94,6 +94,25 @@ def test_oauth_start_returns_authorization_url(client: TestClient, meta_oauth_se
     assert params["scope"][0].startswith("whatsapp_")
 
 
+@pytest.mark.integration
+def test_oauth_start_instagram_uses_business_scopes(
+    client: TestClient, meta_oauth_settings
+) -> None:
+    headers = _login(client)
+    response = client.post(
+        "/api/v1/chat/channel-accounts/oauth/start",
+        headers=headers,
+        json={"channel": "instagram"},
+    )
+    assert response.status_code == 200, response.text
+    params = parse_qs(urlparse(response.json()["authorizationUrl"]).query)
+    scope = params["scope"][0]
+    assert "instagram_business_basic" in scope
+    assert "instagram_business_manage_messages" in scope
+    assert "instagram_basic" not in scope.split(",")
+    assert "instagram_manage_messages" not in scope.split(",")
+
+
 def _oauth_state_id_from_start(client: TestClient, headers: dict[str, str], channel: str) -> UUID:
     start = client.post(
         "/api/v1/chat/channel-accounts/oauth/start",
