@@ -11,9 +11,37 @@ GraphRequestFn = Callable[..., dict[str, Any]]
 class GraphApiError(Exception):
     """Graph HTTP failure without embedding tokens or response bodies."""
 
-    def __init__(self, *, status_code: int | None) -> None:
+    def __init__(
+        self,
+        *,
+        status_code: int | None,
+        graph_code: int | str | None = None,
+        graph_type: str | None = None,
+        graph_message: str | None = None,
+    ) -> None:
         self.status_code = status_code
+        self.graph_code = graph_code
+        self.graph_type = graph_type
+        self.graph_message = graph_message
         super().__init__("graph_request_failed")
+
+
+def _graph_error_fields(payload: object) -> tuple[int | str | None, str | None, str | None]:
+    if not isinstance(payload, dict):
+        return None, None, None
+    error = payload.get("error")
+    if isinstance(error, str):
+        return None, None, error.replace("?", " ")[:160]
+    if not isinstance(error, dict):
+        return None, None, None
+    code = error.get("code")
+    error_type = error.get("type")
+    message = error.get("message")
+    safe_type = str(error_type)[:40] if isinstance(error_type, str) else None
+    safe_message = None
+    if isinstance(message, str):
+        safe_message = message.replace("?", " ")[:160]
+    return code, safe_type, safe_message
 
 
 class GraphHttpClient(Protocol):
@@ -31,7 +59,17 @@ class _HttpxGraphClient:
         except httpx.RequestError as exc:
             raise GraphApiError(status_code=None) from exc
         if response.status_code >= 400:
-            raise GraphApiError(status_code=response.status_code)
+            graph_code, graph_type, graph_message = None, None, None
+            try:
+                graph_code, graph_type, graph_message = _graph_error_fields(response.json())
+            except ValueError, TypeError:
+                graph_code, graph_type, graph_message = None, None, None
+            raise GraphApiError(
+                status_code=response.status_code,
+                graph_code=graph_code,
+                graph_type=graph_type,
+                graph_message=graph_message,
+            )
         payload = response.json()
         if not isinstance(payload, dict):
             raise TypeError("Graph API response must be a JSON object.")

@@ -95,10 +95,9 @@ class MetaOauthService:
                 "state": str(state.id),
                 "scope": _SCOPES[channel],
                 "response_type": "code",
-                "enable_fb_login": "0",
-                "force_authentication": "1",
             }
             url = f"https://www.instagram.com/oauth/authorize?{urlencode(params)}"
+            logger.info("meta oauth start channel=instagram client_id=%s", params["client_id"])
         else:
             params = {
                 "client_id": app_id,
@@ -109,6 +108,7 @@ class MetaOauthService:
             }
             version = settings.meta_graph_api_version
             url = f"https://www.facebook.com/{version}/dialog/oauth?{urlencode(params)}"
+            logger.info("meta oauth start channel=whatsapp client_id=%s", app_id)
         return OauthStartResult(authorization_url=url, state_id=state.id)
 
     def handle_callback(
@@ -130,6 +130,7 @@ class MetaOauthService:
         access_token = self._to_long_lived_token(short_token, channel)
         candidates, tokens = self._discover_accounts(channel, access_token)
         if not candidates:
+            logger.warning("meta oauth no candidates channel=%s", channel)
             raise InvalidOperationError(
                 "No se encontró ninguna cuenta de Meta para este canal.",
                 "channel",
@@ -331,8 +332,13 @@ class MetaOauthService:
     ) -> dict:
         try:
             return self._graph_get(path, access_token, params, host=host)
-        except GraphApiError:
-            logger.warning("meta oauth graph GET failed path=%s", path.split("?")[0])
+        except GraphApiError as exc:
+            logger.warning(
+                "meta oauth graph GET failed path=%s status=%s code=%s",
+                path.split("?")[0],
+                exc.status_code,
+                exc.graph_code,
+            )
             return {}
 
     def _exchange_code(self, code: str, channel: Channel) -> str:
@@ -356,7 +362,14 @@ class MetaOauthService:
                 raise InvalidOperationError(_OAUTH_EXCHANGE_FAILED, "oauth")
             return str(token)
         except GraphApiError as exc:
-            raise InvalidOperationError(_OAUTH_EXCHANGE_FAILED, "oauth") from exc
+            raise InvalidOperationError(
+                _OAUTH_EXCHANGE_FAILED,
+                "oauth",
+                graph_status=exc.status_code,
+                graph_code=exc.graph_code,
+                graph_type=exc.graph_type,
+                graph_message=exc.graph_message,
+            ) from exc
 
     def _exchange_instagram_code(self, code: str) -> str:
         payload = self._http.request(
@@ -425,6 +438,10 @@ class MetaOauthService:
             raise InvalidOperationError(
                 "No se encontró ninguna cuenta de Meta para este canal.",
                 "channel",
+                graph_status=exc.status_code,
+                graph_code=exc.graph_code,
+                graph_type=exc.graph_type,
+                graph_message=exc.graph_message,
             ) from exc
 
     def _discover_whatsapp(self, access_token: str) -> tuple[list[OauthCandidate], dict[str, str]]:
@@ -434,8 +451,12 @@ class MetaOauthService:
         )
         try:
             payload = self._graph_get("me/businesses", access_token, {"fields": nested_fields})
-        except GraphApiError:
-            logger.warning("meta oauth: nested WABA expansion failed")
+        except GraphApiError as exc:
+            logger.warning(
+                "meta oauth: nested WABA expansion failed status=%s code=%s",
+                exc.status_code,
+                exc.graph_code,
+            )
             payload = self._graph_get_optional("me/businesses", access_token, {"fields": "id,name"})
 
         candidates, tokens = self._collect_whatsapp_from_businesses(payload, access_token)

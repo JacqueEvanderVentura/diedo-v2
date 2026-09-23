@@ -102,6 +102,7 @@ export default function ChatChannelsPanel({ embedded }) {
       ;[
         'chatOauth',
         'chatOauthMessage',
+        'chatOauthDetail',
         'chatOauthState',
         'chatChannel',
         'chatOauthCount',
@@ -118,16 +119,19 @@ export default function ChatChannelsPanel({ embedded }) {
 
     if (oauth === 'error') {
       const hint = searchParams.get('chatOauthMessage')
+      const detail = searchParams.get('chatOauthDetail')
       const messages = {
         no_accounts:
           'Meta no encontró un WhatsApp Business o Instagram para este usuario. Revisa que el Facebook del login sea admin del WABA.',
         oauth_denied: 'Cancelaste el permiso de Meta.',
         oauth_failed: 'No se pudo completar la conexión con Meta.',
+        graph_failed: 'Meta Graph rechazó el token o la consulta de cuentas.',
         missing_state: 'La sesión OAuth es inválida. Intenta conectar de nuevo.',
         invalid_state: 'La sesión OAuth expiró. Intenta conectar de nuevo.',
         meta_not_configured: 'Faltan META_APP_ID / META_INSTAGRAM_APP_ID en el servidor.',
       }
-      toast.error(messages[hint] || messages.oauth_failed)
+      const suffix = [hint, detail].filter(Boolean).join(' · ')
+      toast.error(suffix ? `${messages[hint] || messages.oauth_failed} (${suffix})` : messages.oauth_failed)
       clearOauthParams()
       return
     }

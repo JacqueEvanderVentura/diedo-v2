@@ -24,7 +24,21 @@ class ConflictError(ApplicationError):
 
 
 class InvalidOperationError(ApplicationError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        parameter: str | None = None,
+        *,
+        graph_status: int | None = None,
+        graph_code: int | str | None = None,
+        graph_type: str | None = None,
+        graph_message: str | None = None,
+    ) -> None:
+        super().__init__(message, parameter)
+        self.graph_status = graph_status
+        self.graph_code = graph_code
+        self.graph_type = graph_type
+        self.graph_message = graph_message
 
 
 class RateLimitExceededError(ApplicationError):

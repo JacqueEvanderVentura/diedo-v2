@@ -80,6 +80,29 @@ def test_httpx_graph_client_maps_http_error(monkeypatch: pytest.MonkeyPatch) -> 
     assert exc_info.value.status_code == 400
 
 
+def test_httpx_graph_client_parses_graph_error_object(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _FakeClient(
+        response=_FakeResponse(
+            status_code=400,
+            payload={
+                "error": {
+                    "message": "Unsupported get request",
+                    "type": "OAuthException",
+                    "code": 100,
+                }
+            },
+        )
+    )
+    _install_fake_httpx(monkeypatch, client=client)
+
+    with pytest.raises(GraphApiError) as exc_info:
+        _HttpxGraphClient().request("GET", "https://graph.facebook.com/v21.0/me/businesses")
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.graph_code == 100
+    assert exc_info.value.graph_type == "OAuthException"
+    assert exc_info.value.graph_message == "Unsupported get request"
+
+
 def test_httpx_graph_client_rejects_non_object_json(monkeypatch: pytest.MonkeyPatch) -> None:
     client = _FakeClient(response=_FakeResponse(status_code=200, payload=["not", "a", "dict"]))
     _install_fake_httpx(monkeypatch, client=client)

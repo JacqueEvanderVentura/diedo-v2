@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Annotated, Any, cast
 from urllib.parse import urlencode, urlparse
 from uuid import UUID
@@ -212,6 +213,19 @@ def _allowed_return_origin(origin: str | None) -> str | None:
     return None
 
 
+def _oauth_error_detail(exc: InvalidOperationError) -> str:
+    parts: list[str] = []
+    if exc.graph_status is not None:
+        parts.append(f"http{exc.graph_status}")
+    if exc.graph_code is not None:
+        parts.append(f"code{exc.graph_code}")
+    if exc.graph_type:
+        safe_type = re.sub(r"[^A-Za-z0-9_]", "", exc.graph_type)[:40]
+        if safe_type:
+            parts.append(safe_type)
+    return "_".join(parts)
+
+
 def _frontend_oauth_return(return_origin: str | None = None, **params: str) -> str:
     base = (return_origin or settings.public_app_url).rstrip("/")
     query = urlencode({key: value for key, value in params.items() if value})
@@ -251,17 +265,29 @@ def meta_oauth_callback(
         database.commit()
     except InvalidOperationError as exc:
         database.rollback()
-        logger.warning("meta oauth callback rejected parameter=%s", exc.parameter)
-        code_hint = {
-            "channel": "no_accounts",
-            "oauth": "oauth_denied" if error else "oauth_failed",
-            "meta": "meta_not_configured",
-        }.get(exc.parameter or "", "oauth_failed")
+        logger.warning(
+            "meta oauth callback rejected parameter=%s graph_status=%s graph_code=%s "
+            "graph_type=%s graph_message=%s",
+            exc.parameter,
+            exc.graph_status,
+            exc.graph_code,
+            exc.graph_type,
+            exc.graph_message,
+        )
+        if exc.graph_status is not None:
+            code_hint = "graph_failed"
+        else:
+            code_hint = {
+                "channel": "no_accounts",
+                "oauth": "oauth_denied" if error else "oauth_failed",
+                "meta": "meta_not_configured",
+            }.get(exc.parameter or "", "oauth_failed")
         return RedirectResponse(
             _frontend_oauth_return(
                 return_origin,
                 chatOauth="error",
                 chatOauthMessage=code_hint,
+                chatOauthDetail=_oauth_error_detail(exc),
             ),
             status_code=status.HTTP_302_FOUND,
         )
