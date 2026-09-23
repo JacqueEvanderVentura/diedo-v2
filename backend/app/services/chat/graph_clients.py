@@ -8,6 +8,14 @@ from app.config import settings
 GraphRequestFn = Callable[..., dict[str, Any]]
 
 
+class GraphApiError(Exception):
+    """Graph HTTP failure without embedding tokens or response bodies."""
+
+    def __init__(self, *, status_code: int | None) -> None:
+        self.status_code = status_code
+        super().__init__("graph_request_failed")
+
+
 class GraphHttpClient(Protocol):
     def request(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]: ...
 
@@ -17,13 +25,17 @@ class _HttpxGraphClient:
         import httpx
 
         timeout = kwargs.pop("timeout", 30.0)
-        with httpx.Client(timeout=timeout) as client:
-            response = client.request(method, url, **kwargs)
-            response.raise_for_status()
-            payload = response.json()
-            if not isinstance(payload, dict):
-                raise TypeError("Graph API response must be a JSON object.")
-            return payload
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                response = client.request(method, url, **kwargs)
+        except httpx.RequestError as exc:
+            raise GraphApiError(status_code=None) from exc
+        if response.status_code >= 400:
+            raise GraphApiError(status_code=response.status_code)
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise TypeError("Graph API response must be a JSON object.")
+        return payload
 
 
 def _default_graph_client() -> GraphHttpClient:

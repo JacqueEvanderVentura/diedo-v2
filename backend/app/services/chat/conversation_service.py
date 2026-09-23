@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -13,9 +14,15 @@ from app.repositories.chat import (
     MessagePage,
 )
 from app.services.authorization import PermissionGrant
-from app.services.chat.graph_clients import InstagramMessagingClient, WhatsAppCloudClient
+from app.services.chat.graph_clients import (
+    GraphApiError,
+    InstagramMessagingClient,
+    WhatsAppCloudClient,
+)
 from app.services.chat.meta_parsers import message_preview
 from app.services.errors import InvalidOperationError, ResourceNotFoundError
+
+logger = logging.getLogger(__name__)
 
 _MESSAGING_WINDOW = timedelta(hours=24)
 
@@ -99,22 +106,54 @@ class ChatService:
             )
 
         recipient = conversation.participant_provider_id
-        if record.channel == "whatsapp":
-            provider_message_id = self._whatsapp.send_text(
-                phone_number_id=account.provider_account_id,
-                access_token=token,
-                to=recipient,
-                body=body,
+        try:
+            if record.channel == "whatsapp":
+                provider_message_id = self._whatsapp.send_text(
+                    phone_number_id=account.provider_account_id,
+                    access_token=token,
+                    to=recipient,
+                    body=body,
+                )
+            elif record.channel == "instagram":
+                provider_message_id = self._instagram.send_text(
+                    ig_user_id=account.provider_account_id,
+                    access_token=token,
+                    recipient_id=recipient,
+                    body=body,
+                )
+            else:
+                raise InvalidOperationError("Canal de chat no soportado.", "channel")
+        except GraphApiError as exc:
+            logger.warning(
+                "chat send failed channel=%s conversation_id=%s graph_status=%s",
+                record.channel,
+                conversation.id,
+                exc.status_code,
             )
-        elif record.channel == "instagram":
-            provider_message_id = self._instagram.send_text(
-                ig_user_id=account.provider_account_id,
-                access_token=token,
-                recipient_id=recipient,
-                body=body,
+            raise InvalidOperationError(
+                "No se pudo entregar el mensaje a Meta. Revisa la conexión de la cuenta.",
+                "chatSend",
+            ) from exc
+        except TypeError:
+            logger.warning(
+                "chat send failed channel=%s conversation_id=%s malformed_graph_response=1",
+                record.channel,
+                conversation.id,
             )
-        else:
-            raise InvalidOperationError("Canal de chat no soportado.", "channel")
+            raise InvalidOperationError(
+                "No se pudo entregar el mensaje a Meta. Revisa la conexión de la cuenta.",
+                "chatSend",
+            ) from None
+        except ValueError:
+            logger.warning(
+                "chat send failed channel=%s conversation_id=%s malformed_graph_response=1",
+                record.channel,
+                conversation.id,
+            )
+            raise InvalidOperationError(
+                "No se pudo entregar el mensaje a Meta. Revisa la conexión de la cuenta.",
+                "chatSend",
+            ) from None
 
         message = ChatMessage(
             workspace_id=grant.workspace_id,

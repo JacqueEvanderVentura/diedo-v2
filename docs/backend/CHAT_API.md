@@ -1,8 +1,9 @@
 # Chat (Instagram + WhatsApp)
 
+Status: **Fase 6** — webhook HTTPS público, runbook de go-live y checklist App Review.
+`VITE_FEATURE_CHAT` permanece `false` en producción hasta el corte. `wa.me` no se reemplaza.
 
-
-Status: **Fase 4–5** — UI inbox en `/chat`, OAuth y asignación de sucursales. Webhook público live / App Review: Fase 6.
+Runbook: [CHAT_GO_LIVE.md](CHAT_GO_LIVE.md).
 
 
 
@@ -154,6 +155,6 @@ Flujo UI: **Conectar** → login Meta → callback → (opcional) elegir cuenta 
 
 4. Usuarios tester en la app para IG/WA en modo Development.
 
-5. Webhook público y App Review: **Fase 6**.
+5. Webhook y App Review: ver [CHAT_GO_LIVE.md](CHAT_GO_LIVE.md).
 
 

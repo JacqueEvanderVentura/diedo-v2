@@ -107,6 +107,22 @@ def test_meta_webhook_verify_challenge(client, meta_webhook_settings) -> None:
 
 
 @pytest.mark.integration
+def test_meta_webhook_verify_rejects_missing_or_wrong_token(client, meta_webhook_settings) -> None:
+    missing = client.get("/api/v1/webhooks/meta")
+    assert missing.status_code == 403
+
+    wrong = client.get(
+        "/api/v1/webhooks/meta",
+        params={
+            "hub.mode": "subscribe",
+            "hub.verify_token": "not-the-token",
+            "hub.challenge": "123",
+        },
+    )
+    assert wrong.status_code == 403
+
+
+@pytest.mark.integration
 def test_meta_webhook_rejects_invalid_signature(client, meta_webhook_settings) -> None:
     body = json.dumps(_load_fixture("meta_whatsapp_text.json")).encode("utf-8")
     response = client.post(
@@ -118,6 +134,22 @@ def test_meta_webhook_rejects_invalid_signature(client, meta_webhook_settings) -
         },
     )
     assert response.status_code == 403
+
+
+@pytest.mark.integration
+def test_meta_webhook_rejects_oversized_payload(client, meta_webhook_settings) -> None:
+    from app.api.routers.meta_webhooks import MAX_META_WEBHOOK_BYTES
+
+    body = b"{" + (b"a" * (MAX_META_WEBHOOK_BYTES + 1)) + b"}"
+    response = client.post(
+        "/api/v1/webhooks/meta",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": _sign(body),
+        },
+    )
+    assert response.status_code == 413
 
 
 @pytest.mark.integration
@@ -223,6 +255,22 @@ def test_meta_webhook_unknown_account_returns_200(client, meta_webhook_settings)
             select(ChatMessage).where(ChatMessage.provider_message_id == message_id)
         )
         assert stored is None
+
+
+@pytest.mark.integration
+def test_meta_webhook_unknown_object_returns_200(client, meta_webhook_settings) -> None:
+    payload = {"object": "user", "entry": []}
+    body = json.dumps(payload).encode("utf-8")
+    response = client.post(
+        "/api/v1/webhooks/meta",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": _sign(body),
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["success"] is True
 
 
 @pytest.mark.integration

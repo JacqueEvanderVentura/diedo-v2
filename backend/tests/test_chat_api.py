@@ -11,7 +11,7 @@ from app.db.models import (
     ChatMessage,
 )
 from app.db.session import session_scope
-from app.services.chat.graph_clients import WhatsAppCloudClient
+from app.services.chat.graph_clients import GraphApiError, WhatsAppCloudClient
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
 from sqlalchemy import select, update
@@ -125,6 +125,35 @@ def test_chat_api_send_rejects_expired_window(client: TestClient) -> None:
     body = response.json()
     parameter = body.get("parameter") or body.get("detail", {}).get("parameter")
     assert parameter == "messagingWindow"
+
+
+@pytest.mark.integration
+def test_chat_api_send_maps_graph_failure(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    headers = _login(client)
+    with session_scope() as session:
+        summary = bootstrap_local_foundation(session)
+        conversation, _, _ = seed_whatsapp_conversation(
+            session,
+            workspace_id=summary.workspace_id,
+            branch_id=summary.branch_id,
+        )
+
+    def fail_send(self, **kwargs):
+        raise GraphApiError(status_code=400)
+
+    monkeypatch.setattr(WhatsAppCloudClient, "send_text", fail_send)
+
+    response = client.post(
+        f"/api/v1/chat/conversations/{conversation.id}/messages",
+        headers=headers,
+        json={"body": "Fallo Graph"},
+    )
+    assert response.status_code == 400
+    body = response.json()
+    parameter = body.get("parameter") or body.get("detail", {}).get("parameter")
+    assert parameter == "chatSend"
 
 
 @pytest.mark.integration
