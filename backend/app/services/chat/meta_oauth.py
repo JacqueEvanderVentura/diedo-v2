@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.models.chat import ChatChannelAccount, ChatOauthState
-from app.services.chat.graph_clients import GraphHttpClient, _default_graph_client
+from app.services.chat.graph_clients import GraphApiError, GraphHttpClient, _default_graph_client
 from app.services.errors import InvalidOperationError, ResourceNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -23,12 +23,13 @@ Channel = Literal["instagram", "whatsapp"]
 _OAUTH_TTL = timedelta(minutes=20)
 
 _SCOPES: dict[Channel, str] = {
-    "instagram": (
-        "pages_show_list,pages_messaging,"
-        "instagram_business_basic,instagram_business_manage_messages"
-    ),
+    # Instagram Login rejects Facebook Page scopes (Invalid platform app).
+    "instagram": "instagram_business_basic,instagram_business_manage_messages",
     "whatsapp": "whatsapp_business_management,whatsapp_business_messaging,business_management",
 }
+
+_WA_PHONE_FIELDS = "id,display_phone_number,verified_name"
+_WA_WABA_FIELDS = f"id,name,phone_numbers{{{_WA_PHONE_FIELDS}}}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,7 +67,10 @@ class MetaOauthService:
         channel: Channel,
         return_origin: str | None = None,
     ) -> OauthStartResult:
-        self._require_meta_app_configured()
+        if channel == "instagram":
+            self._require_instagram_app_configured()
+        else:
+            self._require_meta_app_configured()
         bootstrap: dict[str, str] = {}
         if return_origin:
             bootstrap["return_origin"] = return_origin
@@ -87,6 +91,8 @@ class MetaOauthService:
                 "state": str(state.id),
                 "scope": _SCOPES[channel],
                 "response_type": "code",
+                "enable_fb_login": "0",
+                "force_authentication": "1",
             }
             url = f"https://www.instagram.com/oauth/authorize?{urlencode(params)}"
         else:
@@ -268,14 +274,27 @@ class MetaOauthService:
                 "meta",
             )
 
+    def _require_instagram_app_configured(self) -> None:
+        if not settings.meta_instagram_app_id or settings.meta_instagram_app_secret is None:
+            raise InvalidOperationError(
+                "Instagram Login no configurada (META_INSTAGRAM_APP_ID / META_INSTAGRAM_APP_SECRET).",
+                "meta",
+            )
+
     def _instagram_app_id(self) -> str:
-        return settings.meta_instagram_app_id or settings.meta_app_id or ""
+        app_id = settings.meta_instagram_app_id
+        if not app_id:
+            raise InvalidOperationError(
+                "Instagram Login no configurada (META_INSTAGRAM_APP_ID / META_INSTAGRAM_APP_SECRET).",
+                "meta",
+            )
+        return app_id
 
     def _instagram_app_secret(self) -> str:
-        secret = settings.meta_instagram_app_secret or settings.meta_app_secret
+        secret = settings.meta_instagram_app_secret
         if secret is None:
             raise InvalidOperationError(
-                "Meta App no configurada (META_APP_ID / META_APP_SECRET).",
+                "Instagram Login no configurada (META_INSTAGRAM_APP_ID / META_INSTAGRAM_APP_SECRET).",
                 "meta",
             )
         return secret.get_secret_value()
@@ -307,25 +326,42 @@ class MetaOauthService:
             headers={"Authorization": f"Bearer {access_token}"},
         )
 
+    def _graph_get_optional(
+        self,
+        path: str,
+        access_token: str,
+        params: dict[str, Any] | None = None,
+        *,
+        host: str = "graph.facebook.com",
+    ) -> dict:
+        try:
+            return self._graph_get(path, access_token, params, host=host)
+        except GraphApiError:
+            logger.warning("meta oauth graph GET failed path=%s", path.split("?")[0])
+            return {}
+
     def _exchange_code(self, code: str, channel: Channel) -> str:
-        if channel == "instagram":
-            return self._exchange_instagram_code(code)
-        app_secret = self._facebook_app_secret()
-        version = settings.meta_graph_api_version
-        params = urlencode(
-            {
-                "client_id": settings.meta_app_id,
-                "client_secret": app_secret,
-                "redirect_uri": settings.meta_oauth_redirect_uri,
-                "code": code,
-            }
-        )
-        url = f"https://graph.facebook.com/{version}/oauth/access_token?{params}"
-        payload = self._http.request("GET", url)
-        token = payload.get("access_token")
-        if not token:
-            raise InvalidOperationError("No se pudo intercambiar el código OAuth.", "oauth")
-        return str(token)
+        try:
+            if channel == "instagram":
+                return self._exchange_instagram_code(code)
+            app_secret = self._facebook_app_secret()
+            version = settings.meta_graph_api_version
+            params = urlencode(
+                {
+                    "client_id": settings.meta_app_id,
+                    "client_secret": app_secret,
+                    "redirect_uri": settings.meta_oauth_redirect_uri,
+                    "code": code,
+                }
+            )
+            url = f"https://graph.facebook.com/{version}/oauth/access_token?{params}"
+            payload = self._http.request("GET", url)
+            token = payload.get("access_token")
+            if not token:
+                raise InvalidOperationError("No se pudo intercambiar el código OAuth.", "oauth")
+            return str(token)
+        except GraphApiError as exc:
+            raise InvalidOperationError("No se pudo intercambiar el código OAuth.", "oauth") from exc
 
     def _exchange_instagram_code(self, code: str) -> str:
         payload = self._http.request(
@@ -349,73 +385,139 @@ class MetaOauthService:
         return str(token)
 
     def _to_long_lived_token(self, short_token: str, channel: Channel) -> str:
-        if channel == "instagram":
-            app_secret = self._instagram_app_secret()
+        try:
+            if channel == "instagram":
+                app_secret = self._instagram_app_secret()
+                params = urlencode(
+                    {
+                        "grant_type": "ig_exchange_token",
+                        "client_secret": app_secret,
+                        "access_token": short_token,
+                    }
+                )
+                payload = self._http.request(
+                    "GET",
+                    f"https://graph.instagram.com/access_token?{params}",
+                )
+                token = payload.get("access_token")
+                return str(token or short_token)
+            version = settings.meta_graph_api_version
+            app_secret = self._facebook_app_secret()
             params = urlencode(
                 {
-                    "grant_type": "ig_exchange_token",
+                    "grant_type": "fb_exchange_token",
+                    "client_id": settings.meta_app_id,
                     "client_secret": app_secret,
-                    "access_token": short_token,
+                    "fb_exchange_token": short_token,
                 }
             )
-            payload = self._http.request(
-                "GET",
-                f"https://graph.instagram.com/access_token?{params}",
-            )
+            url = f"https://graph.facebook.com/{version}/oauth/access_token?{params}"
+            payload = self._http.request("GET", url)
             token = payload.get("access_token")
             return str(token or short_token)
-        version = settings.meta_graph_api_version
-        app_secret = self._facebook_app_secret()
-        params = urlencode(
-            {
-                "grant_type": "fb_exchange_token",
-                "client_id": settings.meta_app_id,
-                "client_secret": app_secret,
-                "fb_exchange_token": short_token,
-            }
-        )
-        url = f"https://graph.facebook.com/{version}/oauth/access_token?{params}"
-        payload = self._http.request("GET", url)
-        token = payload.get("access_token")
-        return str(token or short_token)
+        except GraphApiError:
+            logger.warning("meta oauth long-lived token exchange failed channel=%s", channel)
+            return short_token
 
     def _discover_accounts(
         self, channel: Channel, access_token: str
     ) -> tuple[list[OauthCandidate], dict[str, str]]:
-        if channel == "whatsapp":
-            return self._discover_whatsapp(access_token)
-        return self._discover_instagram(access_token)
+        try:
+            if channel == "whatsapp":
+                return self._discover_whatsapp(access_token)
+            return self._discover_instagram(access_token)
+        except GraphApiError as exc:
+            raise InvalidOperationError(
+                "No se encontró ninguna cuenta de Meta para este canal.",
+                "channel",
+            ) from exc
 
     def _discover_whatsapp(self, access_token: str) -> tuple[list[OauthCandidate], dict[str, str]]:
-        payload = self._graph_get(
-            "me/businesses",
-            access_token,
-            {
-                "fields": (
-                    "owned_whatsapp_business_accounts{"
-                    "id,name,phone_numbers{id,display_phone_number,verified_name}"
-                    "}"
-                ),
-            },
+        nested_fields = (
+            f"id,name,owned_whatsapp_business_accounts{{{_WA_WABA_FIELDS}}},"
+            f"client_whatsapp_business_accounts{{{_WA_WABA_FIELDS}}}"
         )
+        try:
+            payload = self._graph_get("me/businesses", access_token, {"fields": nested_fields})
+        except GraphApiError:
+            logger.warning("meta oauth: nested WABA expansion failed")
+            payload = self._graph_get_optional("me/businesses", access_token, {"fields": "id,name"})
+
+        candidates, tokens = self._collect_whatsapp_from_businesses(payload, access_token)
+        if candidates:
+            return candidates, tokens
+
+        for business in payload.get("data") or []:
+            business_id = str(business.get("id") or "")
+            if not business_id:
+                continue
+            for edge in (
+                "owned_whatsapp_business_accounts",
+                "client_whatsapp_business_accounts",
+            ):
+                wabas = self._graph_get_optional(
+                    f"{business_id}/{edge}",
+                    access_token,
+                    {"fields": _WA_WABA_FIELDS},
+                )
+                more, more_tokens = self._collect_whatsapp_from_wabas(
+                    wabas.get("data") or [],
+                    access_token,
+                )
+                candidates.extend(more)
+                tokens.update(more_tokens)
+        return candidates, tokens
+
+    def _collect_whatsapp_from_businesses(
+        self, payload: dict[str, Any], access_token: str
+    ) -> tuple[list[OauthCandidate], dict[str, str]]:
         candidates: list[OauthCandidate] = []
         tokens: dict[str, str] = {}
         for business in payload.get("data") or []:
-            for waba in (business.get("owned_whatsapp_business_accounts") or {}).get("data") or []:
-                for phone in waba.get("phone_numbers", {}).get("data") or []:
-                    phone_id = str(phone.get("id") or "")
-                    if not phone_id:
-                        continue
-                    label = str(
-                        phone.get("verified_name")
-                        or phone.get("display_phone_number")
-                        or waba.get("name")
-                        or phone_id
+            for edge in (
+                "owned_whatsapp_business_accounts",
+                "client_whatsapp_business_accounts",
+            ):
+                wabas = (business.get(edge) or {}).get("data") or []
+                more, more_tokens = self._collect_whatsapp_from_wabas(wabas, access_token)
+                candidates.extend(more)
+                tokens.update(more_tokens)
+        return candidates, tokens
+
+    def _collect_whatsapp_from_wabas(
+        self, wabas: list[Any], access_token: str
+    ) -> tuple[list[OauthCandidate], dict[str, str]]:
+        candidates: list[OauthCandidate] = []
+        tokens: dict[str, str] = {}
+        for waba in wabas:
+            if not isinstance(waba, dict):
+                continue
+            phones = (waba.get("phone_numbers") or {}).get("data") or []
+            if not phones:
+                waba_id = str(waba.get("id") or "")
+                if waba_id:
+                    listed = self._graph_get_optional(
+                        f"{waba_id}/phone_numbers",
+                        access_token,
+                        {"fields": _WA_PHONE_FIELDS},
                     )
-                    candidates.append(
-                        OauthCandidate(provider_account_id=phone_id, display_name=label)
-                    )
-                    tokens[phone_id] = access_token
+                    phones = listed.get("data") or []
+            for phone in phones:
+                if not isinstance(phone, dict):
+                    continue
+                phone_id = str(phone.get("id") or "")
+                if not phone_id:
+                    continue
+                label = str(
+                    phone.get("verified_name")
+                    or phone.get("display_phone_number")
+                    or waba.get("name")
+                    or phone_id
+                )
+                candidates.append(
+                    OauthCandidate(provider_account_id=phone_id, display_name=label)
+                )
+                tokens[phone_id] = access_token
         return candidates, tokens
 
     def _discover_instagram(self, access_token: str) -> tuple[list[OauthCandidate], dict[str, str]]:

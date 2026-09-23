@@ -166,6 +166,7 @@ def test_oauth_callback_rejects_meta_error_param(
     )
     assert callback.status_code == 302
     assert "chatOauth=error" in callback.headers["location"]
+    assert "chatOauthMessage=oauth_denied" in callback.headers["location"]
 
 
 @pytest.mark.integration

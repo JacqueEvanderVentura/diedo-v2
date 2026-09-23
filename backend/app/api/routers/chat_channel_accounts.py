@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated, Any, cast
 from urllib.parse import urlencode, urlparse
 from uuid import UUID
@@ -25,6 +26,9 @@ from app.schemas.common import ErrorResponse
 from app.services.authorization import PermissionGrant
 from app.services.chat.channel_account_service import ChatChannelAccountService
 from app.services.chat.meta_oauth import MetaOauthService
+from app.services.errors import InvalidOperationError, ResourceNotFoundError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 
@@ -245,8 +249,36 @@ def meta_oauth_callback(
             error=error or error_description,
         )
         database.commit()
+    except InvalidOperationError as exc:
+        database.rollback()
+        logger.warning("meta oauth callback rejected parameter=%s", exc.parameter)
+        code_hint = {
+            "channel": "no_accounts",
+            "oauth": "oauth_denied" if error else "oauth_failed",
+            "meta": "meta_not_configured",
+        }.get(exc.parameter or "", "oauth_failed")
+        return RedirectResponse(
+            _frontend_oauth_return(
+                return_origin,
+                chatOauth="error",
+                chatOauthMessage=code_hint,
+            ),
+            status_code=status.HTTP_302_FOUND,
+        )
+    except ResourceNotFoundError:
+        database.rollback()
+        logger.warning("meta oauth callback missing or expired state")
+        return RedirectResponse(
+            _frontend_oauth_return(
+                return_origin,
+                chatOauth="error",
+                chatOauthMessage="invalid_state",
+            ),
+            status_code=status.HTTP_302_FOUND,
+        )
     except Exception:
         database.rollback()
+        logger.exception("meta oauth callback unexpected failure")
         return RedirectResponse(
             _frontend_oauth_return(
                 return_origin,

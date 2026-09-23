@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID, uuid7
@@ -57,6 +58,12 @@ def _login(client: TestClient) -> dict[str, str]:
 def meta_oauth_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "meta_app_id", "meta-test-app-id")
     monkeypatch.setattr(settings, "meta_app_secret", SecretStr("meta-test-app-secret-32chars-min"))
+    monkeypatch.setattr(settings, "meta_instagram_app_id", "ig-test-app-id")
+    monkeypatch.setattr(
+        settings,
+        "meta_instagram_app_secret",
+        SecretStr("ig-test-app-secret-32chars-min"),
+    )
     monkeypatch.setattr(settings, "meta_oauth_redirect_uri", _REDIRECT_URI)
     monkeypatch.setattr(settings, "public_app_url", "http://localhost:5173")
     monkeypatch.setattr(
@@ -122,8 +129,12 @@ def test_oauth_start_instagram_uses_business_scopes(
     assert parsed.netloc == "www.instagram.com"
     assert parsed.path == "/oauth/authorize"
     scope = params["scope"][0]
+    assert params["client_id"] == ["ig-test-app-id"]
+    assert params["enable_fb_login"] == ["0"]
     assert "instagram_business_basic" in scope
     assert "instagram_business_manage_messages" in scope
+    assert "pages_show_list" not in scope
+    assert "pages_messaging" not in scope
     assert "instagram_basic" not in scope.split(",")
     assert "instagram_manage_messages" not in scope.split(",")
 
@@ -449,3 +460,72 @@ def test_oauth_instagram_login_auto_connects(
         )
         assert account is not None
         assert account.access_token_ciphertext == "ig-long"
+
+
+@pytest.mark.integration
+def test_oauth_start_instagram_requires_instagram_app_id(
+    client: TestClient, meta_oauth_settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "meta_instagram_app_id", None)
+    headers = _login(client)
+    response = client.post(
+        "/api/v1/chat/channel-accounts/oauth/start",
+        headers=headers,
+        json={"channel": "instagram"},
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.integration
+def test_discover_whatsapp_falls_back_to_waba_edges(meta_oauth_settings) -> None:
+    from app.services.chat.graph_clients import GraphApiError
+
+    class StepwiseHttp:
+        def request(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
+            del method, kwargs
+            if "oauth/access_token" in url:
+                return {"access_token": "short-token"}
+            if "fb_exchange_token" in url:
+                return {"access_token": "long-token"}
+            if "me/businesses" in url and "owned_whatsapp_business_accounts" in url:
+                raise GraphApiError(status_code=400)
+            if "me/businesses" in url:
+                return {"data": [{"id": "biz-1", "name": "Helios Biz"}]}
+            if "biz-1/owned_whatsapp_business_accounts" in url:
+                return {"data": [{"id": "waba-1", "name": "Demo WABA"}]}
+            if "biz-1/client_whatsapp_business_accounts" in url:
+                return {"data": []}
+            if "waba-1/phone_numbers" in url:
+                return {
+                    "data": [
+                        {
+                            "id": "15550999",
+                            "display_phone_number": "+1 555 0999",
+                            "verified_name": "Fallback WA",
+                        }
+                    ]
+                }
+            raise AssertionError(url)
+
+    with session_scope() as session:
+        summary = bootstrap_local_foundation(session)
+        state = ChatOauthState(
+            workspace_id=summary.workspace_id,
+            channel="whatsapp",
+            candidates_json=[],
+            tokens_json=None,
+            expires_at=datetime.now(UTC) + timedelta(minutes=10),
+        )
+        session.add(state)
+        session.flush()
+        state_id = state.id
+
+    with session_scope() as session:
+        oauth = MetaOauthService(session, http_client=StepwiseHttp())
+        _ws, channel, candidates, auto = oauth.handle_callback(
+            state_id=state_id, code="oauth-code", error=None
+        )
+        assert channel == "whatsapp"
+        assert auto is True
+        assert candidates[0].provider_account_id == "15550999"
+        session.commit()

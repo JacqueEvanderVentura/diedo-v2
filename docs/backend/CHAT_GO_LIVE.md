@@ -17,8 +17,10 @@ Use the **direct API host**, not the Cloudflare Worker/`/api-backend` proxy. Met
 
 | Variable | Notes |
 |---|---|
-| `META_APP_ID` | App **helios360omnichannel** |
+| `META_APP_ID` | App **helios360omnichannel** (Facebook Login / WhatsApp) |
 | `META_APP_SECRET` | App secret; used to verify `X-Hub-Signature-256` |
+| `META_INSTAGRAM_APP_ID` | Instagram App ID from Instagram Login setup (not the Facebook App ID) |
+| `META_INSTAGRAM_APP_SECRET` | Instagram App Secret from the same panel |
 | `META_WEBHOOK_VERIFY_TOKEN` | Random string you invent; same value in Meta webhook settings |
 | `META_OAUTH_REDIRECT_URI` | Exact OAuth callback URL above |
 | `META_GRAPH_API_VERSION` | `v21.0` unless Meta requires a newer version |
@@ -42,7 +44,7 @@ If verify fails: Railway has the token, the URL is HTTPS, and you are not pointi
 
 - WhatsApp: **Facebook Login** → Valid OAuth Redirect URIs = `META_OAUTH_REDIRECT_URI`.
 - Instagram: **Instagram → API setup with Instagram login → Business login settings → OAuth redirect URIs** = the same callback. Do not request `instagram_business_*` scopes on `facebook.com/dialog/oauth` (Meta returns Invalid Scopes).
-- If the dashboard shows a separate Instagram App ID, set `META_INSTAGRAM_APP_ID` / `META_INSTAGRAM_APP_SECRET` on Railway; otherwise `META_APP_ID` / `META_APP_SECRET` are used.
+- If the dashboard shows a separate Instagram App ID, set **`META_INSTAGRAM_APP_ID` / `META_INSTAGRAM_APP_SECRET` on Railway (required).** Instagram Login rejects the Facebook App ID (`Invalid platform app`) and rejects Page scopes (`pages_show_list`).
 
 ## Subscribe testers (Development mode)
 
