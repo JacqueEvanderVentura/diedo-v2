@@ -29,7 +29,11 @@ def _login(client: TestClient) -> dict[str, str]:
     return {"Authorization": f"Bearer {login.json()['accessToken']}"}
 
 
-def test_meta_oauth_handle_callback_without_candidates() -> None:
+def test_meta_oauth_handle_callback_without_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "meta_app_id", "meta-test-app-id")
+    monkeypatch.setattr(settings, "meta_app_secret", SecretStr("meta-test-app-secret-32chars-min"))
 
     from app.services.chat.meta_oauth import MetaOauthService
 

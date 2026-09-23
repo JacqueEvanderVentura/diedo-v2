@@ -280,6 +280,15 @@ class MetaOauthService:
             )
         return secret.get_secret_value()
 
+    def _facebook_app_secret(self) -> str:
+        secret = settings.meta_app_secret
+        if not settings.meta_app_id or secret is None:
+            raise InvalidOperationError(
+                "Meta App no configurada (META_APP_ID / META_APP_SECRET).",
+                "meta",
+            )
+        return secret.get_secret_value()
+
     def _graph_get(
         self,
         path: str,
@@ -301,7 +310,7 @@ class MetaOauthService:
     def _exchange_code(self, code: str, channel: Channel) -> str:
         if channel == "instagram":
             return self._exchange_instagram_code(code)
-        app_secret = settings.meta_app_secret.get_secret_value()  # type: ignore[union-attr]
+        app_secret = self._facebook_app_secret()
         version = settings.meta_graph_api_version
         params = urlencode(
             {
@@ -356,7 +365,7 @@ class MetaOauthService:
             token = payload.get("access_token")
             return str(token or short_token)
         version = settings.meta_graph_api_version
-        app_secret = settings.meta_app_secret.get_secret_value()  # type: ignore[union-attr]
+        app_secret = self._facebook_app_secret()
         params = urlencode(
             {
                 "grant_type": "fb_exchange_token",
