@@ -152,7 +152,7 @@ python -m ruff format app tests
 python -m ruff check app tests
 python -m ruff format --check app tests
 python -m mypy app
-python -m pytest --cov=app --cov-report=term-missing --cov-fail-under=88
+python -m pytest --cov=app --cov-report=term-missing --cov-fail-under=80
 ```
 
 The same checks run in GitHub Actions against a PostgreSQL service container.

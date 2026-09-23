@@ -6,7 +6,10 @@ import pytest
 from app.core.security import hash_password
 from app.db.session import session_scope
 from app.schemas.purchasing import CreateSupplierRequest, PurchaseRequestItemInput
+from app.services.authorization import PermissionGrant
+from app.services.errors import AuthorizationError
 from app.services.local_bootstrap import bootstrap_local_foundation
+from app.services.purchasing import PurchasingService, page_count
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -27,6 +30,35 @@ def _bootstrap_and_login(client: TestClient) -> tuple[dict[str, str], dict[str, 
     assert me.status_code == 200, me.text
     assert "purchasing" in me.json()["enabledModules"]
     return headers, me.json()
+
+
+def test_purchasing_service_normalizes_values_and_branch_access() -> None:
+    branch_id = uuid7()
+    other = uuid7()
+    grant = PermissionGrant(
+        permission_code="purchasing.manage",
+        workspace_id=uuid7(),
+        membership_id=uuid7(),
+        allowed_legal_entity_ids=None,
+        allowed_branch_ids=frozenset({branch_id}),
+    )
+    with pytest.raises(AuthorizationError):
+        PurchasingService._require_managed_branches(grant, {other})
+    values = PurchasingService._purchase_values(
+        {
+            "supplier_id": uuid7(),
+            "branch_id": branch_id,
+            "items": [{"name": " Tornillo ", "qty": "2", "unit": " caja ", "price": "10"}],
+            "priority": "alta",
+            "notes": "  nota  ",
+            "quote_file": {"name": "cotizacion.pdf"},
+        }
+    )
+    assert values["quote_file_name"] == "cotizacion.pdf"
+    assert values["items"][0]["name"] == "Tornillo"
+    assert values["items"][0]["unit"] == "caja"
+    assert PurchasingService._normalize_name("  Proveedor   Único ") == "proveedor único"
+    assert page_count(21, 10) == 3
 
 
 def test_purchasing_schemas_reject_duplicate_branches_and_invalid_lines() -> None:

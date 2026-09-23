@@ -358,6 +358,7 @@ def test_register_manager_mutations_do_not_disclose_cash_movements(client: TestC
 @pytest.mark.integration
 def test_manual_cash_movements_are_idempotent_and_reconcile_the_register(
     client: TestClient,
+    tmp_path: Path,
 ) -> None:
     _, branch_id = _bootstrap_isolated_branch()
     headers = _login(client)
@@ -525,6 +526,27 @@ def test_manual_cash_movements_are_idempotent_and_reconcile_the_register(
     )
     assert expense_page.status_code == 200, expense_page.text
     assert [item["id"] for item in expense_page.json()["items"]] == [expense["id"]]
+
+    storage = LocalAttachmentStorage(tmp_path / "movement-attachments")
+    app.dependency_overrides[get_attachment_storage] = lambda: storage
+    try:
+        movement_attachment = client.post(
+            f"/api/v1/pos/registers/{register['id']}/movements/{expense['id']}/attachments",
+            headers=headers,
+            files={"file": ("comprobante.png", _PNG_PROOF, "image/png")},
+        )
+        assert movement_attachment.status_code == 201, movement_attachment.text
+        listed_attachments = client.get(
+            f"/api/v1/pos/registers/{register['id']}/movements/{expense['id']}/attachments",
+            headers=headers,
+        )
+        assert listed_attachments.status_code == 200
+        assert len(listed_attachments.json()) == 1
+        content = client.get(listed_attachments.json()[0]["previewUrl"], headers=headers)
+        assert content.status_code == 200
+        assert content.content == _PNG_PROOF
+    finally:
+        app.dependency_overrides.pop(get_attachment_storage, None)
 
     close_response = client.post(
         f"/api/v1/pos/registers/{register['id']}/close",

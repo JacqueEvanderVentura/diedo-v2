@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Instagram, MessageCircle, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -57,6 +57,14 @@ export default function ChatChannelsPanel({ embedded }) {
   const [selectedBranchIds, setSelectedBranchIds] = useState([])
   const [oauthSelect, setOauthSelect] = useState(null)
   const [savingBranches, setSavingBranches] = useState(false)
+  const oauthPollRef = useRef(null)
+
+  const stopOauthPoll = useCallback(() => {
+    if (oauthPollRef.current) {
+      window.clearInterval(oauthPollRef.current)
+      oauthPollRef.current = null
+    }
+  }, [])
 
   const accountsByChannel = useMemo(() => {
     const map = { instagram: [], whatsapp: [] }
@@ -82,6 +90,8 @@ export default function ChatChannelsPanel({ embedded }) {
   useEffect(() => {
     loadAccounts()
   }, [loadAccounts])
+
+  useEffect(() => () => stopOauthPoll(), [stopOauthPoll])
 
   useEffect(() => {
     const oauth = searchParams.get('chatOauth')
@@ -135,10 +145,39 @@ export default function ChatChannelsPanel({ embedded }) {
 
   const handleConnect = async (channel) => {
     if (!canManage) return
+    stopOauthPoll()
     setConnectingChannel(channel)
     try {
       const { authorizationUrl } = await chatApi.startOAuth(channel)
-      window.location.assign(authorizationUrl)
+      const popup = window.open(authorizationUrl, 'helios-meta-oauth')
+      if (!popup) {
+        window.location.assign(authorizationUrl)
+        return
+      }
+      toast.message('Completa el permiso de Meta en la nueva pestaña. Esta pantalla se actualizará sola.')
+      const started = Date.now()
+      oauthPollRef.current = window.setInterval(async () => {
+        if (Date.now() - started > 5 * 60 * 1000) {
+          stopOauthPoll()
+          setConnectingChannel(null)
+          return
+        }
+        try {
+          const data = await chatApi.listChannelAccounts()
+          const items = data.items || []
+          setAccounts(items)
+          const connected = items.some(
+            (item) => item.channel === channel && item.connectionStatus === 'connected',
+          )
+          if (connected) {
+            stopOauthPoll()
+            setConnectingChannel(null)
+            toast.success('Cuenta Meta conectada correctamente.')
+          }
+        } catch {
+          /* keep polling until Meta finishes or the timeout */
+        }
+      }, 2500)
     } catch (error) {
       toast.error(error?.message || 'Meta no está configurada en el servidor.')
       setConnectingChannel(null)
@@ -300,7 +339,7 @@ export default function ChatChannelsPanel({ embedded }) {
                     {connectingChannel === channel ? (
                       <>
                         <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                        Redirigiendo…
+                        Abriendo Meta…
                       </>
                     ) : (
                       'Conectar'

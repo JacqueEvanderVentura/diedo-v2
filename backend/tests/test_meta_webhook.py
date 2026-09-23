@@ -83,6 +83,7 @@ def test_graph_clients_use_injected_http() -> None:
         body="Respuesta",
     )
     assert ig_id == "mid.sent.1"
+    assert "graph.instagram.com" in http.calls[1][1]
     assert len(http.calls) == 2
 
 

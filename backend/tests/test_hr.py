@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 from uuid import uuid7
 
 import pytest
@@ -11,6 +12,7 @@ from app.schemas.hr import (
     CreateLeaveRequest,
     UpdateEmployeeHrProfileRequest,
 )
+from app.services.hr import HrService, debt_values
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -31,6 +33,91 @@ def _bootstrap_and_login(client: TestClient) -> tuple[dict[str, str], dict[str, 
     me = client.get("/api/v1/auth/me", headers=headers)
     assert me.status_code == 200, me.text
     return headers, me.json()
+
+
+def test_hr_service_review_leave_and_debt_idempotency_guards() -> None:
+    from unittest.mock import Mock
+
+    from app.services.auth import AuthPrincipal
+    from app.services.authorization import PermissionGrant
+    from app.services.errors import ConflictError, InvalidOperationError, ResourceNotFoundError
+
+    workspace_id = uuid7()
+    grant = PermissionGrant(
+        permission_code="hr.manage",
+        workspace_id=workspace_id,
+        membership_id=uuid7(),
+        allowed_legal_entity_ids=None,
+        allowed_branch_ids=None,
+    )
+    principal = AuthPrincipal(
+        platform_user_id=uuid7(),
+        membership_id=grant.membership_id,
+        workspace_id=workspace_id,
+        session_id=uuid7(),
+        email="hr@example.com",
+        display_name="HR",
+    )
+    session = Mock()
+    service = HrService(session)
+    repository = Mock()
+    service._repository = repository
+
+    repository.get_employee.return_value = None
+    with pytest.raises(ResourceNotFoundError) as missing:
+        service.list_leave_requests(grant, employee_id=uuid7(), status=None, page=1, page_size=20)
+    assert missing.value.parameter == "employeeId"
+
+    leave = Mock(status="aprobada", version=1)
+    repository.get_leave_request.return_value = leave
+    with pytest.raises(InvalidOperationError) as review:
+        service.review_leave_request(
+            principal=principal,
+            grant=grant,
+            leave_request_id=uuid7(),
+            status="rechazada",
+            expected_version=1,
+        )
+    assert review.value.parameter == "status"
+
+    employee_id = uuid7()
+    repository.get_employee.return_value = Mock(id=employee_id)
+    repository.debt_by_idempotency_key.return_value = Mock(
+        employee_id=employee_id, concept="A", client_name=None, amount=Decimal("10")
+    )
+    with pytest.raises(ConflictError, match="idempotencia"):
+        service.create_debt(
+            principal=principal,
+            grant=grant,
+            employee_id=employee_id,
+            concept="B",
+            client_name=None,
+            amount=Decimal("10"),
+            idempotency_key="same-key",
+        )
+
+
+def test_hr_debt_stats_and_status_helpers() -> None:
+    employee_id = uuid7()
+    payment = SimpleNamespace(amount=Decimal("150"))
+    debt = SimpleNamespace(amount=Decimal("500"), employee_id=employee_id)
+    record = SimpleNamespace(debt=debt, payments=(payment,))
+    stats = HrService._calculate_debt_stats((record,))
+    assert stats.total_debt == Decimal("500")
+    assert stats.total_paid == Decimal("150")
+    assert stats.pending == Decimal("350")
+    assert stats.employees_with_debt == 1
+
+    paid, balance, status = debt_values(record)
+    assert paid == Decimal("150")
+    assert balance == Decimal("350")
+    assert status == "parcial"
+
+    settled = SimpleNamespace(
+        debt=SimpleNamespace(amount=Decimal("100"), employee_id=employee_id),
+        payments=(SimpleNamespace(amount=Decimal("100")),),
+    )
+    assert debt_values(settled)[2] == "pagado"
 
 
 def test_hr_schemas_enforce_dates_money_and_document_rules() -> None:

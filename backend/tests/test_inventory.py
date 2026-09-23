@@ -15,8 +15,8 @@ from app.schemas.inventory import (
 )
 from app.services.auth import AuthPrincipal
 from app.services.authorization import PermissionGrant
-from app.services.errors import ConflictError
-from app.services.inventory import InventoryService
+from app.services.errors import AuthorizationError, ConflictError, InvalidOperationError
+from app.services.inventory import AssetImageInput, InventoryService, page_count
 from app.services.local_bootstrap import BootstrapSummary, bootstrap_local_foundation
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -77,6 +77,141 @@ def _create_employee(
     )
     assert response.status_code == 201, response.text
     return response.json()
+
+
+def test_inventory_service_validates_item_kinds_branches_and_asset_images() -> None:
+    branch_id = uuid7()
+    other_branch = uuid7()
+    grant_all = PermissionGrant(
+        permission_code="inventory.manage",
+        workspace_id=uuid7(),
+        membership_id=uuid7(),
+        allowed_legal_entity_ids=None,
+        allowed_branch_ids=None,
+    )
+    grant_limited = PermissionGrant(
+        permission_code="inventory.manage",
+        workspace_id=grant_all.workspace_id,
+        membership_id=grant_all.membership_id,
+        allowed_legal_entity_ids=None,
+        allowed_branch_ids=frozenset({branch_id}),
+    )
+    with pytest.raises(AuthorizationError):
+        InventoryService._require_visible_branch(grant_limited, other_branch)
+    with pytest.raises(AuthorizationError):
+        InventoryService._require_managed_branches(grant_limited, {other_branch})
+
+    with pytest.raises(InvalidOperationError) as service_price:
+        InventoryService._validate_item_kind_fields(
+            item_type="service",
+            sale_price=None,
+            unit_cost=None,
+            tax_rate=Decimal("0"),
+            stock=None,
+            minimum_stock=None,
+        )
+    assert service_price.value.parameter == "salePrice"
+    with pytest.raises(InvalidOperationError) as supply_cost:
+        InventoryService._validate_item_kind_fields(
+            item_type="supply",
+            sale_price=None,
+            unit_cost=None,
+            tax_rate=Decimal("0"),
+            stock=Decimal("1"),
+            minimum_stock=None,
+        )
+    assert supply_cost.value.parameter == "unitCost"
+    with pytest.raises(InvalidOperationError):
+        InventoryService._validate_update_kind_fields("service", {"unit_cost": Decimal("1")})
+    with pytest.raises(InvalidOperationError):
+        InventoryService._validate_update_kind_fields("supply", {"sale_price": Decimal("1")})
+
+    with pytest.raises(InvalidOperationError) as empty_files:
+        InventoryService._validate_asset_image(
+            AssetImageInput(filename="x.png", content_type="image/png", content=b""),
+            max_bytes=1024,
+        )
+    assert empty_files.value.parameter == "files"
+    with pytest.raises(InvalidOperationError) as bad_image:
+        InventoryService._validate_asset_image(
+            AssetImageInput(filename="x.png", content_type="image/png", content=b"not-png"),
+            max_bytes=1024,
+        )
+    assert bad_image.value.parameter == "files"
+    validated = InventoryService._validate_asset_image(
+        AssetImageInput(
+            filename="foto.png",
+            content_type="image/png; charset=binary",
+            content=b"\x89PNG\r\n\x1a\nok",
+        ),
+        max_bytes=1024,
+    )
+    assert validated.content_type == "image/png"
+    assert page_count(0, 10) == 0
+    assert page_count(11, 10) == 2
+
+
+def test_inventory_add_asset_images_requires_files_and_handles_conflicts() -> None:
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from app.services.auth import AuthPrincipal
+    from sqlalchemy.exc import IntegrityError
+
+    workspace_id = uuid7()
+    grant = PermissionGrant(
+        permission_code="inventory.manage",
+        workspace_id=workspace_id,
+        membership_id=uuid7(),
+        allowed_legal_entity_ids=None,
+        allowed_branch_ids=None,
+    )
+    principal = AuthPrincipal(
+        platform_user_id=uuid7(),
+        membership_id=grant.membership_id,
+        workspace_id=workspace_id,
+        session_id=uuid7(),
+        email="inv@example.com",
+        display_name="Inventory",
+    )
+    session = Mock()
+    service = InventoryService(session)
+    repository = Mock()
+    service._repository = repository
+    asset = SimpleNamespace(id=uuid7(), version=3)
+    repository.get_asset.return_value = SimpleNamespace(asset=asset)
+    repository.get_asset_for_update.return_value = asset
+    service.get_asset = Mock(return_value=SimpleNamespace(asset=asset))
+
+    with pytest.raises(InvalidOperationError) as empty:
+        service.add_asset_images(
+            principal=principal,
+            grant=grant,
+            asset_id=asset.id,
+            expected_version=3,
+            inputs=(),
+            max_files=3,
+            max_bytes=1024,
+        )
+    assert empty.value.parameter == "files"
+
+    image = AssetImageInput(
+        filename="ok.png",
+        content_type="image/png",
+        content=b"\x89PNG\r\n\x1a\nok",
+    )
+    repository.add_asset_attachments.side_effect = IntegrityError("insert", {}, Exception("dup"))
+    with pytest.raises(ConflictError, match="imágenes"):
+        service.add_asset_images(
+            principal=principal,
+            grant=grant,
+            asset_id=asset.id,
+            expected_version=3,
+            inputs=(image,),
+            max_files=3,
+            max_bytes=1024,
+        )
+    session.rollback.assert_called_once()
 
 
 def test_inventory_schemas_reject_ambiguous_or_unsafe_mutations() -> None:
@@ -535,6 +670,30 @@ def test_inventory_complete_http_contract_and_idempotent_ledger(client: TestClie
     assert missing_asset.status_code == 404
     assert missing_asset.json()["parameter"] == "assetId"
 
+    asset_image = client.post(
+        f"/api/v1/inventory/assets/{updated_asset.json()['id']}/attachments",
+        headers=headers,
+        data={"version": str(updated_asset.json()["version"])},
+        files=[("files", ("foto.png", b"\x89PNG\r\n\x1a\nasset", "image/png"))],
+    )
+    assert asset_image.status_code == 200, asset_image.text
+    attachment_id = asset_image.json()["attachments"][0]["id"]
+    preview = client.get(
+        f"/api/v1/inventory/assets/{updated_asset.json()['id']}/attachments/{attachment_id}/content",
+        headers=headers,
+    )
+    assert preview.status_code == 200
+    assert preview.content.startswith(b"\x89PNG")
+
+    empty_images = client.post(
+        f"/api/v1/inventory/assets/{updated_asset.json()['id']}/attachments",
+        headers=headers,
+        data={"version": str(asset_image.json()["version"])},
+        files=[],
+    )
+    assert empty_images.status_code == 400
+    assert empty_images.json()["parameter"] == "files"
+
     employee = _create_employee(client, headers, branch_id, suffix)
     outbound_payload = {
         "branchId": branch_id,
@@ -567,6 +726,18 @@ def test_inventory_complete_http_contract_and_idempotent_ledger(client: TestClie
     )
     assert Decimal(supply_after_output.json()["stockQuantity"]) == Decimal("2")
     assert supply_after_output.json()["stockStatus"] == "low"
+
+    no_change_adjustment = client.post(
+        "/api/v1/inventory/movements/adjustments",
+        headers={**headers, "Idempotency-Key": f"inventory-no-change-{suffix}"},
+        json={
+            "branchId": branch_id,
+            "comment": "Sin cambio",
+            "items": [{"itemId": supply["id"], "quantity": "2"}],
+        },
+    )
+    assert no_change_adjustment.status_code == 400
+    assert no_change_adjustment.json()["parameter"] == "items"
 
     adjustment_response = client.post(
         "/api/v1/inventory/movements/adjustments",

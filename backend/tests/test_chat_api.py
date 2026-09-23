@@ -11,12 +11,16 @@ from app.db.models import (
     ChatMessage,
 )
 from app.db.session import session_scope
-from app.services.chat.graph_clients import GraphApiError, WhatsAppCloudClient
+from app.services.chat.graph_clients import (
+    GraphApiError,
+    InstagramMessagingClient,
+    WhatsAppCloudClient,
+)
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
 from sqlalchemy import select, update
 
-from tests.chat_test_helpers import seed_whatsapp_conversation
+from tests.chat_test_helpers import seed_instagram_conversation, seed_whatsapp_conversation
 
 _OWNER_EMAIL = "owner@erp.dev"
 _OWNER_PASSWORD = "chat-api-owner-password-not-a-secret"
@@ -149,6 +153,92 @@ def test_chat_api_send_maps_graph_failure(
         f"/api/v1/chat/conversations/{conversation.id}/messages",
         headers=headers,
         json={"body": "Fallo Graph"},
+    )
+    assert response.status_code == 400
+    body = response.json()
+    parameter = body.get("parameter") or body.get("detail", {}).get("parameter")
+    assert parameter == "chatSend"
+
+
+@pytest.mark.integration
+def test_chat_api_send_instagram_message(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    headers = _login(client)
+    with session_scope() as session:
+        summary = bootstrap_local_foundation(session)
+        conversation, _, _ = seed_instagram_conversation(
+            session,
+            workspace_id=summary.workspace_id,
+            branch_id=summary.branch_id,
+        )
+
+    def fake_send(self, **kwargs):
+        assert kwargs["access_token"] == "ig-page-token"
+        return f"mid.outbound.{uuid7()}"
+
+    monkeypatch.setattr(InstagramMessagingClient, "send_text", fake_send)
+
+    sent = client.post(
+        f"/api/v1/chat/conversations/{conversation.id}/messages",
+        headers=headers,
+        json={"body": "Respuesta IG"},
+    )
+    assert sent.status_code == 201, sent.text
+    assert sent.json()["bodyText"] == "Respuesta IG"
+
+
+@pytest.mark.integration
+def test_chat_api_send_maps_value_error_from_graph(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    headers = _login(client)
+    with session_scope() as session:
+        summary = bootstrap_local_foundation(session)
+        conversation, _, _ = seed_whatsapp_conversation(
+            session,
+            workspace_id=summary.workspace_id,
+            branch_id=summary.branch_id,
+        )
+
+    def fail_send(self, **kwargs):
+        raise ValueError("missing message id")
+
+    monkeypatch.setattr(WhatsAppCloudClient, "send_text", fail_send)
+
+    response = client.post(
+        f"/api/v1/chat/conversations/{conversation.id}/messages",
+        headers=headers,
+        json={"body": "Malformed"},
+    )
+    assert response.status_code == 400
+    body = response.json()
+    parameter = body.get("parameter") or body.get("detail", {}).get("parameter")
+    assert parameter == "chatSend"
+
+
+@pytest.mark.integration
+def test_chat_api_send_maps_type_error_from_graph(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    headers = _login(client)
+    with session_scope() as session:
+        summary = bootstrap_local_foundation(session)
+        conversation, _, _ = seed_instagram_conversation(
+            session,
+            workspace_id=summary.workspace_id,
+            branch_id=summary.branch_id,
+        )
+
+    def fail_send(self, **kwargs):
+        raise TypeError("bad response")
+
+    monkeypatch.setattr(InstagramMessagingClient, "send_text", fail_send)
+
+    response = client.post(
+        f"/api/v1/chat/conversations/{conversation.id}/messages",
+        headers=headers,
+        json={"body": "Malformed"},
     )
     assert response.status_code == 400
     body = response.json()

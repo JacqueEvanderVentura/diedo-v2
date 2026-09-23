@@ -258,6 +258,43 @@ def _appointment_payload(
     }
 
 
+def test_agenda_service_schedule_recurrence_and_money_rules() -> None:
+    from datetime import time
+
+    from app.services.agenda import AgendaService
+    from app.services.errors import InvalidOperationError
+
+    assert AgendaService._inside_block(time(10, 0), time(11, 0), {"start": "09:00", "end": "12:00"})
+    assert not AgendaService._inside_block(time(8, 0), time(9, 0), {"start": "bad"})
+    weekly = AgendaService._recurrence_dates(date(2026, 1, 1), "weekly", 3)
+    assert weekly == [date(2026, 1, 1), date(2026, 1, 8), date(2026, 1, 15)]
+    monthly = AgendaService._recurrence_dates(date(2026, 1, 31), "monthly", 2)
+    assert monthly == [date(2026, 1, 31), date(2026, 2, 28)]
+    start, end = AgendaService._schedule_window(
+        scheduled_date=date(2026, 6, 1),
+        scheduled_time=time(9, 30),
+        duration_minutes=60,
+        timezone="America/Santo_Domingo",
+    )
+    assert end > start
+    with pytest.raises(InvalidOperationError) as money:
+        AgendaService._validate_money(
+            {"price": Decimal("100"), "pending_amount": Decimal("120"), "pending_payment": True}
+        )
+    assert money.value.parameter == "pendingAmount"
+    with pytest.raises(InvalidOperationError) as notes:
+        AgendaService._validate_notes("x" * 61)
+    assert notes.value.parameter == "notes"
+    with pytest.raises(InvalidOperationError) as invalid_zone:
+        AgendaService._schedule_window(
+            scheduled_date=date(2026, 6, 1),
+            scheduled_time=time(9, 0),
+            duration_minutes=30,
+            timezone="Not/A/Timezone",
+        )
+    assert invalid_zone.value.parameter == "branchId"
+
+
 def test_agenda_schemas_reject_ambiguous_recurrence_money_and_empty_updates() -> None:
     base = {
         "branchId": uuid7(),

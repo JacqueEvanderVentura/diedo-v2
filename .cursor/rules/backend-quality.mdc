@@ -1,0 +1,14 @@
+---
+description: Backend quality gate — coverage, prepush, and no-drop policy for backend changes
+globs: backend/**
+alwaysApply: false
+---
+
+# Backend quality
+
+- Coverage is **line + branch** (`branch = true` in `backend/pyproject.toml`). CI uses `--cov-fail-under` in `backend/scripts/prepush-ci.mjs` and `.github/workflows/reusable-backend-ci.yml`.
+- Do **not** lower `--cov-fail-under` or add new `app/` paths to `coverage.run.omit` to pass CI.
+- Every backend feature change must include tests for: happy path, at least one authz/404 path, and **every new `except` / error return** (Meta Graph, OAuth, validation).
+- If you add branches that only run on real HTTP (e.g. `_HttpxGraphClient`), unit-test them with stubs — do not rely only on injected fakes that skip production code.
+- Before claiming CI green on backend work, run from `backend/`: `npm run prepush` (or the commands in `backend/AGENTS.md`).
+- After a coverage wave raises the measured total by ≥1 point, ratchet `--cov-fail-under` in **both** `prepush-ci.mjs` and `reusable-backend-ci.yml`, and update `backend/README.md` / `docs/backend/COVERAGE.md`.

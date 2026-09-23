@@ -93,7 +93,13 @@ details.
 - Contract-test routes through `TestClient`.
 - Integration-test migrations and persistence against PostgreSQL.
 - Mock only external boundaries.
-- Before finishing backend work, run the commands in `AGENTS.md` and
+- Coverage is **line + branch**; CI enforces `--cov-fail-under` (see `docs/backend/COVERAGE.md`).
+- **No-drop:** never lower the fail-under or omit new `app/` code from coverage to pass CI.
+- **Ratchet:** after a wave raises measured coverage by ≥1 point, bump fail-under in prepush and
+  GitHub Actions to the new floor.
+- New features must ship tests for happy path, authz/404, and **every new error/`except` branch**
+  (Meta Graph, OAuth, validation).
+- Before finishing backend work, run the commands in `backend/AGENTS.md` and
   `.cursor/rules/backend-quality.mdc`.
 
 ## 10. Deployment status

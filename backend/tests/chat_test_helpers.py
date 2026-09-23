@@ -114,3 +114,53 @@ def seed_whatsapp_conversation(
     )
     session.flush()
     return conversation, branch_id, run_tag
+
+
+def seed_instagram_conversation(
+    session: Session,
+    *,
+    workspace_id: UUID,
+    branch_id: UUID,
+    tag: str | None = None,
+) -> tuple[ChatConversation, UUID, str]:
+    run_tag = tag or str(uuid7())
+    provider_id = f"ig-page-{run_tag}"
+    account = ChatChannelAccount(
+        workspace_id=workspace_id,
+        channel="instagram",
+        provider_account_id=provider_id,
+        display_name="@demo",
+        connection_status="connected",
+        access_token_ciphertext="ig-page-token",
+    )
+    session.add(account)
+    session.flush()
+    session.add(
+        ChatChannelAccountBranch(
+            workspace_id=workspace_id,
+            channel_account_id=account.id,
+            branch_id=branch_id,
+        )
+    )
+    thread_id = f"ig-user-{run_tag}"
+    conversation = ChatConversation(
+        workspace_id=workspace_id,
+        channel_account_id=account.id,
+        provider_thread_id=thread_id,
+        participant_provider_id=thread_id,
+        participant_display_name=f"IG {run_tag}",
+    )
+    session.add(conversation)
+    session.flush()
+    session.add(
+        ChatMessage(
+            workspace_id=workspace_id,
+            conversation_id=conversation.id,
+            provider_message_id=f"mid.inbound.{run_tag}",
+            direction="inbound",
+            body_text="Hola IG",
+            delivery_status="received",
+        )
+    )
+    session.flush()
+    return conversation, branch_id, run_tag

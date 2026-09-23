@@ -21,7 +21,7 @@ from app.db.models import (
 from app.db.session import get_engine, session_scope
 from app.schemas.crm import ImportActivityItem
 from app.services.authorization import PermissionGrant
-from app.services.crm import CrmService
+from app.services.crm import CrmService, _lead_instagram_url
 from app.services.crm_discovery import (
     CrmDiscoveryService,
     LeadDiscoveryCandidate,
@@ -29,7 +29,12 @@ from app.services.crm_discovery import (
 )
 from app.services.crm_discovery_limits import SERP_HOUR_LIMIT
 from app.services.demo_seed import seed_demo_data
-from app.services.errors import RateLimitExceededError, ServiceUnavailableError
+from app.services.errors import (
+    AuthorizationError,
+    InvalidOperationError,
+    RateLimitExceededError,
+    ServiceUnavailableError,
+)
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
@@ -1467,6 +1472,216 @@ def test_lead_star_rating_sort_nulls_last(client: TestClient) -> None:
     ratings = [item.get("starRating") for item in listed.json()["items"]]
     assert ratings[0] == "5"
     assert ratings[-1] is None
+
+
+def test_crm_service_grant_helpers_and_instagram_url() -> None:
+    from types import SimpleNamespace
+
+    explicit = SimpleNamespace(instagram_url="https://instagram.com/acme", website=None)
+    assert _lead_instagram_url(explicit) == "https://instagram.com/acme"
+    derived = SimpleNamespace(instagram_url=None, website="www.instagram.com/acme")
+    assert _lead_instagram_url(derived) == "https://www.instagram.com/acme"
+    unrelated = SimpleNamespace(instagram_url=None, website="example.com")
+    assert _lead_instagram_url(unrelated) is None
+
+    workspace_id = uuid7()
+    membership_id = uuid7()
+    branch_a, branch_b = uuid7(), uuid7()
+    crm_grant = PermissionGrant(
+        permission_code="crm.manage",
+        workspace_id=workspace_id,
+        membership_id=membership_id,
+        allowed_legal_entity_ids=None,
+        allowed_branch_ids=frozenset({branch_a, branch_b}),
+    )
+    customer_grant = PermissionGrant(
+        permission_code="customer.manage",
+        workspace_id=workspace_id,
+        membership_id=membership_id,
+        allowed_legal_entity_ids=None,
+        allowed_branch_ids=frozenset({branch_a}),
+    )
+    intersected = CrmService._intersect_grants(crm_grant, customer_grant)
+    assert intersected.allowed_branch_ids == frozenset({branch_a})
+    with pytest.raises(AuthorizationError):
+        CrmService._intersect_grants(
+            PermissionGrant(
+                permission_code="crm.manage",
+                workspace_id=uuid7(),
+                membership_id=membership_id,
+                allowed_legal_entity_ids=None,
+                allowed_branch_ids=None,
+            ),
+            customer_grant,
+        )
+    assert CrmService._import_idempotency_key("pl-lead", "  ext-1  ") == "pl-lead-ext-1"
+    with pytest.raises(InvalidOperationError):
+        CrmService._require_same_branch(branch_a, branch_b, "branchId")
+
+
+@pytest.mark.integration
+def test_crm_batch_delete_and_import_activities(client: TestClient) -> None:
+    suffix = uuid7().hex[-12:]
+    with session_scope() as session:
+        seeded = bootstrap_local_foundation(session, hash_password(_PASSWORD))
+        branch_id = session.scalar(
+            select(Branch.id).where(
+                Branch.workspace_id == seeded.workspace_id,
+                Branch.status == "active",
+            )
+        )
+        assert branch_id is not None
+
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@erp.dev", "password": _PASSWORD},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['accessToken']}"}
+    external_id = f"kommo-act-{suffix}"
+
+    imported = client.post(
+        "/api/v1/crm/import/pipeline",
+        headers={**headers, "Idempotency-Key": f"pipe-act-{suffix}"},
+        json={
+            "branchId": str(branch_id),
+            "items": [
+                {
+                    "externalId": external_id,
+                    "name": f"Lead actividades {suffix}",
+                    "phone": "8095551212",
+                    "stage": "contactado",
+                }
+            ],
+        },
+    )
+    assert imported.status_code == 201, imported.text
+    lead_id = imported.json()["items"][0]["leadId"]
+
+    activities = client.post(
+        "/api/v1/crm/import/activities",
+        headers={**headers, "Idempotency-Key": f"crm-act-{suffix}"},
+        json={
+            "branchId": str(branch_id),
+            "items": [
+                {
+                    "externalId": f"task-{suffix}",
+                    "leadExternalId": external_id,
+                    "title": "Seguimiento importado",
+                    "description": "Detalle",
+                },
+                {
+                    "externalId": f"task-bad-{suffix}",
+                    "title": "Sin lead",
+                },
+            ],
+        },
+    )
+    assert activities.status_code == 201, activities.text
+    rows = activities.json()["items"]
+    assert rows[0]["status"] == "created"
+    assert rows[0]["activityId"]
+    assert rows[1]["status"] == "error"
+
+    disposable = client.post(
+        "/api/v1/crm/leads",
+        headers={**headers, "Idempotency-Key": f"lead-del-{suffix}"},
+        json={
+            "branchId": str(branch_id),
+            "name": f"Lead eliminable {suffix}",
+            "phone": "8095553434",
+        },
+    )
+    assert disposable.status_code == 201, disposable.text
+    disposable_id = disposable.json()["id"]
+
+    deleted = client.post(
+        "/api/v1/crm/leads/batch-delete",
+        headers=headers,
+        json={"leadIds": [disposable_id, str(uuid7())]},
+    )
+    assert deleted.status_code == 200, deleted.text
+    delete_items = deleted.json()["items"]
+    assert len(delete_items) == 2
+    assert next(item for item in delete_items if item["leadId"] == disposable_id)["status"] == (
+        "deleted"
+    )
+    assert any(
+        item["status"] == "error" for item in delete_items if item["leadId"] != disposable_id
+    )
+
+    imported_lead = client.get(f"/api/v1/crm/leads/{lead_id}", headers=headers)
+    assert imported_lead.status_code == 200, imported_lead.text
+    convert = client.post(
+        f"/api/v1/crm/leads/{lead_id}/convert",
+        headers={**headers, "Idempotency-Key": f"conv-{suffix}"},
+        json={
+            "version": imported_lead.json()["version"],
+            "customerType": "person",
+            "displayName": f"Cliente {suffix}",
+            "branchIds": [str(branch_id)],
+            "lifecycleStatus": "prospecto",
+        },
+    )
+    assert convert.status_code == 200, convert.text
+
+    converted_block = client.post(
+        "/api/v1/crm/leads/batch-delete",
+        headers=headers,
+        json={"leadIds": [lead_id]},
+    )
+    assert converted_block.status_code == 200
+    assert converted_block.json()["items"][0]["status"] == "error"
+    assert "convertido" in converted_block.json()["items"][0]["message"]
+
+
+def test_crm_delete_leads_service_branches_with_mocks() -> None:
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from app.services.auth import AuthPrincipal
+
+    workspace_id = uuid7()
+    branch_id = uuid7()
+    lead_id = uuid7()
+    grant = PermissionGrant(
+        permission_code="crm.manage",
+        workspace_id=workspace_id,
+        membership_id=uuid7(),
+        allowed_legal_entity_ids=None,
+        allowed_branch_ids=None,
+    )
+    principal = AuthPrincipal(
+        platform_user_id=uuid7(),
+        membership_id=grant.membership_id,
+        workspace_id=workspace_id,
+        session_id=uuid7(),
+        email="crm@example.com",
+        display_name="CRM",
+    )
+    session = Mock()
+    service = CrmService(session)
+    repository = Mock()
+    service._repository = repository
+
+    lead = SimpleNamespace(
+        id=lead_id,
+        branch_id=branch_id,
+        status="nuevo",
+    )
+    opportunity = SimpleNamespace(id=uuid7())
+    repository.lead.return_value = lead
+    repository.opportunity_for_lead.return_value = opportunity
+    repository.opportunity_record.return_value = SimpleNamespace(quote_count=2)
+
+    results = service.delete_leads(principal=principal, grant=grant, lead_ids=[lead_id])
+    assert results[0]["status"] == "error"
+    assert "cotizaciones" in results[0]["message"]
+
+    repository.opportunity_record.return_value = SimpleNamespace(quote_count=0)
+    results = service.delete_leads(principal=principal, grant=grant, lead_ids=[lead_id])
+    assert results[0]["status"] == "deleted"
+    repository.remove_opportunity.assert_called_once()
+    repository.remove_lead.assert_called_once()
 
 
 def test_import_activity_item_ignores_contact_name_helper() -> None:

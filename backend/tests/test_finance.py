@@ -2,6 +2,7 @@ from collections.abc import Generator
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, cast
+from unittest.mock import Mock
 from uuid import UUID, uuid7
 from zoneinfo import ZoneInfo
 
@@ -14,7 +15,10 @@ from app.schemas.finance import (
     CreateFinanceLiabilityRequest,
     PayFinanceFixedExpenseRequest,
 )
+from app.services.authorization import PermissionGrant
 from app.services.demo_seed import seed_demo_data
+from app.services.errors import InvalidOperationError
+from app.services.finance import FinanceService, page_count
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import func, select
@@ -69,6 +73,57 @@ def finance_context() -> Generator[tuple[TestClient, Session]]:
         transaction.rollback()
         connection.close()
         dispose_engine()
+
+
+def test_finance_service_validates_liabilities_dates_and_masks_accounts() -> None:
+    with pytest.raises(InvalidOperationError) as pending:
+        FinanceService._validate_liability(
+            {
+                "initial_amount": "100",
+                "pending_amount": "150",
+                "type": "prestamo",
+                "paid_installments": 0,
+            }
+        )
+    assert pending.value.parameter == "pendingAmount"
+    with pytest.raises(InvalidOperationError) as cut_day:
+        FinanceService._validate_liability(
+            {
+                "initial_amount": "100",
+                "pending_amount": "100",
+                "type": "tarjeta",
+                "paid_installments": 0,
+            }
+        )
+    assert cut_day.value.parameter == "cutDay"
+    with pytest.raises(InvalidOperationError) as loan_cut:
+        FinanceService._validate_liability(
+            {
+                "initial_amount": "100",
+                "pending_amount": "100",
+                "type": "prestamo",
+                "cut_day": 5,
+                "paid_installments": 0,
+            }
+        )
+    assert loan_cut.value.parameter == "cutDay"
+    finance = FinanceService(Mock())
+    grant = PermissionGrant(
+        permission_code="finance.read",
+        workspace_id=uuid7(),
+        membership_id=uuid7(),
+        allowed_legal_entity_ids=None,
+        allowed_branch_ids=None,
+    )
+    finance._validate_filters(grant, None, date_from=date(2026, 1, 1), date_to=date(2026, 1, 31))
+    with pytest.raises(InvalidOperationError) as reversed_dates:
+        finance._validate_filters(grant, None, date_from=date(2026, 2, 1), date_to=date(2026, 1, 1))
+    assert reversed_dates.value.parameter == "dateTo"
+    assert FinanceService._mask_account_number("  12-34-5678  ") == "****5678"
+    assert FinanceService._normalize_optional_text("  hola   mundo ") == "hola mundo"
+    assert FinanceService._next_month(date(2026, 12, 15)) == date(2027, 1, 1)
+    assert FinanceService._previous_month(date(2026, 1, 15)) == date(2025, 12, 1)
+    assert page_count(25, 10) == 3
 
 
 def test_finance_schemas_reject_inconsistent_liabilities_and_periods() -> None:

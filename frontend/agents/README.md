@@ -6,6 +6,12 @@ Carpeta de contexto para agentes de IA que colaboran en el proyecto **Helios 360
 Mantener instrucciones, prompts y decisiones que los agentes deben conocer antes de
 tocar el código. Siempre presente en el repo (junto con `/docs`).
 
+## Backend coverage (monorepo)
+
+Frontend Vitest coverage is separate. If a change touches `backend/`, the Python suite must pass
+`--cov-fail-under` via `npm run prepush` in `backend/` (see `docs/backend/COVERAGE.md`). Do not
+lower that gate or omit new backend modules from coverage.
+
 ## Convenciones del proyecto
 - **Stack:** React + Vite (JS/JSX, sin TypeScript, sin Next). Sin backend real: todo mock.
 - **Estado:** Zustand (`src/stores/*`), con `persist` donde aplique.

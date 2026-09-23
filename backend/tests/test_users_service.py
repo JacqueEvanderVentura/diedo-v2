@@ -5,7 +5,7 @@ from uuid import UUID, uuid7
 import pytest
 from app.services.auth import AuthPrincipal
 from app.services.authorization import PermissionGrant
-from app.services.errors import AuthorizationError
+from app.services.errors import AuthorizationError, ConflictError
 from app.services.users import UsersService
 
 
@@ -70,6 +70,45 @@ def test_admin_cannot_reset_workspace_admin_password() -> None:
         )
 
     repository.platform_user.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_reset_password_rejects_inactive_membership() -> None:
+    principal, grant = _principal_and_grant()
+    target_membership_id = uuid7()
+    service, session, repository = _service_for_reset(target_membership_id)
+    repository.membership_for_update.return_value.status = "invited"
+    service.get_user = Mock(return_value=SimpleNamespace())
+
+    with pytest.raises(ConflictError, match="membership activado"):
+        service.reset_password(
+            principal=principal,
+            grant=grant,
+            membership_id=target_membership_id,
+            new_password="Allowed!password",
+        )
+
+    session.commit.assert_not_called()
+
+
+def test_reset_password_rejects_multi_workspace_identity() -> None:
+    principal, grant = _principal_and_grant()
+    target_membership_id = uuid7()
+    service, session, repository = _service_for_reset(target_membership_id)
+    repository.is_workspace_admin.return_value = False
+    user = SimpleNamespace(id=uuid7(), password_hash="old", password_changed_at=None, version=1)
+    repository.platform_user.return_value = user
+    repository.platform_user_membership_count.return_value = 2
+    service.get_user = Mock(return_value=SimpleNamespace())
+
+    with pytest.raises(ConflictError, match="varios workspaces"):
+        service.reset_password(
+            principal=principal,
+            grant=grant,
+            membership_id=target_membership_id,
+            new_password="Allowed!password",
+        )
+
     session.commit.assert_not_called()
 
 

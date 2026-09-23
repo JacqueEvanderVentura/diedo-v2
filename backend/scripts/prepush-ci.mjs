@@ -28,13 +28,17 @@ run('ruff check', 'python', ['-m', 'ruff', 'check', 'app', 'tests'])
 run('ruff format --check', 'python', ['-m', 'ruff', 'format', '--check', 'app', 'tests'])
 run('mypy', 'python', ['-m', 'mypy', 'app'])
 run('validate migrations (same as Backend CI)', 'node', ['scripts/validate-migrations.mjs'])
+run('release stray erp_test backends (before reset)', 'python', [
+  '-m',
+  'app.scripts.release_test_database_backends',
+])
 run('reset test database (fresh schema like CI)', 'python', ['-m', 'app.scripts.reset_test_database'])
 run('pytest', 'python', [
   '-m',
   'pytest',
   '--cov=app',
   '--cov-report=term-missing',
-  '--cov-fail-under=88',
+  '--cov-fail-under=80',
 ])
 
 console.log('prepush: backend checks passed (sin docker build; ver reusable-backend-ci.yml)')

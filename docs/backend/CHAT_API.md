@@ -149,7 +149,10 @@ Flujo UI: **Conectar** → login Meta → callback → (opcional) elegir cuenta 
 
 1. Crear app tipo Business; añadir productos **Instagram** y **WhatsApp**.
 
-2. En **Facebook Login** → Valid OAuth Redirect URIs: valor de `META_OAUTH_REDIRECT_URI`.
+2. En **Facebook Login** → Valid OAuth Redirect URIs: valor de `META_OAUTH_REDIRECT_URI` (WhatsApp).
+   En **Instagram** → API setup with Instagram login → OAuth redirect URIs: el mismo callback.
+
+Instagram usa **Instagram Login** (`instagram.com/oauth/authorize` + `instagram_business_*`), no el diálogo de Facebook Login. WhatsApp sigue en Facebook Login.
 
 3. Copiar App ID y App Secret a `META_APP_ID` / `META_APP_SECRET`.
 

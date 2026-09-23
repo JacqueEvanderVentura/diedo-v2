@@ -99,7 +99,7 @@ class InstagramMessagingClient:
         recipient_id: str,
         body: str,
     ) -> str:
-        url = f"https://graph.facebook.com/{self._version}/{ig_user_id}/messages"
+        url = f"https://graph.instagram.com/{self._version}/{ig_user_id}/messages"
         payload = self._http.request(
             "POST",
             url,

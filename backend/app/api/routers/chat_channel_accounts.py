@@ -1,12 +1,13 @@
 from typing import Annotated, Any, cast
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Response, status
+from fastapi import APIRouter, Header, Query, Response, status
 from fastapi.responses import RedirectResponse
 
 from app.api.deps import DatabaseSession, WorkspaceUpdateGrant
 from app.config import settings
+from app.core.cors import parse_cors_origins
 from app.db.models.chat import ChatChannelAccount
 from app.schemas.chat import (
     ChatChannel,
@@ -124,10 +125,12 @@ def start_channel_oauth(
     payload: ChatOauthStartRequest,
     database: DatabaseSession,
     grant: WorkspaceUpdateGrant,
+    origin: Annotated[str | None, Header()] = None,
 ) -> ChatOauthStartResponse:
     result = MetaOauthService(database).start(
         workspace_id=grant.workspace_id,
         channel=payload.channel,
+        return_origin=_allowed_return_origin(origin),
     )
     database.commit()
     return ChatOauthStartResponse(authorization_url=result.authorization_url)
@@ -180,8 +183,32 @@ def complete_channel_oauth(
 oauth_router = APIRouter(prefix="/api/v1/chat/oauth", tags=["chat"])
 
 
-def _frontend_oauth_return(**params: str) -> str:
-    base = settings.public_app_url.rstrip("/")
+def _allowed_frontend_origins() -> set[str]:
+    origins = set(parse_cors_origins(settings.cors_origins))
+    origins.add(settings.public_app_url.rstrip("/"))
+    return origins
+
+
+def _normalize_origin(value: str | None) -> str | None:
+    if not value:
+        return None
+    parsed = urlparse(value.strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    if parsed.path not in {"", "/"}:
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def _allowed_return_origin(origin: str | None) -> str | None:
+    normalized = _normalize_origin(origin)
+    if normalized and normalized in _allowed_frontend_origins():
+        return normalized
+    return None
+
+
+def _frontend_oauth_return(return_origin: str | None = None, **params: str) -> str:
+    base = (return_origin or settings.public_app_url).rstrip("/")
     query = urlencode({key: value for key, value in params.items() if value})
     path = f"{base}/configuracion?open=chat-canales"
     return f"{path}&{query}" if query else path
@@ -209,6 +236,7 @@ def meta_oauth_callback(
         )
 
     oauth = MetaOauthService(database)
+    return_origin = oauth.peek_return_origin(state_id)
     try:
         _workspace_id, channel, candidates, auto_connected = oauth.handle_callback(
             state_id=state_id,
@@ -219,17 +247,22 @@ def meta_oauth_callback(
     except Exception:
         database.rollback()
         return RedirectResponse(
-            _frontend_oauth_return(chatOauth="error", chatOauthMessage="oauth_failed"),
+            _frontend_oauth_return(
+                return_origin,
+                chatOauth="error",
+                chatOauthMessage="oauth_failed",
+            ),
             status_code=status.HTTP_302_FOUND,
         )
 
     if auto_connected:
         return RedirectResponse(
-            _frontend_oauth_return(chatOauth="connected", chatChannel=channel),
+            _frontend_oauth_return(return_origin, chatOauth="connected", chatChannel=channel),
             status_code=status.HTTP_302_FOUND,
         )
     return RedirectResponse(
         _frontend_oauth_return(
+            return_origin,
             chatOauth="select",
             chatOauthState=state,
             chatChannel=channel,

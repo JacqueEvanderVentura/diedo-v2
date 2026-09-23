@@ -5,8 +5,10 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 from app.scripts.release_test_database_backends import release_backends
@@ -35,11 +37,39 @@ def _run_alembic(*args: str) -> None:
     )
 
 
+def _recreate_public_schema(database_url: str) -> None:
+    """Wipe public schema without downgrade migrations (avoids long DDL deadlocks)."""
+    engine = create_engine(database_url, isolation_level="AUTOCOMMIT")
+    with engine.connect() as connection:
+        connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+        connection.execute(text("CREATE SCHEMA public"))
+        connection.execute(text("GRANT ALL ON SCHEMA public TO PUBLIC"))
+        connection.execute(text("GRANT ALL ON SCHEMA public TO CURRENT_USER"))
+    engine.dispose()
+
+
+def _release_and_settle(database_url: str) -> None:
+    release_backends(database_url)
+    time.sleep(0.25)
+
+
 def reset_test_database(database_url: str) -> None:
     _assert_disposable_database(database_url)
-    release_backends(database_url)
-    _run_alembic("downgrade", "base")
-    _run_alembic("upgrade", "head")
+    last_error: subprocess.CalledProcessError | None = None
+    for attempt in range(3):
+        _release_and_settle(database_url)
+        try:
+            _recreate_public_schema(database_url)
+            _run_alembic("upgrade", "head")
+            return
+        except subprocess.CalledProcessError as exc:
+            last_error = exc
+            if attempt < 2:
+                time.sleep(0.5 * (attempt + 1))
+                continue
+            raise
+    if last_error is not None:
+        raise last_error
 
 
 def main() -> None:

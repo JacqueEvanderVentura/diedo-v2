@@ -11,7 +11,7 @@ Use the **direct API host**, not the Cloudflare Worker/`/api-backend` proxy. Met
 |---|---|
 | OAuth callback (already verified) | `https://api-production-b1fb.up.railway.app/api/v1/chat/oauth/meta/callback` |
 | Webhook (GET verify + POST events) | `https://api-production-b1fb.up.railway.app/api/v1/webhooks/meta` |
-| After OAuth, users land on | `PUBLIC_APP_URL` + `/configuracion?open=chat-canales` (e.g. `https://app.helios360erp.com`) |
+| After OAuth, users land on | Origin of the tab that clicked **Conectar** (must be in `CORS_ORIGINS`), else `PUBLIC_APP_URL` + `/configuracion?open=chat-canales` |
 
 ## Railway variables (service `api`)
 
@@ -22,7 +22,7 @@ Use the **direct API host**, not the Cloudflare Worker/`/api-backend` proxy. Met
 | `META_WEBHOOK_VERIFY_TOKEN` | Random string you invent; same value in Meta webhook settings |
 | `META_OAUTH_REDIRECT_URI` | Exact OAuth callback URL above |
 | `META_GRAPH_API_VERSION` | `v21.0` unless Meta requires a newer version |
-| `PUBLIC_APP_URL` | Frontend origin, **no** trailing path |
+| `PUBLIC_APP_URL` | Fallback frontend origin if the OAuth start request has no allowed `Origin`. Set this to `https://app.helios360erp.com`, **not** `workers.dev`. Also used for email links. |
 
 Do not put Meta secrets in `frontend/.env` or Worker vars.
 
@@ -37,16 +37,18 @@ Do not put Meta secrets in `frontend/.env` or Worker vars.
 
 If verify fails: Railway has the token, the URL is HTTPS, and you are not pointing Meta at `app.helios360erp.com/api-backend/...`.
 
-## Meta Developers — Facebook Login
+## Meta Developers — Facebook Login and Instagram Login
 
-Valid OAuth Redirect URIs must include the callback URL (not only “Verificar URI”).
+- WhatsApp: **Facebook Login** → Valid OAuth Redirect URIs = `META_OAUTH_REDIRECT_URI`.
+- Instagram: **Instagram → API setup with Instagram login → Business login settings → OAuth redirect URIs** = the same callback. Do not request `instagram_business_*` scopes on `facebook.com/dialog/oauth` (Meta returns Invalid Scopes).
+- If the dashboard shows a separate Instagram App ID, set `META_INSTAGRAM_APP_ID` / `META_INSTAGRAM_APP_SECRET` on Railway; otherwise `META_APP_ID` / `META_APP_SECRET` are used.
 
 ## Subscribe testers (Development mode)
 
 Until App Review is **Live**, only testers/admins of the Meta app can DM the connected IG/WABA.
 
 1. App roles: add testers (Facebook users).
-2. Instagram professional account used for Connect must be linked to a Page the tester can use.
+2. Instagram: professional/creator account that will Connect must be added under Instagram API setup testers (or the admin’s IG). A Facebook Page is **not** required for Instagram Login.
 3. WhatsApp: add the tester’s phone under WhatsApp → **API Setup** → to numbers (Development).
 
 ## Live Development test (do this once per channel)
@@ -75,8 +77,8 @@ Request only what the product uses. HELIOS v1 is **text DMs** in a workspace inb
 |---|---|
 | `pages_show_list` | List Pages during IG OAuth |
 | `pages_messaging` | Send/receive via the Page |
-| `instagram_basic` | Identify the IG professional account |
-| `instagram_manage_messages` | Instagram Messaging DMs |
+| `instagram_business_basic` | Instagram Login: identify the professional account |
+| `instagram_business_manage_messages` | Instagram Login: send/receive DMs |
 | `whatsapp_business_management` | Discover WABA / phone numbers |
 | `whatsapp_business_messaging` | Send/receive WhatsApp Cloud text |
 | `business_management` | List businesses that own WABAs |
