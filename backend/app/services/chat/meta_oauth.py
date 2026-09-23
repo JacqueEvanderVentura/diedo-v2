@@ -30,6 +30,11 @@ _SCOPES: dict[Channel, str] = {
 
 _WA_PHONE_FIELDS = "id,display_phone_number,verified_name"
 _WA_WABA_FIELDS = f"id,name,phone_numbers{{{_WA_PHONE_FIELDS}}}"
+_INSTAGRAM_APP_MISSING = (
+    "Instagram Login no configurada "
+    "(META_INSTAGRAM_APP_ID / META_INSTAGRAM_APP_SECRET)."
+)
+_OAUTH_EXCHANGE_FAILED = "No se pudo intercambiar el código OAuth."
 
 
 @dataclass(frozen=True, slots=True)
@@ -276,27 +281,18 @@ class MetaOauthService:
 
     def _require_instagram_app_configured(self) -> None:
         if not settings.meta_instagram_app_id or settings.meta_instagram_app_secret is None:
-            raise InvalidOperationError(
-                "Instagram Login no configurada (META_INSTAGRAM_APP_ID / META_INSTAGRAM_APP_SECRET).",
-                "meta",
-            )
+            raise InvalidOperationError(_INSTAGRAM_APP_MISSING, "meta")
 
     def _instagram_app_id(self) -> str:
         app_id = settings.meta_instagram_app_id
         if not app_id:
-            raise InvalidOperationError(
-                "Instagram Login no configurada (META_INSTAGRAM_APP_ID / META_INSTAGRAM_APP_SECRET).",
-                "meta",
-            )
+            raise InvalidOperationError(_INSTAGRAM_APP_MISSING, "meta")
         return app_id
 
     def _instagram_app_secret(self) -> str:
         secret = settings.meta_instagram_app_secret
         if secret is None:
-            raise InvalidOperationError(
-                "Instagram Login no configurada (META_INSTAGRAM_APP_ID / META_INSTAGRAM_APP_SECRET).",
-                "meta",
-            )
+            raise InvalidOperationError(_INSTAGRAM_APP_MISSING, "meta")
         return secret.get_secret_value()
 
     def _facebook_app_secret(self) -> str:
@@ -358,10 +354,10 @@ class MetaOauthService:
             payload = self._http.request("GET", url)
             token = payload.get("access_token")
             if not token:
-                raise InvalidOperationError("No se pudo intercambiar el código OAuth.", "oauth")
+                raise InvalidOperationError(_OAUTH_EXCHANGE_FAILED, "oauth")
             return str(token)
         except GraphApiError as exc:
-            raise InvalidOperationError("No se pudo intercambiar el código OAuth.", "oauth") from exc
+            raise InvalidOperationError(_OAUTH_EXCHANGE_FAILED, "oauth") from exc
 
     def _exchange_instagram_code(self, code: str) -> str:
         payload = self._http.request(
@@ -381,7 +377,7 @@ class MetaOauthService:
             if entries and isinstance(entries[0], dict):
                 token = entries[0].get("access_token")
         if not token:
-            raise InvalidOperationError("No se pudo intercambiar el código OAuth.", "oauth")
+            raise InvalidOperationError(_OAUTH_EXCHANGE_FAILED, "oauth")
         return str(token)
 
     def _to_long_lived_token(self, short_token: str, channel: Channel) -> str:

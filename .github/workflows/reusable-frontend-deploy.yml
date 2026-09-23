@@ -71,7 +71,9 @@ jobs:
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         env:
           DEPLOY_URL: ${{ github.event_name == 'pull_request' && 'https://diedo-frontend-preview.helios360erp.workers.dev' || 'https://diedo-frontend-production.helios360erp.workers.dev' }}
-        run: node scripts/check-hosting.mjs "$DEPLOY_URL"
+        run: |
+          sleep 8
+          node scripts/check-hosting.mjs "$DEPLOY_URL"
 
       - name: Verify custom domain when enabled
         if: github.event_name != 'pull_request' && vars.CLOUDFLARE_CUSTOM_DOMAIN != ''

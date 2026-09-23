@@ -95,15 +95,37 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
 }
 
 assert.ok(verifiedAssets.length >= 2)
-for (const asset of verifiedAssets) {
-  const response = await fetch(`${base}${asset}`, { cache: 'no-store' })
+let assetSnapshots = []
+for (let attempt = 1; attempt <= 8; attempt += 1) {
+  assetSnapshots = []
+  let missingAsset = null
+  for (const asset of verifiedAssets) {
+    const response = await fetch(`${base}${asset}`, { cache: 'no-store' })
+    if (response.status !== 200) {
+      missingAsset = { asset, status: response.status }
+      break
+    }
+    assetSnapshots.push({ asset, response, body: await response.text() })
+  }
+  if (!missingAsset) {
+    break
+  }
+  if (attempt === 8) {
+    assert.equal(
+      missingAsset.status,
+      200,
+      `Asset ${missingAsset.asset} must be available after deploy`,
+    )
+  }
+  await sleep(2_000)
+}
+for (const { asset, response, body } of assetSnapshots) {
   assert.equal(response.status, 200)
   assert.match(
     response.headers.get('content-type'),
     asset.endsWith('.css') ? /text\/css/ : /javascript/,
   )
   assert.match(response.headers.get('cache-control'), /immutable/)
-  const body = await response.text()
   assert.ok(!body.includes('api.helios360erp.com'))
 }
 const missing = await fetch(`${base}/assets/nonexistent-migration-check.js`)
