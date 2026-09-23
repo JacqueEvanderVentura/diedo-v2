@@ -84,6 +84,7 @@ class UpdateChatChannelAccountBranchesRequest(ApiModel):
 
 class ChatOauthStartRequest(ApiModel):
     channel: ChatChannel
+    return_origin: str | None = None
 
 
 class ChatOauthStartResponse(ApiModel):

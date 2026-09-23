@@ -141,7 +141,7 @@ def _oauth_state_id_from_start(
     start = client.post(
         "/api/v1/chat/channel-accounts/oauth/start",
         headers=request_headers,
-        json={"channel": channel},
+        json={"channel": channel, "returnOrigin": origin} if origin else {"channel": channel},
     )
     assert start.status_code == 200, start.text
     parsed = urlparse(start.json()["authorizationUrl"])

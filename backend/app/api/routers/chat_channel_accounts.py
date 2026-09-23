@@ -130,7 +130,7 @@ def start_channel_oauth(
     result = MetaOauthService(database).start(
         workspace_id=grant.workspace_id,
         channel=payload.channel,
-        return_origin=_allowed_return_origin(origin),
+        return_origin=_allowed_return_origin(payload.return_origin or origin),
     )
     database.commit()
     return ChatOauthStartResponse(authorization_url=result.authorization_url)
@@ -186,6 +186,7 @@ oauth_router = APIRouter(prefix="/api/v1/chat/oauth", tags=["chat"])
 def _allowed_frontend_origins() -> set[str]:
     origins = set(parse_cors_origins(settings.cors_origins))
     origins.add(settings.public_app_url.rstrip("/"))
+    origins.add("https://app.helios360erp.com")
     return origins
 
 

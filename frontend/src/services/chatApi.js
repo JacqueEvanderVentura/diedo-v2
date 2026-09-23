@@ -18,7 +18,11 @@ export const chatApi = {
   },
 
   startOAuth(channel) {
-    return apiClient.post('/api/v1/chat/channel-accounts/oauth/start', { channel })
+    const returnOrigin = typeof window === 'undefined' ? undefined : window.location.origin
+    return apiClient.post('/api/v1/chat/channel-accounts/oauth/start', {
+      channel,
+      returnOrigin,
+    })
   },
 
   getOAuthPending(oauthStateId) {

@@ -22,7 +22,8 @@ Use the **direct API host**, not the Cloudflare Worker/`/api-backend` proxy. Met
 | `META_WEBHOOK_VERIFY_TOKEN` | Random string you invent; same value in Meta webhook settings |
 | `META_OAUTH_REDIRECT_URI` | Exact OAuth callback URL above |
 | `META_GRAPH_API_VERSION` | `v21.0` unless Meta requires a newer version |
-| `PUBLIC_APP_URL` | Fallback frontend origin if the OAuth start request has no allowed `Origin`. Set this to `https://app.helios360erp.com`, **not** `workers.dev`. Also used for email links. |
+| `PUBLIC_APP_URL` | **Set this to `https://app.helios360erp.com` now.** Fallback if the start request has no allowed origin. Also used for email links. Never leave this on `workers.dev`. |
+| `CORS_ORIGINS` | Must include `https://app.helios360erp.com` (and `workers.dev` if you still use that host). |
 
 Do not put Meta secrets in `frontend/.env` or Worker vars.
 

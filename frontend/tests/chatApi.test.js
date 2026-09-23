@@ -32,6 +32,16 @@ describe('chatApi', () => {
     })
   })
 
+  it('starts OAuth with the current window origin', async () => {
+    vi.stubGlobal('window', { location: { origin: 'https://app.helios360erp.com' } })
+    mocks.post.mockResolvedValue({ authorizationUrl: 'https://facebook.com/oauth' })
+    await chatApi.startOAuth('whatsapp')
+    expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/channel-accounts/oauth/start', {
+      channel: 'whatsapp',
+      returnOrigin: 'https://app.helios360erp.com',
+    })
+  })
+
   it('loads messages and sends text', async () => {
     mocks.get.mockResolvedValue({ items: [], totalPages: 1 })
     mocks.post.mockResolvedValue({ id: 'msg-1' })
