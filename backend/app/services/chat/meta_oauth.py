@@ -31,8 +31,7 @@ _SCOPES: dict[Channel, str] = {
 _WA_PHONE_FIELDS = "id,display_phone_number,verified_name"
 _WA_WABA_FIELDS = f"id,name,phone_numbers{{{_WA_PHONE_FIELDS}}}"
 _INSTAGRAM_APP_MISSING = (
-    "Instagram Login no configurada "
-    "(META_INSTAGRAM_APP_ID / META_INSTAGRAM_APP_SECRET)."
+    "Instagram Login no configurada (META_INSTAGRAM_APP_ID / META_INSTAGRAM_APP_SECRET)."
 )
 _OAUTH_EXCHANGE_FAILED = "No se pudo intercambiar el código OAuth."
 
@@ -510,9 +509,7 @@ class MetaOauthService:
                     or waba.get("name")
                     or phone_id
                 )
-                candidates.append(
-                    OauthCandidate(provider_account_id=phone_id, display_name=label)
-                )
+                candidates.append(OauthCandidate(provider_account_id=phone_id, display_name=label))
                 tokens[phone_id] = access_token
         return candidates, tokens
 
