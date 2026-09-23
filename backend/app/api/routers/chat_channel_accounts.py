@@ -215,6 +215,10 @@ def _allowed_return_origin(origin: str | None) -> str | None:
 
 def _oauth_error_detail(exc: InvalidOperationError) -> str:
     parts: list[str] = []
+    if exc.public_code:
+        safe_public = re.sub(r"[^A-Za-z0-9_]", "", exc.public_code)[:40]
+        if safe_public:
+            parts.append(safe_public)
     if exc.graph_status is not None:
         parts.append(f"http{exc.graph_status}")
     if exc.graph_code is not None:
@@ -302,14 +306,16 @@ def meta_oauth_callback(
             ),
             status_code=status.HTTP_302_FOUND,
         )
-    except Exception:
+    except Exception as exc:
         database.rollback()
         logger.exception("meta oauth callback unexpected failure")
+        safe_name = re.sub(r"[^A-Za-z0-9_]", "", type(exc).__name__)[:40]
         return RedirectResponse(
             _frontend_oauth_return(
                 return_origin,
                 chatOauth="error",
                 chatOauthMessage="oauth_failed",
+                chatOauthDetail=f"unexpected_{safe_name or 'error'}",
             ),
             status_code=status.HTTP_302_FOUND,
         )

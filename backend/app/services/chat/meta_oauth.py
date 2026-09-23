@@ -95,6 +95,7 @@ class MetaOauthService:
                 "state": str(state.id),
                 "scope": _SCOPES[channel],
                 "response_type": "code",
+                "enable_fb_login": "0",
             }
             url = f"https://www.instagram.com/oauth/authorize?{urlencode(params)}"
             logger.info("meta oauth start channel=instagram client_id=%s", params["client_id"])
@@ -120,9 +121,17 @@ class MetaOauthService:
     ) -> tuple[UUID, Channel, list[OauthCandidate], bool]:
         """Returns workspace_id, channel, candidates, auto_connected."""
         if error:
-            raise InvalidOperationError(f"Meta OAuth cancelado: {error}", "oauth")
+            raise InvalidOperationError(
+                f"Meta OAuth cancelado: {error}",
+                "oauth",
+                public_code="cancelled",
+            )
         if not code:
-            raise InvalidOperationError("Meta OAuth no devolvió código.", "oauth")
+            raise InvalidOperationError(
+                "Meta OAuth no devolvió código.",
+                "oauth",
+                public_code="missing_code",
+            )
 
         state = self._load_state(state_id)
         channel = _as_channel(state.channel)
@@ -134,6 +143,7 @@ class MetaOauthService:
             raise InvalidOperationError(
                 "No se encontró ninguna cuenta de Meta para este canal.",
                 "channel",
+                public_code="no_accounts",
             )
 
         state.candidates_json = [
@@ -359,12 +369,15 @@ class MetaOauthService:
             payload = self._http.request("GET", url)
             token = payload.get("access_token")
             if not token:
-                raise InvalidOperationError(_OAUTH_EXCHANGE_FAILED, "oauth")
+                raise InvalidOperationError(
+                    _OAUTH_EXCHANGE_FAILED, "oauth", public_code="exchange_empty"
+                )
             return str(token)
         except GraphApiError as exc:
             raise InvalidOperationError(
                 _OAUTH_EXCHANGE_FAILED,
                 "oauth",
+                public_code="graph_failed",
                 graph_status=exc.status_code,
                 graph_code=exc.graph_code,
                 graph_type=exc.graph_type,
@@ -389,7 +402,9 @@ class MetaOauthService:
             if entries and isinstance(entries[0], dict):
                 token = entries[0].get("access_token")
         if not token:
-            raise InvalidOperationError(_OAUTH_EXCHANGE_FAILED, "oauth")
+            raise InvalidOperationError(
+                _OAUTH_EXCHANGE_FAILED, "oauth", public_code="exchange_empty"
+            )
         return str(token)
 
     def _to_long_lived_token(self, short_token: str, channel: Channel) -> str:
@@ -438,6 +453,7 @@ class MetaOauthService:
             raise InvalidOperationError(
                 "No se encontró ninguna cuenta de Meta para este canal.",
                 "channel",
+                public_code="no_accounts",
                 graph_status=exc.status_code,
                 graph_code=exc.graph_code,
                 graph_type=exc.graph_type,

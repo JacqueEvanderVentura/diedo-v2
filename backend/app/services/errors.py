@@ -33,12 +33,14 @@ class InvalidOperationError(ApplicationError):
         graph_code: int | str | None = None,
         graph_type: str | None = None,
         graph_message: str | None = None,
+        public_code: str | None = None,
     ) -> None:
         super().__init__(message, parameter)
         self.graph_status = graph_status
         self.graph_code = graph_code
         self.graph_type = graph_type
         self.graph_message = graph_message
+        self.public_code = public_code
 
 
 class RateLimitExceededError(ApplicationError):
