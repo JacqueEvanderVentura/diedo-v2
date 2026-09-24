@@ -60,7 +60,13 @@ async def receive_meta_webhook(request: Request, database: DatabaseSession) -> d
         if settings.meta_app_secret is not None
         else None
     )
-    if not app_secret:
+    instagram_secret = (
+        settings.meta_instagram_app_secret.get_secret_value()
+        if settings.meta_instagram_app_secret is not None
+        else None
+    )
+    secrets = [value for value in (app_secret, instagram_secret) if value]
+    if not secrets:
         logger.warning(
             "meta webhook rejected: META_APP_SECRET is not configured request_id=%s",
             get_request_id(),
@@ -71,10 +77,12 @@ async def receive_meta_webhook(request: Request, database: DatabaseSession) -> d
         )
 
     signature = request.headers.get("X-Hub-Signature-256")
-    if not verify_meta_signature(body, signature, app_secret):
+    if not any(verify_meta_signature(body, signature, secret) for secret in secrets):
         logger.warning(
-            "meta webhook rejected: invalid signature bytes=%s request_id=%s",
+            "meta webhook rejected: invalid signature bytes=%s "
+            "ig_secret_configured=%s request_id=%s",
             len(body),
+            bool(instagram_secret),
             get_request_id(),
         )
         raise HTTPException(status_code=403, detail={"message": "Invalid signature."})

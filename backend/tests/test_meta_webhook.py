@@ -138,6 +138,25 @@ def test_meta_webhook_rejects_invalid_signature(client, meta_webhook_settings) -
 
 
 @pytest.mark.integration
+def test_meta_webhook_accepts_instagram_app_secret(
+    client, meta_webhook_settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    instagram_secret = "ig-webhook-secret-not-the-facebook-one"
+    monkeypatch.setattr(settings, "meta_instagram_app_secret", SecretStr(instagram_secret))
+    body = json.dumps(_load_fixture("meta_instagram_text.json")).encode("utf-8")
+    response = client.post(
+        "/api/v1/webhooks/meta",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": _sign(body, instagram_secret),
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+
+
+@pytest.mark.integration
 def test_meta_webhook_rejects_oversized_payload(client, meta_webhook_settings) -> None:
     from app.api.routers.meta_webhooks import MAX_META_WEBHOOK_BYTES
 
