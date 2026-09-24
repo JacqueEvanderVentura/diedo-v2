@@ -95,6 +95,7 @@ class ChatOauthStartResponse(ApiModel):
 class ChatOauthCandidateResponse(ApiModel):
     provider_account_id: str
     display_name: str
+    phone_number: str = ""
 
 
 class ChatOauthPendingResponse(ApiModel):

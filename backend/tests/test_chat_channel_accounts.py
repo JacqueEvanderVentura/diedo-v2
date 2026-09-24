@@ -424,6 +424,11 @@ def test_oauth_complete_after_multi_candidate_discovery(
     )
     assert pending.status_code == 200
     assert len(pending.json()["candidates"]) == 2
+    phones = {
+        item["providerAccountId"]: item["phoneNumber"] for item in pending.json()["candidates"]
+    }
+    assert phones["15550001111"] == "+1 555 000 1111"
+    assert phones["15550002222"] == "+1 555 000 2222"
 
     complete = client.post(
         "/api/v1/chat/channel-accounts/oauth/complete",

@@ -489,6 +489,11 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
                     onClick={() => completeOAuthSelection(candidate.providerAccountId)}
                   >
                     <span className="font-medium text-slate-800">{candidate.displayName}</span>
+                    {candidate.phoneNumber ? (
+                      <span className="mt-0.5 block text-sm text-slate-700">
+                        Tel. {candidate.phoneNumber}
+                      </span>
+                    ) : null}
                     <span className="mt-0.5 block text-xs text-slate-500">
                       ID {candidate.providerAccountId}
                     </span>

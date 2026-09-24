@@ -160,6 +160,7 @@ def pending_channel_oauth(
             ChatOauthCandidateResponse(
                 provider_account_id=candidate.provider_account_id,
                 display_name=candidate.display_name,
+                phone_number=candidate.phone_number,
             )
             for candidate in candidates
         ],

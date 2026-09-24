@@ -44,6 +44,7 @@ _OAUTH_EXCHANGE_FAILED = "No se pudo intercambiar el código OAuth."
 class OauthCandidate:
     provider_account_id: str
     display_name: str
+    phone_number: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,7 +163,11 @@ class MetaOauthService:
             )
 
         state.candidates_json = [
-            {"provider_account_id": c.provider_account_id, "display_name": c.display_name}
+            {
+                "provider_account_id": c.provider_account_id,
+                "display_name": c.display_name,
+                "phone_number": c.phone_number,
+            }
             for c in candidates
         ]
         state.tokens_json = json.dumps(tokens)
@@ -251,6 +256,7 @@ class MetaOauthService:
             OauthCandidate(
                 provider_account_id=str(item["provider_account_id"]),
                 display_name=str(item.get("display_name") or item["provider_account_id"]),
+                phone_number=str(item.get("phone_number") or ""),
             )
             for item in state.candidates_json
         ]
@@ -600,7 +606,14 @@ class MetaOauthService:
                     or waba.get("name")
                     or phone_id
                 )
-                candidates.append(OauthCandidate(provider_account_id=phone_id, display_name=label))
+                phone_number = str(phone.get("display_phone_number") or "").strip()
+                candidates.append(
+                    OauthCandidate(
+                        provider_account_id=phone_id,
+                        display_name=label,
+                        phone_number=phone_number,
+                    )
+                )
                 tokens[phone_id] = access_token
         return candidates, tokens
 
