@@ -22,11 +22,19 @@ describe('filterSettingsSections', () => {
     expect(result[0].items.every((item) => item.visibleBlockIds == null)).toBe(true)
   })
 
-  it('no confunde Perfil con requisitos de perfiles', () => {
+  it('encuentra Perfil y también requisitos de perfiles', () => {
     const result = filterSettingsSections(SETTINGS_SECTIONS, 'perfil')
-    expect(titles(result)).toEqual([{ title: 'Cuenta', items: ['Perfil'] }])
-    expect(result[0].items[0].match).toBe('item')
-    expect(shouldForceExpandSettingsItem(result[0].items[0], 'perfil')).toBe(false)
+    expect(titles(result)).toEqual([
+      { title: 'Administración', items: ['Documentación CRM'] },
+      { title: 'Cuenta', items: ['Perfil'] },
+    ])
+    expect(result[1].items[0].match).toBe('item')
+    expect(shouldForceExpandSettingsItem(result[1].items[0], 'perfil')).toBe(true)
+  })
+
+  it('encuentra el singular de un módulo', () => {
+    const result = filterSettingsSections(SETTINGS_SECTIONS, 'usuario')
+    expect(titles(result).flatMap((section) => section.items)).toContain('Usuarios')
   })
 
   it('abre Cuenta → Perfil → Nombre del negocio con búsqueda parcial', () => {

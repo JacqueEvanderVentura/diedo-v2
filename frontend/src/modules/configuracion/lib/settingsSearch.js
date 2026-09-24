@@ -7,16 +7,11 @@ export function normalizeSettingsQuery(value) {
     .trim()
 }
 
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
 function textMatches(haystack, query) {
   if (!query) return true
   const text = normalizeSettingsQuery(haystack)
   if (!text) return false
-  if (query.includes(' ')) return text.includes(query)
-  return new RegExp(`(?:^|[^a-z0-9])${escapeRegExp(query)}(?:[^a-z0-9]|$)`).test(text)
+  return text.includes(query)
 }
 
 function blockSearchText(block) {
@@ -80,5 +75,6 @@ export function filterSettingsSections(sections, rawQuery) {
 }
 
 export function shouldForceExpandSettingsItem(item, rawQuery) {
-  return Boolean(normalizeSettingsQuery(rawQuery) && item?.match === 'block')
+  if (!normalizeSettingsQuery(rawQuery)) return false
+  return item?.match === 'item' || item?.match === 'block'
 }

@@ -44,7 +44,7 @@ function statusBadge(status) {
   )
 }
 
-export default function ChatChannelsPanel({ embedded }) {
+export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
   const branches = useConfigStore((s) => s.branches) || []
   const online = useSessionStore((s) => s.status === 'online')
   const canManage = useSessionStore((s) => s.hasPermission('workspace.update'))
@@ -69,6 +69,7 @@ export default function ChatChannelsPanel({ embedded }) {
   const accountsByChannel = useMemo(() => {
     const map = { instagram: [], whatsapp: [] }
     for (const account of accounts) {
+      if (account.connectionStatus !== 'connected') continue
       if (map[account.channel]) map[account.channel].push(account)
     }
     return map
@@ -231,7 +232,7 @@ export default function ChatChannelsPanel({ embedded }) {
     if (!window.confirm(`¿Desconectar ${account.displayName || account.channel}?`)) return
     try {
       const updated = await chatApi.disconnectAccount(account.id)
-      setAccounts((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
+      setAccounts((prev) => prev.filter((item) => item.id !== (updated?.id || account.id)))
       toast.success('Cuenta desconectada.')
     } catch (error) {
       toast.error(error?.message || 'No se pudo desconectar la cuenta.')
@@ -278,7 +279,14 @@ export default function ChatChannelsPanel({ embedded }) {
       )}
 
       <div className="space-y-3">
-        {['instagram', 'whatsapp'].map((channel) => {
+        {['instagram', 'whatsapp']
+          .filter((channel) => {
+            if (!visibleBlockIds?.length) return true
+            if (visibleBlockIds.includes(channel)) return true
+            const mentionsChannel = visibleBlockIds.some((id) => id === 'instagram' || id === 'whatsapp')
+            return !mentionsChannel && visibleBlockIds.includes('branches')
+          })
+          .map((channel) => {
           const meta = CHANNEL_META[channel]
           const Icon = meta.icon
           const channelAccounts = accountsByChannel[channel] || []
@@ -289,6 +297,7 @@ export default function ChatChannelsPanel({ embedded }) {
               key={channel}
               className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft"
               data-testid={`chat-channel-${channel}`}
+              data-settings-block={`chat-canales:${channel}`}
             >
               <div className="flex flex-wrap items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">

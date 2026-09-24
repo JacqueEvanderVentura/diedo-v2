@@ -19,6 +19,25 @@ import ChatChannelsPanel from '../components/ChatChannelsPanel'
 import { SETTINGS_ITEMS, SETTINGS_SECTIONS } from '../lib/settingsHub'
 import { filterSettingsSections, shouldForceExpandSettingsItem } from '../lib/settingsSearch'
 
+function resolveOpenTarget(openParam) {
+  if (!openParam) return null
+  const direct = SETTINGS_ITEMS.find((item) => item.id === openParam)
+  if (direct) return { itemId: direct.id, blockId: null }
+  const parents = SETTINGS_ITEMS.filter((item) =>
+    (item.blocks || []).some((block) => block.id === openParam),
+  )
+  if (parents.length === 1) return { itemId: parents[0].id, blockId: openParam }
+  return null
+}
+
+function scrollToSettingsTarget(itemId, blockId) {
+  const blockNode = blockId
+    ? document.querySelector(`[data-settings-block="${itemId}:${blockId}"]`)
+    : null
+  const node = blockNode || document.getElementById(`config-hub-anchor-${itemId}`)
+  node?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 const EMBED_MAP = {
   usuarios: UsuariosPage,
   permisos: PermisosPage,
@@ -71,9 +90,10 @@ function SettingsRow({ item, open, onToggle, forceOpen, visibleBlockIds }) {
   if (item.kind === 'navigate') {
     return (
       <Link
+        id={`config-hub-anchor-${item.id}`}
         to={item.to}
         data-testid={`config-hub-${item.id}`}
-        className="flex w-full items-center gap-4 rounded-xl border border-slate-100 bg-white px-4 py-3.5 shadow-soft transition-colors hover:border-blue-200 hover:bg-blue-50/30"
+        className="flex w-full scroll-mt-24 items-center gap-4 rounded-xl border border-slate-100 bg-white px-4 py-3.5 shadow-soft transition-colors hover:border-blue-200 hover:bg-blue-50/30"
       >
         {rowContent}
       </Link>
@@ -82,7 +102,10 @@ function SettingsRow({ item, open, onToggle, forceOpen, visibleBlockIds }) {
 
   if (item.kind === 'embed' || item.kind === 'stub') {
     return (
-      <div className="overflow-hidden rounded-xl border border-slate-100 bg-white shadow-soft">
+      <div
+        id={`config-hub-anchor-${item.id}`}
+        className="scroll-mt-24 overflow-hidden rounded-xl border border-slate-100 bg-white shadow-soft"
+      >
         <button
           type="button"
           onClick={() => onToggle(item.id)}
@@ -124,11 +147,9 @@ function SettingsRow({ item, open, onToggle, forceOpen, visibleBlockIds }) {
 export default function ConfiguracionPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const openParam = searchParams.get('open')
+  const openTarget = useMemo(() => resolveOpenTarget(openParam), [openParam])
   const [query, setQuery] = useState('')
-  const [openId, setOpenId] = useState(() => {
-    if (openParam && SETTINGS_ITEMS.some((i) => i.id === openParam)) return openParam
-    return null
-  })
+  const [openId, setOpenId] = useState(() => openTarget?.itemId ?? null)
 
   const sections = useMemo(() => filterSettingsSections(SETTINGS_SECTIONS, query), [query])
   const visibleItems = useMemo(() => sections.flatMap((section) => section.items), [sections])
@@ -136,10 +157,21 @@ export default function ConfiguracionPage() {
   const hasExpanded = Boolean(openId) || hasForcedExpand
 
   useEffect(() => {
-    if (openParam && SETTINGS_ITEMS.some((i) => i.id === openParam) && openParam !== openId) {
-      setOpenId(openParam)
+    if (openTarget?.itemId && openTarget.itemId !== openId) {
+      setOpenId(openTarget.itemId)
     }
-  }, [openParam, openId])
+  }, [openTarget, openId])
+
+  useEffect(() => {
+    const queryActive = Boolean(query.trim())
+    const targetId = queryActive ? visibleItems[0]?.id : openTarget?.itemId
+    if (!targetId) return undefined
+    const blockId = queryActive
+      ? (visibleItems[0]?.match === 'block' ? visibleItems[0].visibleBlockIds?.[0] : null)
+      : openTarget?.blockId
+    const timer = window.setTimeout(() => scrollToSettingsTarget(targetId, blockId), 80)
+    return () => window.clearTimeout(timer)
+  }, [query, openTarget, visibleItems])
 
   const onToggle = useCallback(
     (id) => {
@@ -195,16 +227,22 @@ export default function ConfiguracionPage() {
           <section key={section.title}>
             <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">{section.title}</h3>
             <div className="space-y-2">
-              {section.items.map((item) => (
+              {section.items.map((item) => {
+                const urlBlocks =
+                  !query.trim() && openTarget?.blockId && item.id === openTarget.itemId
+                    ? [openTarget.blockId]
+                    : null
+                return (
                 <SettingsRow
                   key={item.id}
                   item={item}
                   open={openId}
                   onToggle={onToggle}
                   forceOpen={shouldForceExpandSettingsItem(item, query)}
-                  visibleBlockIds={item.visibleBlockIds}
+                  visibleBlockIds={urlBlocks || item.visibleBlockIds}
                 />
-              ))}
+                )
+              })}
             </div>
           </section>
         ))
