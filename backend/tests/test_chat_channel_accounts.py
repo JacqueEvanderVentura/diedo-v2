@@ -130,10 +130,13 @@ def test_oauth_start_instagram_uses_business_scopes(
     assert parsed.path == "/oauth/authorize"
     scope = params["scope"][0]
     assert params["client_id"] == ["ig-test-app-id"]
-    assert params["enable_fb_login"] == ["0"]
-    assert "force_authentication" not in params
+    assert params["force_reauth"] == ["true"]
+    assert "enable_fb_login" not in params
     assert "instagram_business_basic" in scope
     assert "instagram_business_manage_messages" in scope
+    assert "instagram_business_manage_comments" in scope
+    assert "instagram_business_content_publish" in scope
+    assert "instagram_business_manage_insights" in scope
     assert "pages_show_list" not in scope
     assert "pages_messaging" not in scope
     assert "instagram_basic" not in scope.split(",")

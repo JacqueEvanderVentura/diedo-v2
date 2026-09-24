@@ -23,8 +23,12 @@ Channel = Literal["instagram", "whatsapp"]
 _OAUTH_TTL = timedelta(minutes=20)
 
 _SCOPES: dict[Channel, str] = {
-    # Instagram Login rejects Facebook Page scopes (Invalid platform app).
-    "instagram": "instagram_business_basic,instagram_business_manage_messages",
+    # Match Meta App Dashboard Instagram Login button (www.instagram.com/oauth/authorize).
+    "instagram": (
+        "instagram_business_basic,instagram_business_manage_messages,"
+        "instagram_business_manage_comments,instagram_business_content_publish,"
+        "instagram_business_manage_insights"
+    ),
     "whatsapp": "whatsapp_business_management,whatsapp_business_messaging,business_management",
 }
 
@@ -95,7 +99,7 @@ class MetaOauthService:
                 "state": str(state.id),
                 "scope": _SCOPES[channel],
                 "response_type": "code",
-                "enable_fb_login": "0",
+                "force_reauth": "true",
             }
             url = f"https://www.instagram.com/oauth/authorize?{urlencode(params)}"
             logger.info("meta oauth start channel=instagram client_id=%s", params["client_id"])
