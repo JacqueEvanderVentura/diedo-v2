@@ -56,6 +56,31 @@ def test_parse_whatsapp_and_instagram_fixtures() -> None:
     assert ig_events[0].provider_account_id == "demo-ig-page-id"
     assert ig_events[0].provider_message_id == "mid.DEMO_IG_INBOUND_001"
 
+    sample = parse_meta_webhook_payload(
+        {
+            "object": "instagram",
+            "entry": [
+                {
+                    "id": "17841400000000000",
+                    "changes": [
+                        {
+                            "field": "messages",
+                            "value": {
+                                "sender": {"id": "12334"},
+                                "recipient": {"id": "23245"},
+                                "timestamp": "1527459824",
+                                "message": {"mid": "random_mid", "text": "random_text"},
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    assert len(sample) == 1
+    assert sample[0].provider_account_id == "23245"
+    assert sample[0].body_text == "random_text"
+
 
 def test_graph_clients_use_injected_http() -> None:
     class FakeHttp:

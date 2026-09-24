@@ -88,38 +88,57 @@ def _parse_whatsapp(payload: dict[str, Any]) -> list[InboundTextMessage]:
     return events
 
 
+def _instagram_text_event(
+    messaging: dict[str, Any],
+    *,
+    fallback_account_id: str,
+) -> InboundTextMessage | None:
+    message = messaging.get("message") or {}
+    if message.get("is_echo"):
+        return None
+    text_body = message.get("text")
+    if not isinstance(text_body, str) or not text_body.strip():
+        return None
+    sender_id = str((messaging.get("sender") or {}).get("id") or "")
+    message_id = str(message.get("mid") or "")
+    if not sender_id or not message_id:
+        return None
+    provider_account_id = str((messaging.get("recipient") or {}).get("id") or fallback_account_id)
+    if not provider_account_id:
+        return None
+    return InboundTextMessage(
+        channel="instagram",
+        provider_account_id=provider_account_id,
+        provider_thread_id=sender_id,
+        participant_provider_id=sender_id,
+        participant_display_name="",
+        provider_message_id=message_id,
+        body_text=text_body.strip(),
+        sent_at=_unix_to_datetime(messaging.get("timestamp")),
+    )
+
+
 def _parse_instagram(payload: dict[str, Any]) -> list[InboundTextMessage]:
     events: list[InboundTextMessage] = []
     for entry in payload.get("entry") or []:
+        if not isinstance(entry, dict):
+            continue
         page_or_ig_id = str(entry.get("id") or "")
         for messaging in entry.get("messaging") or []:
-            message = messaging.get("message") or {}
-            if message.get("is_echo"):
+            if not isinstance(messaging, dict):
                 continue
-            text_body = message.get("text")
-            if not isinstance(text_body, str) or not text_body.strip():
+            event = _instagram_text_event(messaging, fallback_account_id=page_or_ig_id)
+            if event is not None:
+                events.append(event)
+        for change in entry.get("changes") or []:
+            if not isinstance(change, dict) or change.get("field") != "messages":
                 continue
-            sender = messaging.get("sender") or {}
-            sender_id = str(sender.get("id") or "")
-            message_id = str(message.get("mid") or "")
-            if not sender_id or not message_id:
+            value = change.get("value")
+            if not isinstance(value, dict):
                 continue
-            recipient = messaging.get("recipient") or {}
-            provider_account_id = str(recipient.get("id") or page_or_ig_id)
-            if not provider_account_id:
-                continue
-            events.append(
-                InboundTextMessage(
-                    channel="instagram",
-                    provider_account_id=provider_account_id,
-                    provider_thread_id=sender_id,
-                    participant_provider_id=sender_id,
-                    participant_display_name="",
-                    provider_message_id=message_id,
-                    body_text=text_body.strip(),
-                    sent_at=_unix_to_datetime(messaging.get("timestamp")),
-                )
-            )
+            event = _instagram_text_event(value, fallback_account_id=page_or_ig_id)
+            if event is not None:
+                events.append(event)
     return events
 
 
