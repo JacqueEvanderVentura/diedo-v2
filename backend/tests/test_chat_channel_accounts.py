@@ -113,6 +113,9 @@ def test_oauth_start_returns_authorization_url(client: TestClient, meta_oauth_se
     params = parse_qs(parsed.query)
     assert params["client_id"] == ["meta-test-app-id"]
     assert params["scope"][0].startswith("whatsapp_")
+    assert params["display"] == ["popup"]
+    assert params["auth_type"] == ["rerequest"]
+    assert "config_id" not in params
 
 
 @pytest.mark.integration
@@ -143,6 +146,26 @@ def test_oauth_start_instagram_uses_business_scopes(
     assert "pages_messaging" not in scope
     assert "instagram_basic" not in scope.split(",")
     assert "instagram_manage_messages" not in scope.split(",")
+
+
+@pytest.mark.integration
+def test_oauth_start_whatsapp_uses_embedded_signup_config(
+    client: TestClient, meta_oauth_settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "meta_whatsapp_config_id", "wa-config-123")
+    headers = _login(client)
+    response = client.post(
+        "/api/v1/chat/channel-accounts/oauth/start",
+        headers=headers,
+        json={"channel": "whatsapp"},
+    )
+    assert response.status_code == 200, response.text
+    parsed = urlparse(response.json()["authorizationUrl"])
+    params = parse_qs(parsed.query)
+    assert parsed.netloc == "www.facebook.com"
+    assert params["config_id"] == ["wa-config-123"]
+    assert params["override_default_response_type"] == ["true"]
+    assert "scope" not in params
 
 
 def _oauth_state_id_from_start(

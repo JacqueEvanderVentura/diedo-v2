@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     meta_oauth_redirect_uri: str = "http://127.0.0.1:8000/api/v1/chat/oauth/meta/callback"
     meta_instagram_app_id: str | None = None
     meta_instagram_app_secret: SecretStr | None = None
+    meta_whatsapp_config_id: str | None = None
 
     @field_validator("database_url", mode="before")
     @classmethod

@@ -108,12 +108,23 @@ class MetaOauthService:
                 "client_id": app_id,
                 "redirect_uri": settings.meta_oauth_redirect_uri,
                 "state": str(state.id),
-                "scope": _SCOPES[channel],
                 "response_type": "code",
+                "display": "popup",
             }
+            config_id = (settings.meta_whatsapp_config_id or "").strip()
+            if config_id:
+                params["config_id"] = config_id
+                params["override_default_response_type"] = "true"
+            else:
+                params["scope"] = _SCOPES[channel]
+                params["auth_type"] = "rerequest"
             version = settings.meta_graph_api_version
             url = f"https://www.facebook.com/{version}/dialog/oauth?{urlencode(params)}"
-            logger.info("meta oauth start channel=whatsapp client_id=%s", app_id)
+            logger.info(
+                "meta oauth start channel=whatsapp client_id=%s embedded_signup=%s",
+                app_id,
+                bool(config_id),
+            )
         return OauthStartResult(authorization_url=url, state_id=state.id)
 
     def handle_callback(
@@ -527,6 +538,20 @@ class MetaOauthService:
                 )
                 candidates.extend(more)
                 tokens.update(more_tokens)
+        if candidates:
+            return candidates, tokens
+
+        wabas = self._graph_get_optional(
+            "me/whatsapp_business_accounts",
+            access_token,
+            {"fields": _WA_WABA_FIELDS},
+        )
+        more, more_tokens = self._collect_whatsapp_from_wabas(
+            wabas.get("data") or [],
+            access_token,
+        )
+        candidates.extend(more)
+        tokens.update(more_tokens)
         return candidates, tokens
 
     def _collect_whatsapp_from_businesses(

@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { chatApi } from '@/services/chatApi'
+import { navigateOauthPopup, openOauthPopupPlaceholder } from '@/modules/chat/lib/oauthPopup'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { cn } from '@/lib/utils'
@@ -18,7 +19,7 @@ const CHANNEL_META = {
   whatsapp: {
     label: 'WhatsApp',
     icon: MessageCircle,
-    description: 'WhatsApp Cloud API vinculado a tu negocio.',
+    description: 'WhatsApp Cloud API. El permiso se pide en Facebook Business, no en WhatsApp.',
   },
 }
 
@@ -57,6 +58,7 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
   const [selectedBranchIds, setSelectedBranchIds] = useState([])
   const [oauthSelect, setOauthSelect] = useState(null)
   const [savingBranches, setSavingBranches] = useState(false)
+  const [blockedAuth, setBlockedAuth] = useState(null)
   const oauthPollRef = useRef(null)
 
   const stopOauthPoll = useCallback(() => {
@@ -123,16 +125,17 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
       const detail = searchParams.get('chatOauthDetail')
       const messages = {
         no_accounts:
-          'Meta no encontró un WhatsApp Business o Instagram para este usuario. Revisa que el Facebook del login sea admin del WABA.',
+          'Meta no encontró un WhatsApp Business o Instagram para este usuario. El Facebook con el que entras debe ser admin del WABA en Business Manager.',
         oauth_denied: 'Cancelaste el permiso de Meta.',
         oauth_failed: 'No se pudo completar la conexión con Meta.',
         graph_failed: 'Meta Graph rechazó el token o la consulta de cuentas.',
-        missing_state: 'La sesión OAuth es inválida. Intenta conectar de nuevo.',
-        invalid_state: 'La sesión OAuth expiró. Intenta conectar de nuevo.',
+        missing_state: 'Meta no devolvió la sesión de conexión. Vuelve a pulsar Conectar.',
+        invalid_state:
+          'No encontramos la sesión de conexión. Completa Facebook en la ventana nueva sin cerrar Helios y vuelve a conectar.',
         meta_not_configured: 'Faltan META_APP_ID / META_INSTAGRAM_APP_ID en el servidor.',
       }
-      const suffix = [hint, detail].filter(Boolean).join(' · ')
-      toast.error(suffix ? `${messages[hint] || messages.oauth_failed} (${suffix})` : messages.oauth_failed)
+      const text = messages[hint] || messages.oauth_failed
+      toast.error(detail ? `${text} (${detail})` : text)
       clearOauthParams()
       return
     }
@@ -153,23 +156,17 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
             candidates: pending.candidates || [],
           })
         })
-        .catch(() => toast.error('La sesión OAuth expiró. Intenta conectar de nuevo.'))
+        .catch(() =>
+          toast.error(
+            'No encontramos la sesión de conexión. Vuelve a pulsar Conectar y termina Facebook en la ventana nueva.',
+          ),
+        )
         .finally(() => clearOauthParams())
     }
   }, [searchParams, canManage, online, setSearchParams, loadAccounts])
 
-  const handleConnect = async (channel) => {
-    if (!canManage) return
-    stopOauthPoll()
-    setConnectingChannel(channel)
-    try {
-      const { authorizationUrl } = await chatApi.startOAuth(channel)
-      const popup = window.open(authorizationUrl, 'helios-meta-oauth')
-      if (!popup) {
-        window.location.assign(authorizationUrl)
-        return
-      }
-      toast.message('Completa el permiso de Meta en la nueva pestaña. Esta pantalla se actualizará sola.')
+  const startOauthPoll = useCallback(
+    (channel) => {
       const started = Date.now()
       oauthPollRef.current = window.setInterval(async () => {
         if (Date.now() - started > 5 * 60 * 1000) {
@@ -193,10 +190,51 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
           /* keep polling until Meta finishes or the timeout */
         }
       }, 2500)
+    },
+    [stopOauthPoll],
+  )
+
+  const handleConnect = async (channel) => {
+    if (!canManage) return
+    stopOauthPoll()
+    setBlockedAuth(null)
+    setConnectingChannel(channel)
+    const popup = openOauthPopupPlaceholder(channel)
+    try {
+      const { authorizationUrl } = await chatApi.startOAuth(channel)
+      if (!navigateOauthPopup(popup, authorizationUrl)) {
+        popup?.close?.()
+        setBlockedAuth({ url: authorizationUrl, channel })
+        toast.error(
+          'El navegador bloqueó la ventana de Meta. Permite ventanas emergentes en Helios y pulsa Abrir Meta.',
+        )
+        setConnectingChannel(null)
+        return
+      }
+      toast.message(
+        channel === 'whatsapp'
+          ? 'WhatsApp Cloud se autoriza en Facebook (Business). Completa el permiso en la ventana nueva; Helios se queda abierto.'
+          : 'Completa el permiso de Meta en la ventana nueva. Esta pantalla se actualizará sola.',
+      )
+      startOauthPoll(channel)
     } catch (error) {
+      popup?.close?.()
       toast.error(error?.message || 'Meta no está configurada en el servidor.')
       setConnectingChannel(null)
     }
+  }
+
+  const handleOpenBlockedAuth = () => {
+    if (!blockedAuth?.url) return
+    const popup = openOauthPopupPlaceholder(blockedAuth.channel || 'retry')
+    if (!navigateOauthPopup(popup, blockedAuth.url)) {
+      popup?.close?.()
+      toast.error('Sigue bloqueada la ventana emergente. Permítela para app.helios360erp.com.')
+      return
+    }
+    setConnectingChannel(blockedAuth.channel || null)
+    startOauthPoll(blockedAuth.channel)
+    setBlockedAuth(null)
   }
 
   const openBranchModal = (account) => {
@@ -263,7 +301,17 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
       <p className="text-sm text-slate-600">
         Conecta una cuenta Meta por canal y asígnala a una o varias sucursales. Varias sucursales pueden
         usar el mismo Instagram o WhatsApp sin duplicar el token. Los tokens permanecen solo en el servidor.
+        WhatsApp Cloud se conecta con Facebook Business (no con whatsapp.com).
       </p>
+
+      {blockedAuth?.url && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p>El navegador bloqueó la ventana de Meta. Permite ventanas emergentes y ábrela de nuevo.</p>
+          <Button type="button" size="sm" onClick={handleOpenBlockedAuth}>
+            Abrir Meta
+          </Button>
+        </div>
+      )}
 
       {!canManage && online && (
         <p className="text-sm text-amber-700">

@@ -297,7 +297,7 @@ def meta_oauth_callback(
         )
     except ResourceNotFoundError:
         database.rollback()
-        logger.warning("meta oauth callback missing or expired state")
+        logger.warning("meta oauth callback missing or expired state=%s", state)
         return RedirectResponse(
             _frontend_oauth_return(
                 return_origin,
