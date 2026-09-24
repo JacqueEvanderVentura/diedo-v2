@@ -310,12 +310,15 @@ def meta_oauth_callback(
         database.rollback()
         logger.exception("meta oauth callback unexpected failure")
         safe_name = re.sub(r"[^A-Za-z0-9_]", "", type(exc).__name__)[:40]
+        missing = ""
+        if isinstance(exc, ModuleNotFoundError) and exc.name:
+            missing = f"_{re.sub(r'[^A-Za-z0-9_]', '', exc.name)[:40]}"
         return RedirectResponse(
             _frontend_oauth_return(
                 return_origin,
                 chatOauth="error",
                 chatOauthMessage="oauth_failed",
-                chatOauthDetail=f"unexpected_{safe_name or 'error'}",
+                chatOauthDetail=f"unexpected_{safe_name or 'error'}{missing}",
             ),
             status_code=status.HTTP_302_FOUND,
         )

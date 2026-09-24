@@ -23,3 +23,6 @@ boto3==1.43.88
 
 # Email provider SDK.
 resend==2.45.0
+
+# Meta Graph (Instagram Login + WhatsApp Cloud) from OAuth callbacks.
+httpx==0.28.1

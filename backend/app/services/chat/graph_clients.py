@@ -62,7 +62,7 @@ class _HttpxGraphClient:
             graph_code, graph_type, graph_message = None, None, None
             try:
                 graph_code, graph_type, graph_message = _graph_error_fields(response.json())
-            except ValueError, TypeError:
+            except (ValueError, TypeError):
                 graph_code, graph_type, graph_message = None, None, None
             raise GraphApiError(
                 status_code=response.status_code,
