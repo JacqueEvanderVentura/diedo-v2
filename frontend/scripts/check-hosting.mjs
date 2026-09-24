@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
 import { setTimeout as sleep } from 'node:timers/promises'
 
@@ -32,6 +35,15 @@ function normalizeSpaShell(html) {
   return html.replace(/\/assets\/[^"]+/g, '/assets/HASH')
 }
 
+function expectedDistAssets() {
+  const distIndex = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'index.html')
+  try {
+    return extractAssets(readFileSync(distIndex, 'utf8'))
+  } catch {
+    return []
+  }
+}
+
 async function assetsReady(assets) {
   for (const asset of assets) {
     const response = await fetch(`${base}${asset}`, { cache: 'no-store' })
@@ -52,16 +64,20 @@ assert.equal(page.headers.get('x-content-type-options'), 'nosniff')
 assert.equal(page.headers.get('x-frame-options'), 'DENY')
 assert.match(page.headers.get('cache-control'), /must-revalidate/)
 
+const expectedAssets = expectedDistAssets()
 let rootHtml = ''
 let loginHtml = ''
 let verifiedAssets = []
-const maxAttempts = 12
+const maxAttempts = 20
 for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
   rootHtml = fetchSpaShell('/')
   loginHtml = fetchSpaShell('/login')
   const rootAssets = extractAssets(rootHtml)
   const loginAssets = extractAssets(loginHtml)
+  const matchesBuild =
+    expectedAssets.length === 0 || rootAssets.join('\0') === expectedAssets.join('\0')
   const shellsAligned =
+    matchesBuild &&
     rootAssets.length >= 2 &&
     loginAssets.length >= 2 &&
     rootAssets.join('\0') === loginAssets.join('\0') &&
@@ -80,6 +96,13 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       )
     }
   } else if (attempt === maxAttempts) {
+    if (expectedAssets.length > 0) {
+      assert.deepEqual(
+        rootAssets,
+        expectedAssets,
+        'Live SPA assets must match the frontend dist just deployed',
+      )
+    }
     assert.deepEqual(
       loginAssets,
       rootAssets,
@@ -91,12 +114,14 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       'SPA HTML shell must match between / and /login after deploy',
     )
   }
-  await sleep(2_000)
+  await sleep(3_000)
 }
 
 assert.ok(verifiedAssets.length >= 2)
 let assetSnapshots = []
-for (let attempt = 1; attempt <= 8; attempt += 1) {
+for (let attempt = 1; attempt <= 12; attempt += 1) {
+  rootHtml = fetchSpaShell('/')
+  verifiedAssets = extractAssets(rootHtml)
   assetSnapshots = []
   let missingAsset = null
   for (const asset of verifiedAssets) {
@@ -110,14 +135,14 @@ for (let attempt = 1; attempt <= 8; attempt += 1) {
   if (!missingAsset) {
     break
   }
-  if (attempt === 8) {
+  if (attempt === 12) {
     assert.equal(
       missingAsset.status,
       200,
       `Asset ${missingAsset.asset} must be available after deploy`,
     )
   }
-  await sleep(2_000)
+  await sleep(3_000)
 }
 for (const { asset, response, body } of assetSnapshots) {
   assert.equal(response.status, 200)

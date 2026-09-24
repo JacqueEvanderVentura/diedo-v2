@@ -72,7 +72,7 @@ jobs:
         env:
           DEPLOY_URL: ${{ github.event_name == 'pull_request' && 'https://diedo-frontend-preview.helios360erp.workers.dev' || 'https://diedo-frontend-production.helios360erp.workers.dev' }}
         run: |
-          sleep 8
+          sleep 15
           node scripts/check-hosting.mjs "$DEPLOY_URL"
 
       - name: Verify custom domain when enabled
