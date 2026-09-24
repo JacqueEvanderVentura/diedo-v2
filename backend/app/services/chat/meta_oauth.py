@@ -55,6 +55,14 @@ class OauthStartResult:
     state_id: UUID
 
 
+def _meta_webhook_callback_url() -> str:
+    redirect = (settings.meta_oauth_redirect_uri or "").strip()
+    marker = "/api/v1/"
+    if marker not in redirect:
+        return ""
+    return f"{redirect.split(marker, 1)[0]}{marker}webhooks/meta"
+
+
 def _as_channel(value: str) -> Channel:
     if value not in ("instagram", "whatsapp"):
         raise InvalidOperationError("Canal de chat no soportado.", "channel")
@@ -384,24 +392,43 @@ class MetaOauthService:
             return
         version = settings.meta_graph_api_version
         url = f"https://graph.facebook.com/{version}/{waba_id}/subscribed_apps"
+        headers = {"Authorization": f"Bearer {access_token}"}
         try:
-            try:
-                self._http.request(
-                    "POST",
-                    url,
-                    params={"subscribed_fields": "messages,smb_message_echoes"},
-                    headers={"Authorization": f"Bearer {access_token}"},
-                )
-            except GraphApiError:
-                self._http.request(
-                    "POST",
-                    url,
-                    headers={"Authorization": f"Bearer {access_token}"},
-                )
+            self._http.request("POST", url, headers=headers)
             logger.warning("meta oauth whatsapp webhook subscribed waba_id=%s", waba_id)
         except GraphApiError as exc:
             logger.warning(
                 "meta oauth whatsapp webhook subscribe failed waba_id=%s status=%s code=%s",
+                waba_id,
+                exc.status_code,
+                exc.graph_code,
+            )
+            return
+        callback = _meta_webhook_callback_url()
+        verify = (
+            settings.meta_webhook_verify_token.get_secret_value()
+            if settings.meta_webhook_verify_token is not None
+            else None
+        )
+        if not callback or not verify:
+            logger.warning(
+                "meta oauth whatsapp webhook override skipped "
+                "callback_configured=%s token_configured=%s",
+                bool(callback),
+                bool(verify),
+            )
+            return
+        try:
+            self._http.request(
+                "POST",
+                url,
+                json={"override_callback_uri": callback, "verify_token": verify},
+                headers=headers,
+            )
+            logger.warning("meta oauth whatsapp webhook override configured waba_id=%s", waba_id)
+        except GraphApiError as exc:
+            logger.warning(
+                "meta oauth whatsapp webhook override failed waba_id=%s status=%s code=%s",
                 waba_id,
                 exc.status_code,
                 exc.graph_code,

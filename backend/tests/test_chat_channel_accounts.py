@@ -25,9 +25,11 @@ class _FakeGraphHttp:
     def __init__(self, responses: dict[str, dict[str, Any]]) -> None:
         self._responses = responses
         self.calls: list[tuple[str, str]] = []
+        self.json_bodies: list[Any] = []
 
     def request(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
         self.calls.append((method, url))
+        self.json_bodies.append(kwargs.get("json"))
         if "api.instagram.com/oauth/access_token" in url:
             return self._responses.get(
                 "instagram_short",
@@ -67,6 +69,7 @@ def meta_oauth_settings(monkeypatch: pytest.MonkeyPatch) -> None:
         SecretStr("ig-test-app-secret-32chars-min"),
     )
     monkeypatch.setattr(settings, "meta_oauth_redirect_uri", _REDIRECT_URI)
+    monkeypatch.setattr(settings, "meta_webhook_verify_token", SecretStr("meta-verify-token-test"))
     monkeypatch.setattr(settings, "public_app_url", "http://localhost:5173")
     monkeypatch.setattr(
         settings,
@@ -254,11 +257,17 @@ def test_oauth_callback_auto_connects_single_whatsapp_account(
             )
         )
         assert account is not None
+        assert account.provider_account_id == "15550001111"
         assert account.connection_status == "connected"
         assert account.access_token_ciphertext == "long-token"
         assert any(
             method == "POST" and "waba-demo-1/subscribed_apps" in url
             for method, url in fake_http.calls
+        )
+        assert any(
+            isinstance(body, dict)
+            and str(body.get("override_callback_uri") or "").endswith("/api/v1/webhooks/meta")
+            for body in fake_http.json_bodies
         )
 
 
