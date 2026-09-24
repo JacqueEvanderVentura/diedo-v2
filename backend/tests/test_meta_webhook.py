@@ -325,6 +325,48 @@ def test_meta_webhook_ingests_instagram(client, meta_webhook_settings) -> None:
 
 
 @pytest.mark.integration
+def test_meta_webhook_ingests_instagram_long_message_id(client, meta_webhook_settings) -> None:
+    from tests.chat_test_helpers import instagram_payload
+
+    page_id = f"ig-page-{uuid7()}"
+    message_id = "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlENjk1" + ("X" * 200)
+    assert len(message_id) > 128
+    with session_scope() as session:
+        summary = bootstrap_local_foundation(session)
+        session.add(
+            ChatChannelAccount(
+                workspace_id=summary.workspace_id,
+                channel="instagram",
+                provider_account_id=page_id,
+                display_name="IG demo",
+                connection_status="connected",
+            )
+        )
+        workspace_id = summary.workspace_id
+
+    payload = instagram_payload(page_id, message_id)
+    body = json.dumps(payload).encode("utf-8")
+    response = client.post(
+        "/api/v1/webhooks/meta",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": _sign(body),
+        },
+    )
+    assert response.status_code == 200, response.text
+    with session_scope() as session:
+        message = session.scalar(
+            select(ChatMessage).where(
+                ChatMessage.workspace_id == workspace_id,
+                ChatMessage.provider_message_id == message_id,
+            )
+        )
+        assert message is not None
+        assert message.body_text == "Hola desde Instagram"
+
+
+@pytest.mark.integration
 def test_meta_webhook_unknown_account_returns_200(client, meta_webhook_settings) -> None:
     from tests.chat_test_helpers import whatsapp_payload
 

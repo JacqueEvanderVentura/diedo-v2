@@ -155,8 +155,8 @@ class ChatConversation(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
 
     workspace_id: Mapped[UUID] = mapped_column(nullable=False)
     channel_account_id: Mapped[UUID] = mapped_column(nullable=False)
-    provider_thread_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    participant_provider_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    provider_thread_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    participant_provider_id: Mapped[str] = mapped_column(String(512), nullable=False)
     participant_display_name: Mapped[str] = mapped_column(
         String(160), server_default="", nullable=False
     )
@@ -204,7 +204,7 @@ class ChatMessage(UuidPrimaryKeyMixin, Base):
     )
     workspace_id: Mapped[UUID] = mapped_column(nullable=False)
     conversation_id: Mapped[UUID] = mapped_column(nullable=False)
-    provider_message_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    provider_message_id: Mapped[str] = mapped_column(String(512), nullable=False)
     direction: Mapped[str] = mapped_column(String(16), nullable=False)
     body_text: Mapped[str] = mapped_column(Text, server_default="", nullable=False)
     delivery_status: Mapped[str] = mapped_column(
