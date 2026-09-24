@@ -160,6 +160,9 @@ class ChatConversation(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     participant_display_name: Mapped[str] = mapped_column(
         String(160), server_default="", nullable=False
     )
+    participant_username: Mapped[str] = mapped_column(
+        String(160), server_default="", nullable=False
+    )
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_message_preview: Mapped[str] = mapped_column(
         String(280), server_default="", nullable=False

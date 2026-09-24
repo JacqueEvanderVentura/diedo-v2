@@ -4,7 +4,7 @@ import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { WhatsAppIcon } from '@/components/brand/WhatsAppIcon'
 import { cn } from '@/lib/utils'
-import { conversationTitle, formatChatTimestamp } from '../lib/format'
+import { conversationSubtitle, conversationTitle, formatChatTimestamp } from '../lib/format'
 
 const CHANNEL_FILTERS = [
   { value: '', label: 'Todos los canales' },
@@ -99,6 +99,11 @@ export function ChatConversationList({
                           {formatChatTimestamp(conversation.lastMessageAt)}
                         </span>
                       </div>
+                      {conversationSubtitle(conversation) ? (
+                        <p className="mt-0.5 truncate text-xs text-slate-400">
+                          {conversationSubtitle(conversation)}
+                        </p>
+                      ) : null}
                       <p className="mt-0.5 truncate text-sm text-slate-500">
                         {conversation.lastMessagePreview || 'Sin mensajes'}
                       </p>

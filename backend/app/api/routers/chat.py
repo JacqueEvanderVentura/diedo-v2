@@ -43,6 +43,7 @@ def _conversation_response(
         channel=cast(ChatChannel, record.channel),
         participant_provider_id=conversation.participant_provider_id,
         participant_display_name=conversation.participant_display_name,
+        participant_username=conversation.participant_username,
         last_message_at=conversation.last_message_at,
         last_message_preview=conversation.last_message_preview,
         messaging_window_open=service.messaging_window_open(

@@ -18,9 +18,25 @@ export function formatChatTimestamp(iso) {
   })
 }
 
+export function formatInstagramHandle(username) {
+  const value = String(username || '')
+    .trim()
+    .replace(/^@+/, '')
+  if (!value) return ''
+  return `@${value}`
+}
+
 export function conversationTitle(conversation) {
   const name = conversation?.participantDisplayName?.trim()
   if (name) return name
+  const handle = String(conversation?.participantUsername || '')
+    .trim()
+    .replace(/^@+/, '')
+  if (handle) return handle
   const id = conversation?.participantProviderId
   return id ? `Contacto ${id.slice(-6)}` : 'Conversación'
+}
+
+export function conversationSubtitle(conversation) {
+  return formatInstagramHandle(conversation?.participantUsername)
 }

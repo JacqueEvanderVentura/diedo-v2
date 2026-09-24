@@ -86,6 +86,7 @@ class ChatRepository:
             statement = statement.where(
                 or_(
                     ChatConversation.participant_display_name.ilike(pattern),
+                    ChatConversation.participant_username.ilike(pattern),
                     ChatConversation.last_message_preview.ilike(pattern),
                     ChatConversation.participant_provider_id.ilike(pattern),
                 )

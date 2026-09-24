@@ -17,6 +17,7 @@ class ChatConversationResponse(ApiModel):
     channel: ChatChannel
     participant_provider_id: str
     participant_display_name: str
+    participant_username: str
     last_message_at: datetime | None
     last_message_preview: str
     messaging_window_open: bool

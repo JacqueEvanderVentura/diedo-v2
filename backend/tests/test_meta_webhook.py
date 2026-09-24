@@ -123,7 +123,11 @@ def test_parse_whatsapp_and_instagram_fixtures() -> None:
             ],
         }
     )
-    assert outgoing == []
+    assert len(outgoing) == 1
+    assert outgoing[0].direction == "outbound"
+    assert outgoing[0].provider_account_id == "17841410296549561"
+    assert outgoing[0].participant_provider_id == "999"
+    assert outgoing[0].body_text == "respuesta"
     assert instagram_webhook_shape({"object": "instagram", "entry": []}) == "no_entry"
 
 
@@ -134,6 +138,8 @@ def test_graph_clients_use_injected_http() -> None:
 
         def request(self, method: str, url: str, **kwargs):
             self.calls.append((method, url, kwargs))
+            if method == "GET":
+                return {"name": "Ana Pérez", "username": "ana.perez"}
             if "messages" in url and kwargs.get("json", {}).get("messaging_product") == "whatsapp":
                 return {"messages": [{"id": "wamid.sent.1"}]}
             return {"message_id": "mid.sent.1"}
@@ -153,8 +159,13 @@ def test_graph_clients_use_injected_http() -> None:
         body="Respuesta",
     )
     assert ig_id == "mid.sent.1"
+    profile = InstagramMessagingClient(
+        graph_api_version="v21.0", http_client=http
+    ).fetch_user_profile(igsid="user-1", access_token="token")
+    assert profile.name == "Ana Pérez"
+    assert profile.username == "ana.perez"
     assert "graph.instagram.com" in http.calls[1][1]
-    assert len(http.calls) == 2
+    assert len(http.calls) == 3
 
 
 @pytest.fixture
@@ -364,6 +375,155 @@ def test_meta_webhook_ingests_instagram_long_message_id(client, meta_webhook_set
         )
         assert message is not None
         assert message.body_text == "Hola desde Instagram"
+
+
+@pytest.mark.integration
+def test_meta_webhook_ingests_instagram_contact_profile(client, meta_webhook_settings) -> None:
+    from tests.chat_test_helpers import instagram_payload
+
+    page_id = f"ig-page-{uuid7()}"
+    message_id = f"mid.{uuid7()}"
+    with session_scope() as session:
+        summary = bootstrap_local_foundation(session)
+        account = ChatChannelAccount(
+            workspace_id=summary.workspace_id,
+            channel="instagram",
+            provider_account_id=page_id,
+            display_name="IG demo",
+            connection_status="connected",
+        )
+        session.add(account)
+        session.flush()
+        workspace_id = summary.workspace_id
+        account_id = account.id
+
+    payload = instagram_payload(page_id, message_id)
+    payload["entry"][0]["messaging"][0]["sender"]["name"] = "Evander Ventura"
+    payload["entry"][0]["messaging"][0]["sender"]["username"] = "evander.codes"
+    body = json.dumps(payload).encode("utf-8")
+    response = client.post(
+        "/api/v1/webhooks/meta",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": _sign(body),
+        },
+    )
+    assert response.status_code == 200, response.text
+    with session_scope() as session:
+        conversation = session.scalar(
+            select(ChatConversation).where(
+                ChatConversation.workspace_id == workspace_id,
+                ChatConversation.channel_account_id == account_id,
+            )
+        )
+        assert conversation is not None
+        assert conversation.participant_display_name == "Evander Ventura"
+        assert conversation.participant_username == "evander.codes"
+
+
+@pytest.mark.integration
+def test_meta_webhook_ingests_instagram_echo_as_outbound(
+    client, meta_webhook_settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.services.chat.graph_clients import InstagramUserProfile
+
+    page_id = f"ig-page-{uuid7()}"
+    customer_id = f"ig-user-{uuid7()}"
+    inbound_id = f"mid.in.{uuid7()}"
+    echo_id = f"mid.echo.{uuid7()}"
+    with session_scope() as session:
+        summary = bootstrap_local_foundation(session)
+        account = ChatChannelAccount(
+            workspace_id=summary.workspace_id,
+            channel="instagram",
+            provider_account_id=page_id,
+            display_name="@somnus_systems",
+            connection_status="connected",
+            access_token_ciphertext="ig-page-token",
+        )
+        session.add(account)
+        session.flush()
+        workspace_id = summary.workspace_id
+        account_id = account.id
+
+    def fake_profile(self, *, igsid: str, access_token: str) -> InstagramUserProfile:
+        assert igsid == customer_id
+        assert access_token == "ig-page-token"
+        return InstagramUserProfile(name="María López", username="maria.lopez")
+
+    monkeypatch.setattr(InstagramMessagingClient, "fetch_user_profile", fake_profile)
+
+    inbound = {
+        "object": "instagram",
+        "entry": [
+            {
+                "id": page_id,
+                "messaging": [
+                    {
+                        "sender": {"id": customer_id},
+                        "recipient": {"id": page_id},
+                        "timestamp": 1727000001000,
+                        "message": {"mid": inbound_id, "text": "Hola negocio"},
+                    }
+                ],
+            }
+        ],
+    }
+    echo = {
+        "object": "instagram",
+        "entry": [
+            {
+                "id": page_id,
+                "messaging": [
+                    {
+                        "sender": {"id": page_id},
+                        "recipient": {"id": customer_id},
+                        "timestamp": 1727000005000,
+                        "message": {
+                            "mid": echo_id,
+                            "text": "Desde Instagram",
+                            "is_echo": True,
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    for payload in (inbound, echo):
+        body = json.dumps(payload).encode("utf-8")
+        response = client.post(
+            "/api/v1/webhooks/meta",
+            content=body,
+            headers={
+                "Content-Type": "application/json",
+                "X-Hub-Signature-256": _sign(body),
+            },
+        )
+        assert response.status_code == 200, response.text
+
+    with session_scope() as session:
+        conversations = session.scalars(
+            select(ChatConversation).where(
+                ChatConversation.workspace_id == workspace_id,
+                ChatConversation.channel_account_id == account_id,
+            )
+        ).all()
+        assert len(conversations) == 1
+        assert conversations[0].participant_display_name == "María López"
+        assert conversations[0].participant_username == "maria.lopez"
+        inbound_message = session.scalar(
+            select(ChatMessage).where(ChatMessage.provider_message_id == inbound_id)
+        )
+        echo_message = session.scalar(
+            select(ChatMessage).where(ChatMessage.provider_message_id == echo_id)
+        )
+        assert inbound_message is not None
+        assert inbound_message.direction == "inbound"
+        assert echo_message is not None
+        assert echo_message.direction == "outbound"
+        assert echo_message.body_text == "Desde Instagram"
+        assert echo_message.conversation_id == inbound_message.conversation_id
 
 
 @pytest.mark.integration

@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { WhatsAppIcon } from '@/components/brand/WhatsAppIcon'
 import { cn } from '@/lib/utils'
 import { chatApi } from '@/services/chatApi'
-import { conversationTitle, formatChatTimestamp } from '../lib/format'
+import { conversationSubtitle, conversationTitle, formatChatTimestamp } from '../lib/format'
 
 function ChannelBadge({ channel }) {
   if (channel === 'whatsapp') {
@@ -144,7 +144,11 @@ export function ChatThreadPanel({
             </h2>
             <ChannelBadge channel={conversation.channel} />
           </div>
-          <p className="mt-0.5 text-xs text-slate-500">ID {conversation.participantProviderId}</p>
+          {conversationSubtitle(conversation) ? (
+            <p className="mt-0.5 truncate text-xs text-slate-500">
+              {conversationSubtitle(conversation)}
+            </p>
+          ) : null}
         </div>
         <div
           className={cn(

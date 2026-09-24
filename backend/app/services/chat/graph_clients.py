@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 from app.config import settings
@@ -119,6 +120,12 @@ class WhatsAppCloudClient:
         return str(message_id)
 
 
+@dataclass(frozen=True, slots=True)
+class InstagramUserProfile:
+    name: str
+    username: str
+
+
 class InstagramMessagingClient:
     def __init__(
         self,
@@ -151,3 +158,15 @@ class InstagramMessagingClient:
         if not message_id:
             raise ValueError("Instagram send response message_id is missing.")
         return str(message_id)
+
+    def fetch_user_profile(self, *, igsid: str, access_token: str) -> InstagramUserProfile:
+        url = f"https://graph.instagram.com/{self._version}/{igsid}"
+        payload = self._http.request(
+            "GET",
+            url,
+            headers={"Authorization": f"Bearer {access_token}"},
+            params={"fields": "name,username"},
+        )
+        name = str(payload.get("name") or "").strip()
+        username = str(payload.get("username") or "").strip().lstrip("@")
+        return InstagramUserProfile(name=name, username=username)

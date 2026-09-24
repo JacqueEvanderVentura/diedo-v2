@@ -12,9 +12,11 @@ class InboundTextMessage:
     provider_thread_id: str
     participant_provider_id: str
     participant_display_name: str
+    participant_username: str
     provider_message_id: str
     body_text: str
     sent_at: datetime | None
+    direction: Literal["inbound", "outbound"]
 
 
 def _preview(text: str, limit: int = 280) -> str:
@@ -80,12 +82,28 @@ def _parse_whatsapp(payload: dict[str, Any]) -> list[InboundTextMessage]:
                         provider_thread_id=sender,
                         participant_provider_id=sender,
                         participant_display_name=contacts.get(sender, ""),
+                        participant_username="",
                         provider_message_id=message_id,
                         body_text=text_body.strip(),
                         sent_at=_unix_to_datetime(message.get("timestamp")),
+                        direction="inbound",
                     )
                 )
     return events
+
+
+def _instagram_party_username(party: dict[str, Any]) -> str:
+    raw = party.get("username")
+    if not isinstance(raw, str):
+        return ""
+    return raw.strip().lstrip("@")
+
+
+def _instagram_party_name(party: dict[str, Any]) -> str:
+    raw = party.get("name")
+    if not isinstance(raw, str):
+        return ""
+    return raw.strip()
 
 
 def _instagram_text_event(
@@ -94,28 +112,46 @@ def _instagram_text_event(
     fallback_account_id: str,
 ) -> InboundTextMessage | None:
     message = messaging.get("message") or {}
-    # A DM to your own professional account arrives as echo + is_self.
-    if message.get("is_echo") and not (message.get("is_self") or messaging.get("is_self")):
-        return None
     text_body = message.get("text")
     if not isinstance(text_body, str) or not text_body.strip():
         return None
-    sender_id = str((messaging.get("sender") or {}).get("id") or "")
+    sender = messaging.get("sender") or {}
+    recipient = messaging.get("recipient") or {}
+    sender_id = str(sender.get("id") or "")
+    recipient_id = str(recipient.get("id") or "")
     message_id = str(message.get("mid") or "")
     if not sender_id or not message_id:
         return None
-    provider_account_id = str((messaging.get("recipient") or {}).get("id") or fallback_account_id)
-    if not provider_account_id:
+
+    is_echo = bool(message.get("is_echo"))
+    is_self = bool(message.get("is_self") or messaging.get("is_self"))
+    # Echo of a DM the professional account sent from Instagram itself.
+    if is_echo and not is_self:
+        provider_account_id = sender_id
+        participant_id = recipient_id
+        direction: Literal["inbound", "outbound"] = "outbound"
+        display_name = _instagram_party_name(recipient)
+        username = _instagram_party_username(recipient)
+    else:
+        provider_account_id = recipient_id or fallback_account_id
+        participant_id = sender_id
+        direction = "inbound"
+        display_name = _instagram_party_name(sender)
+        username = _instagram_party_username(sender)
+
+    if not provider_account_id or not participant_id:
         return None
     return InboundTextMessage(
         channel="instagram",
         provider_account_id=provider_account_id,
-        provider_thread_id=sender_id,
-        participant_provider_id=sender_id,
-        participant_display_name="",
+        provider_thread_id=participant_id,
+        participant_provider_id=participant_id,
+        participant_display_name=display_name,
+        participant_username=username,
         provider_message_id=message_id,
         body_text=text_body.strip(),
         sent_at=_unix_to_datetime(messaging.get("timestamp")),
+        direction=direction,
     )
 
 
