@@ -212,6 +212,7 @@ def test_oauth_callback_auto_connects_single_whatsapp_account(
                         "owned_whatsapp_business_accounts": {
                             "data": [
                                 {
+                                    "id": "waba-demo-1",
                                     "name": "Demo WABA",
                                     "phone_numbers": {
                                         "data": [
@@ -255,6 +256,10 @@ def test_oauth_callback_auto_connects_single_whatsapp_account(
         assert account is not None
         assert account.connection_status == "connected"
         assert account.access_token_ciphertext == "long-token"
+        assert any(
+            method == "POST" and "waba-demo-1/subscribed_apps" in url
+            for method, url in fake_http.calls
+        )
 
 
 @pytest.mark.integration
@@ -283,6 +288,7 @@ def test_oauth_callback_returns_to_request_origin(
                         "owned_whatsapp_business_accounts": {
                             "data": [
                                 {
+                                    "id": "waba-demo-2",
                                     "name": "Demo WABA",
                                     "phone_numbers": {
                                         "data": [
@@ -363,6 +369,7 @@ def test_update_branches_and_disconnect(client: TestClient, meta_oauth_settings)
 def test_oauth_complete_after_multi_candidate_discovery(
     client: TestClient,
     meta_oauth_settings,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     headers = _login(client)
     with session_scope() as session:
@@ -381,6 +388,7 @@ def test_oauth_complete_after_multi_candidate_discovery(
                         "owned_whatsapp_business_accounts": {
                             "data": [
                                 {
+                                    "id": "waba-demo-1",
                                     "name": "Demo WABA",
                                     "phone_numbers": {
                                         "data": [
@@ -404,6 +412,12 @@ def test_oauth_complete_after_multi_candidate_discovery(
             },
         }
     )
+    original_init = MetaOauthService.__init__
+
+    def _init_oauth(self, session, *, http_client=None):
+        original_init(self, session, http_client=fake_http)
+
+    monkeypatch.setattr(MetaOauthService, "__init__", _init_oauth)
 
     with session_scope() as session:
         oauth = MetaOauthService(session, http_client=fake_http)
@@ -451,6 +465,10 @@ def test_oauth_complete_after_multi_candidate_discovery(
         assert account.access_token_ciphertext == "long-token"
         tokens = session.scalar(select(ChatOauthState).where(ChatOauthState.id == state_id))
         assert tokens is None
+        assert any(
+            method == "POST" and "waba-demo-1/subscribed_apps" in url
+            for method, url in fake_http.calls
+        )
 
 
 @pytest.mark.integration
@@ -539,6 +557,8 @@ def test_discover_whatsapp_falls_back_to_waba_edges(meta_oauth_settings) -> None
                         }
                     ]
                 }
+            if "subscribed_apps" in url:
+                return {"success": True}
             raise AssertionError(url)
 
     with session_scope() as session:

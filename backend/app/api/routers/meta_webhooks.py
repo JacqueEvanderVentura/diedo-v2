@@ -8,7 +8,7 @@ from app.api.deps import DatabaseSession
 from app.config import settings
 from app.core.request_context import get_request_id
 from app.services.chat.inbound import ChatInboundService
-from app.services.chat.meta_parsers import instagram_webhook_shape
+from app.services.chat.meta_parsers import instagram_webhook_shape, whatsapp_webhook_shape
 from app.services.chat.meta_signature import verify_meta_signature
 
 logger = logging.getLogger(__name__)
@@ -100,6 +100,12 @@ async def receive_meta_webhook(request: Request, database: DatabaseSession) -> d
         )
 
     object_type = payload.get("object")
+    logger.info(
+        "meta webhook received object=%s bytes=%s request_id=%s",
+        object_type,
+        len(body),
+        get_request_id(),
+    )
     try:
         ingested = _inbound_service.ingest_webhook_payload(database, payload)
         database.commit()
@@ -113,8 +119,11 @@ async def receive_meta_webhook(request: Request, database: DatabaseSession) -> d
         raise
 
     shape = ""
-    if ingested == 0 and object_type in {"instagram", "page"}:
-        shape = f" shape={instagram_webhook_shape(payload)}"
+    if ingested == 0:
+        if object_type in {"instagram", "page"}:
+            shape = f" shape={instagram_webhook_shape(payload)}"
+        elif object_type == "whatsapp_business_account":
+            shape = f" shape={whatsapp_webhook_shape(payload)}"
     logger.info(
         "meta webhook processed object=%s ingested_messages=%s%s request_id=%s",
         object_type,

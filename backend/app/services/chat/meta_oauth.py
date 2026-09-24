@@ -45,6 +45,7 @@ class OauthCandidate:
     provider_account_id: str
     display_name: str
     phone_number: str = ""
+    waba_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +168,7 @@ class MetaOauthService:
                 "provider_account_id": c.provider_account_id,
                 "display_name": c.display_name,
                 "phone_number": c.phone_number,
+                "waba_id": c.waba_id,
             }
             for c in candidates
         ]
@@ -174,18 +176,20 @@ class MetaOauthService:
 
         if len(candidates) == 1:
             candidate = candidates[0]
+            token = tokens[candidate.provider_account_id]
             self._upsert_connected_account(
                 workspace_id=state.workspace_id,
                 channel=channel,
                 provider_account_id=candidate.provider_account_id,
                 display_name=candidate.display_name,
-                access_token=tokens[candidate.provider_account_id],
+                access_token=token,
             )
-            if channel == "instagram":
-                self._subscribe_instagram_messages(
-                    candidate.provider_account_id,
-                    tokens[candidate.provider_account_id],
-                )
+            self._subscribe_channel_webhooks(
+                channel,
+                provider_account_id=candidate.provider_account_id,
+                access_token=token,
+                waba_id=candidate.waba_id,
+            )
             self._session.delete(state)
             return state.workspace_id, channel, candidates, True
 
@@ -219,6 +223,7 @@ class MetaOauthService:
             None,
         )
         display_name = str((candidate or {}).get("display_name") or provider_account_id)
+        waba_id = str((candidate or {}).get("waba_id") or "")
 
         channel = _as_channel(state.channel)
         account = self._upsert_connected_account(
@@ -228,8 +233,12 @@ class MetaOauthService:
             display_name=display_name,
             access_token=token,
         )
-        if channel == "instagram":
-            self._subscribe_instagram_messages(provider_account_id, token)
+        self._subscribe_channel_webhooks(
+            channel,
+            provider_account_id=provider_account_id,
+            access_token=token,
+            waba_id=waba_id,
+        )
         self._session.delete(state)
         return account
 
@@ -257,6 +266,7 @@ class MetaOauthService:
                 provider_account_id=str(item["provider_account_id"]),
                 display_name=str(item.get("display_name") or item["provider_account_id"]),
                 phone_number=str(item.get("phone_number") or ""),
+                waba_id=str(item.get("waba_id") or ""),
             )
             for item in state.candidates_json
         ]
@@ -333,6 +343,20 @@ class MetaOauthService:
             raise InvalidOperationError(_INSTAGRAM_APP_MISSING, "meta")
         return secret.get_secret_value()
 
+    def _subscribe_channel_webhooks(
+        self,
+        channel: Channel,
+        *,
+        provider_account_id: str,
+        access_token: str,
+        waba_id: str = "",
+    ) -> None:
+        if channel == "instagram":
+            self._subscribe_instagram_messages(provider_account_id, access_token)
+            return
+        resolved_waba = waba_id.strip() or self._lookup_waba_id(provider_account_id, access_token)
+        self._subscribe_whatsapp_messages(resolved_waba, access_token)
+
     def _subscribe_instagram_messages(self, ig_user_id: str, access_token: str) -> None:
         version = settings.meta_graph_api_version
         url = f"https://graph.instagram.com/{version}/{ig_user_id}/subscribed_apps"
@@ -350,6 +374,42 @@ class MetaOauthService:
                 exc.status_code,
                 exc.graph_code,
             )
+
+    def _subscribe_whatsapp_messages(self, waba_id: str, access_token: str) -> None:
+        if not waba_id:
+            logger.warning("meta oauth whatsapp webhook subscribe skipped missing_waba_id=1")
+            return
+        version = settings.meta_graph_api_version
+        url = f"https://graph.facebook.com/{version}/{waba_id}/subscribed_apps"
+        try:
+            self._http.request(
+                "POST",
+                url,
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            logger.info("meta oauth whatsapp webhook subscribed waba_id=%s", waba_id)
+        except GraphApiError as exc:
+            logger.warning(
+                "meta oauth whatsapp webhook subscribe failed waba_id=%s status=%s code=%s",
+                waba_id,
+                exc.status_code,
+                exc.graph_code,
+            )
+
+    def _lookup_waba_id(self, phone_number_id: str, access_token: str) -> str:
+        payload = self._graph_get_optional(
+            "me/whatsapp_business_accounts",
+            access_token,
+            {"fields": "id,phone_numbers{id}"},
+        )
+        for waba in payload.get("data") or []:
+            if not isinstance(waba, dict):
+                continue
+            phones = (waba.get("phone_numbers") or {}).get("data") or []
+            for phone in phones:
+                if isinstance(phone, dict) and str(phone.get("id") or "") == phone_number_id:
+                    return str(waba.get("id") or "")
+        return ""
 
     def _facebook_app_secret(self) -> str:
         secret = settings.meta_app_secret
@@ -612,6 +672,7 @@ class MetaOauthService:
                         provider_account_id=phone_id,
                         display_name=label,
                         phone_number=phone_number,
+                        waba_id=str(waba.get("id") or ""),
                     )
                 )
                 tokens[phone_id] = access_token

@@ -15,7 +15,11 @@ from app.db.models import (
 )
 from app.db.session import session_scope
 from app.services.chat.graph_clients import InstagramMessagingClient, WhatsAppCloudClient
-from app.services.chat.meta_parsers import instagram_webhook_shape, parse_meta_webhook_payload
+from app.services.chat.meta_parsers import (
+    instagram_webhook_shape,
+    parse_meta_webhook_payload,
+    whatsapp_webhook_shape,
+)
 from app.services.chat.meta_signature import verify_meta_signature
 from app.services.local_bootstrap import bootstrap_local_foundation
 from pydantic import SecretStr
@@ -129,6 +133,9 @@ def test_parse_whatsapp_and_instagram_fixtures() -> None:
     assert outgoing[0].participant_provider_id == "999"
     assert outgoing[0].body_text == "respuesta"
     assert instagram_webhook_shape({"object": "instagram", "entry": []}) == "no_entry"
+    empty_wa = {"object": "whatsapp_business_account", "entry": []}
+    assert whatsapp_webhook_shape(empty_wa) == "no_entry"
+    assert "messages=1" in whatsapp_webhook_shape(_load_fixture("meta_whatsapp_text.json"))
 
 
 def test_graph_clients_use_injected_http() -> None:

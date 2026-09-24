@@ -37,7 +37,7 @@ Do not put Meta secrets in `frontend/.env` or Worker vars.
 3. Verify token: same as `META_WEBHOOK_VERIFY_TOKEN`.
 4. Subscribe the **`messages`** field (WhatsApp Cloud). For Instagram Messaging subscribe **messages** (inbox DMs). Delivery `statuses` may arrive on the same WhatsApp field; the API acknowledges them and ignores non-text.
 5. Click **Verify and save**. GET must return `hub.challenge` with HTTP 200 text/plain.
-6. After a workspace **Connects** a WABA/IG account in Configuración, Meta sends events for that phone-number-id / IG id. HELIOS matches `chat_channel_accounts.provider_account_id`.
+6. After a workspace **Connects** WhatsApp, Helios calls Graph `POST /{waba-id}/subscribed_apps` so that WABA delivers `object=whatsapp_business_account` to Railway. Instagram already did `/{ig-user-id}/subscribed_apps`. If you connected WhatsApp before this existed, **Connect again** (pick the number). HELIOS matches `phone_number_id` to `chat_channel_accounts.provider_account_id`.
 
 If verify fails: Railway has the token, the URL is HTTPS, and you are not pointing Meta at `app.helios360erp.com/api-backend/...`.
 

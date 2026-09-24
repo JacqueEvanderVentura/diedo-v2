@@ -183,6 +183,32 @@ def message_preview(text: str) -> str:
     return _preview(text)
 
 
+def whatsapp_webhook_shape(payload: dict[str, Any]) -> str:
+    """Short, non-sensitive description used when nothing was stored."""
+    entries = payload.get("entry")
+    if not isinstance(entries, list) or not entries:
+        return "no_entry"
+    parts: list[str] = []
+    for entry in entries[:3]:
+        if not isinstance(entry, dict):
+            parts.append("entry_not_object")
+            continue
+        changes = entry.get("changes")
+        fields: list[str] = []
+        message_count = 0
+        if isinstance(changes, list):
+            for change in changes[:5]:
+                if not isinstance(change, dict):
+                    continue
+                fields.append(str(change.get("field") or "?"))
+                value = change.get("value")
+                messages = value.get("messages") if isinstance(value, dict) else None
+                if isinstance(messages, list):
+                    message_count += len(messages)
+        parts.append(f"changes={','.join(fields) or '0'} messages={message_count}")
+    return " ".join(parts)
+
+
 def instagram_webhook_shape(payload: dict[str, Any]) -> str:
     """Short, non-sensitive description used when nothing was stored."""
     entries = payload.get("entry")
