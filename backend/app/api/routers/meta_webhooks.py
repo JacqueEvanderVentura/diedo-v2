@@ -35,6 +35,10 @@ def verify_meta_webhook(
         else None
     )
     if hub_mode == "subscribe" and expected and hub_verify_token == expected and hub_challenge:
+        logger.warning(
+            "meta webhook verify accepted request_id=%s",
+            get_request_id(),
+        )
         return PlainTextResponse(content=hub_challenge)
     logger.warning(
         "meta webhook verify rejected mode=%s token_configured=%s request_id=%s",
@@ -100,7 +104,7 @@ async def receive_meta_webhook(request: Request, database: DatabaseSession) -> d
         )
 
     object_type = payload.get("object")
-    logger.info(
+    logger.warning(
         "meta webhook received object=%s bytes=%s request_id=%s",
         object_type,
         len(body),
@@ -124,7 +128,7 @@ async def receive_meta_webhook(request: Request, database: DatabaseSession) -> d
             shape = f" shape={instagram_webhook_shape(payload)}"
         elif object_type == "whatsapp_business_account":
             shape = f" shape={whatsapp_webhook_shape(payload)}"
-    logger.info(
+    logger.warning(
         "meta webhook processed object=%s ingested_messages=%s%s request_id=%s",
         object_type,
         ingested,

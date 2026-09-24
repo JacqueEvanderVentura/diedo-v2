@@ -385,12 +385,20 @@ class MetaOauthService:
         version = settings.meta_graph_api_version
         url = f"https://graph.facebook.com/{version}/{waba_id}/subscribed_apps"
         try:
-            self._http.request(
-                "POST",
-                url,
-                headers={"Authorization": f"Bearer {access_token}"},
-            )
-            logger.info("meta oauth whatsapp webhook subscribed waba_id=%s", waba_id)
+            try:
+                self._http.request(
+                    "POST",
+                    url,
+                    params={"subscribed_fields": "messages,smb_message_echoes"},
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+            except GraphApiError:
+                self._http.request(
+                    "POST",
+                    url,
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+            logger.warning("meta oauth whatsapp webhook subscribed waba_id=%s", waba_id)
         except GraphApiError as exc:
             logger.warning(
                 "meta oauth whatsapp webhook subscribe failed waba_id=%s status=%s code=%s",

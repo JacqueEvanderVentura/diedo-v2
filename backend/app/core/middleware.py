@@ -18,10 +18,22 @@ from app.core.request_context import (
 logger = logging.getLogger("erp.http")
 
 _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+_QUIET_GET_PREFIXES = (
+    "/api/v1/chat/conversations",
+    "/api/v1/appointments",
+    "/health",
+    "/api/v1/health",
+)
 
 
 def valid_request_id(value: str) -> bool:
     return bool(_REQUEST_ID_PATTERN.fullmatch(value))
+
+
+def quiet_successful_get(method: str, path: str, status_code: int) -> bool:
+    if method != "GET" or status_code >= 400:
+        return False
+    return any(path == prefix or path.startswith(f"{prefix}/") for prefix in _QUIET_GET_PREFIXES)
 
 
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
@@ -61,7 +73,12 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
             return response
         finally:
             duration_ms = int((time.perf_counter() - start) * 1000)
-            logger.info(
+            log = (
+                logger.debug
+                if quiet_successful_get(request.method, request.url.path, status_code)
+                else logger.info
+            )
+            log(
                 "http_request method=%s path=%s status=%s duration_ms=%s request_id=%s",
                 request.method,
                 request.url.path,

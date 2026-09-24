@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, Loader2, RefreshCw, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -25,6 +25,8 @@ export default function ChatPage() {
   const [mobileShowThread, setMobileShowThread] = useState(false)
   const [searchDebounced, setSearchDebounced] = useState('')
   const [pollTick, setPollTick] = useState(0)
+  const selectedIdRef = useRef(null)
+  selectedIdRef.current = selectedId
 
   const selectedConversation = useMemo(
     () => conversations.find((item) => item.id === selectedId) || null,
@@ -51,7 +53,8 @@ export default function ChatPage() {
       const data = await chatApi.listConversations(params)
       const items = data.items || []
       setConversations(items)
-      if (selectedId && !items.some((item) => item.id === selectedId)) {
+      const currentSelected = selectedIdRef.current
+      if (currentSelected && !items.some((item) => item.id === currentSelected)) {
         setSelectedId(null)
         setMobileShowThread(false)
       }
@@ -60,7 +63,7 @@ export default function ChatPage() {
     } finally {
       setLoading(false)
     }
-  }, [online, activeBranchId, channelFilter, searchDebounced, selectedId])
+  }, [online, activeBranchId, channelFilter, searchDebounced])
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearchDebounced(search), 300)
