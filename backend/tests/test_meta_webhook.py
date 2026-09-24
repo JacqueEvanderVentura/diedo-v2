@@ -6,6 +6,7 @@ from uuid import uuid7
 
 import pytest
 from app.config import settings
+from app.core.security import hash_password
 from app.db.models import (
     Branch,
     ChatChannelAccount,
@@ -51,6 +52,13 @@ def test_parse_whatsapp_and_instagram_fixtures() -> None:
     wa_events = parse_meta_webhook_payload(_load_fixture("meta_whatsapp_text.json"))
     assert len(wa_events) == 1
     assert wa_events[0].channel == "whatsapp"
+    assert wa_events[0].direction == "inbound"
+    echo_events = parse_meta_webhook_payload(_load_fixture("meta_whatsapp_echo.json"))
+    assert len(echo_events) == 1
+    assert echo_events[0].direction == "outbound"
+    assert echo_events[0].participant_provider_id == "18095551234"
+    assert echo_events[0].provider_account_id == "demo-phone-number-id"
+    assert echo_events[0].body_text == "Hola desde Somnus"
     assert wa_events[0].provider_account_id == "demo-phone-number-id"
     assert wa_events[0].body_text == "Hola desde WhatsApp"
 
@@ -136,6 +144,7 @@ def test_parse_whatsapp_and_instagram_fixtures() -> None:
     empty_wa = {"object": "whatsapp_business_account", "entry": []}
     assert whatsapp_webhook_shape(empty_wa) == "no_entry"
     assert "messages=1" in whatsapp_webhook_shape(_load_fixture("meta_whatsapp_text.json"))
+    assert "echoes=1" in whatsapp_webhook_shape(_load_fixture("meta_whatsapp_echo.json"))
 
 
 def test_graph_clients_use_injected_http() -> None:
@@ -299,6 +308,103 @@ def test_meta_webhook_ingests_whatsapp_idempotently(client, meta_webhook_setting
         ).all()
         assert len(messages) == 1
         assert messages[0].body_text == "Hola desde WhatsApp"
+
+
+@pytest.mark.integration
+def test_meta_webhook_ingests_whatsapp_business_app_echo(client, meta_webhook_settings) -> None:
+    from tests.chat_test_helpers import seed_whatsapp_account, whatsapp_echo_payload
+
+    phone_id = f"demo-wa-echo-{uuid7()}"
+    message_id = f"wamid.{uuid7()}"
+    with session_scope() as session:
+        summary = bootstrap_local_foundation(session)
+        seed_whatsapp_account(
+            session,
+            workspace_id=summary.workspace_id,
+            branch_id=summary.branch_id,
+            provider_account_id=phone_id,
+        )
+        workspace_id = summary.workspace_id
+
+    payload = whatsapp_echo_payload(phone_id, message_id)
+    body = json.dumps(payload).encode("utf-8")
+    response = client.post(
+        "/api/v1/webhooks/meta",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": _sign(body),
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    with session_scope() as session:
+        stored = session.scalar(
+            select(ChatMessage).where(
+                ChatMessage.workspace_id == workspace_id,
+                ChatMessage.provider_message_id == message_id,
+            )
+        )
+        assert stored is not None
+        assert stored.direction == "outbound"
+        assert stored.body_text == "Hola desde Somnus"
+        conversation = session.scalar(
+            select(ChatConversation).where(ChatConversation.id == stored.conversation_id)
+        )
+        assert conversation is not None
+        assert conversation.participant_provider_id == "18095551234"
+
+
+@pytest.mark.integration
+def test_meta_webhook_assigns_branches_so_inbox_lists_whatsapp(
+    client, meta_webhook_settings
+) -> None:
+    from tests.chat_test_helpers import whatsapp_payload
+
+    phone_id = f"demo-wa-unassigned-{uuid7()}"
+    message_id = f"wamid.{uuid7()}"
+    marker = f"inbox-{uuid7()}"
+    with session_scope() as session:
+        summary = bootstrap_local_foundation(
+            session, hash_password("chat-webhook-owner-password-not-a-secret")
+        )
+        session.add(
+            ChatChannelAccount(
+                workspace_id=summary.workspace_id,
+                channel="whatsapp",
+                provider_account_id=phone_id,
+                display_name="WA sin sucursal",
+                connection_status="connected",
+            )
+        )
+        branch_id = summary.branch_id
+
+    payload = whatsapp_payload(phone_id, message_id)
+    payload["entry"][0]["changes"][0]["value"]["messages"][0]["text"]["body"] = marker
+    body = json.dumps(payload).encode("utf-8")
+    ingested = client.post(
+        "/api/v1/webhooks/meta",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": _sign(body),
+        },
+    )
+    assert ingested.status_code == 200, ingested.text
+
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@erp.dev", "password": "chat-webhook-owner-password-not-a-secret"},
+    )
+    assert login.status_code == 200, login.text
+    listed = client.get(
+        "/api/v1/chat/conversations",
+        headers={"Authorization": f"Bearer {login.json()['accessToken']}"},
+        params={"branchId": str(branch_id), "search": marker},
+    )
+    assert listed.status_code == 200, listed.text
+    assert listed.json()["totalItems"] == 1
+    assert listed.json()["items"][0]["lastMessagePreview"] == marker
 
 
 @pytest.mark.integration

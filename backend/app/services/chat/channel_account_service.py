@@ -6,6 +6,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.db.models.chat import ChatChannelAccount, ChatChannelAccountBranch
+from app.db.models.foundation import Branch
 from app.repositories.chat import ChatRepository
 from app.services.authorization import PermissionGrant
 from app.services.errors import InvalidOperationError, ResourceNotFoundError
@@ -64,6 +65,33 @@ class ChatChannelAccountService:
             workspace_id=grant.workspace_id,
             channel_account_id=account.id,
         )
+
+    def ensure_default_branch_assignments(self, account: ChatChannelAccount) -> int:
+        assigned = self._repository.assigned_branch_ids(
+            workspace_id=account.workspace_id,
+            channel_account_id=account.id,
+        )
+        if assigned:
+            return 0
+        branch_ids = list(
+            self._session.scalars(
+                select(Branch.id).where(
+                    Branch.workspace_id == account.workspace_id,
+                    Branch.status == "active",
+                )
+            ).all()
+        )
+        for branch_id in branch_ids:
+            self._session.add(
+                ChatChannelAccountBranch(
+                    workspace_id=account.workspace_id,
+                    channel_account_id=account.id,
+                    branch_id=branch_id,
+                )
+            )
+        if branch_ids:
+            self._session.flush()
+        return len(branch_ids)
 
     def get_account(self, grant: PermissionGrant, account_id: UUID) -> ChatChannelAccount:
         return self._require_account(grant, account_id)

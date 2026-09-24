@@ -31,6 +31,14 @@ def whatsapp_payload(phone_number_id: str, message_id: str) -> dict:
     return payload
 
 
+def whatsapp_echo_payload(phone_number_id: str, message_id: str) -> dict:
+    payload = copy.deepcopy(load_fixture("meta_whatsapp_echo.json"))
+    value = payload["entry"][0]["changes"][0]["value"]
+    value["metadata"]["phone_number_id"] = phone_number_id
+    value["message_echoes"][0]["id"] = message_id
+    return payload
+
+
 def instagram_payload(page_id: str, message_id: str) -> dict:
     payload = copy.deepcopy(load_fixture("meta_instagram_text.json"))
     messaging = payload["entry"][0]["messaging"][0]

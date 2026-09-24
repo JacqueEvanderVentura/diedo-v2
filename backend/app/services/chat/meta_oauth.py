@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.models.chat import ChatChannelAccount, ChatOauthState
+from app.services.chat.channel_account_service import ChatChannelAccountService
 from app.services.chat.graph_clients import GraphApiError, GraphHttpClient, _default_graph_client
 from app.services.errors import InvalidOperationError, ResourceNotFoundError
 
@@ -177,13 +178,14 @@ class MetaOauthService:
         if len(candidates) == 1:
             candidate = candidates[0]
             token = tokens[candidate.provider_account_id]
-            self._upsert_connected_account(
+            account = self._upsert_connected_account(
                 workspace_id=state.workspace_id,
                 channel=channel,
                 provider_account_id=candidate.provider_account_id,
                 display_name=candidate.display_name,
                 access_token=token,
             )
+            ChatChannelAccountService(self._session).ensure_default_branch_assignments(account)
             self._subscribe_channel_webhooks(
                 channel,
                 provider_account_id=candidate.provider_account_id,
@@ -233,6 +235,7 @@ class MetaOauthService:
             display_name=display_name,
             access_token=token,
         )
+        ChatChannelAccountService(self._session).ensure_default_branch_assignments(account)
         self._subscribe_channel_webhooks(
             channel,
             provider_account_id=provider_account_id,

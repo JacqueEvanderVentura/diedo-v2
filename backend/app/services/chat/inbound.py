@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models.chat import ChatChannelAccount, ChatConversation, ChatMessage
+from app.services.chat.channel_account_service import ChatChannelAccountService
 from app.services.chat.graph_clients import (
     GraphApiError,
     InstagramMessagingClient,
@@ -49,7 +50,9 @@ class ChatInboundService:
             return 0
 
         stored = 0
+        branches = ChatChannelAccountService(session)
         for account in accounts:
+            branches.ensure_default_branch_assignments(account)
             if self._store_message_for_account(session, account, event):
                 stored += 1
         return stored

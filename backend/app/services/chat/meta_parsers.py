@@ -49,46 +49,100 @@ def parse_meta_webhook_payload(payload: dict[str, Any]) -> list[InboundTextMessa
     return []
 
 
+def _wa_digits(value: str) -> str:
+    return "".join(character for character in value if character.isdigit())
+
+
+def _whatsapp_text_event(
+    message: dict[str, Any],
+    *,
+    phone_number_id: str,
+    display_phone_number: str,
+    contacts: dict[str, str],
+    prefer_outbound: bool,
+) -> InboundTextMessage | None:
+    if message.get("type") != "text":
+        return None
+    text_body = (message.get("text") or {}).get("body")
+    if not isinstance(text_body, str) or not text_body.strip():
+        return None
+    sender = str(message.get("from") or "")
+    recipient = str(message.get("to") or "")
+    message_id = str(message.get("id") or "")
+    if not message_id:
+        return None
+
+    business_digits = _wa_digits(display_phone_number)
+    sender_is_business = bool(business_digits) and _wa_digits(sender) == business_digits
+    outbound = prefer_outbound or sender_is_business
+    if outbound:
+        participant = recipient
+        direction: Literal["inbound", "outbound"] = "outbound"
+    else:
+        participant = sender
+        direction = "inbound"
+    if not participant:
+        return None
+
+    return InboundTextMessage(
+        channel="whatsapp",
+        provider_account_id=str(phone_number_id),
+        provider_thread_id=participant,
+        participant_provider_id=participant,
+        participant_display_name=contacts.get(participant, ""),
+        participant_username="",
+        provider_message_id=message_id,
+        body_text=text_body.strip(),
+        sent_at=_unix_to_datetime(message.get("timestamp")),
+        direction=direction,
+    )
+
+
 def _parse_whatsapp(payload: dict[str, Any]) -> list[InboundTextMessage]:
     events: list[InboundTextMessage] = []
     for entry in payload.get("entry") or []:
+        if not isinstance(entry, dict):
+            continue
         for change in entry.get("changes") or []:
-            if change.get("field") != "messages":
+            if not isinstance(change, dict):
                 continue
+            field = str(change.get("field") or "")
             value = change.get("value") or {}
-            metadata = value.get("metadata") or {}
+            if not isinstance(value, dict):
+                continue
+            raw_metadata = value.get("metadata")
+            metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
             phone_number_id = metadata.get("phone_number_id")
             if not phone_number_id:
                 continue
+            display_phone = str(metadata.get("display_phone_number") or "")
             contacts = {
                 str(contact.get("wa_id", "")): str((contact.get("profile") or {}).get("name") or "")
                 for contact in value.get("contacts") or []
-                if contact.get("wa_id")
+                if isinstance(contact, dict) and contact.get("wa_id")
             }
-            for message in value.get("messages") or []:
-                if message.get("type") != "text":
+            if field == "smb_message_echoes":
+                raw_messages = value.get("message_echoes") or value.get("smb_message_echoes") or []
+                prefer_outbound = True
+            elif field == "messages":
+                raw_messages = value.get("messages") or []
+                prefer_outbound = False
+            else:
+                continue
+            if not isinstance(raw_messages, list):
+                continue
+            for message in raw_messages:
+                if not isinstance(message, dict):
                     continue
-                text_body = (message.get("text") or {}).get("body")
-                if not isinstance(text_body, str) or not text_body.strip():
-                    continue
-                sender = str(message.get("from") or "")
-                message_id = str(message.get("id") or "")
-                if not sender or not message_id:
-                    continue
-                events.append(
-                    InboundTextMessage(
-                        channel="whatsapp",
-                        provider_account_id=str(phone_number_id),
-                        provider_thread_id=sender,
-                        participant_provider_id=sender,
-                        participant_display_name=contacts.get(sender, ""),
-                        participant_username="",
-                        provider_message_id=message_id,
-                        body_text=text_body.strip(),
-                        sent_at=_unix_to_datetime(message.get("timestamp")),
-                        direction="inbound",
-                    )
+                event = _whatsapp_text_event(
+                    message,
+                    phone_number_id=str(phone_number_id),
+                    display_phone_number=display_phone,
+                    contacts=contacts,
+                    prefer_outbound=prefer_outbound,
                 )
+                if event is not None:
+                    events.append(event)
     return events
 
 
@@ -196,16 +250,29 @@ def whatsapp_webhook_shape(payload: dict[str, Any]) -> str:
         changes = entry.get("changes")
         fields: list[str] = []
         message_count = 0
+        echo_count = 0
+        status_count = 0
         if isinstance(changes, list):
             for change in changes[:5]:
                 if not isinstance(change, dict):
                     continue
                 fields.append(str(change.get("field") or "?"))
                 value = change.get("value")
-                messages = value.get("messages") if isinstance(value, dict) else None
+                if not isinstance(value, dict):
+                    continue
+                messages = value.get("messages")
+                echoes = value.get("message_echoes") or value.get("smb_message_echoes")
+                statuses = value.get("statuses")
                 if isinstance(messages, list):
                     message_count += len(messages)
-        parts.append(f"changes={','.join(fields) or '0'} messages={message_count}")
+                if isinstance(echoes, list):
+                    echo_count += len(echoes)
+                if isinstance(statuses, list):
+                    status_count += len(statuses)
+        parts.append(
+            f"changes={','.join(fields) or '0'} messages={message_count} "
+            f"echoes={echo_count} statuses={status_count}"
+        )
     return " ".join(parts)
 
 

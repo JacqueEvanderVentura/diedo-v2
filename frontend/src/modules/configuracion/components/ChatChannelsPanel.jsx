@@ -304,9 +304,9 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
   return (
     <div className={embedded ? '' : 'space-y-6'} data-testid="chat-channels-panel">
       <p className="text-sm text-slate-600">
-        Conecta una cuenta Meta por canal y asígnala a una o varias sucursales. Varias sucursales pueden
-        usar el mismo Instagram o WhatsApp sin duplicar el token. Los tokens permanecen solo en el servidor.
-        WhatsApp Cloud se conecta con Facebook Business (no con whatsapp.com).
+        Conecta Instagram o WhatsApp Cloud y asígnalos a sucursales. Escribes y recibes en WhatsApp
+        (app Business o el número Cloud), no en Messenger. Facebook Login solo se usa una vez para
+        autorizar Cloud API; los tokens quedan en el servidor.
       </p>
 
       {!canManage && online && (
