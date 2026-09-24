@@ -44,6 +44,7 @@ describe('Cloudflare static deployment configuration', () => {
     expect(lines).toContain('  X-Frame-Options: DENY')
     expect(lines).toContain('  Permissions-Policy: camera=(), microphone=(), geolocation=()')
     expect(lines).toContain('/health')
+    expect(lines).toContain('/privacidad')
     expect(lines).toContain('  Cache-Control: no-store')
     expect(lines).toContain('  Content-Type: text/plain; charset=utf-8')
   })
@@ -51,6 +52,20 @@ describe('Cloudflare static deployment configuration', () => {
   it('exportar /health como recurso estático', () => {
     const body = fs.readFileSync(healthFile, 'utf8')
     expect(body.trim()).toBe('ok')
+  })
+
+  it('publica una política de privacidad que Meta puede rastrear', () => {
+    const privacy = fs.readFileSync(path.join(projectRoot, 'public', 'privacidad', 'index.html'), 'utf8')
+    const deletion = fs.readFileSync(
+      path.join(projectRoot, 'public', 'privacidad', 'eliminar-datos', 'index.html'),
+      'utf8',
+    )
+    expect(privacy).toContain('<title>Política de privacidad — Helios 360</title>')
+    expect(privacy).toMatch(/datos que recopilamos/i)
+    expect(privacy).toMatch(/cómo solicitar la eliminación/i)
+    expect(privacy).toContain('privacy@helios360erp.com')
+    expect(deletion).toContain('<title>Eliminación de datos — Helios 360</title>')
+    expect(deletion).toContain('solicito la eliminación de mis datos')
   })
 
   it('configurar assets SPA y entornos', () => {

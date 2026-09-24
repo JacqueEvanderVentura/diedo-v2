@@ -1,4 +1,10 @@
 const API_PREFIX = '/api-backend'
+const LEGAL_ASSETS = {
+  '/privacidad': '/privacidad/index.html',
+  '/privacidad/': '/privacidad/index.html',
+  '/privacidad/eliminar-datos': '/privacidad/eliminar-datos/index.html',
+  '/privacidad/eliminar-datos/': '/privacidad/eliminar-datos/index.html',
+}
 const securityHeaders = {
   'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff',
@@ -16,6 +22,10 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url)
     if (!url.pathname.startsWith(`${API_PREFIX}/`)) {
+      const legalAsset = LEGAL_ASSETS[url.pathname]
+      if (legalAsset && ['GET', 'HEAD'].includes(request.method)) {
+        return env.ASSETS.fetch(new Request(new URL(legalAsset, url), request))
+      }
       // Existing assets are served first. Only page navigations receive the SPA shell.
       if (['GET', 'HEAD'].includes(request.method)
         && request.headers.get('Sec-Fetch-Mode') === 'navigate'
