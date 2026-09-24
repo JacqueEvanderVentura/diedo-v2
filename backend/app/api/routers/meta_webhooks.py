@@ -8,6 +8,7 @@ from app.api.deps import DatabaseSession
 from app.config import settings
 from app.core.request_context import get_request_id
 from app.services.chat.inbound import ChatInboundService
+from app.services.chat.meta_parsers import instagram_webhook_shape
 from app.services.chat.meta_signature import verify_meta_signature
 
 logger = logging.getLogger(__name__)
@@ -111,10 +112,14 @@ async def receive_meta_webhook(request: Request, database: DatabaseSession) -> d
         )
         raise
 
+    shape = ""
+    if ingested == 0 and object_type in {"instagram", "page"}:
+        shape = f" shape={instagram_webhook_shape(payload)}"
     logger.info(
-        "meta webhook processed object=%s ingested_messages=%s request_id=%s",
+        "meta webhook processed object=%s ingested_messages=%s%s request_id=%s",
         object_type,
         ingested,
+        shape,
         get_request_id(),
     )
     return {"success": True}

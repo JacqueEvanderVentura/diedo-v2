@@ -94,7 +94,8 @@ def _instagram_text_event(
     fallback_account_id: str,
 ) -> InboundTextMessage | None:
     message = messaging.get("message") or {}
-    if message.get("is_echo"):
+    # A DM to your own professional account arrives as echo + is_self.
+    if message.get("is_echo") and not (message.get("is_self") or messaging.get("is_self")):
         return None
     text_body = message.get("text")
     if not isinstance(text_body, str) or not text_body.strip():
@@ -144,3 +145,25 @@ def _parse_instagram(payload: dict[str, Any]) -> list[InboundTextMessage]:
 
 def message_preview(text: str) -> str:
     return _preview(text)
+
+
+def instagram_webhook_shape(payload: dict[str, Any]) -> str:
+    """Short, non-sensitive description used when nothing was stored."""
+    entries = payload.get("entry")
+    if not isinstance(entries, list) or not entries:
+        return "no_entry"
+    parts: list[str] = []
+    for entry in entries[:3]:
+        if not isinstance(entry, dict):
+            parts.append("entry_not_object")
+            continue
+        messaging = entry.get("messaging")
+        changes = entry.get("changes")
+        messaging_count = len(messaging) if isinstance(messaging, list) else 0
+        change_fields: list[str] = []
+        if isinstance(changes, list):
+            for change in changes[:5]:
+                if isinstance(change, dict):
+                    change_fields.append(str(change.get("field") or "?"))
+        parts.append(f"messaging={messaging_count} changes={','.join(change_fields) or '0'}")
+    return " ".join(parts)

@@ -15,7 +15,7 @@ from app.db.models import (
 )
 from app.db.session import session_scope
 from app.services.chat.graph_clients import InstagramMessagingClient, WhatsAppCloudClient
-from app.services.chat.meta_parsers import parse_meta_webhook_payload
+from app.services.chat.meta_parsers import instagram_webhook_shape, parse_meta_webhook_payload
 from app.services.chat.meta_signature import verify_meta_signature
 from app.services.local_bootstrap import bootstrap_local_foundation
 from pydantic import SecretStr
@@ -80,6 +80,51 @@ def test_parse_whatsapp_and_instagram_fixtures() -> None:
     assert len(sample) == 1
     assert sample[0].provider_account_id == "23245"
     assert sample[0].body_text == "random_text"
+
+    echo = parse_meta_webhook_payload(
+        {
+            "object": "instagram",
+            "entry": [
+                {
+                    "id": "17841410296549561",
+                    "messaging": [
+                        {
+                            "sender": {"id": "17841410296549561"},
+                            "recipient": {"id": "17841410296549561"},
+                            "timestamp": 1569262485349,
+                            "message": {
+                                "mid": "mid.self",
+                                "text": "hola yo",
+                                "is_echo": True,
+                                "is_self": True,
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    assert len(echo) == 1
+    assert echo[0].body_text == "hola yo"
+
+    outgoing = parse_meta_webhook_payload(
+        {
+            "object": "instagram",
+            "entry": [
+                {
+                    "messaging": [
+                        {
+                            "sender": {"id": "17841410296549561"},
+                            "recipient": {"id": "999"},
+                            "message": {"mid": "mid.out", "text": "respuesta", "is_echo": True},
+                        }
+                    ]
+                }
+            ],
+        }
+    )
+    assert outgoing == []
+    assert instagram_webhook_shape({"object": "instagram", "entry": []}) == "no_entry"
 
 
 def test_graph_clients_use_injected_http() -> None:
