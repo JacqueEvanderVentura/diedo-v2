@@ -30,6 +30,16 @@ describe('Cloudflare Railway proxy', () => {
     expect(await page.text()).toContain('Política de privacidad')
   })
 
+  it('sirve las condiciones de servicio para el crawler de Meta', async () => {
+    const assets = { fetch: vi.fn(async request => {
+      expect(new URL(request.url).pathname).toBe('/condiciones/index.html')
+      return new Response('<h1>Condiciones de servicio</h1>', { headers: { 'Content-Type': 'text/html' } })
+    }) }
+    const page = await worker.fetch(new Request(`${origin}/condiciones`), { ...env, ASSETS: assets })
+    expect(page.status).toBe(200)
+    expect(await page.text()).toContain('Condiciones de servicio')
+  })
+
   it('streams uploads and preserves authorization, method, query and content type', async () => {
     const fetch = vi.fn(async request => {
       expect(request.url).toBe(`${env.API_ORIGIN}/api/v1/attachments?branchId=one`)

@@ -45,6 +45,7 @@ describe('Cloudflare static deployment configuration', () => {
     expect(lines).toContain('  Permissions-Policy: camera=(), microphone=(), geolocation=()')
     expect(lines).toContain('/health')
     expect(lines).toContain('/privacidad')
+    expect(lines).toContain('/condiciones')
     expect(lines).toContain('  Cache-Control: no-store')
     expect(lines).toContain('  Content-Type: text/plain; charset=utf-8')
   })
@@ -64,8 +65,12 @@ describe('Cloudflare static deployment configuration', () => {
     expect(privacy).toMatch(/datos que recopilamos/i)
     expect(privacy).toMatch(/cómo solicitar la eliminación/i)
     expect(privacy).toContain('privacy@helios360erp.com')
+    expect(privacy).toContain('/condiciones')
     expect(deletion).toContain('<title>Eliminación de datos — Helios 360</title>')
     expect(deletion).toContain('solicito la eliminación de mis datos')
+    const terms = fs.readFileSync(path.join(projectRoot, 'public', 'condiciones', 'index.html'), 'utf8')
+    expect(terms).toContain('<title>Condiciones de servicio — Helios 360</title>')
+    expect(terms).toMatch(/instagram y whatsapp/i)
   })
 
   it('configurar assets SPA y entornos', () => {

@@ -4,6 +4,8 @@ const LEGAL_ASSETS = {
   '/privacidad/': '/privacidad/index.html',
   '/privacidad/eliminar-datos': '/privacidad/eliminar-datos/index.html',
   '/privacidad/eliminar-datos/': '/privacidad/eliminar-datos/index.html',
+  '/condiciones': '/condiciones/index.html',
+  '/condiciones/': '/condiciones/index.html',
 }
 const securityHeaders = {
   'Cache-Control': 'no-store',

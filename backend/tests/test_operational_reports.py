@@ -1,5 +1,6 @@
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from unittest.mock import patch
 from uuid import uuid7
 
 import pytest
@@ -15,6 +16,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 _FIXED_NOW = datetime(2026, 9, 3, 16, 0, tzinfo=UTC)
+
+
+class _FixedReportDateTime(datetime):
+    """Demo memberships were seeded against 3 Sep 2026, not the CI calendar day."""
+
+    @classmethod
+    def now(cls, tz: object = None) -> datetime:
+        if tz is None:
+            return _FIXED_NOW
+        return _FIXED_NOW.astimezone(tz)
 
 
 def test_report_periods_use_calendar_boundaries() -> None:
@@ -334,11 +345,12 @@ def test_report_endpoints_require_auth_and_return_live_contracts(client: TestCli
         ("/api/v1/reports/personal", {"period": "quarter"}),
     )
     responses = []
-    for path, params in requests:
-        response = client.get(path, headers=headers, params=params)
-        assert response.status_code == 200, f"{path}: {response.text}"
-        assert response.headers["cache-control"] == "no-store"
-        responses.append(response.json())
+    with patch("app.services.reports.datetime", _FixedReportDateTime):
+        for path, params in requests:
+            response = client.get(path, headers=headers, params=params)
+            assert response.status_code == 200, f"{path}: {response.text}"
+            assert response.headers["cache-control"] == "no-store"
+            responses.append(response.json())
 
     assert responses[0]["totals"]["income"] != "0.00"
     assert {row["id"] for row in responses[1]["salesByChannel"]} == {"crm", "pos"}
