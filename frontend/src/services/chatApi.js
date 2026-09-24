@@ -27,7 +27,7 @@ export const chatApi = {
 
   getOAuthPending(oauthStateId) {
     return apiClient.get('/api/v1/chat/channel-accounts/oauth/pending', {
-      params: { oauthStateId },
+      oauthStateId,
     })
   },
 

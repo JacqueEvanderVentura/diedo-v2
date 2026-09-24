@@ -42,6 +42,14 @@ describe('chatApi', () => {
     })
   })
 
+  it('loads pending OAuth candidates with oauthStateId as a query param', async () => {
+    mocks.get.mockResolvedValue({ channel: 'whatsapp', candidates: [] })
+    await chatApi.getOAuthPending('state-1')
+    expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/channel-accounts/oauth/pending', {
+      oauthStateId: 'state-1',
+    })
+  })
+
   it('loads messages and sends text', async () => {
     mocks.get.mockResolvedValue({ items: [], totalPages: 1 })
     mocks.post.mockResolvedValue({ id: 'msg-1' })
