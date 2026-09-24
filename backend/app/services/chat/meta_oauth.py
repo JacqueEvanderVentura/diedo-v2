@@ -165,6 +165,11 @@ class MetaOauthService:
                 display_name=candidate.display_name,
                 access_token=tokens[candidate.provider_account_id],
             )
+            if channel == "instagram":
+                self._subscribe_instagram_messages(
+                    candidate.provider_account_id,
+                    tokens[candidate.provider_account_id],
+                )
             self._session.delete(state)
             return state.workspace_id, channel, candidates, True
 
@@ -207,6 +212,8 @@ class MetaOauthService:
             display_name=display_name,
             access_token=token,
         )
+        if channel == "instagram":
+            self._subscribe_instagram_messages(provider_account_id, token)
         self._session.delete(state)
         return account
 
@@ -308,6 +315,24 @@ class MetaOauthService:
         if secret is None:
             raise InvalidOperationError(_INSTAGRAM_APP_MISSING, "meta")
         return secret.get_secret_value()
+
+    def _subscribe_instagram_messages(self, ig_user_id: str, access_token: str) -> None:
+        version = settings.meta_graph_api_version
+        url = f"https://graph.instagram.com/{version}/{ig_user_id}/subscribed_apps"
+        try:
+            self._http.request(
+                "POST",
+                url,
+                params={"subscribed_fields": "messages"},
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+        except GraphApiError as exc:
+            logger.warning(
+                "meta oauth instagram webhook subscribe failed ig_user_id=%s status=%s code=%s",
+                ig_user_id,
+                exc.status_code,
+                exc.graph_code,
+            )
 
     def _facebook_app_secret(self) -> str:
         secret = settings.meta_app_secret

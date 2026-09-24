@@ -35,6 +35,8 @@ class _FakeGraphHttp:
             )
         if "ig_exchange_token" in url:
             return self._responses.get("ig_exchange_token", {"access_token": "ig-long"})
+        if "subscribed_apps" in url:
+            return {"success": True}
         if "fb_exchange_token" in url:
             return self._responses.get("fb_exchange_token", {"access_token": "long-token"})
         for key, payload in self._responses.items():
