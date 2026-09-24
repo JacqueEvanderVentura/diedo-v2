@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { useActiveBranchScope } from '@/hooks/useActiveBranchScope'
 import { useSessionStore } from '@/stores/sessionStore'
 import { chatApi } from '@/services/chatApi'
+import { isUuid } from '@/lib/workspaceBranch'
 import { ChatConversationList } from '../components/ChatConversationList'
 import { ChatThreadPanel } from '../components/ChatThreadPanel'
 
@@ -31,7 +32,7 @@ export default function ChatPage() {
   )
 
   const loadConversations = useCallback(async () => {
-    if (!online || !activeBranchId) {
+    if (!online || !isUuid(activeBranchId)) {
       setConversations([])
       return
     }

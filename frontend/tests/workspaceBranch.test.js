@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getAllowedBranches, resolveActiveBranchId } from '../src/lib/workspaceBranch'
+import { getAllowedBranches, isUuid, resolveActiveBranchId } from '../src/lib/workspaceBranch'
 
 describe('workspaceBranch', () => {
   const branches = [
@@ -27,5 +27,10 @@ describe('workspaceBranch', () => {
       currentId: 'b',
       fallbackId: 'a',
     })).toBe('a')
+  })
+
+  it('treats persisted demo slugs as not UUIDs', () => {
+    expect(isUuid('charm-dn')).toBe(false)
+    expect(isUuid('11111111-1111-4111-8111-111111111111')).toBe(true)
   })
 })

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { buildBranchFilterOptions, branchName } from '@/lib/branches'
-import { getAllowedBranches } from '@/lib/workspaceBranch'
+import { getAllowedBranches, isUuid } from '@/lib/workspaceBranch'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { useWorkspaceScopeStore } from '@/stores/workspaceScopeStore'
@@ -25,12 +25,17 @@ export function useActiveBranchScope() {
     [branches, userBranchIds]
   )
 
+  const online = useSessionStore((state) => state.status === 'online')
   const resolvedBranchId = useMemo(() => {
-    if (activeBranchId && allowedBranches.some((branch) => branch.id === activeBranchId)) {
+    const pool =
+      online && allowedBranches.some((branch) => isUuid(branch.id))
+        ? allowedBranches.filter((branch) => isUuid(branch.id))
+        : allowedBranches
+    if (activeBranchId && pool.some((branch) => branch.id === activeBranchId)) {
       return activeBranchId
     }
-    return allowedBranches[0]?.id || ''
-  }, [activeBranchId, allowedBranches])
+    return pool[0]?.id || ''
+  }, [activeBranchId, allowedBranches, online])
 
   const setActiveBranch = useCallback(
     (branchId) => setActiveBranchId(branchId, { syncPos: true }),
