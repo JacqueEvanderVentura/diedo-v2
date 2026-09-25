@@ -11,6 +11,7 @@ from app.schemas.dashboard import (
     DashboardActivityResponse,
     DashboardAppointmentResponse,
     DashboardAppointmentsResponse,
+    DashboardAppointmentStatus,
     DashboardPeriod,
     DashboardSalesTrendResponse,
     DashboardStockAlertResponse,
@@ -31,6 +32,16 @@ _SECURITY_RESPONSES: dict[int | str, dict[str, Any]] = {
 
 def _no_store(response: Response) -> None:
     response.headers["Cache-Control"] = "no-store"
+
+
+def _appointment_status(value: str) -> DashboardAppointmentStatus:
+    if value == "fulfilled":
+        return "fulfilled"
+    if value == "no_show":
+        return "no_show"
+    if value == "cancelled":
+        return "cancelled"
+    return "confirmed"
 
 
 @router.get(
@@ -170,7 +181,7 @@ def get_dashboard_appointments(
                 service_name=item.service_name,
                 date=item.scheduled_date,
                 time=item.scheduled_time.strftime("%H:%M"),
-                status=item.status,  # type: ignore[arg-type]
+                status=_appointment_status(item.status),
             )
             for item in appointments
         ],

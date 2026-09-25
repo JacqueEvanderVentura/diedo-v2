@@ -1,10 +1,17 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from uuid import uuid7
+from zoneinfo import ZoneInfo
 
 import pytest
 from app.core.security import hash_password
-from app.db.models import Branch, PlatformUser, WorkspaceMembership
+from app.db.models import (
+    Appointment,
+    AppointmentResource,
+    Branch,
+    PlatformUser,
+    WorkspaceMembership,
+)
 from app.db.session import get_engine, session_scope
 from app.services.authorization import PermissionGrant
 from app.services.dashboard import DashboardService
@@ -12,7 +19,7 @@ from app.services.demo_seed import seed_demo_data
 from app.services.errors import ResourceNotFoundError
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 _OWNER_EMAIL = "owner@erp.dev"
@@ -292,3 +299,84 @@ def test_dashboard_http_contract_auth_filters_and_validation(client: TestClient)
         headers=headers,
     )
     assert invalid_period.status_code == 400
+
+
+@pytest.mark.integration
+def test_dashboard_appointments_serialize_fulfilled_status(client: TestClient) -> None:
+    appointment_id = None
+    with session_scope() as session:
+        session.execute(delete(Appointment).where(Appointment.customer_name == "Cliente cumplido"))
+        summary = bootstrap_local_foundation(session, hash_password(_OWNER_PASSWORD))
+        branch = session.get(Branch, summary.branch_id)
+        assert branch is not None
+        resource_id = session.scalar(
+            select(AppointmentResource.id).where(
+                AppointmentResource.workspace_id == summary.workspace_id,
+                AppointmentResource.branch_id == branch.id,
+            )
+        )
+        assert resource_id is not None
+        zone = ZoneInfo(branch.timezone)
+        today = datetime.now(zone).date()
+        starts_at = datetime.combine(today, time(10, 0), tzinfo=zone).astimezone(UTC)
+        ends_at = starts_at + timedelta(minutes=60)
+        appointment = Appointment(
+            workspace_id=summary.workspace_id,
+            branch_id=branch.id,
+            resource_id=resource_id,
+            customer_id=None,
+            employee_id=None,
+            service_id=None,
+            scheduled_date=today,
+            scheduled_time=time(10, 0),
+            timezone=branch.timezone,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            duration_minutes=60,
+            customer_name="Cliente cumplido",
+            customer_phone=None,
+            service_name="Sesión",
+            price=Decimal("0"),
+            status="fulfilled",
+            completed_at=ends_at,
+            completion_punctuality="on_time",
+            notes=None,
+            pending_payment=False,
+            pending_amount=Decimal("0"),
+            first_time=False,
+            free_trial=False,
+            reminder_sent=False,
+            source="staff",
+            recurrence="none",
+            recurrence_group_id=None,
+            occurrence_index=0,
+            repeat_count=1,
+            idempotency_key=f"dash-fulfilled-{uuid7()}",
+            request_fingerprint="0" * 64,
+            created_by_platform_user_id=summary.platform_user_id,
+            updated_by_platform_user_id=summary.platform_user_id,
+        )
+        session.add(appointment)
+        session.flush()
+        appointment_id = appointment.id
+
+    try:
+        login = client.post(
+            "/api/v1/auth/login",
+            json={"email": _OWNER_EMAIL, "password": _OWNER_PASSWORD},
+        )
+        assert login.status_code == 200, login.text
+        listed = client.get(
+            "/api/v1/dashboard/appointments?limit=20",
+            headers={"Authorization": f"Bearer {login.json()['accessToken']}"},
+        )
+        assert listed.status_code == 200, listed.text
+        statuses = {item["status"] for item in listed.json()["items"]}
+        assert "fulfilled" in statuses
+    finally:
+        with session_scope() as session:
+            if appointment_id is not None:
+                session.execute(delete(Appointment).where(Appointment.id == appointment_id))
+            session.execute(
+                delete(Appointment).where(Appointment.customer_name == "Cliente cumplido")
+            )

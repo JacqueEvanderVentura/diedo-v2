@@ -9,16 +9,7 @@ from app.schemas.common import ApiModel
 
 DashboardPeriod = Literal["today", "week", "month", "quarter"]
 DashboardTaskStatus = Literal["open", "in_progress", "completed", "cancelled"]
-DashboardAppointmentStatus = Literal[
-    "pending",
-    "confirmed",
-    "completed",
-    "attended",
-    "no_show",
-    "cancelled",
-    "delayed",
-    "rescheduled",
-]
+DashboardAppointmentStatus = Literal["confirmed", "fulfilled", "no_show", "cancelled"]
 StockAlertLevel = Literal["critical", "low"]
 
 
