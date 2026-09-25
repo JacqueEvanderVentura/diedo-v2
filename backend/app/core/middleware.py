@@ -21,6 +21,7 @@ _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _QUIET_GET_PREFIXES = (
     "/api/v1/chat/conversations",
     "/api/v1/appointments",
+    "/api/v1/auth/me",
     "/health",
     "/api/v1/health",
 )

@@ -433,6 +433,30 @@ class MetaOauthService:
                 exc.status_code,
                 exc.graph_code,
             )
+            return
+        self._confirm_whatsapp_override(url, headers)
+
+    def _confirm_whatsapp_override(self, url: str, headers: dict[str, str]) -> None:
+        try:
+            payload = self._http.request("GET", url, headers=headers)
+        except GraphApiError as exc:
+            logger.warning(
+                "meta oauth whatsapp webhook override confirm failed status=%s code=%s",
+                exc.status_code,
+                exc.graph_code,
+            )
+            return
+        rows = payload.get("data") if isinstance(payload, dict) else None
+        has_override = False
+        if isinstance(rows, list):
+            for row in rows:
+                if isinstance(row, dict) and bool(row.get("override_callback_uri")):
+                    has_override = True
+                    break
+        logger.warning(
+            "meta oauth whatsapp webhook override confirm override_present=%s",
+            int(has_override),
+        )
 
     def _lookup_waba_id(self, phone_number_id: str, access_token: str) -> str:
         payload = self._graph_get_optional(

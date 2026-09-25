@@ -64,5 +64,6 @@ def test_quiet_successful_get_skips_inbox_polls() -> None:
 
     assert quiet_successful_get("GET", "/api/v1/chat/conversations", 200) is True
     assert quiet_successful_get("GET", "/api/v1/appointments", 200) is True
+    assert quiet_successful_get("GET", "/api/v1/auth/me", 200) is True
     assert quiet_successful_get("POST", "/api/v1/webhooks/meta", 200) is False
     assert quiet_successful_get("GET", "/api/v1/chat/conversations", 500) is False
