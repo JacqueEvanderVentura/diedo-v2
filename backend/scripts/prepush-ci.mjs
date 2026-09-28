@@ -2,8 +2,10 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveTestDatabaseUrl } from './test-database-url.mjs'
+import { resolvePython } from './python-command.mjs'
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
+const python = resolvePython(root)
 
 const ciEnv = {
   ...process.env,
@@ -24,16 +26,16 @@ function run(label, command, args) {
   }
 }
 
-run('ruff check', 'python', ['-m', 'ruff', 'check', 'app', 'tests'])
-run('ruff format --check', 'python', ['-m', 'ruff', 'format', '--check', 'app', 'tests'])
-run('mypy', 'python', ['-m', 'mypy', 'app'])
+run('ruff check', python, ['-m', 'ruff', 'check', 'app', 'tests'])
+run('ruff format --check', python, ['-m', 'ruff', 'format', '--check', 'app', 'tests'])
+run('mypy', python, ['-m', 'mypy', 'app'])
 run('validate migrations (same as Backend CI)', 'node', ['scripts/validate-migrations.mjs'])
-run('release stray erp_test backends (before reset)', 'python', [
+run('release stray erp_test backends (before reset)', python, [
   '-m',
   'app.scripts.release_test_database_backends',
 ])
-run('reset test database (fresh schema like CI)', 'python', ['-m', 'app.scripts.reset_test_database'])
-run('pytest', 'python', [
+run('reset test database (fresh schema like CI)', python, ['-m', 'app.scripts.reset_test_database'])
+run('pytest', python, [
   '-m',
   'pytest',
   '--cov=app',

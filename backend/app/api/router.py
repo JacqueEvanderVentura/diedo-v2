@@ -5,6 +5,10 @@ from app.api.routers import (
     agenda,
     auth,
     backoffice,
+    carwash,
+    carwash_commissions,
+    carwash_operations,
+    carwash_reports,
     catalog,
     chat,
     chat_channel_accounts,
@@ -32,6 +36,10 @@ api_router.include_router(health.router)
 api_router.include_router(meta_webhooks.router)
 api_router.include_router(auth.router)
 api_router.include_router(backoffice.router)
+api_router.include_router(carwash.router)
+api_router.include_router(carwash_operations.router)
+api_router.include_router(carwash_reports.router)
+api_router.include_router(carwash_commissions.router)
 api_router.include_router(administration.router)
 api_router.include_router(agenda.router)
 api_router.include_router(public_booking.router)

@@ -26,6 +26,7 @@ describe('moduleAvailability', () => {
       'pos',
       'finance',
       'reporting',
+      'carwash',
     ])
     expect(isApiConnectedModule('catalog')).toBe(true)
     expect(isModuleAvailable('catalog', enabled)).toBe(true)
@@ -45,6 +46,17 @@ describe('moduleAvailability', () => {
     expect(isModuleAvailable('pos', new Set(['sales', 'pos']))).toBe(false)
     expect(isModuleAvailable('pos', new Set(['inventory', 'pos']))).toBe(false)
     expect(isModuleAvailable('pos', new Set(['sales', 'inventory']))).toBe(false)
+  })
+
+  it('Carwash requiere activación explícita y las dependencias POS y RRHH', () => {
+    const enabled = ['carwash', 'pos', 'hr', 'sales', 'inventory']
+    expect(isModuleAvailable('carwash', enabled)).toBe(true)
+    for (const missing of enabled) {
+      expect(isModuleAvailable('carwash', enabled.filter((code) => code !== missing))).toBe(false)
+    }
+    expect(routeRequirement('/carwash')).toEqual({ module: 'carwash', permission: 'carwash.read' })
+    expect(routeRequirement('/carwash/lavados')).toEqual({ module: 'carwash', permission: 'carwash.read' })
+    expect(requiresFinanceData('/carwash')).toBe(false)
   })
 
   it('hidrata finanzas al entrar a sus rutas o a reportes que consumen sus agregados', () => {

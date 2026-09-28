@@ -132,6 +132,42 @@ class InventoryService:
         values: dict[str, Any],
         idempotency_key: str,
     ) -> InventoryItemRecord:
+        try:
+            record = self.create_item_in_transaction(
+                principal=principal,
+                grant=grant,
+                item_type=item_type,
+                values=values,
+                idempotency_key=idempotency_key,
+            )
+            self._session.commit()
+            return record
+        except IntegrityError as exc:
+            self._session.rollback()
+            normalized = dict(values)
+            if item_type == "service":
+                normalized["branch_ids"] = sorted(set(values["branch_ids"]), key=str)
+            fingerprint = self._fingerprint({"itemType": item_type, **normalized})
+            existing = self._repository.item_by_creation_key(grant.workspace_id, idempotency_key)
+            if existing is not None:
+                if existing[1] != fingerprint:
+                    raise ConflictError(
+                        "Idempotency-Key ya fue usado con otro contenido.",
+                        "Idempotency-Key",
+                    ) from exc
+                return self.get_item(grant, existing[0])
+            raise ConflictError("No se pudo crear el ítem por un conflicto de datos.") from exc
+
+    def create_item_in_transaction(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        item_type: str,
+        values: dict[str, Any],
+        idempotency_key: str,
+    ) -> InventoryItemRecord:
+        """Stage catalog creation; the caller owns commit/rollback for the whole use case."""
         if item_type == "service":
             branch_ids = set(cast(list[UUID], values["branch_ids"]))
             values = {
@@ -190,41 +226,28 @@ class InventoryService:
             stock=stock,
             minimum_stock=minimum_stock,
         )
-        try:
-            item_id = self._repository.create_item(
-                workspace_id=grant.workspace_id,
-                actor_platform_user_id=principal.platform_user_id,
-                item_type=item_type,
-                name=cast(str, values["name"]),
-                description=cast(str | None, values.get("description")),
-                sku=sku,
-                category_id=cast(UUID, values["category_id"]),
-                unit_of_measure_id=cast(UUID, values["unit_of_measure_id"]),
-                branch_ids=branch_ids,
-                warehouse=warehouse,
-                sale_price=sale_price,
-                unit_cost=unit_cost,
-                tax_rate=tax_rate,
-                stock=stock,
-                minimum_stock=minimum_stock,
-                status=cast(str, values.get("status", "active")),
-                idempotency_key=idempotency_key,
-                request_fingerprint=fingerprint,
-                request_id=get_request_id(),
-            )
-            self._session.commit()
-            return self.get_item(grant, item_id)
-        except IntegrityError as exc:
-            self._session.rollback()
-            existing = self._repository.item_by_creation_key(grant.workspace_id, idempotency_key)
-            if existing is not None:
-                if existing[1] != fingerprint:
-                    raise ConflictError(
-                        "Idempotency-Key ya fue usado con otro contenido.",
-                        "Idempotency-Key",
-                    ) from exc
-                return self.get_item(grant, existing[0])
-            raise ConflictError("No se pudo crear el ítem por un conflicto de datos.") from exc
+        item_id = self._repository.create_item(
+            workspace_id=grant.workspace_id,
+            actor_platform_user_id=principal.platform_user_id,
+            item_type=item_type,
+            name=cast(str, values["name"]),
+            description=cast(str | None, values.get("description")),
+            sku=sku,
+            category_id=cast(UUID, values["category_id"]),
+            unit_of_measure_id=cast(UUID, values["unit_of_measure_id"]),
+            branch_ids=branch_ids,
+            warehouse=warehouse,
+            sale_price=sale_price,
+            unit_cost=unit_cost,
+            tax_rate=tax_rate,
+            stock=stock,
+            minimum_stock=minimum_stock,
+            status=cast(str, values.get("status", "active")),
+            idempotency_key=idempotency_key,
+            request_fingerprint=fingerprint,
+            request_id=get_request_id(),
+        )
+        return self.get_item(grant, item_id)
 
     def update_item(
         self,

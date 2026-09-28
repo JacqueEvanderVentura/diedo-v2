@@ -31,6 +31,7 @@ export function Select({
   menuMinWidth,
   placement = 'auto',
   'data-testid': testId,
+  'aria-label': ariaLabel,
 }) {
   const listId = useId()
   const rootRef = useRef(null)
@@ -109,6 +110,7 @@ export function Select({
       <button
         type="button"
         role="combobox"
+        aria-label={ariaLabel}
         aria-expanded={open}
         aria-controls={listId}
         disabled={disabled}

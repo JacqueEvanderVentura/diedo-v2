@@ -236,12 +236,19 @@ def test_seeded_crm_has_complete_commercial_trace_and_overview() -> None:
 def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> None:
     with session_scope() as session:
         seeded = bootstrap_local_foundation(session, hash_password(_PASSWORD))
-        branch_id = session.scalar(
-            select(Branch.id).where(
-                Branch.workspace_id == seeded.workspace_id,
-                Branch.status == "active",
-            )
+        # This flow opens a cash register; another integration case may leave one open.
+        # Use an isolated branch instead of whichever active row PostgreSQL returns first.
+        branch = Branch(
+            workspace_id=seeded.workspace_id,
+            legal_entity_id=seeded.legal_entity_id,
+            code=f"crm-{uuid7().hex[-12:]}",
+            name="CRM HTTP test branch",
+            status="active",
+            timezone="America/Santo_Domingo",
         )
+        session.add(branch)
+        session.flush()
+        branch_id = branch.id
         unit_id = session.scalar(
             select(UnitOfMeasure.id).where(
                 UnitOfMeasure.workspace_id == seeded.workspace_id,

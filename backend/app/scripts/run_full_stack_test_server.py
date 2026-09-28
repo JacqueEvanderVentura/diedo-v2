@@ -29,8 +29,7 @@ def _run_module(*args: str) -> None:
 
 def main() -> None:
     _assert_disposable_database()
-    _run_module("alembic", "downgrade", "base")
-    _run_module("alembic", "upgrade", "head")
+    _run_module("app.scripts.reset_test_database")
     _run_module("app.scripts.seed_demo")
     # Keep Uvicorn in this process. On Windows, os.execv can leave Playwright's
     # webServer parent waiting on a child that it cannot terminate at teardown.

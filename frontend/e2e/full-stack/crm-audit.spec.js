@@ -28,6 +28,9 @@ test('CRM-04: lead creado en pantalla convierte inmediatamente sin recargar', as
   await page.getByTestId('lead-submit').click()
   await expect(page.getByTestId('lead-form-modal')).toHaveCount(0)
   await page.getByPlaceholder('Buscar leads...').fill(company)
+  await expect(page.getByRole('heading', { name: company, exact: true })).toBeVisible()
+  // Search is debounced; wait for the newly created lead to be the only conversion target.
+  await expect(page.getByRole('button', { name: 'Convertir', exact: true })).toHaveCount(1)
   const converted = page.waitForResponse(r => r.request().method() === 'POST' && r.url().endsWith('/convert'))
   await page.getByRole('button', { name: 'Convertir', exact: true }).click()
   expect((await converted).ok()).toBeTruthy()

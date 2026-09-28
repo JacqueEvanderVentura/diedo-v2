@@ -2,8 +2,10 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveTestDatabaseUrl } from './test-database-url.mjs'
+import { resolvePython } from './python-command.mjs'
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
+const python = resolvePython(root)
 
 const ciEnv = {
   ...process.env,
@@ -24,12 +26,12 @@ function run(command, args) {
 }
 
 console.log('Validate migrations: comprobando Postgres (timeout 5s)')
-run('python', ['scripts/check_test_database.py'])
+run(python, ['scripts/check_test_database.py'])
 
 console.log('Validate migrations (Backend CI): alembic upgrade head')
-run('python', ['-m', 'alembic', 'upgrade', 'head'])
+run(python, ['-m', 'alembic', 'upgrade', 'head'])
 
 console.log('Validate migrations (Backend CI): alembic check')
-run('python', ['-m', 'alembic', 'check'])
+run(python, ['-m', 'alembic', 'check'])
 
 console.log('Validate migrations: OK')

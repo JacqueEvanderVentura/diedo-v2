@@ -110,7 +110,12 @@ test.describe('Terminal POS full stack', () => {
     await refreshedStatePromise
     await expect(page.locator('div[data-testid^="cart-item-"]')).toHaveCount(0)
 
-    await page.getByTestId('pos-caja-shortcut').click()
+    const invoice = page.getByRole('dialog', { name: 'Factura generada' })
+    await expect(invoice).toBeVisible()
+    await invoice.getByRole('button', { name: 'Cerrar', exact: true }).click()
+    await expect(invoice).toHaveCount(0)
+
+    await page.getByRole('link', { name: 'Caja', exact: true }).click()
     await expect(page).toHaveURL(/\/pos\/caja$/)
     await expect(openRegister).toBeVisible()
 

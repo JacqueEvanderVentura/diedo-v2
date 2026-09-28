@@ -1059,7 +1059,9 @@ def test_payment_reversal_and_sale_void_guards() -> None:
     }
 
     def void(repository: SaleRepository) -> object:
-        service = _service(repository)
+        # These guards exercise ordinary sales without a linked Carwash source.
+        session = SimpleNamespace(commit=lambda: None, scalar=lambda *_args: None)
+        service = _service(repository, session)
         service._require_same_fingerprint = lambda *_args: None  # type: ignore[method-assign]
         return service.void_sale(
             principal=principal,

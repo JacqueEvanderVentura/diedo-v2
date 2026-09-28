@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     db_pool_size: int = Field(default=5, ge=1, le=50)
     db_max_overflow: int = Field(default=10, ge=0, le=100)
     db_pool_timeout_seconds: int = Field(default=30, ge=1, le=120)
+    carwash_mutation_rate_limit_per_minute: int = Field(default=120, ge=1, le=10_000)
+    carwash_mutation_rate_limit_enabled: bool | None = None
 
     jwt_secret_key: SecretStr = SecretStr(_LOCAL_JWT_SECRET)
     jwt_issuer: str = "erp-api"
@@ -150,6 +152,12 @@ class Settings(BaseSettings):
         if self.user_invitations_enabled is not None:
             return self.user_invitations_enabled
         return self.app_env in {"development", "test"}
+
+    @property
+    def carwash_rate_limit_enabled(self) -> bool:
+        if self.carwash_mutation_rate_limit_enabled is not None:
+            return self.carwash_mutation_rate_limit_enabled
+        return self.app_env in {"staging", "production"}
 
 
 @lru_cache

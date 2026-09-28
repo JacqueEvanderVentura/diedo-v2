@@ -45,6 +45,7 @@ from app.services.attachment_storage import (
 )
 from app.services.auth import AuthPrincipal
 from app.services.authorization import AuthorizationService, PermissionGrant
+from app.services.carwash_sale_lifecycle import CarwashSaleLifecycle
 from app.services.errors import (
     AuthorizationError,
     ConflictError,
@@ -109,6 +110,20 @@ class CheckoutResult:
     sale: SaleRecord
     receivable_id: UUID | None
     parked_for_next_shift: bool = False
+
+
+@dataclass(frozen=True)
+class CheckoutSnapshot:
+    """Server-authorized service prices, never accepted by the public POS request."""
+
+    source_id: UUID
+    priced: PricedDocument
+    lines: tuple[SaleLine, ...]
+    currency: str
+
+
+class _CheckoutQuoteExpired(ConflictError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -476,6 +491,37 @@ class PosService:
         values: dict[str, Any],
         idempotency_key: str,
     ) -> CashMovementRecord:
+        try:
+            result = self.create_manual_movement_in_transaction(
+                principal=principal,
+                grant=grant,
+                register_id=register_id,
+                values=values,
+                idempotency_key=idempotency_key,
+            )
+            self._session.commit()
+            return result
+        except IntegrityError as exc:
+            self._session.rollback()
+            replay = self._repository.movement_by_key(grant.workspace_id, idempotency_key)
+            if replay is not None:
+                self._require_same_fingerprint(
+                    replay.request_fingerprint,
+                    self._fingerprint({"register_id": register_id, **values}),
+                    "Idempotency-Key",
+                )
+                return self._movement_from_register(grant, replay)
+            raise ConflictError("No se pudo registrar el movimiento de caja.") from exc
+
+    def create_manual_movement_in_transaction(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        register_id: UUID,
+        values: dict[str, Any],
+        idempotency_key: str,
+    ) -> CashMovementRecord:
         fingerprint = self._fingerprint({"register_id": register_id, **values})
         existing = self._repository.movement_by_key(grant.workspace_id, idempotency_key)
         if existing is not None:
@@ -573,29 +619,19 @@ class PosService:
                 )
             )
         lines = tuple(lines_buffer)
-        try:
-            self._repository.add_movement(movement, lines)
-            self._apply_cash_effect(register, movement_type, amount)
-            self._repository.add_audit(
-                workspace_id=grant.workspace_id,
-                actor_platform_user_id=principal.platform_user_id,
-                action=f"pos.cash.{movement_type}",
-                target_type="cash_movement",
-                target_id=movement.id,
-                request_id=get_request_id(),
-                details={"registerId": str(register.id), "amount": str(amount)},
-            )
-            self._session.commit()
-            return self._movement_from_register(grant, movement)
-        except IntegrityError as exc:
-            self._session.rollback()
-            replay = self._repository.movement_by_key(grant.workspace_id, idempotency_key)
-            if replay is not None:
-                self._require_same_fingerprint(
-                    replay.request_fingerprint, fingerprint, "Idempotency-Key"
-                )
-                return self._movement_from_register(grant, replay)
-            raise ConflictError("No se pudo registrar el movimiento de caja.") from exc
+        self._repository.add_movement(movement, lines)
+        self._apply_cash_effect(register, movement_type, amount)
+        self._repository.add_audit(
+            workspace_id=grant.workspace_id,
+            actor_platform_user_id=principal.platform_user_id,
+            action=f"pos.cash.{movement_type}",
+            target_type="cash_movement",
+            target_id=movement.id,
+            request_id=get_request_id(),
+            details={"registerId": str(register.id), "amount": str(amount)},
+        )
+        self._session.flush()
+        return self._movement_from_register(grant, movement)
 
     def list_quotes(
         self,
@@ -1069,7 +1105,55 @@ class PosService:
         values: dict[str, Any],
         idempotency_key: str,
     ) -> CheckoutResult:
-        fingerprint = self._fingerprint(values)
+        try:
+            result = self.checkout_in_transaction(
+                principal=principal,
+                grant=grant,
+                values=values,
+                idempotency_key=idempotency_key,
+            )
+            self._session.commit()
+            return result
+        except _CheckoutQuoteExpired:
+            self._session.commit()
+            raise
+        except IntegrityError as exc:
+            self._session.rollback()
+            replay = self._repository.sale_by_key(grant.workspace_id, idempotency_key)
+            if replay is not None:
+                self._require_branch(grant, replay.branch_id)
+                self._require_same_fingerprint(
+                    replay.request_fingerprint, self._fingerprint(values), "Idempotency-Key"
+                )
+                receivable = self._repository.receivable_for_sale(grant.workspace_id, replay.id)
+                return CheckoutResult(
+                    self._repository.sale_record(replay),
+                    receivable.id if receivable else None,
+                    parked_for_next_shift=replay.cash_register_id is None,
+                )
+            raise ConflictError("No se pudo completar la venta.") from exc
+
+    def checkout_in_transaction(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        values: dict[str, Any],
+        idempotency_key: str,
+        snapshot: CheckoutSnapshot | None = None,
+    ) -> CheckoutResult:
+        """Flush POS records; the caller owns the transaction, including rollback."""
+        fingerprint = self._fingerprint(
+            values
+            if snapshot is None
+            else {
+                **values,
+                "carwash_wash_id": snapshot.source_id,
+                "snapshot": [
+                    (line.item_id, line.unit_price, line.tax_rate) for line in snapshot.lines
+                ],
+            }
+        )
         branch_id = cast(UUID, values["branch_id"])
         quote_id = cast(UUID | None, values.get("quote_id"))
         quote_version = cast(int | None, values.get("quote_version"))
@@ -1100,7 +1184,6 @@ class PosService:
                 replay_receivable.id if replay_receivable is not None else None,
                 parked_for_next_shift=existing.cash_register_id is None,
             )
-
         method = self._require_payment_method(
             grant.workspace_id, cast(UUID, values["payment_method_id"])
         )
@@ -1121,13 +1204,20 @@ class PosService:
             raise InvalidOperationError("Debes indicar la caja de cobro.", "registerId")
         if register is not None and register.branch_id != branch_id:
             raise InvalidOperationError("La caja abierta pertenece a otra sucursal.", "registerId")
+        if (
+            snapshot is not None
+            and register is not None
+            and register.currency_code != snapshot.currency
+        ):
+            raise InvalidOperationError(
+                "La moneda de la caja no coincide con la del lavado.", "registerId"
+            )
         parked_for_next_shift = crm_relaxed_register and register is None
         if method.requires_evidence and method.settlement_policy == "immediate":
             raise InvalidOperationError(
                 "Este método requiere comprobante y debe confirmarse mediante CxC.",
                 "paymentMethodId",
             )
-
         quote: SalesQuote | None = None
         if quote_id is not None:
             if quote_grant is None:
@@ -1154,7 +1244,6 @@ class PosService:
             if quote_version is None:
                 raise RuntimeError("Checkout quote version validation was bypassed.")
             self._require_version(quote.version, quote_version, "quoteVersion")
-
         customer_id = cast(UUID | None, values.get("customer_id"))
         if customer_id is None and quote is not None:
             customer_id = quote.customer_id
@@ -1168,15 +1257,23 @@ class PosService:
                 "Selecciona un cliente registrado para crear una cuenta por cobrar.",
                 "customerId",
             )
-
-        priced, priced_lines = self._price_lines(
-            principal=principal,
-            grant=grant,
-            branch_id=branch_id,
-            raw_lines=cast(list[dict[str, Any]], values["lines"]),
-            discount_type=cast(str | None, values.get("discount_type")),
-            discount_value=cast(Decimal | None, values.get("discount_value")),
-        )
+        priced_lines: tuple[_PricedCatalogLine, ...] = ()
+        if snapshot is None:
+            priced, priced_lines = self._price_lines(
+                principal=principal,
+                grant=grant,
+                branch_id=branch_id,
+                raw_lines=cast(list[dict[str, Any]], values["lines"]),
+                discount_type=cast(str | None, values.get("discount_type")),
+                discount_value=cast(Decimal | None, values.get("discount_value")),
+            )
+        else:
+            priced = snapshot.priced
+            if quote_id is not None or any(
+                line.workspace_id != grant.workspace_id or line.item_type != "service"
+                for line in snapshot.lines
+            ):
+                raise InvalidOperationError("El origen de precios no es válido.")
         if customer is None and any(
             line.catalog.item.item_type == "membership" for line in priced_lines
         ):
@@ -1206,7 +1303,7 @@ class PosService:
             inventory_movement_id=inventory_movement_id,
             sale_number=sale_number,
             status="completed",
-            currency_code=workspace.default_currency,
+            currency_code=snapshot.currency if snapshot else workspace.default_currency,
             customer_name=customer.display_name if customer else None,
             customer_phone=customer.phone if customer else None,
             **self._document_values(priced, values),
@@ -1219,129 +1316,111 @@ class PosService:
             creation_idempotency_key=idempotency_key,
             request_fingerprint=fingerprint,
         )
-        sale_lines = self._sale_lines(grant.workspace_id, priced_lines)
+        sale_lines = (
+            snapshot.lines if snapshot else self._sale_lines(grant.workspace_id, priced_lines)
+        )
         receivable: CustomerReceivable | None = None
-        try:
-            self._repository.add_sale(sale, sale_lines)
-            if method.settlement_policy != "immediate" and priced.total > 0:
-                if customer is None:
-                    raise RuntimeError("Deferred sale customer validation was bypassed.")
-                receivable = CustomerReceivable(
-                    workspace_id=grant.workspace_id,
-                    branch_id=branch_id,
-                    customer_id=customer.id,
-                    receivable_number=self._repository.next_document_number(
-                        grant.workspace_id, "receivable"
-                    ),
-                    source="sale",
-                    sale_id=sale.id,
-                    **self._payment_snapshot(method),
-                    currency_code=sale.currency_code,
-                    customer_name=customer.display_name,
-                    customer_phone=customer.phone,
-                    amount=priced.total,
-                    paid_amount=Decimal("0"),
-                    status="pending",
-                    reference=sale.payment_reference,
-                    notes=self._optional_text(cast(str | None, values.get("notes"))),
-                    creation_idempotency_key=self._derived_key("pos-receivable", idempotency_key),
-                    request_fingerprint=fingerprint,
-                    created_by_platform_user_id=principal.platform_user_id,
-                    updated_by_platform_user_id=principal.platform_user_id,
-                )
-                receivable_lines = tuple(
-                    CustomerReceivableLine(
-                        workspace_id=grant.workspace_id,
-                        position=line.position,
-                        sale_line_id=line.id,
-                        item_id=line.item_id,
-                        item_name=line.item_name,
-                        item_sku=line.item_sku,
-                        unit_symbol=line.unit_symbol,
-                        quantity=line.quantity,
-                        unit_price=line.unit_price,
-                        line_total=line.line_total,
-                    )
-                    for line in sale_lines
-                )
-                self._repository.add_receivable(receivable, receivable_lines)
-
-            if (
-                method.settlement_policy == "immediate"
-                and method.affects_cash_drawer
-                and priced.total > 0
-                and register is not None
-                and register.status == "open"
-            ):
-                movement = CashMovement(
-                    workspace_id=grant.workspace_id,
-                    branch_id=branch_id,
-                    cash_register_id=register.id,
-                    movement_type="sale",
-                    currency_code=sale.currency_code,
-                    amount=priced.total,
-                    cash_delta=priced.total,
-                    **self._payment_snapshot(method),
-                    sale_id=sale.id,
-                    inventory_movement_id=inventory_movement_id,
-                    concept=f"Venta {sale.sale_number}",
-                    reference=sale.payment_reference,
-                    created_by_membership_id=principal.membership_id,
-                    created_by_platform_user_id=principal.platform_user_id,
-                    created_by_name=principal.display_name,
-                    idempotency_key=self._derived_key("pos-cash-sale", idempotency_key),
-                    request_fingerprint=fingerprint,
-                )
-                self._repository.add_movement(movement)
-                self._apply_cash_effect(register, "sale", priced.total)
-
-            if quote is not None:
-                quote.status = "converted"
-                quote.closed_at = datetime.now(UTC)
-                quote.updated_by_platform_user_id = principal.platform_user_id
-                quote.version += 1
-            self._repository.add_audit(
+        self._repository.add_sale(sale, sale_lines)
+        if method.settlement_policy != "immediate" and priced.total > 0:
+            if customer is None:
+                raise RuntimeError("Deferred sale customer validation was bypassed.")
+            receivable = CustomerReceivable(
                 workspace_id=grant.workspace_id,
-                actor_platform_user_id=principal.platform_user_id,
-                action="pos.sale.checkout",
-                target_type="sale",
-                target_id=sale.id,
-                request_id=get_request_id(),
-                details={
-                    "saleNumber": sale.sale_number,
-                    "branchId": str(branch_id),
-                    "registerId": str(register.id) if register is not None else None,
-                    "parkedForNextShift": parked_for_next_shift,
-                    "total": str(sale.total),
-                    "settlementPolicy": method.settlement_policy,
-                    "receivableId": str(receivable.id) if receivable else None,
-                    "inventoryMovementId": (
-                        str(inventory_movement_id) if inventory_movement_id else None
-                    ),
-                },
+                branch_id=branch_id,
+                customer_id=customer.id,
+                receivable_number=self._repository.next_document_number(
+                    grant.workspace_id, "receivable"
+                ),
+                source="sale",
+                sale_id=sale.id,
+                **self._payment_snapshot(method),
+                currency_code=sale.currency_code,
+                customer_name=customer.display_name,
+                customer_phone=customer.phone,
+                amount=priced.total,
+                paid_amount=Decimal("0"),
+                status="pending",
+                reference=sale.payment_reference,
+                notes=self._optional_text(cast(str | None, values.get("notes"))),
+                creation_idempotency_key=self._derived_key("pos-receivable", idempotency_key),
+                request_fingerprint=fingerprint,
+                created_by_platform_user_id=principal.platform_user_id,
+                updated_by_platform_user_id=principal.platform_user_id,
             )
-            self._session.commit()
-            return CheckoutResult(
-                self._repository.sale_record(sale),
-                receivable.id if receivable is not None else None,
-                parked_for_next_shift=parked_for_next_shift,
+            receivable_lines = tuple(
+                CustomerReceivableLine(
+                    workspace_id=grant.workspace_id,
+                    position=line.position,
+                    sale_line_id=line.id,
+                    item_id=line.item_id,
+                    item_name=line.item_name,
+                    item_sku=line.item_sku,
+                    unit_symbol=line.unit_symbol,
+                    quantity=line.quantity,
+                    unit_price=line.unit_price,
+                    line_total=line.line_total,
+                )
+                for line in sale_lines
             )
-        except IntegrityError as exc:
-            self._session.rollback()
-            replay = self._repository.sale_by_key(grant.workspace_id, idempotency_key)
-            if replay is not None:
-                self._require_same_fingerprint(
-                    replay.request_fingerprint, fingerprint, "Idempotency-Key"
-                )
-                concurrent_receivable = self._repository.receivable_for_sale(
-                    grant.workspace_id, replay.id
-                )
-                return CheckoutResult(
-                    self._repository.sale_record(replay),
-                    concurrent_receivable.id if concurrent_receivable else None,
-                    parked_for_next_shift=replay.cash_register_id is None,
-                )
-            raise ConflictError("No se pudo completar la venta.") from exc
+            self._repository.add_receivable(receivable, receivable_lines)
+        if (
+            method.settlement_policy == "immediate"
+            and method.affects_cash_drawer
+            and priced.total > 0
+            and register is not None
+            and register.status == "open"
+        ):
+            movement = CashMovement(
+                workspace_id=grant.workspace_id,
+                branch_id=branch_id,
+                cash_register_id=register.id,
+                movement_type="sale",
+                currency_code=sale.currency_code,
+                amount=priced.total,
+                cash_delta=priced.total,
+                **self._payment_snapshot(method),
+                sale_id=sale.id,
+                inventory_movement_id=inventory_movement_id,
+                concept=f"Venta {sale.sale_number}",
+                reference=sale.payment_reference,
+                created_by_membership_id=principal.membership_id,
+                created_by_platform_user_id=principal.platform_user_id,
+                created_by_name=principal.display_name,
+                idempotency_key=self._derived_key("pos-cash-sale", idempotency_key),
+                request_fingerprint=fingerprint,
+            )
+            self._repository.add_movement(movement)
+            self._apply_cash_effect(register, "sale", priced.total)
+        if quote is not None:
+            quote.status = "converted"
+            quote.closed_at = datetime.now(UTC)
+            quote.updated_by_platform_user_id = principal.platform_user_id
+            quote.version += 1
+        self._repository.add_audit(
+            workspace_id=grant.workspace_id,
+            actor_platform_user_id=principal.platform_user_id,
+            action="pos.sale.checkout",
+            target_type="sale",
+            target_id=sale.id,
+            request_id=get_request_id(),
+            details={
+                "saleNumber": sale.sale_number,
+                "branchId": str(branch_id),
+                "registerId": str(register.id) if register is not None else None,
+                "parkedForNextShift": parked_for_next_shift,
+                "total": str(sale.total),
+                "settlementPolicy": method.settlement_policy,
+                "receivableId": str(receivable.id) if receivable else None,
+                "inventoryMovementId": (
+                    str(inventory_movement_id) if inventory_movement_id else None
+                ),
+            },
+        )
+        return CheckoutResult(
+            self._repository.sale_record(sale),
+            receivable.id if receivable is not None else None,
+            parked_for_next_shift=parked_for_next_shift,
+        )
 
     def list_receivables(
         self,
@@ -1917,6 +1996,44 @@ class PosService:
         reason: str,
         idempotency_key: str,
     ) -> SaleRecord:
+        try:
+            result = self.void_sale_in_transaction(
+                principal=principal,
+                grant=grant,
+                sale_id=sale_id,
+                expected_version=expected_version,
+                reason=reason,
+                idempotency_key=idempotency_key,
+            )
+            self._session.commit()
+            return result
+        except IntegrityError as exc:
+            self._session.rollback()
+            replay = self._repository.sale_by_void_key(grant.workspace_id, idempotency_key)
+            if replay is not None:
+                self._require_same_fingerprint(
+                    replay.void_request_fingerprint,
+                    self._fingerprint(
+                        {"sale_id": sale_id, "version": expected_version, "reason": reason}
+                    ),
+                    "Idempotency-Key",
+                )
+                return self._repository.sale_record(replay)
+            raise ConflictError("No se pudo anular la venta.") from exc
+
+    def void_sale_in_transaction(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        sale_id: UUID,
+        expected_version: int,
+        reason: str,
+        idempotency_key: str,
+    ) -> SaleRecord:
+        """Reverse sale and its Carwash source under the same transaction."""
+        lifecycle = CarwashSaleLifecycle(self._session)
+        wash = lifecycle.lock(principal, sale_id)
         fingerprint = self._fingerprint(
             {"sale_id": sale_id, "version": expected_version, "reason": reason}
         )
@@ -1947,6 +2064,7 @@ class PosService:
         self._require_version(sale.version, expected_version)
         if sale.status != "completed":
             raise ConflictError("La venta ya fue anulada.", "status")
+        lifecycle.require_reversible(wash)
         sale_record = self._repository.sale_record(sale)
         receivable = self._repository.receivable_for_sale(grant.workspace_id, sale.id, lock=True)
         if receivable is not None and receivable.paid_amount > 0:
@@ -1954,7 +2072,6 @@ class PosService:
                 "Revierte primero los cobros aplicados a la cuenta por cobrar.",
                 "saleId",
             )
-
         cash_movement = self._repository.movement_for_sale(grant.workspace_id, sale.id)
         if cash_movement is not None:
             register = self._locked_reversal_register(
@@ -1989,7 +2106,6 @@ class PosService:
             )
             self._repository.add_movement(reversal)
             self._reverse_cash_effect(register, cash_movement)
-
         reversal_inventory_id = self._restore_stock(
             principal=principal,
             sale=sale,
@@ -2012,35 +2128,24 @@ class PosService:
         sale.void_idempotency_key = idempotency_key
         sale.void_request_fingerprint = fingerprint
         sale.version += 1
-        try:
-            self._repository.add_audit(
-                workspace_id=grant.workspace_id,
-                actor_platform_user_id=principal.platform_user_id,
-                action="pos.sale.void",
-                target_type="sale",
-                target_id=sale.id,
-                request_id=get_request_id(),
-                details={
-                    "reason": reason,
-                    "inventoryReversalMovementId": (
-                        str(reversal_inventory_id) if reversal_inventory_id else None
-                    ),
-                    "version": sale.version,
-                },
-            )
-            self._session.commit()
-            return self._repository.sale_record(sale)
-        except IntegrityError as exc:
-            self._session.rollback()
-            concurrent = self._repository.sale_by_void_key(grant.workspace_id, idempotency_key)
-            if concurrent is not None:
-                self._require_same_fingerprint(
-                    concurrent.void_request_fingerprint,
-                    fingerprint,
-                    "Idempotency-Key",
-                )
-                return self._repository.sale_record(concurrent)
-            raise ConflictError("No se pudo anular la venta.") from exc
+        self._repository.add_audit(
+            workspace_id=grant.workspace_id,
+            actor_platform_user_id=principal.platform_user_id,
+            action="pos.sale.void",
+            target_type="sale",
+            target_id=sale.id,
+            request_id=get_request_id(),
+            details={
+                "reason": reason,
+                "inventoryReversalMovementId": (
+                    str(reversal_inventory_id) if reversal_inventory_id else None
+                ),
+                "version": sale.version,
+            },
+        )
+        lifecycle.void(principal, wash, reason, sale.voided_at)
+        self._session.flush()
+        return self._repository.sale_record(sale)
 
     def sync_appointment_receivable(
         self,

@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 
 import { AppFrame, PageShell } from '@/components/layout/PageShell'
@@ -86,6 +87,7 @@ import MetodosPagoPage from '@/modules/configuracion/pages/MetodosPagoPage'
 
 import IncidenciasPage from '@/modules/incidencias/pages/IncidenciasPage'
 import ChatPage from '@/modules/chat/pages/ChatPage'
+const CarwashPage = lazy(() => import('@/modules/carwash/pages/CarwashPage'))
 
 import RrhhOverviewPage from '@/modules/rrhh/pages/OverviewPage'
 import DirectorioPage from '@/modules/rrhh/pages/DirectorioPage'
@@ -145,6 +147,14 @@ export function AppRoutes() {
           <Route path="/compras/configuracion" element={<Navigate to="/compras?tab=configuracion" replace />} />
 
           <Route path="/incidencias" element={<IncidenciasPage />} />
+          <Route
+            path="/carwash"
+            element={
+              <Suspense fallback={<div role="status" className="p-6 text-sm text-slate-500">Cargando Carwash…</div>}>
+                <CarwashPage />
+              </Suspense>
+            }
+          />
 
           <Route
             path="/chat"

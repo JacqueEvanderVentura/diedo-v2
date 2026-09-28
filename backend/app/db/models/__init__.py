@@ -9,6 +9,10 @@ from app.db.models.agenda import (
     BranchOpeningHour,
 )
 from app.db.models.audit import AuditEntry
+from app.db.models.carwash import CarwashServiceConfig
+from app.db.models.carwash_commissions import CarwashCommission
+from app.db.models.carwash_operations import CarwashWash, CarwashWashLine
+from app.db.models.carwash_settlements import CarwashSettlement, CarwashSettlementDetail
 from app.db.models.catalog import Item, ItemBranchAssignment, ItemCategory, UnitOfMeasure
 from app.db.models.chat import (
     ChatChannelAccount,
@@ -132,6 +136,12 @@ __all__ = [
     "CashMovement",
     "CashMovementLine",
     "CashRegister",
+    "CarwashCommission",
+    "CarwashSettlement",
+    "CarwashSettlementDetail",
+    "CarwashServiceConfig",
+    "CarwashWash",
+    "CarwashWashLine",
     "ChatChannelAccount",
     "ChatChannelAccountBranch",
     "ChatConversation",

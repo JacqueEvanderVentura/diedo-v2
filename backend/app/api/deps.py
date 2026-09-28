@@ -15,6 +15,7 @@ from app.services.attachment_storage import (
 )
 from app.services.auth import AuthPrincipal, AuthService
 from app.services.authorization import AuthorizationService, PermissionGrant
+from app.services.carwash_rate_limit import CarwashMutationRateLimiter
 from app.services.errors import AuthenticationError
 
 DatabaseSession = Annotated[Session, Depends(get_session)]
@@ -54,6 +55,15 @@ def get_current_principal(
 
 
 CurrentPrincipal = Annotated[AuthPrincipal, Depends(get_current_principal)]
+
+_carwash_mutation_limiter = CarwashMutationRateLimiter(
+    settings.carwash_mutation_rate_limit_per_minute
+)
+
+
+def enforce_carwash_mutation_rate_limit(principal: CurrentPrincipal) -> None:
+    if settings.carwash_rate_limit_enabled:
+        _carwash_mutation_limiter.check(principal.workspace_id, principal.membership_id)
 
 
 def require_permission(permission_code: str) -> Callable[..., PermissionGrant]:

@@ -100,8 +100,7 @@ function DealCard({
         <button
           type="button"
           onPointerDown={stopDrag}
-          disabled={busy}
-          disabled={!can.manage}
+          disabled={busy || !can.manage}
           onClick={() => onFollowUp(opp)}
           className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-50 disabled:opacity-50"
         >
@@ -110,8 +109,7 @@ function DealCard({
         <button
           type="button"
           onPointerDown={stopDrag}
-          disabled={busy}
-          disabled={!can.quote}
+          disabled={busy || !can.quote}
           onClick={() => onQuote(opp)}
           className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-purple-600 hover:bg-purple-50 disabled:opacity-50"
         >
@@ -121,9 +119,8 @@ function DealCard({
           <button
             type="button"
             onPointerDown={stopDrag}
-            disabled={busy}
-            disabled={!can.convert}
-          onClick={() => onConvert(opp)}
+            disabled={busy || !can.convert}
+            onClick={() => onConvert(opp)}
             className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
           >
             <UserCheck className="h-3.5 w-3.5" /> Convertir

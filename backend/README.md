@@ -163,7 +163,7 @@ environment before importing the application:
 ```powershell
 docker compose up -d postgres_test
 $env:APP_ENV = 'test'
-$env:DATABASE_URL = 'postgresql+psycopg://erp:erp@localhost:5434/erp_test'
+$env:DATABASE_URL = 'postgresql+psycopg://erp:erp@127.0.0.1:5434/erp_test'
 python -m alembic upgrade head
 python -m alembic check
 python -m pytest

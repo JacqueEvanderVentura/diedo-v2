@@ -21,6 +21,18 @@ export default defineConfig(({ mode }) => {
     test: {
       include: ['tests/**/*.test.{js,jsx}'],
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            const normalizedId = id.replaceAll('\\', '/')
+            if (normalizedId.includes('/node_modules/recharts/')) {
+              return 'recharts'
+            }
+          },
+        },
+      },
+    },
     server: {
       host: '0.0.0.0',
       port: 3000,

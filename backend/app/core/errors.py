@@ -160,6 +160,8 @@ async def application_exception_handler(
         status_code = 400
     elif isinstance(exc, RateLimitExceededError):
         status_code = 429
+        if exc.retry_after_seconds is not None:
+            headers = {"Retry-After": str(exc.retry_after_seconds)}
     elif isinstance(exc, ServiceUnavailableError):
         status_code = 503
     return JSONResponse(

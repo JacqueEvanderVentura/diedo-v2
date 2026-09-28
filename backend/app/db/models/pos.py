@@ -166,6 +166,7 @@ class CashMovement(UuidPrimaryKeyMixin, Base):
     __tablename__ = "cash_movements"
     __table_args__ = (
         UniqueConstraint("workspace_id", "id", name="uq_cash_movements_workspace_id"),
+        UniqueConstraint("workspace_id", "branch_id", "id", name="uq_cash_movements_scope_id"),
         UniqueConstraint("workspace_id", "idempotency_key", name="uq_cash_movements_idempotency"),
         ForeignKeyConstraint(
             ["workspace_id", "branch_id"],

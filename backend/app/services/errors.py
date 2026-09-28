@@ -44,7 +44,15 @@ class InvalidOperationError(ApplicationError):
 
 
 class RateLimitExceededError(ApplicationError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        parameter: str | None = None,
+        *,
+        retry_after_seconds: int | None = None,
+    ) -> None:
+        super().__init__(message, parameter)
+        self.retry_after_seconds = retry_after_seconds
 
 
 class ServiceUnavailableError(ApplicationError):

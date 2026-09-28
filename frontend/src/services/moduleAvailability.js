@@ -13,10 +13,12 @@ const API_CONNECTED_MODULE_SET = new Set([
   'pos',
   'finance',
   'reporting',
+  'carwash',
 ])
 
 const MODULE_DEPENDENCIES = Object.freeze({
   pos: Object.freeze(['sales', 'inventory']),
+  carwash: Object.freeze(['pos', 'hr', 'sales', 'inventory']),
 })
 
 export const API_CONNECTED_MODULES = Object.freeze([...API_CONNECTED_MODULE_SET])
@@ -39,6 +41,9 @@ export function requiresFinanceData(pathname = '') {
 }
 
 export function routeRequirement(pathname) {
+  if (pathname === '/carwash' || pathname.startsWith('/carwash/')) {
+    return { module: 'carwash', permission: 'carwash.read' }
+  }
   if (pathname === '/reportes' || pathname.startsWith('/reportes/')) {
     return { module: 'reporting', permission: 'report.read' }
   }

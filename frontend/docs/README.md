@@ -15,6 +15,9 @@ registra por separado para evitar confundir esa numeración con el plan Backend 
 | [integracion-fases-0-1.md](./integracion-fases-0-1.md) | Evidencia histórica/parcial de confiabilidad, sesión, IAM y configuración; reabierta en el plan V2 |
 | [integracion-fase-2.md](./integracion-fase-2.md) | Evidencia histórica/parcial de clientes, empleados básicos y adjuntos; reabierta en el plan V2 |
 | [integracion-agenda.md](./integracion-agenda.md) | Contrato y ciclo de sincronización de Calendario y Gestión de citas |
+| [carwash-fase-0.md](./carwash-fase-0.md) | Base visual y acceso de Carwash; fases propias del módulo |
+| [carwash-fase-1.md](./carwash-fase-1.md) | Configuración real por sucursal, catálogo y comisiones base |
+| [carwash-fase-2.md](./carwash-fase-2.md) | Recepción, control operativo y snapshots; sin movimientos financieros |
 
 Planes cortos en la raíz del repo: `fase1_plan.txt`, `fase2_plan.txt`, `fase3_plan.txt`.
 
@@ -42,8 +45,7 @@ El entorno virtual debe existir en `backend/.venv`. Después, desde `frontend/`,
 npm run test:e2e:full-stack
 ```
 
-El comando es destructivo únicamente sobre la base desechable `erp_test`: ejecuta `downgrade base`,
-`upgrade head`, reseed y levanta servidores aislados en los puertos 8200 y 3200. El guard solo
+El comando es destructivo únicamente sobre la base desechable `erp_test`: recrea el schema mediante `reset_test_database`, aplica migraciones, hace reseed y levanta servidores aislados en los puertos 8200 y 3200. El guard solo
 acepta `localhost`/`127.0.0.1`, puerto 5434 y el nombre exacto `erp_test`; no admite una base de
 desarrollo, otro puerto ni un host remoto. `FULL_STACK_DATABASE_URL` y
 `FULL_STACK_ADMIN_PASSWORD` permiten reemplazar solo esos valores de prueba sin escribir
@@ -51,5 +53,13 @@ credenciales en el repositorio.
 
 No se debe ejecutar a la vez con pytest backend ni con otro full-stack que use `erp_test`, porque
 ambos recrearían el mismo schema. El seed del backend se habilita solo para preparar fixtures; el
-frontend se levanta con `VITE_DEMO_SEED_ENABLED=false`, de modo que estos cinco casos prueban modo
-API real y no constituyen todavía la prueba de paridad demo.
+frontend se levanta con `VITE_DEMO_SEED_ENABLED=false`: estos recorridos prueban la API real.
+Las pruebas visuales de demo se ejecutan por separado.
+
+- [Carwash fase 3: facturación, devengos y anulación](carwash-fase-3.md)
+
+- [Carwash fase 4: comisiones, liquidaciones y reversos](carwash-fase-4.md)
+
+- [Carwash fase 5: indicadores, gráficos y reportes](carwash-fase-5.md)
+
+- [Carwash fase 6: validación completa y piloto local](carwash-fase-6.md)

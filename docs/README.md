@@ -5,6 +5,7 @@
 | Recurso | Ubicación |
 |---------|-----------|
 | **Backlog PO por fases** | [PO_BACKLOG_PHASES.md](./PO_BACKLOG_PHASES.md) |
+| **Carwash por fases** | [Plan](./CARWASH_IMPLEMENTATION_PLAN.md) · [Contrato](./backend/CARWASH_API.md) · [Entrega fase 0](../frontend/docs/carwash-fase-0.md) · [Entrega fase 1](../frontend/docs/carwash-fase-1.md) · [Fase 2](../frontend/docs/carwash-fase-2.md) · [Fase 3](../frontend/docs/carwash-fase-3.md) · [Fase 4](../frontend/docs/carwash-fase-4.md) · [Fase 5](../frontend/docs/carwash-fase-5.md) |
 | **Ampliación del Backoffice existente** | [Plan completado](./BACKOFFICE_EXTENSION_PLAN.md) · [Entrega y validación](./BACKOFFICE_IMPLEMENTATION.md) |
 
 ## Frontend (fases)
@@ -41,6 +42,7 @@
 | Schema foundation | [backend/FOUNDATION_SCHEMA.md](./backend/FOUNDATION_SCHEMA.md) |
 | ADR de decisiones Fases 0–1 | [adr/0001-decisiones-fundacionales-fases-0-1.md](./adr/0001-decisiones-fundacionales-fases-0-1.md) |
 | Runbook local | [../backend/README.md](../backend/README.md) |
+| Carwash: validación y piloto local | [../frontend/docs/carwash-fase-6.md](../frontend/docs/carwash-fase-6.md) |
 
 El estado de aceptación vigente vive en el plan V2. Los documentos históricos no cierran una fase
 si sus flujos todavía no pasan los gates full-stack actuales.

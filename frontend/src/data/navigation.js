@@ -50,6 +50,7 @@ export const NAV_GROUPS = [
       { label: 'Documentos', to: '/rrhh/documentos' },
     ],
   },
+  { id: 'carwash', module: 'carwash', label: 'Carwash', to: '/carwash', icon: 'Car', permission: 'carwash.read' },
   { id: 'inventarios', module: 'catalog', label: 'Inventarios', to: '/inventarios', icon: 'Package' },
   { id: 'compras', module: 'purchasing', label: 'Compras', to: '/compras', icon: 'Truck' },
   { id: 'incidencias', module: 'incidents', label: 'Incidencias', to: '/incidencias', icon: 'LifeBuoy' },
@@ -119,6 +120,7 @@ export const BACKOFFICE_NAV = {
 }
 
 export const PAGE_META = {
+  '/carwash': { title: 'Carwash', subtitle: 'Operaciones' },
   '/dashboard': { title: 'Vista General', subtitle: 'Aquí está lo que sucede en tu negocio hoy.' },
   '/pos/caja': { title: 'Caja', subtitle: 'Control de efectivo del turno.' },
   '/pos/cuentas-por-cobrar': { title: 'Cuentas por Cobrar', subtitle: 'Pagos pendientes de confirmar o cobrar.' },

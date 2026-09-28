@@ -5,6 +5,7 @@ from app.core.errors import (
 )
 from app.main import create_app
 from app.schemas.common import ApiModel
+from app.services.errors import RateLimitExceededError
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import Field
@@ -28,6 +29,13 @@ def build_error_test_app() -> FastAPI:
     @application.get("/test-crash")
     def crash() -> None:
         raise RuntimeError("internal database detail")
+
+    @application.get("/test-rate-limit")
+    def rate_limit() -> None:
+        raise RateLimitExceededError(
+            "Demasiadas operaciones.",
+            retry_after_seconds=17,
+        )
 
     return application
 
@@ -64,6 +72,18 @@ def test_unhandled_error_does_not_leak_internal_details() -> None:
         "parameter": None,
     }
     assert "database" not in response.text
+
+
+def test_rate_limit_error_includes_retry_after_header() -> None:
+    with TestClient(build_error_test_app(), raise_server_exceptions=False) as client:
+        response = client.get("/test-rate-limit")
+
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "17"
+    assert response.json() == {
+        "message": "Demasiadas operaciones.",
+        "parameter": None,
+    }
 
 
 def test_validation_location_formats_nested_array_path() -> None:

@@ -11,6 +11,7 @@ export function PaymentMethodPicker({
   onChange,
   testIdPrefix = 'payment-method',
   className,
+  gridClassName,
 }) {
   const enabled = useMemo(
     () => methods.filter((method) => method.enabled),
@@ -22,7 +23,7 @@ export function PaymentMethodPicker({
   return (
     <div className={cn('min-w-0', className)} data-testid={`${testIdPrefix}-picker`}>
       <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Método de pago</p>
-      <div className="grid grid-cols-3 gap-2">
+      <div className={cn('grid grid-cols-3 gap-2', gridClassName)}>
         {enabled.map((method) => {
           const Icon = ICONS[method.icon] || Wallet
           const active = value === method.id
@@ -40,7 +41,7 @@ export function PaymentMethodPicker({
               )}
             >
               <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
-              {method.name}
+              <span className="w-full min-w-0 break-words">{method.name}</span>
             </button>
           )
         })}
