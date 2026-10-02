@@ -680,7 +680,72 @@ class MetaOauthService:
         )
         candidates.extend(more)
         tokens.update(more_tokens)
+        if candidates:
+            return candidates, tokens
+
+        shared = self._wabas_from_debug_token(access_token)
+        if shared:
+            more, more_tokens = self._collect_whatsapp_from_wabas(shared, access_token)
+            candidates.extend(more)
+            tokens.update(more_tokens)
+        else:
+            logger.warning("meta oauth whatsapp discovery found no WABA")
         return candidates, tokens
+
+    def _wabas_from_debug_token(self, access_token: str) -> list[dict[str, Any]]:
+        """Embedded Signup puts the shared WABA on the token, not on me/businesses."""
+        app_id = settings.meta_app_id or ""
+        try:
+            app_secret = self._facebook_app_secret()
+        except InvalidOperationError:
+            logger.warning("meta oauth whatsapp debug_token skipped: app secret missing")
+            return []
+        version = settings.meta_graph_api_version
+        params = urlencode(
+            {
+                "input_token": access_token,
+                "access_token": f"{app_id}|{app_secret}",
+            }
+        )
+        url = f"https://graph.facebook.com/{version}/debug_token?{params}"
+        try:
+            payload = self._http.request("GET", url)
+        except GraphApiError as exc:
+            logger.warning(
+                "meta oauth whatsapp debug_token failed status=%s code=%s",
+                exc.status_code,
+                exc.graph_code,
+            )
+            return []
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(data, dict):
+            return []
+        waba_ids: list[str] = []
+        for scope in data.get("granular_scopes") or []:
+            if not isinstance(scope, dict):
+                continue
+            if scope.get("scope") not in {
+                "whatsapp_business_management",
+                "whatsapp_business_messaging",
+            }:
+                continue
+            for target in scope.get("target_ids") or []:
+                waba_id = str(target or "")
+                if waba_id and waba_id not in waba_ids:
+                    waba_ids.append(waba_id)
+        logger.warning("meta oauth whatsapp debug_token waba_count=%s", len(waba_ids))
+        wabas: list[dict[str, Any]] = []
+        for waba_id in waba_ids:
+            detail = self._graph_get_optional(
+                waba_id,
+                access_token,
+                {"fields": _WA_WABA_FIELDS},
+            )
+            if detail.get("id"):
+                wabas.append(detail)
+            else:
+                wabas.append({"id": waba_id})
+        return wabas
 
     def _collect_whatsapp_from_businesses(
         self, payload: dict[str, Any], access_token: str

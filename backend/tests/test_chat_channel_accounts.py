@@ -592,3 +592,62 @@ def test_discover_whatsapp_falls_back_to_waba_edges(meta_oauth_settings) -> None
         assert auto is True
         assert candidates[0].provider_account_id == "15550999"
         session.commit()
+
+
+def test_discover_whatsapp_uses_embedded_signup_debug_token(meta_oauth_settings) -> None:
+    class EmbeddedSignupHttp:
+        def request(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
+            del method, kwargs
+            if "me/businesses" in url or "me/whatsapp_business_accounts" in url:
+                return {"data": []}
+            if "debug_token" in url:
+                return {
+                    "data": {
+                        "granular_scopes": [
+                            {
+                                "scope": "whatsapp_business_management",
+                                "target_ids": ["waba-embedded"],
+                            }
+                        ]
+                    }
+                }
+            if "/waba-embedded?" in url:
+                return {"id": "waba-embedded", "name": "Embedded WABA"}
+            if "waba-embedded/phone_numbers" in url:
+                return {
+                    "data": [
+                        {
+                            "id": "15550888",
+                            "display_phone_number": "+1 809 555 0188",
+                            "verified_name": "Helios WA",
+                        }
+                    ]
+                }
+            raise AssertionError(url)
+
+    oauth = MetaOauthService(None, http_client=EmbeddedSignupHttp())  # type: ignore[arg-type]
+    candidates, tokens = oauth._discover_whatsapp("long-token")
+    assert candidates[0].display_name == "Helios WA"
+    assert candidates[0].provider_account_id == "15550888"
+    assert candidates[0].waba_id == "waba-embedded"
+    assert tokens["15550888"] == "long-token"
+
+
+def test_discover_whatsapp_debug_token_failure_returns_no_candidates(
+    meta_oauth_settings,
+) -> None:
+    from app.services.chat.graph_clients import GraphApiError
+
+    class DebugTokenFails:
+        def request(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
+            del method, kwargs
+            if "me/businesses" in url or "me/whatsapp_business_accounts" in url:
+                return {"data": []}
+            if "debug_token" in url:
+                raise GraphApiError(status_code=400, graph_code=190)
+            raise AssertionError(url)
+
+    oauth = MetaOauthService(None, http_client=DebugTokenFails())  # type: ignore[arg-type]
+    candidates, tokens = oauth._discover_whatsapp("long-token")
+    assert candidates == []
+    assert tokens == {}
