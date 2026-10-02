@@ -13,15 +13,12 @@ import { useSessionStore } from '@/stores/sessionStore'
 import { isModuleAvailable } from '@/services/moduleAvailability'
 import { FEATURES } from '@/config/features'
 import { HeliosIcon, PRODUCT_NAME } from '@/components/brand/HeliosIcon'
+import { deriveOpenNavGroups, isNavGroupActive } from '@/lib/sidebarNav'
 
 const PILL_SPRING = { type: 'spring', stiffness: 420, damping: 34 }
 const RAIL_WIDTH = 76
 const EXPANDED_WIDTH = 256
 const SLIDE = { duration: 0.28, ease: [0.4, 0, 0.2, 1] }
-
-function isGroupActive(group, pathname) {
-  return group.children?.some((c) => pathname === c.to || pathname.startsWith(c.to + '/'))
-}
 
 function isItemActive(item, pathname) {
   return pathname === item.to || pathname.startsWith(item.to + '/')
@@ -91,7 +88,9 @@ function GroupItem({ group, collapsed, open, onToggle, onNavigate }) {
   const Icon = Icons[group.icon] || Icons.Circle
   const navigate = useNavigate()
   const location = useLocation()
-  const active = isGroupActive(group, location.pathname)
+  const active = isNavGroupActive(group, location.pathname)
+  const alwaysExpanded = Boolean(group.alwaysExpanded)
+  const showChildren = alwaysExpanded || open
   const pendingCxc = usePosStore((s) => s.receivables.filter((r) => r.status === 'pending').length)
 
   if (collapsed) {
@@ -115,78 +114,97 @@ function GroupItem({ group, collapsed, open, onToggle, onNavigate }) {
     )
   }
 
+  const subNav = (
+    <ul className={alwaysExpanded ? undefined : 'overflow-hidden'}>
+      {group.children.map((c) => (
+        <li key={c.to}>
+          <NavLink
+            to={c.to}
+            end
+            onClick={onNavigate}
+            data-testid={`nav-sub-${c.to}`}
+            className={({ isActive }) =>
+              cn(
+                'relative z-10 flex items-center gap-2 rounded-lg py-2 pl-11 pr-3 text-sm transition-colors',
+                isActive
+                  ? 'font-semibold text-blue-700'
+                  : 'font-medium text-slate-500 hover:text-slate-800'
+              )
+            }
+          >
+            <span className="flex-1 truncate">{c.label}</span>
+            {c.to === '/pos/cuentas-por-cobrar' && pendingCxc > 0 && (
+              <span
+                data-testid="nav-cxc-badge"
+                className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white"
+              >
+                {pendingCxc}
+              </span>
+            )}
+            {c.soon && (
+              <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-400">
+                Pronto
+              </span>
+            )}
+          </NavLink>
+        </li>
+      ))}
+    </ul>
+  )
+
   return (
     <div>
-      <button
-        onClick={() => onToggle(group.id)}
-        data-testid={`nav-group-${group.id}`}
-        data-nav-module=""
-        data-active={active ? 'true' : undefined}
-        className={cn(
-          'relative z-10 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all duration-200 ease-out',
-          active ? 'text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'
-        )}
-      >
-        <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={2} />
-        <span className="flex-1 truncate text-left">{group.label}</span>
-        <Icons.ChevronDown className={cn('h-4 w-4 text-slate-400 transition-transform duration-200', open && 'rotate-180')} />
-      </button>
+      {alwaysExpanded ? (
+        <div
+          data-testid={`nav-group-${group.id}`}
+          data-nav-module=""
+          data-active={active ? 'true' : undefined}
+          className={cn(
+            'relative z-10 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold',
+            active ? 'text-blue-700' : 'text-slate-600'
+          )}
+        >
+          <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={2} />
+          <span className="flex-1 truncate text-left">{group.label}</span>
+        </div>
+      ) : (
+        <button
+          onClick={() => onToggle(group.id)}
+          data-testid={`nav-group-${group.id}`}
+          data-nav-module=""
+          data-active={active ? 'true' : undefined}
+          className={cn(
+            'relative z-10 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all duration-200 ease-out',
+            active ? 'text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'
+          )}
+        >
+          <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={2} />
+          <span className="flex-1 truncate text-left">{group.label}</span>
+          <Icons.ChevronDown
+            className={cn('h-4 w-4 text-slate-400 transition-transform duration-200', open && 'rotate-180')}
+          />
+        </button>
+      )}
 
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.ul
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
-          >
-            {group.children.map((c) => (
-              <li key={c.to}>
-                <NavLink
-                  to={c.to}
-                  end
-                  onClick={onNavigate}
-                  data-testid={`nav-sub-${c.to}`}
-                  className={({ isActive }) =>
-                    cn(
-                      'relative z-10 flex items-center gap-2 rounded-lg py-2 pl-11 pr-3 text-sm transition-colors',
-                      isActive
-                        ? 'font-semibold text-blue-700'
-                        : 'font-medium text-slate-500 hover:text-slate-800'
-                    )
-                  }
-                >
-                  <span className="flex-1 truncate">{c.label}</span>
-                  {c.to === '/pos/cuentas-por-cobrar' && pendingCxc > 0 && (
-                    <span
-                      data-testid="nav-cxc-badge"
-                      className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white"
-                    >
-                      {pendingCxc}
-                    </span>
-                  )}
-                  {c.soon && (
-                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-400">
-                      Pronto
-                    </span>
-                  )}
-                </NavLink>
-              </li>
-            ))}
-          </motion.ul>
-        )}
-      </AnimatePresence>
+      {alwaysExpanded ? (
+        subNav
+      ) : (
+        <AnimatePresence initial={false}>
+          {showChildren && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              {subNav}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
     </div>
   )
-}
-
-function deriveOpenGroups(pathname) {
-  const next = {}
-  NAV_GROUPS.forEach((g) => {
-    if (g.children && isGroupActive(g, pathname)) next[g.id] = true
-  })
-  return next
 }
 
 function CollapseToggle({ collapsed, pinned, onClick }) {
@@ -249,7 +267,7 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
     if (sessionStatus !== 'online' && sessionStatus !== 'demo') return
     ensureWorkspaceSettings().catch(() => {})
   }, [ensureWorkspaceSettings, sessionStatus])
-  const [open, setOpen] = useState(() => deriveOpenGroups(location.pathname))
+  const [open, setOpen] = useState(() => deriveOpenNavGroups(navigation, location.pathname))
   const navRef = useRef(null)
   const canAnimate = useRef(false)
   const [pill, setPill] = useState({ box: null, animate: false })
@@ -261,12 +279,13 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
     }
     setOpen((prev) => {
       const next = { ...prev }
-      NAV_GROUPS.forEach((g) => {
-        if (g.children && isGroupActive(g, location.pathname)) next[g.id] = true
+      navigation.forEach((g) => {
+        if (!g.children) return
+        if (g.alwaysExpanded || isNavGroupActive(g, location.pathname)) next[g.id] = true
       })
       return next
     })
-  }, [location.pathname, collapsed])
+  }, [location.pathname, collapsed, navigation])
 
   useLayoutEffect(() => {
     const nav = navRef.current
@@ -310,12 +329,23 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
     }
   }, [location.pathname, collapsed, open])
 
-  const toggle = (id) => setOpen((p) => ({ ...p, [id]: !p[id] }))
+  const toggle = (id) => {
+    const group = navigation.find((g) => g.id === id)
+    if (group?.alwaysExpanded) return
+    setOpen((p) => ({ ...p, [id]: !p[id] }))
+  }
 
   return (
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
       {/* Brand */}
-      <div className={cn('flex h-20 shrink-0 items-center gap-3 overflow-hidden px-4 transition-all duration-200 ease-out', collapsed && 'justify-center px-0')}>
+      <div
+        className={cn(
+          'flex shrink-0 overflow-hidden transition-all duration-200 ease-out',
+          collapsed
+            ? 'h-[5.5rem] flex-col items-center justify-center gap-1 px-0'
+            : 'h-20 items-center gap-3 px-4'
+        )}
+      >
         <HeliosIcon className="h-9 w-9 shrink-0" />
         {!collapsed && (
           <div className="min-w-0 flex-1 leading-tight">
@@ -323,8 +353,8 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
             <p className="truncate text-[11px] font-medium text-slate-400">Admin Console</p>
           </div>
         )}
-        {!collapsed && onToggleCollapse && (
-          <CollapseToggle collapsed={false} pinned={pinned} onClick={onToggleCollapse} />
+        {onToggleCollapse && (
+          <CollapseToggle collapsed={collapsed} pinned={pinned} onClick={onToggleCollapse} />
         )}
         {onClose && !collapsed && (
           <button
@@ -347,7 +377,7 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
                 key={g.id}
                 group={g}
                 collapsed={collapsed}
-                open={!!open[g.id]}
+                open={Boolean(g.alwaysExpanded || open[g.id])}
                 onToggle={toggle}
                 onNavigate={onNavigate}
               />
@@ -466,7 +496,7 @@ export function Sidebar() {
             <SidebarContent
               collapsed={!pinned && !hoverExpanded}
               onNavigate={handleNavigate}
-              onToggleCollapse={pinned || hoverExpanded ? handleToggleCollapse : undefined}
+              onToggleCollapse={handleToggleCollapse}
               pinned={pinned}
             />
           </div>

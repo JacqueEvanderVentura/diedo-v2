@@ -6,10 +6,12 @@ import { HeliosIcon, PRODUCT_NAME } from '@/components/brand/HeliosIcon'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { useSessionStore } from '@/stores/sessionStore'
+import { useUiStore } from '@/stores/uiStore'
 
 export default function LoginPage() {
   const navigate = useNavigate()
   const login = useSessionStore((s) => s.login)
+  const expandSidebarDesktop = useUiStore((s) => s.expandSidebarDesktop)
   const [email, setEmail] = useState('owner@erp.dev')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -25,6 +27,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const user = await login(email.trim(), password)
+      expandSidebarDesktop()
       toast.success('Sesión iniciada')
       navigate(user.isPlatformOperator ? '/backoffice' : '/dashboard', { replace: true })
     } catch (err) {

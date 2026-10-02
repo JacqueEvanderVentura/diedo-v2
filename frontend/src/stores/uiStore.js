@@ -12,6 +12,7 @@ export const useUiStore = create(
       openSidebar: () => set({ sidebarOpen: true }),
       closeSidebar: () => set({ sidebarOpen: false }),
       toggleCollapse: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+      expandSidebarDesktop: () => set({ sidebarCollapsed: false }),
     }),
     {
       name: 'diedo-ui',

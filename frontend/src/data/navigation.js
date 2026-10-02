@@ -111,6 +111,8 @@ export const BACKOFFICE_NAV = {
   id: 'backoffice',
   label: 'Backoffice',
   icon: 'Shield',
+  /** Platform operators only see this module; sub-routes stay visible without toggling. */
+  alwaysExpanded: true,
   children: [
     { label: 'Resumen', to: '/backoffice' },
     { label: 'Compañías', to: '/backoffice/companias' },
