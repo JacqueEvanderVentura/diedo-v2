@@ -1164,6 +1164,15 @@ def test_crm_quote_accepted_does_not_auto_invoice_and_crm_invoice_works_without_
     assert listed["convertedSaleId"] == paid_invoice.json()["id"]
     assert listed["invoiceNumber"] == paid_invoice.json()["number"]
 
+    quote_detail = client.get(f"/api/v1/crm/quotes/{quote_id}", headers=headers)
+    assert quote_detail.status_code == 200, quote_detail.text
+    revisions = quote_detail.json()["quote"]["revisions"]
+    assert len(revisions) >= 2
+    events = {item["event"] for item in revisions}
+    assert "created" in events
+    assert "invoiced" in events
+    assert revisions[-1]["snapshot"]["invoiceNumber"] == paid_invoice.json()["number"]
+
     duplicate = client.post(
         f"/api/v1/crm/quotes/{quote_id}/invoice",
         headers={**headers, "Idempotency-Key": f"crm-inv-dup-{suffix}"},

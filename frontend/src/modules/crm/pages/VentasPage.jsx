@@ -19,7 +19,14 @@ import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
 import { CRM_BRANCH_FILTER_CLASS, matchesBranches } from '@/lib/branches'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SaleDetailModal } from '../components/SaleDetailModal'
-import { fmtDateTime, METHOD_LABELS, METHOD_ICON, summarizeActiveSales } from '../lib/crm'
+import {
+  fmtDateTime,
+  METHOD_LABELS,
+  METHOD_ICON,
+  summarizeActiveSales,
+  saleStatusBadge,
+  saleRowHighlightClass,
+} from '../lib/crm'
 import {
   ResponsiveList,
   ResponsiveTable,
@@ -175,13 +182,16 @@ export default function VentasPage() {
                 {displayRows.map((s) => {
                   const Icon = Icons[METHOD_ICON[s.method]] || Icons.Circle
                   const isVoided = s.status === 'voided'
+                  const receivable = findReceivableForSale(receivables, s.id)
+                  const statusBadge = saleStatusBadge(s, receivable)
                   return (
                     <tr
                       key={s.id}
                       onClick={() => setSelected(s)}
                       className={cn(
                         'cursor-pointer transition-colors hover:bg-blue-50/50',
-                        isVoided && 'bg-slate-50/70 text-slate-400'
+                        isVoided && 'bg-slate-50/70 text-slate-400',
+                        !isVoided && saleRowHighlightClass(s, receivable),
                       )}
                       data-testid={`ventas-row-${s.id}`}
                     >
@@ -205,7 +215,7 @@ export default function VentasPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <Badge tone={isVoided ? 'danger' : 'success'}>{isVoided ? 'Anulada' : 'Completada'}</Badge>
+                        <Badge tone={statusBadge.tone} data-testid={`ventas-status-${s.id}`}>{statusBadge.label}</Badge>
                       </td>
                       <td className={cn('whitespace-nowrap px-6 py-4 text-right font-heading font-bold text-blue-600', isVoided && 'text-slate-400 line-through')}>{formatDOP(s.total)}</td>
                     </tr>
@@ -219,12 +229,14 @@ export default function VentasPage() {
             {displayRows.map((s) => {
               const Icon = Icons[METHOD_ICON[s.method]] || Icons.Circle
               const isVoided = s.status === 'voided'
+              const receivable = findReceivableForSale(receivables, s.id)
+              const statusBadge = saleStatusBadge(s, receivable)
               return (
                 <MobileCard key={s.id} onClick={() => setSelected(s)} testId={`ventas-card-${s.id}`}>
                   <MobileCardHeader
                     title={s.customer?.name || 'Cliente Mostrador'}
                     subtitle={fmtDateTime(s.createdAt)}
-                    badge={<Badge tone={isVoided ? 'danger' : 'success'}>{isVoided ? 'Anulada' : 'Completada'}</Badge>}
+                    badge={<Badge tone={statusBadge.tone}>{statusBadge.label}</Badge>}
                   />
                   <MobileCardGrid>
                     <MobileField label="Sucursal">{branchMap[s.branchId] || '—'}</MobileField>

@@ -24,11 +24,13 @@ describe('crmNavigation', () => {
     expect(isStandardCrmPath('/crm/workspace')).toBe(false)
   })
 
-  it('allows ventas in simplified mode', () => {
+  it('allows ventas and cotizaciones in simplified mode', () => {
     expect(isStandardCrmPath('/crm/ventas')).toBe(false)
     expect(isSimplifiedBlockedCrmPath('/crm/ventas')).toBe(false)
+    expect(isSimplifiedBlockedCrmPath('/crm/cotizaciones')).toBe(false)
     expect(isSimplifiedBlockedCrmPath('/crm/leads')).toBe(true)
     expect(isSimplifiedCrmModulePath('/crm/ventas')).toBe(true)
+    expect(isSimplifiedCrmModulePath('/crm/cotizaciones')).toBe(true)
     expect(isSimplifiedCrmModulePath('/crm/workspace')).toBe(true)
     expect(isSimplifiedCrmModulePath('/crm/leads')).toBe(false)
   })
@@ -39,9 +41,10 @@ describe('crmNavigation', () => {
     expect(simplified.to).toBe('/crm/workspace')
   })
 
-  it('marks simplified CRM sidebar active on workspace and ventas', () => {
+  it('marks simplified CRM sidebar active on workspace, cotizaciones and ventas', () => {
     const item = { id: 'crm', to: '/crm/workspace' }
     expect(isCrmSidebarItemActive(item, '/crm/ventas', 'simplified')).toBe(true)
+    expect(isCrmSidebarItemActive(item, '/crm/cotizaciones', 'simplified')).toBe(true)
     expect(isCrmSidebarItemActive(item, '/crm/workspace', 'simplified')).toBe(true)
     expect(isCrmSidebarItemActive(item, '/crm/leads', 'simplified')).toBe(false)
   })
@@ -50,9 +53,13 @@ describe('crmNavigation', () => {
     expect(resolveSimplifiedCrmSection('/crm/workspace', '')).toBe('prospectos')
     expect(resolveSimplifiedCrmSection('/crm/workspace', '?section=clientes')).toBe('clientes')
     expect(resolveSimplifiedCrmSection('/crm/ventas', '')).toBe('ventas')
+    expect(resolveSimplifiedCrmSection('/crm/cotizaciones', '')).toBe('cotizaciones')
   })
 
-  it('defines ventas section link to /crm/ventas', () => {
+  it('defines cotizaciones and ventas section links', () => {
+    const cotizaciones = SIMPLIFIED_CRM_SECTIONS.find((section) => section.id === 'cotizaciones')
+    expect(cotizaciones?.to).toBe('/crm/cotizaciones')
+    expect(cotizaciones?.testId).toBe('crm-simplified-section-cotizaciones')
     const ventas = SIMPLIFIED_CRM_SECTIONS.find((section) => section.id === 'ventas')
     expect(ventas?.to).toBe('/crm/ventas')
     expect(ventas?.testId).toBe('crm-simplified-section-ventas')

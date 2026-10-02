@@ -66,6 +66,7 @@ from app.schemas.pos import (
     QuoteKind,
     QuoteLineResponse,
     QuoteListItemResponse,
+    QuoteRevisionResponse,
     QuotesSummaryResponse,
     QuoteStateResponse,
     QuoteStatus,
@@ -414,12 +415,22 @@ def _quote_list_response(record: QuoteRecord) -> QuoteListItemResponse:
     )
 
 
+def _quote_revision_response(revision: Any) -> QuoteRevisionResponse:
+    return QuoteRevisionResponse(
+        revision=revision.revision,
+        event=revision.event,
+        occurred_at=revision.occurred_at,
+        snapshot=revision.snapshot,
+    )
+
+
 def _quote_detail_response(record: QuoteRecord) -> QuoteDetailResponse:
     values = _quote_list_response(record).model_dump(by_alias=False)
     values.update(
         lines=[_quote_line_response(line) for line in record.lines],
         notes=record.quote.notes,
         converted_sale_id=record.converted_sale_id,
+        revisions=[_quote_revision_response(item) for item in record.revisions],
     )
     return QuoteDetailResponse.model_validate(values)
 
@@ -1064,9 +1075,12 @@ def get_sale(
 def get_receivable_for_sale(
     sale_id: UUID,
     database: DatabaseSession,
+    principal: CurrentPrincipal,
     grant: PosReceivablesReadGrant,
 ) -> ReceivableDetailResponse:
-    return _receivable_detail_response(PosService(database).get_receivable_for_sale(grant, sale_id))
+    return _receivable_detail_response(
+        PosService(database).get_receivable_for_sale(grant, sale_id, principal=principal)
+    )
 
 
 @router.post("/sales/{sale_id}/void", responses=_RESPONSES)

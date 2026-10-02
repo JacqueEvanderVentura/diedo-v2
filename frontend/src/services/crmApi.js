@@ -90,6 +90,7 @@ export const crmApi = {
     { version }
   ),
 
+  getQuote: (quoteId) => apiClient.get(`${CRM_BASE}/quotes/${quoteId}`),
   createQuote: (payload, key) => apiClient.post(
     `${CRM_BASE}/quotes`,
     payload,

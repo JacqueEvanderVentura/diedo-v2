@@ -115,6 +115,7 @@ from app.db.models.sales import (
     SalesDocumentCounter,
     SalesQuote,
     SalesQuoteLine,
+    SalesQuoteRevision,
 )
 from app.db.models.subscription import SubscriptionPlan, WorkspaceSubscription
 
@@ -213,6 +214,7 @@ __all__ = [
     "SalesDocumentCounter",
     "SalesQuote",
     "SalesQuoteLine",
+    "SalesQuoteRevision",
     "SubscriptionPlan",
     "Supplier",
     "SupplierBranchAssignment",

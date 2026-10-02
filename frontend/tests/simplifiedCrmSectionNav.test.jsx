@@ -9,7 +9,7 @@ describe('SimplifiedCrmSectionNav', () => {
     cleanup()
   })
 
-  it('muestra tres pills con enlaces a prospectos, clientes y ventas', () => {
+  it('muestra pills con enlaces a prospectos, clientes, cotizaciones y ventas', () => {
     render(
       <MemoryRouter initialEntries={['/crm/workspace']}>
         <SimplifiedCrmSectionNav />
@@ -20,6 +20,7 @@ describe('SimplifiedCrmSectionNav', () => {
     expect(within(nav).getByRole('link', { name: 'Clientes' }).getAttribute('href')).toBe(
       '/crm/workspace?section=clientes'
     )
+    expect(screen.getByTestId('crm-simplified-section-cotizaciones').getAttribute('href')).toBe('/crm/cotizaciones')
     expect(screen.getByTestId('crm-simplified-section-ventas').getAttribute('href')).toBe('/crm/ventas')
   })
 
@@ -31,5 +32,15 @@ describe('SimplifiedCrmSectionNav', () => {
     )
     const ventas = screen.getByTestId('crm-simplified-section-ventas')
     expect(ventas.className).toMatch(/bg-blue-600/)
+  })
+
+  it('resalta cotizaciones cuando la ruta es /crm/cotizaciones', () => {
+    render(
+      <MemoryRouter initialEntries={['/crm/cotizaciones']}>
+        <SimplifiedCrmSectionNav />
+      </MemoryRouter>
+    )
+    const cotizaciones = screen.getByTestId('crm-simplified-section-cotizaciones')
+    expect(cotizaciones.className).toMatch(/bg-blue-600/)
   })
 })

@@ -2,6 +2,7 @@
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
@@ -19,6 +20,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -273,6 +275,50 @@ class SalesQuoteLine(UuidPrimaryKeyMixin, Base):
         Numeric(14, 2), nullable=False, default=Decimal("0"), server_default=text("0")
     )
     line_total: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+
+
+class SalesQuoteRevision(UuidPrimaryKeyMixin, Base):
+    """Point-in-time snapshot of a quote for CRM history."""
+
+    __tablename__ = "sales_quote_revisions"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "quote_id",
+            "revision",
+            name="uq_sales_quote_revisions_quote_revision",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "quote_id"],
+            ["sales_quotes.workspace_id", "sales_quotes.id"],
+            ondelete="CASCADE",
+            name="fk_sales_quote_revisions_workspace_quote",
+        ),
+        CheckConstraint(
+            "event IN ('created', 'updated', 'invoiced', 'cancelled')",
+            name="event_values",
+        ),
+        CheckConstraint("revision >= 1", name="revision_positive"),
+        CheckConstraint("jsonb_typeof(snapshot) = 'object'", name="snapshot_object"),
+        Index(
+            "ix_sales_quote_revisions_workspace_quote_occurred",
+            "workspace_id",
+            "quote_id",
+            "occurred_at",
+        ),
+    )
+
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
+    )
+    quote_id: Mapped[UUID] = mapped_column(nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    event: Mapped[str] = mapped_column(String(16), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    actor_platform_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("platform_users.id", ondelete="RESTRICT"), nullable=False
+    )
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
 
 class Sale(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):

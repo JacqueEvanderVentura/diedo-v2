@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Trash2, Printer, Download, Pencil, Receipt, DollarSign } from 'lucide-react'
+import { Plus, Trash2, Printer, Download, Pencil, Receipt } from 'lucide-react'
 import { useCrmStore } from '@/stores/crmStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useCustomersStore } from '@/stores/customersStore'
@@ -10,7 +10,26 @@ import { useSessionStore } from '@/stores/sessionStore'
 import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
 import { CRM_BRANCH_FILTER_CLASS, matchesBranches } from '@/lib/branches'
 import { QUOTE_STATUSES, QUOTE_STATUS_META } from '@/data/crm'
-import { fmtDate } from '../lib/crm'
+import { fmtDate, fmtDateTime, saleStatusBadge, saleRowHighlightClass } from '../lib/crm'
+import {
+  CRM_DOC_TABS,
+  buildCrmDocumentRows,
+  documentRowTypeLabel,
+  filterDocumentRows,
+  parseDocFilter,
+} from '../lib/quoteDocuments'
+import { SaleDetailModal } from '../components/SaleDetailModal'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { FileText } from 'lucide-react'
+import {
+  ResponsiveList,
+  ResponsiveTable,
+  ResponsiveCards,
+  MobileCard,
+  MobileField,
+  MobileCardHeader,
+  MobileCardFooter,
+} from '@/components/ui/ResponsiveList'
 import { formatDOP } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { Card } from '@/components/ui/Card'
@@ -28,8 +47,6 @@ import {
   isQuoteInvoicePaid,
   isQuoteInvoicePending,
   isQuoteInvoicePendingValidation,
-  findQuoteReceivable,
-  isSyntheticCrmReceivable,
   collectRowForQuote,
   quoteConvertedSaleId,
   resolveQuoteBilling,
@@ -39,17 +56,20 @@ import { QuotePaymentDetailModal } from '../components/QuotePaymentDetailModal'
 import { PermissionElevationModal } from '@/components/auth/PermissionElevationModal'
 import { ReceivablePaymentModal } from '@/modules/pos/components/ReceivablePaymentModal'
 import { ReceivableProofModal } from '@/modules/pos/components/ReceivableProofModal'
-import { ReceivableCollectMenu } from '@/modules/pos/components/ReceivableCollectMenu'
+import { resolveQuoteReceivableForCollect } from '../lib/resolveQuoteReceivableForCollect'
 import { mapReceivableFromApi, mapReceivablesPageFromApi } from '@/services/adapters/pos'
 import { posApi } from '@/services/posApi'
 import { getBalance, receivableHasPaymentEvidence } from '@/modules/pos/lib/receivables'
 import { syncWorkspacePaymentMethods } from '@/lib/paymentMethodsSync'
+import { SimplifiedCrmSectionNav } from '@/modules/crm/components/SimplifiedCrmSectionNav'
 
 export default function CotizacionesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
 
+  const uiMode = useCrmStore((s) => s.uiMode)
   const quotes = useCrmStore((s) => s.quotes)
   const sales = useCrmStore((s) => s.sales)
+  const posSales = usePosStore((s) => s.sales)
   const branches = useConfigStore((s) => s.branches)
   const settings = useConfigStore((s) => s.settings)
   const paymentMethods = useConfigStore((s) => s.paymentMethods)
@@ -80,20 +100,16 @@ export default function CotizacionesPage() {
   const [collectPaymentRow, setCollectPaymentRow] = useState(null)
   const [collectProofRow, setCollectProofRow] = useState(null)
   const [paymentDetailQuote, setPaymentDetailQuote] = useState(null)
+  const [selectedSale, setSelectedSale] = useState(null)
+
+  const isStandardCrm = uiMode !== 'simplified'
+  const docFilter = parseDocFilter(searchParams.get('doc'))
 
   const requestedOpportunityId = searchParams.get('opportunityId') || ''
   const requestedCustomerId = searchParams.get('customerId') || ''
+  const requestedLeadId = searchParams.get('leadId') || ''
 
   useEffect(() => {
-    if (searchParams.get('tab')) {
-      const next = new URLSearchParams(searchParams)
-      next.delete('tab')
-      setSearchParams(next, { replace: true })
-    }
-  }, [searchParams, setSearchParams])
-
-  useEffect(() => {
-    if (!quotes.some(isQuoteInvoiced)) return
     const load = async () => {
       try {
         await Promise.all([
@@ -106,7 +122,14 @@ export default function CotizacionesPage() {
       }
     }
     load()
-  }, [quotes.length, hydrateCxcWorkspace, hydrateQuotesSection])
+  }, [hydrateCxcWorkspace, hydrateQuotesSection])
+
+  const setDocFilter = (id) => {
+    const next = new URLSearchParams(searchParams)
+    if (id === 'all') next.delete('doc')
+    else next.set('doc', id)
+    setSearchParams(next, { replace: true })
+  }
 
   useEffect(() => {
     if (!requestedOpportunityId) return
@@ -125,7 +148,25 @@ export default function CotizacionesPage() {
   }, [opportunities, requestedOpportunityId, searchParams, setSearchParams])
 
   useEffect(() => {
-    if (requestedOpportunityId || !requestedCustomerId) return
+    if (requestedOpportunityId || requestedCustomerId || !requestedLeadId) return
+    const lead = useCrmStore.getState().leads.find((item) => item.id === requestedLeadId)
+    const opportunity = useCrmStore.getState().opportunities.find((item) => item.leadId === requestedLeadId)
+    if (!lead) return
+    setEditingQuote(null)
+    setInitialContext({
+      leadId: lead.id,
+      customerId: opportunity?.customerId || '',
+      opportunityId: opportunity?.id || '',
+      branchId: lead.branchId || opportunity?.branchId || '',
+    })
+    setFormOpen(true)
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('leadId')
+    setSearchParams(nextParams, { replace: true })
+  }, [requestedLeadId, requestedOpportunityId, requestedCustomerId, searchParams, setSearchParams])
+
+  useEffect(() => {
+    if (requestedOpportunityId || !requestedCustomerId || requestedLeadId) return
     const customer = customers.find((item) => item.id === requestedCustomerId)
     if (!customer) return
     setEditingQuote(null)
@@ -146,8 +187,24 @@ export default function CotizacionesPage() {
   )
 
   const visibleQuotes = useMemo(() => {
-    return enrichedQuotes.filter((q) => matchesBranches(q, branchIds, (row) => (row.branchId ? [row.branchId] : [])))
+    return enrichedQuotes
+      .filter((q) => !isQuoteInvoiced(q))
+      .filter((q) => matchesBranches(q, branchIds, (row) => (row.branchId ? [row.branchId] : [])))
   }, [enrichedQuotes, branchIds])
+
+  const standardDocumentRows = useMemo(() => {
+    const rows = buildCrmDocumentRows({
+      quotes,
+      crmSales: sales,
+      posSales,
+      receivables,
+    })
+    return filterDocumentRows(rows, docFilter).filter((row) => matchesBranches(
+      row,
+      branchIds,
+      (item) => (item.branchId ? [item.branchId] : []),
+    ))
+  }, [quotes, sales, posSales, receivables, docFilter, branchIds])
 
   const stats = useMemo(() => ({
     total: visibleQuotes.length,
@@ -259,6 +316,14 @@ export default function CotizacionesPage() {
             : `Factura ${result.sale.number} emitida y cobrada`) + parkedHint
       )
       setInvoiceQuoteRow(null)
+      if (result?.sale) {
+        setSelectedSale(result.sale)
+      }
+      await Promise.all([
+        hydrateQuotesSection('quotes'),
+        useCrmStore.getState().hydrateSection('sales'),
+      ])
+      await hydrateCxcWorkspace({ force: true })
     } catch (error) {
       toast.error(error.message || 'No se pudo emitir la factura')
     } finally {
@@ -277,10 +342,6 @@ export default function CotizacionesPage() {
   }
 
   const resolveReceivableForCollect = async (row) => {
-    if (!isSyntheticCrmReceivable(row) && row?.id) {
-      const detail = await ensureReceivableDetail(row.id) || row
-      return detail
-    }
     const quote = row?.quoteId
       ? enrichedQuotes.find((item) => item.id === row.quoteId) || null
       : linkedQuoteForReceivable(row)
@@ -291,52 +352,44 @@ export default function CotizacionesPage() {
     ])
     const latestSales = useCrmStore.getState().sales
     const storeReceivables = usePosStore.getState().receivables
-    const saleId = quoteConvertedSaleId(quote || {}, latestSales) || row?.saleId
-    const receivableId = quote?.receivableId || (row?.id && !isSyntheticCrmReceivable(row) ? row.id : null)
-    let found = receivableId
-      ? storeReceivables.find((item) => item.id === receivableId)
-      : null
-    if (!found && quote) {
-      found = findQuoteReceivable(quote, storeReceivables, latestSales)
+
+    const upsertReceivable = (receivable) => {
+      if (!receivable?.id) return
+      usePosStore.setState((state) => ({
+        receivables: [receivable, ...state.receivables.filter((item) => item.id !== receivable.id)],
+      }))
     }
-    if (!found && saleId) {
-      found = storeReceivables.find((item) => String(item.saleId) === String(saleId))
-    }
-    if (!found) {
-      const allItems = []
-      let page = 1
-      let totalPages = 1
-      while (page <= totalPages) {
-        const list = await posApi.listReceivables({ page, pageSize: 100 })
-        const mapped = mapReceivablesPageFromApi(list || { items: [] })
-        allItems.push(...mapped.items)
-        totalPages = mapped.pagination?.totalPages || 1
-        page += 1
-      }
-      found = (receivableId && allItems.find((item) => item.id === receivableId))
-        || (saleId && allItems.find((item) => String(item.saleId) === String(saleId)))
-        || null
-      if (found) {
-        usePosStore.setState((state) => ({
-          receivables: [found, ...state.receivables.filter((item) => item.id !== found.id)],
-        }))
-      }
-    }
-    if (!found?.id && saleId && isOnline) {
-      try {
-        const response = await posApi.getReceivableForSale(saleId)
-        found = mapReceivableFromApi(response)
-        if (found?.id) {
-          usePosStore.setState((state) => ({
-            receivables: [found, ...state.receivables.filter((item) => item.id !== found.id)],
-          }))
+
+    const found = await resolveQuoteReceivableForCollect({
+      row,
+      quote,
+      sales: latestSales,
+      receivables: storeReceivables,
+      isOnline,
+      ensureReceivableDetail,
+      listAllReceivables: async () => {
+        const allItems = []
+        let page = 1
+        let totalPages = 1
+        while (page <= totalPages) {
+          const list = await posApi.listReceivables({ page, pageSize: 100 })
+          const mapped = mapReceivablesPageFromApi(list || { items: [] })
+          allItems.push(...mapped.items)
+          totalPages = mapped.pagination?.totalPages || 1
+          page += 1
         }
-      } catch {
-        /* sale may not have a receivable */
-      }
-    }
-    if (!found?.id) return null
-    return await ensureReceivableDetail(found.id) || found
+        return allItems
+      },
+      getReceivableForSale: async (saleId) => {
+        const response = await posApi.getReceivableForSale(saleId)
+        const mapped = mapReceivableFromApi(response)
+        upsertReceivable(mapped)
+        return mapped
+      },
+    })
+
+    if (found) upsertReceivable(found)
+    return found
   }
 
   const refreshAfterCollect = async () => {
@@ -430,6 +483,7 @@ export default function CotizacionesPage() {
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="crm-cotizaciones">
+      {uiMode === 'simplified' && <SimplifiedCrmSectionNav className="mb-2" />}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <h2 className="font-heading text-2xl font-bold text-slate-900">Cotizaciones y facturas</h2>
@@ -488,6 +542,184 @@ export default function CotizacionesPage() {
         ))}
       </div>
 
+      {isStandardCrm && (
+        <div className="flex flex-wrap gap-2" data-testid="cotizaciones-doc-tabs">
+          {CRM_DOC_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setDocFilter(tab.id)}
+              data-testid={`cotizaciones-doc-${tab.id}`}
+              className={cn(
+                'rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors',
+                docFilter === tab.id
+                  ? 'border-blue-600 bg-blue-50 text-blue-700'
+                  : 'border-slate-200 bg-white text-slate-500 hover:border-blue-200',
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {isStandardCrm ? (
+        standardDocumentRows.length === 0 ? (
+          <Card className="overflow-hidden">
+            <EmptyState
+              icon={FileText}
+              title="Sin documentos"
+              description="No hay cotizaciones ni facturas con los filtros actuales."
+              className="py-14"
+            />
+          </Card>
+        ) : (
+          <ResponsiveList minTableWidth={960} columnCount={7}>
+            <ResponsiveTable testId="cotizaciones-doc-table">
+              <table className="w-full min-w-[880px] text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    <th className="px-6 py-4">Tipo</th>
+                    <th className="px-6 py-4">Número</th>
+                    <th className="px-6 py-4">Cliente</th>
+                    <th className="px-6 py-4">Estado</th>
+                    <th className="px-6 py-4">Fecha</th>
+                    <th className="px-6 py-4 text-right">Total</th>
+                    <th className="px-6 py-4 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {standardDocumentRows.map((row) => {
+                    if (row.kind === 'invoice') {
+                      const status = saleStatusBadge(row.sale, row.receivable)
+                      const isVoided = row.sale.status === 'voided'
+                      return (
+                        <tr
+                          key={row.id}
+                          onClick={() => setSelectedSale(row.sale)}
+                          className={cn(
+                            'cursor-pointer transition-colors hover:bg-blue-50/50',
+                            isVoided && 'bg-slate-50/70 text-slate-400',
+                            !isVoided && saleRowHighlightClass(row.sale, row.receivable),
+                          )}
+                          data-testid={`cotizaciones-invoice-row-${row.sale.id}`}
+                        >
+                          <td className="px-6 py-4">
+                            <Badge tone="neutral">{documentRowTypeLabel(row)}</Badge>
+                          </td>
+                          <td className="px-6 py-4 font-mono font-semibold text-slate-700">{row.label}</td>
+                          <td className="px-6 py-4 font-semibold text-slate-800">{row.customerName}</td>
+                          <td className="px-6 py-4">
+                            <Badge tone={status.tone}>{status.label}</Badge>
+                          </td>
+                          <td className="px-6 py-4 text-slate-500">{fmtDateTime(row.sortAt)}</td>
+                          <td className="px-6 py-4 text-right font-heading font-bold text-blue-600">{formatDOP(row.total)}</td>
+                          <td className="px-6 py-4 text-right text-xs text-slate-400">Ver detalle</td>
+                        </tr>
+                      )
+                    }
+                    const q = row.quote
+                    const pending = isQuoteInvoicePending(q, receivables)
+                    return (
+                      <tr
+                        key={row.id}
+                        className="transition-colors hover:bg-slate-50/80"
+                        data-testid={`cotizaciones-quote-row-${q.id}`}
+                      >
+                        <td className="px-6 py-4">
+                          <Badge tone="brand">{documentRowTypeLabel(row)}</Badge>
+                        </td>
+                        <td className="px-6 py-4 font-mono font-semibold text-slate-700">{q.number}</td>
+                        <td className="px-6 py-4 font-semibold text-slate-800">{q.customerName}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-wrap gap-1">
+                            <Badge tone={QUOTE_STATUS_META[q.status]?.tone || 'neutral'}>
+                              {QUOTE_STATUS_META[q.status]?.label}
+                            </Badge>
+                            {pending && (
+                              <Badge tone="warning">Por cobrar</Badge>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-slate-500">{fmtDate(q.createdAt)}</td>
+                        <td className="px-6 py-4 text-right font-heading font-bold text-emerald-600">{formatDOP(q.total)}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-wrap items-center justify-end gap-1">
+                            {canEmitQuoteInvoice(q) && (
+                              <Button size="sm" onClick={() => openInvoice(q)} data-testid={`quote-invoice-${q.id}`}>
+                                <Receipt className="h-4 w-4" />
+                                Facturar
+                              </Button>
+                            )}
+                            {canManage && isQuoteEditable(q) && (
+                              <button
+                                type="button"
+                                onClick={() => openEdit(q)}
+                                aria-label={`Editar ${q.number}`}
+                                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => printQuote(q)}
+                              aria-label={`Imprimir ${q.number}`}
+                              className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                            >
+                              <Printer className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </ResponsiveTable>
+            <ResponsiveCards testId="cotizaciones-doc-cards">
+              {standardDocumentRows.map((row) => {
+                if (row.kind === 'invoice') {
+                  const status = saleStatusBadge(row.sale, row.receivable)
+                  return (
+                    <MobileCard
+                      key={row.id}
+                      onClick={() => setSelectedSale(row.sale)}
+                      testId={`cotizaciones-invoice-card-${row.sale.id}`}
+                    >
+                      <MobileCardHeader
+                        title={row.customerName}
+                        subtitle={row.label}
+                        badge={<Badge tone={status.tone}>{status.label}</Badge>}
+                      />
+                      <MobileField label="Tipo">{documentRowTypeLabel(row)}</MobileField>
+                      <MobileCardFooter>
+                        <span className="text-xs text-slate-400">{fmtDateTime(row.sortAt)}</span>
+                        <span className="font-heading font-bold text-blue-600">{formatDOP(row.total)}</span>
+                      </MobileCardFooter>
+                    </MobileCard>
+                  )
+                }
+                const q = row.quote
+                return (
+                  <MobileCard key={row.id} testId={`cotizaciones-quote-card-${q.id}`}>
+                    <MobileCardHeader
+                      title={q.customerName}
+                      subtitle={q.number}
+                      badge={<Badge tone={QUOTE_STATUS_META[q.status]?.tone || 'neutral'}>{QUOTE_STATUS_META[q.status]?.label}</Badge>}
+                    />
+                    <MobileField label="Tipo">Cotización</MobileField>
+                    <MobileCardFooter>
+                      <span className="text-xs text-slate-400">{fmtDate(q.createdAt)}</span>
+                      <span className="font-heading font-bold text-emerald-600">{formatDOP(q.total)}</span>
+                    </MobileCardFooter>
+                  </MobileCard>
+                )
+              })}
+            </ResponsiveCards>
+          </ResponsiveList>
+        )
+      ) : (
       <div className="space-y-3">
         {visibleQuotes.map((q) => {
           const pending = isQuoteInvoicePending(q, receivables)
@@ -560,24 +792,13 @@ export default function CotizacionesPage() {
                           PDF
                         </Button>
                         {canCollectReceivables && (
-                          <>
-                            <button
-                              type="button"
-                              title="Registrar pago"
-                              onClick={() => openReceivablePaymentModal(collectRow)}
-                              className="rounded-lg p-2 text-blue-600 hover:bg-blue-50"
-                              data-testid={`quote-collect-pay-${q.id}`}
-                            >
-                              <DollarSign className="h-4 w-4" />
-                            </button>
-                            <ReceivableCollectMenu
-                              row={collectRow}
-                              onConfirm={handleConfirmReceivable}
-                              onCash={handleCashReceivable}
-                              onProof={openReceivableProofModal}
-                              testId={`quote-collect-menu-${q.id}`}
-                            />
-                          </>
+                          <Button
+                            size="sm"
+                            onClick={() => openReceivablePaymentModal(collectRow)}
+                            data-testid={`quote-collect-${q.id}`}
+                          >
+                            Cobrar
+                          </Button>
                         )}
                       </>
                     )}
@@ -634,6 +855,13 @@ export default function CotizacionesPage() {
           )
         })}
       </div>
+      )}
+
+      <SaleDetailModal
+        open={Boolean(selectedSale)}
+        onClose={() => setSelectedSale(null)}
+        sale={selectedSale}
+      />
 
       <QuoteFormModal
         open={formOpen}

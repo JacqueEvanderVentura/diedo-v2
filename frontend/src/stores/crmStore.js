@@ -40,6 +40,7 @@ import {
   buildSimplifiedOpportunityQuery,
 } from '@/modules/crm/lib/simplifiedWorkspaceQuery'
 import { paginateSlice } from '@/modules/reportes/lib/pagination'
+import { appendQuoteRevision } from '@/modules/crm/lib/quoteRevisions'
 import { matchesBranches } from '@/lib/branches'
 import { resolvePeriodRange } from '@/lib/datePeriod'
 import {
@@ -74,6 +75,7 @@ import { syncWorkspacePaymentMethods } from '@/lib/paymentMethodsSync'
 import { canAccessCrmCommerce } from '@/services/moduleAvailability'
 
 const saleDetailRequests = new Map()
+const quoteDetailRequests = new Map()
 let crmGeneration = 0
 
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
@@ -181,17 +183,20 @@ async function loadOnlineSection(section) {
         crmApi.activities({ page: 1, pageSize: 100 }),
       ])
       const oppsMapped = mapOpportunitiesPaginatedFromApi(oppsRes)
-      return {
-        sales: mapCrmSalesPageFromApi(salesRes),
-        quotes: mapCrmQuotesPageFromApi(quotesRes),
+      const result = {
         opportunities: oppsMapped.items,
         opportunitiesListMeta: listMetaFromPaginated(oppsMapped),
         activities: mapActivitiesPageFromApi(activitiesRes),
       }
+      if (crmCommerceEnabled()) {
+        result.sales = mapCrmSalesPageFromApi(salesRes)
+        result.quotes = mapCrmQuotesPageFromApi(quotesRes)
+      }
+      return result
     }
     case 'quotes': {
       if (!crmCommerceEnabled()) {
-        return { quotes: [] }
+        return {}
       }
       const [quotes, opportunities, customers] = await Promise.all([
         readAllPages(crmApi.quotes),
@@ -207,7 +212,7 @@ async function loadOnlineSection(section) {
     }
     case 'purchases': {
       if (!crmCommerceEnabled()) {
-        return { sales: [] }
+        return {}
       }
       const [sales, customers] = await Promise.all([
         readAllPages(crmApi.sales),
@@ -220,7 +225,7 @@ async function loadOnlineSection(section) {
     }
     case 'sales': {
       if (!crmCommerceEnabled()) {
-        return { sales: [] }
+        return {}
       }
       const sales = await readAllPages(crmApi.sales)
       return { sales: mapCrmSalesPageFromApi(sales) }
@@ -1331,8 +1336,12 @@ export const useCrmStore = create(
             throw error
           }
         }
-        set((s) => ({ quotes: [quote, ...s.quotes] }))
-        return quote
+        const withHistory = {
+          ...quote,
+          revisions: appendQuoteRevision(quote, 'created'),
+        }
+        set((s) => ({ quotes: [withHistory, ...s.quotes] }))
+        return withHistory
       },
 
       updateQuote: async (id, data, retryAfterVersionConflict = false) => {
@@ -1389,9 +1398,31 @@ export const useCrmStore = create(
           items,
           total: lineSource !== undefined ? sumQuoteLines(items) : (data.total ?? current.total),
           updatedAt: now(),
+          revisions: appendQuoteRevision({
+            ...current,
+            ...data,
+            items,
+            total: lineSource !== undefined ? sumQuoteLines(items) : (data.total ?? current.total),
+          }, 'updated'),
         }
         set((s) => ({ quotes: replaceById(s.quotes, updated) }))
         return updated
+      },
+
+      ensureQuoteDetail: async (quoteId) => {
+        const cached = get().quotes.find((quote) => quote.id === quoteId)
+        if (!isOnline()) return cached || null
+        const key = String(quoteId)
+        if (quoteDetailRequests.has(key)) return quoteDetailRequests.get(key)
+        const request = crmApi.getQuote(quoteId)
+          .then((response) => {
+            const detail = mapCrmQuoteFromApi(response)
+            set((state) => ({ quotes: replaceById(state.quotes, detail) }))
+            return detail
+          })
+          .finally(() => quoteDetailRequests.delete(key))
+        quoteDetailRequests.set(key, request)
+        return request
       },
 
       ensureSaleDetail: async (saleId) => {
@@ -1604,6 +1635,7 @@ export const useCrmStore = create(
       clearSensitive: () => {
         crmGeneration += 1
         saleDetailRequests.clear()
+        quoteDetailRequests.clear()
         set({
         leads: [],
         leadsListMeta: emptyListMeta(),

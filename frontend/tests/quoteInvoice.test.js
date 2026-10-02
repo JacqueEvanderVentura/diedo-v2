@@ -50,6 +50,16 @@ describe('quoteInvoice helpers', () => {
     expect(isQuoteInvoiced({ convertedSaleId: 'sale-1' })).toBe(true)
   })
 
+  it('oculta cotizaciones ya facturadas del listado operativo', () => {
+    const quotes = [
+      { id: '1', number: 'COT-1' },
+      { id: '2', number: 'COT-2', convertedSaleId: 'sale-1' },
+    ]
+    const open = quotes.filter((quote) => !isQuoteInvoiced(quote))
+    expect(open).toHaveLength(1)
+    expect(open[0].id).toBe('1')
+  })
+
   it('solo permite emitir en aceptada sin factura previa', () => {
     expect(canEmitQuoteInvoice({ status: 'aceptada', items: [{ id: '1' }] })).toBe(true)
     expect(canEmitQuoteInvoice({ status: 'aceptada', total: 1500, items: [] })).toBe(true)

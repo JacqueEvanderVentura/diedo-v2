@@ -45,9 +45,7 @@ function Section({ title, children }) {
   )
 }
 
-export function CustomerDetailModal({
-  open,
-  onClose,
+export function CustomerDetailPanel({
   customer,
   onEdit,
   onDelete,
@@ -109,10 +107,10 @@ export function CustomerDetailModal({
     [appointments, customer],
   )
 
+  if (!customer) return null
+
   return (
-    <Modal open={open} onClose={onClose} title="Ficha de cliente" wide testId="customer-detail-modal">
-      {customer && (
-        <div className="space-y-5">
+    <div className="space-y-5" data-testid="customer-detail-panel">
           <div className="flex items-center gap-4 rounded-xl bg-slate-50 p-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-100 text-lg font-bold text-blue-700">
               {customer.name.slice(0, 1).toUpperCase()}
@@ -166,7 +164,7 @@ export function CustomerDetailModal({
             <Button size="sm" variant="secondary" disabled={!can.manage} onClick={() => onNewTask?.(customer)}>
               <CheckSquare className="h-3.5 w-3.5" /> Tarea
             </Button>
-            <Button size="sm" disabled={!can.schedule} onClick={() => onSchedule(customer)} data-testid="customer-detail-schedule">
+            <Button size="sm" disabled={!can.schedule || !onSchedule} onClick={() => onSchedule?.(customer)} data-testid="customer-detail-schedule">
               <CalendarPlus className="h-3.5 w-3.5" /> Cita
             </Button>
           </div>
@@ -349,7 +347,35 @@ export function CustomerDetailModal({
               </ul>
             )}
           </Section>
-        </div>
+    </div>
+  )
+}
+
+export function CustomerDetailModal({
+  open,
+  onClose,
+  customer,
+  onEdit,
+  onDelete,
+  onSchedule,
+  onQuote,
+  onNewTask,
+  onNewOpportunity,
+  onOpenSale,
+}) {
+  return (
+    <Modal open={open} onClose={onClose} title="Ficha de cliente" wide testId="customer-detail-modal">
+      {customer && (
+        <CustomerDetailPanel
+          customer={customer}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onSchedule={onSchedule}
+          onQuote={onQuote}
+          onNewTask={onNewTask}
+          onNewOpportunity={onNewOpportunity}
+          onOpenSale={onOpenSale}
+        />
       )}
     </Modal>
   )

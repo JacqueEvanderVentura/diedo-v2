@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Pencil, Phone, Search, Trash2, CheckSquare, Square } from 'lucide-react'
+import { Phone, Search, CheckSquare, Square } from 'lucide-react'
 import { useCustomersStore } from '@/stores/customersStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
+import { useCrmStore } from '@/stores/crmStore'
+import { useAgendaStore } from '@/stores/agendaStore'
 import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
 import { customersVisibleToSession } from '@/lib/customerScope'
 import { matchesBranches } from '@/lib/branches'
@@ -15,7 +17,12 @@ import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
 import { BulkSelectionBar } from '@/components/ui/BulkSelectionBar'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { CustomerFormModal } from '@/modules/crm/components/CustomerFormModal'
-import { CustomerDetailModal } from '@/modules/crm/components/CustomerDetailModal'
+import { CustomerDetailPanel } from '@/modules/crm/components/CustomerDetailModal'
+import { QuoteFormModal } from '@/modules/crm/components/QuoteFormModal'
+import { ActivityFormModal } from '@/modules/crm/components/ActivityFormModal'
+import { CustomerQuickOpportunityModal } from '@/modules/crm/components/CustomerQuickOpportunityModal'
+import { AppointmentFormModal } from '@/modules/agenda/components/AppointmentFormModal'
+import { SaleDetailModal } from '@/modules/crm/components/SaleDetailModal'
 import { cn } from '@/lib/utils'
 import { Pagination } from '@/modules/reportes/components/Pagination'
 import { CRM_PAGE_SIZE_OPTIONS, DEFAULT_CRM_PAGE_SIZE } from '@/modules/crm/constants/paging'
@@ -41,7 +48,19 @@ export function SimplifiedCustomersPanel() {
   const [confirm, setConfirm] = useState(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [detailOpen, setDetailOpen] = useState(false)
+  const [scheduling, setScheduling] = useState(null)
+  const [quoteOpen, setQuoteOpen] = useState(false)
+  const [quoteContext, setQuoteContext] = useState(null)
+  const [taskOpen, setTaskOpen] = useState(false)
+  const [taskCustomerId, setTaskCustomerId] = useState('')
+  const [opportunityOpen, setOpportunityOpen] = useState(false)
+  const [opportunityCustomer, setOpportunityCustomer] = useState(null)
+  const [saleDetail, setSaleDetail] = useState(null)
+
+  useEffect(() => {
+    useCrmStore.getState().hydrateSection('customers').catch(() => {})
+    useAgendaStore.getState().hydrateAppointments({ params: {} }).catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!online) return undefined
@@ -210,42 +229,42 @@ export function SimplifiedCustomersPanel() {
           </ul>
         </Card>
 
-        <Card className="p-6">
-          {selected ? (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <h3 className="font-heading text-xl font-bold text-slate-900">{selected.name}</h3>
-                  <p className="mt-1 text-sm text-slate-500">{selected.phone || 'Sin teléfono'}</p>
-                </div>
-                {can.customer && !selectMode && (
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => openEdit(selected)}>
-                      <Pencil className="h-3.5 w-3.5" /> Editar
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="text-red-600"
-                      disabled={deleting}
-                      onClick={() => setConfirm({
-                        title: 'Eliminar cliente',
-                        description: `¿Eliminar a "${selected.name}"? Se archivará del directorio.`,
-                        onConfirm: () => runDelete([selected.id]),
-                      })}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" /> Eliminar
-                    </Button>
-                  </div>
-                )}
-              </div>
-              <Button size="sm" variant="secondary" onClick={() => setDetailOpen(true)}>
-                Ver ficha completa
-              </Button>
-            </div>
-          ) : (
-            <p className="text-sm text-slate-500">Selecciona un cliente de la lista.</p>
-          )}
+        <Card className="flex min-h-[min(28rem,65vh)] flex-col overflow-hidden p-0">
+          <div className="shrink-0 border-b border-slate-100 px-4 py-3">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Ficha de cliente</p>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+            {selected ? (
+              <CustomerDetailPanel
+                customer={selected}
+                onEdit={openEdit}
+                onDelete={can.customer && !selectMode ? (c) => setConfirm({
+                  title: 'Eliminar cliente',
+                  description: `¿Eliminar a "${c.name}"? Se archivará del directorio.`,
+                  onConfirm: () => runDelete([c.id]),
+                }) : undefined}
+                onSchedule={(c) => setScheduling(c)}
+                onQuote={(c) => {
+                  setQuoteContext({
+                    customerId: c.id,
+                    branchId: c.branchIds?.[0] || c.branchId || '',
+                  })
+                  setQuoteOpen(true)
+                }}
+                onNewTask={(c) => {
+                  setTaskCustomerId(c.id)
+                  setTaskOpen(true)
+                }}
+                onNewOpportunity={(c) => {
+                  setOpportunityCustomer(c)
+                  setOpportunityOpen(true)
+                }}
+                onOpenSale={(sale) => setSaleDetail(sale)}
+              />
+            ) : (
+              <p className="text-sm text-slate-500">Selecciona un cliente de la lista.</p>
+            )}
+          </div>
         </Card>
       </div>
 
@@ -268,22 +287,33 @@ export function SimplifiedCustomersPanel() {
         </Card>
       )}
 
-      <CustomerDetailModal
-        open={detailOpen && !!selected}
-        onClose={() => setDetailOpen(false)}
-        customer={selected}
-        onEdit={(c) => {
-          setDetailOpen(false)
-          openEdit(c)
-        }}
-        onDelete={can.customer ? (c) => setConfirm({
-          title: 'Eliminar cliente',
-          description: `¿Eliminar a "${c.name}"? Se archivará del directorio.`,
-          onConfirm: () => runDelete([c.id]),
-        }) : undefined}
-      />
-
       <CustomerFormModal open={formOpen} onClose={() => setFormOpen(false)} customer={editing} />
+      <QuoteFormModal
+        open={quoteOpen}
+        onClose={() => { setQuoteOpen(false); setQuoteContext(null) }}
+        initialContext={quoteContext}
+      />
+      <ActivityFormModal
+        open={taskOpen}
+        onClose={() => { setTaskOpen(false); setTaskCustomerId('') }}
+        defaultCustomerId={taskCustomerId}
+      />
+      <CustomerQuickOpportunityModal
+        open={opportunityOpen}
+        onClose={() => { setOpportunityOpen(false); setOpportunityCustomer(null) }}
+        customer={opportunityCustomer}
+      />
+      <SaleDetailModal
+        open={Boolean(saleDetail)}
+        onClose={() => setSaleDetail(null)}
+        sale={saleDetail}
+      />
+      <AppointmentFormModal
+        open={Boolean(scheduling)}
+        onClose={() => setScheduling(null)}
+        defaultCustomerId={scheduling?.id}
+        defaultSlot={{ branchId: scheduling?.branchIds?.[0] || scheduling?.branchId }}
+      />
 
       <ConfirmDialog
         open={!!confirm}

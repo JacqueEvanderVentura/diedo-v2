@@ -700,7 +700,7 @@ class PosService:
         quote = self._repository.get_quote(grant.workspace_id, quote_id, grant.allowed_branch_ids)
         if quote is None:
             raise ResourceNotFoundError("La cotización no existe.", "quoteId")
-        result = self._repository.quote_record(quote)
+        result = self._repository.quote_record_with_revisions(quote)
         if expired_quote_ids:
             self._session.commit()
         return result
@@ -793,8 +793,14 @@ class PosService:
                     "total": str(quote.total),
                 },
             )
+            created_record = self._repository.quote_record(quote)
+            self._repository.append_quote_revision(
+                created_record,
+                event="created",
+                actor_platform_user_id=principal.platform_user_id,
+            )
             self._session.commit()
-            return self._repository.quote_record(quote)
+            return self._repository.quote_record_with_revisions(quote)
         except IntegrityError as exc:
             self._session.rollback()
             replay = self._repository.quote_by_key(grant.workspace_id, idempotency_key)
@@ -975,8 +981,14 @@ class PosService:
                 request_id=get_request_id(),
                 details={"changedFields": sorted(changes), "version": quote.version},
             )
+            updated_record = self._repository.quote_record(quote)
+            self._repository.append_quote_revision(
+                updated_record,
+                event="updated",
+                actor_platform_user_id=principal.platform_user_id,
+            )
             self._session.commit()
-            return self._repository.quote_record(quote)
+            return self._repository.quote_record_with_revisions(quote)
         except IntegrityError as exc:
             self._session.rollback()
             raise ConflictError("No se pudo actualizar la cotización.") from exc
@@ -1024,8 +1036,14 @@ class PosService:
             request_id=get_request_id(),
             details={"reason": reason, "version": quote.version},
         )
+        cancelled_record = self._repository.quote_record(quote)
+        self._repository.append_quote_revision(
+            cancelled_record,
+            event="cancelled",
+            actor_platform_user_id=principal.platform_user_id,
+        )
         self._session.commit()
-        return self._repository.quote_record(quote)
+        return self._repository.quote_record_with_revisions(quote)
 
     def list_sales(
         self,
@@ -1396,6 +1414,13 @@ class PosService:
             quote.closed_at = datetime.now(UTC)
             quote.updated_by_platform_user_id = principal.platform_user_id
             quote.version += 1
+            invoiced_record = self._repository.quote_record(quote)
+            self._repository.append_quote_revision(
+                invoiced_record,
+                event="invoiced",
+                actor_platform_user_id=principal.platform_user_id,
+                invoice_number=sale.sale_number,
+            )
         self._repository.add_audit(
             workspace_id=grant.workspace_id,
             actor_platform_user_id=principal.platform_user_id,
@@ -1455,9 +1480,21 @@ class PosService:
             raise ResourceNotFoundError("La cuenta por cobrar no existe.", "receivableId")
         return self._repository.receivable_record(receivable)
 
-    def get_receivable_for_sale(self, grant: PermissionGrant, sale_id: UUID) -> ReceivableRecord:
-        self.get_sale(grant, sale_id)
+    def get_receivable_for_sale(
+        self,
+        grant: PermissionGrant,
+        sale_id: UUID,
+        *,
+        principal: AuthPrincipal | None = None,
+    ) -> ReceivableRecord:
+        sale_record = self.get_sale(grant, sale_id)
         receivable = self._repository.receivable_for_sale(grant.workspace_id, sale_id)
+        if receivable is None:
+            receivable = self._materialize_receivable_for_sale(
+                grant,
+                sale_record,
+                principal=principal,
+            )
         if receivable is None:
             raise ResourceNotFoundError("No hay cuenta por cobrar para esta venta.", "saleId")
         return self.get_receivable(grant, receivable.id)
@@ -1618,17 +1655,11 @@ class PosService:
         register: CashRegister | None = None
         pending_shift_cash = False
         if method.affects_cash_drawer:
-            if register_id is not None:
-                register = self._locked_open_register(grant, register_id)
-                if register.branch_id != receivable.branch_id:
-                    raise InvalidOperationError("La caja pertenece a otra sucursal.", "registerId")
-            elif crm_relaxed_register:
-                pending_shift_cash = True
-            else:
-                raise InvalidOperationError(
-                    "Selecciona una caja abierta para registrar el cobro en efectivo.",
-                    "registerId",
-                )
+            register, pending_shift_cash = self._resolve_receivable_payment_register(
+                grant,
+                receivable,
+                register_id,
+            )
         payment = CustomerPayment(
             workspace_id=grant.workspace_id,
             branch_id=receivable.branch_id,
@@ -2630,6 +2661,103 @@ class PosService:
         idempotency_key: str,
     ) -> CashRegister | None:
         return self._repository.current_register(grant.workspace_id, branch_id, lock=True)
+
+    def _resolve_receivable_payment_register(
+        self,
+        grant: PermissionGrant,
+        receivable: CustomerReceivable,
+        register_id: UUID | None,
+    ) -> tuple[CashRegister | None, bool]:
+        branch_id = receivable.branch_id
+        register: CashRegister | None = None
+        if register_id is not None:
+            candidate = self._locked_open_register(grant, register_id)
+            if candidate.branch_id == branch_id:
+                register = candidate
+        if register is None:
+            register = self._repository.current_register(
+                grant.workspace_id,
+                branch_id,
+                lock=True,
+            )
+        if register is None:
+            return None, True
+        return register, False
+
+    def _materialize_receivable_for_sale(
+        self,
+        grant: PermissionGrant,
+        sale_record: SaleRecord,
+        *,
+        principal: AuthPrincipal | None,
+    ) -> CustomerReceivable | None:
+        sale = sale_record.sale
+        if sale.status != "completed":
+            return None
+        if sale.settlement_policy == "immediate":
+            return None
+        if money(sale.total) <= 0:
+            return None
+        if sale.customer_id is None:
+            return None
+        customer = sale_record.customer
+        if customer is None:
+            return None
+        idempotency_key = self._derived_key("pos-receivable-sale", str(sale.id))
+        existing = self._repository.receivable_by_key(grant.workspace_id, idempotency_key)
+        if existing is not None:
+            return existing
+        fingerprint = self._fingerprint({"saleId": str(sale.id), "materialize": True})
+        actor_id = (
+            principal.platform_user_id if principal is not None else sale.sold_by_platform_user_id
+        )
+        receivable = CustomerReceivable(
+            workspace_id=grant.workspace_id,
+            branch_id=sale.branch_id,
+            customer_id=customer.id,
+            receivable_number=self._repository.next_document_number(
+                grant.workspace_id, "receivable"
+            ),
+            source="sale",
+            sale_id=sale.id,
+            payment_method_id=sale.payment_method_id,
+            payment_method_code=sale.payment_method_code,
+            payment_method_name=sale.payment_method_name,
+            payment_channel=sale.payment_channel,
+            settlement_policy=sale.settlement_policy,
+            affects_cash_drawer=sale.affects_cash_drawer,
+            requires_evidence=sale.requires_evidence,
+            currency_code=sale.currency_code,
+            customer_name=customer.display_name,
+            customer_phone=customer.phone,
+            amount=money(sale.total),
+            paid_amount=Decimal("0"),
+            status="pending",
+            reference=sale.payment_reference,
+            notes=sale.notes,
+            creation_idempotency_key=idempotency_key,
+            request_fingerprint=fingerprint,
+            created_by_platform_user_id=actor_id,
+            updated_by_platform_user_id=actor_id,
+        )
+        receivable_lines = tuple(
+            CustomerReceivableLine(
+                workspace_id=grant.workspace_id,
+                position=line.position,
+                sale_line_id=line.id,
+                item_id=line.item_id,
+                item_name=line.item_name,
+                item_sku=line.item_sku,
+                unit_symbol=line.unit_symbol,
+                quantity=line.quantity,
+                unit_price=line.unit_price,
+                line_total=line.line_total,
+            )
+            for line in sale_record.lines
+        )
+        self._repository.add_receivable(receivable, receivable_lines)
+        self._session.commit()
+        return receivable
 
     def _absorb_parked_shift_activity(
         self,

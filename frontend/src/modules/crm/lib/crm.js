@@ -1,3 +1,6 @@
+import { getBalance } from '@/modules/pos/lib/receivables'
+import { invoiceCollectionFromSalePolicy } from '@/modules/crm/lib/quoteInvoice'
+
 export const METHOD_LABELS = {
   efectivo: 'Efectivo',
   tarjeta: 'Tarjeta',
@@ -12,6 +15,35 @@ export const METHOD_ICON = {
   transferencia: 'ArrowLeftRight',
   link: 'Link2',
   cxc: 'Clock',
+}
+
+export function saleReceivablePending(sale, receivable = null) {
+  if (!sale || sale.status === 'voided') return false
+  if (receivable && getBalance(receivable) > 0) return true
+  const collection = invoiceCollectionFromSalePolicy(sale)
+  if (collection === 'pending_validation') return true
+  if (collection === 'receivable') {
+    if (!receivable) return true
+    return getBalance(receivable) > 0
+  }
+  if (sale.method === 'cxc') {
+    return !receivable || getBalance(receivable) > 0
+  }
+  return false
+}
+
+export function saleStatusBadge(sale, receivable = null) {
+  if (!sale || sale.status === 'voided') {
+    return { label: 'Anulada', tone: 'danger' }
+  }
+  if (saleReceivablePending(sale, receivable)) {
+    return { label: 'Cta. por cobrar', tone: 'brand' }
+  }
+  return { label: 'Completada', tone: 'success' }
+}
+
+export function saleRowHighlightClass(sale, receivable = null) {
+  return saleReceivablePending(sale, receivable) ? 'bg-blue-50/70 ring-1 ring-inset ring-blue-100' : ''
 }
 
 export function summarizeActiveSales(sales = []) {

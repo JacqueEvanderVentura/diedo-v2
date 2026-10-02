@@ -170,9 +170,10 @@ def test_absorb_parked_shift_activity_assigns_sales_and_cash() -> None:
     }
 
 
-def test_pos_receivable_cash_still_requires_open_register() -> None:
+def test_pos_receivable_cash_parks_when_no_branch_register() -> None:
     principal, grant = _principal_and_grant()
     receivable_id = uuid7()
+    branch_id = uuid7()
     method_id = uuid7()
     cash = SimpleNamespace(
         id=method_id,
@@ -183,43 +184,159 @@ def test_pos_receivable_cash_still_requires_open_register() -> None:
         name="Efectivo",
         channel="cash",
     )
+    receivable = SimpleNamespace(
+        id=receivable_id,
+        branch_id=branch_id,
+        receivable_number="CXC-1",
+        currency_code="DOP",
+        amount=Decimal("100"),
+        paid_amount=Decimal("0"),
+        status="pending",
+        version=1,
+    )
+    payments: list[object] = []
 
     class Repo:
         def payment_by_key(self, *_args):
             return None
 
         def get_receivable(self, *_args, **_kwargs):
-            return SimpleNamespace(
-                id=receivable_id,
-                branch_id=uuid7(),
-                currency_code="DOP",
-                amount=Decimal("100"),
-                paid_amount=Decimal("0"),
-                status="pending",
-                version=1,
-            )
+            return receivable
+
+        def add_payment(self, payment):
+            payments.append(payment)
+
+        def receivable_record(self, *_args):
+            return SimpleNamespace(receivable=receivable)
+
+        def add_audit(self, *_args, **_kwargs):
+            return None
+
+        def current_register(self, *_args, **_kwargs):
+            return None
 
     service = _service(Repo())
     service._require_payment_method = lambda *_args: cash  # type: ignore[method-assign]
-    service._locked_receivable = lambda *_args: Repo().get_receivable()  # type: ignore[method-assign]
-    with pytest.raises(InvalidOperationError, match="caja abierta"):
-        service.create_receivable_payment(
-            principal=principal,
-            grant=grant,
-            receivable_id=receivable_id,
-            amount=Decimal("10"),
-            payment_method_id=method_id,
-            reference=None,
-            note=None,
-            register_id=None,
-            expected_version=1,
-            idempotency_key="pay-key-12345678",
-            evidence_source=None,
-            filename=None,
-            content_type=None,
-            storage=SimpleNamespace(),
-            max_bytes=1_000_000,
-        )
+    service._locked_receivable = lambda *_args: receivable  # type: ignore[method-assign]
+    service._set_receivable_status = lambda *_args: None  # type: ignore[method-assign]
+    service._sync_appointment_balance = lambda *_args: None  # type: ignore[method-assign]
+    service._payment_snapshot = lambda *_args: {}  # type: ignore[method-assign]
+    service._fingerprint = lambda *_args: "fp"  # type: ignore[method-assign]
+    service._derived_key = lambda *_args: "derived"  # type: ignore[method-assign]
+    service.create_receivable_payment(
+        principal=principal,
+        grant=grant,
+        receivable_id=receivable_id,
+        amount=Decimal("10"),
+        payment_method_id=method_id,
+        reference=None,
+        note=None,
+        register_id=None,
+        expected_version=1,
+        idempotency_key="pay-key-12345678",
+        evidence_source=None,
+        filename=None,
+        content_type=None,
+        storage=SimpleNamespace(),
+        max_bytes=1_000_000,
+    )
+    assert len(payments) == 1
+    assert payments[0].pending_shift_cash_assignment is True
+    assert payments[0].cash_register_id is None
+
+
+def test_pos_receivable_cash_uses_branch_register_when_client_register_wrong_branch() -> None:
+    principal, grant = _principal_and_grant()
+    receivable_id = uuid7()
+    branch_id = uuid7()
+    wrong_branch_id = uuid7()
+    correct_register_id = uuid7()
+    wrong_register_id = uuid7()
+    method_id = uuid7()
+    cash = SimpleNamespace(
+        id=method_id,
+        settlement_policy="immediate",
+        requires_evidence=False,
+        affects_cash_drawer=True,
+        code="cash",
+        name="Efectivo",
+        channel="cash",
+    )
+    receivable = SimpleNamespace(
+        id=receivable_id,
+        branch_id=branch_id,
+        receivable_number="CXC-2",
+        currency_code="DOP",
+        amount=Decimal("100"),
+        paid_amount=Decimal("0"),
+        status="pending",
+        version=1,
+    )
+    correct_register = SimpleNamespace(
+        id=correct_register_id,
+        branch_id=branch_id,
+        status="open",
+    )
+    wrong_register = SimpleNamespace(
+        id=wrong_register_id,
+        branch_id=wrong_branch_id,
+        status="open",
+    )
+    payments: list[object] = []
+    movements: list[object] = []
+
+    class Repo:
+        def payment_by_key(self, *_args):
+            return None
+
+        def add_payment(self, payment):
+            payments.append(payment)
+
+        def add_movement(self, movement):
+            movements.append(movement)
+
+        def receivable_record(self, *_args):
+            return SimpleNamespace(receivable=receivable)
+
+        def add_audit(self, *_args, **_kwargs):
+            return None
+
+        def current_register(self, workspace_id, branch, lock=False):
+            assert branch == branch_id
+            return correct_register
+
+    service = _service(Repo())
+    service._require_payment_method = lambda *_args: cash  # type: ignore[method-assign]
+    service._locked_receivable = lambda *_args: receivable  # type: ignore[method-assign]
+    service._locked_open_register = lambda _grant, register_id: (  # type: ignore[method-assign]
+        wrong_register if register_id == wrong_register_id else correct_register
+    )
+    service._set_receivable_status = lambda *_args: None  # type: ignore[method-assign]
+    service._sync_appointment_balance = lambda *_args: None  # type: ignore[method-assign]
+    service._payment_snapshot = lambda *_args: {}  # type: ignore[method-assign]
+    service._fingerprint = lambda *_args: "fp"  # type: ignore[method-assign]
+    service._derived_key = lambda *_args: "derived"  # type: ignore[method-assign]
+    service._apply_cash_effect = lambda *_args: None  # type: ignore[method-assign]
+    service.create_receivable_payment(
+        principal=principal,
+        grant=grant,
+        receivable_id=receivable_id,
+        amount=Decimal("10"),
+        payment_method_id=method_id,
+        reference=None,
+        note=None,
+        register_id=wrong_register_id,
+        expected_version=1,
+        idempotency_key="pay-key-87654321",
+        evidence_source=None,
+        filename=None,
+        content_type=None,
+        storage=SimpleNamespace(),
+        max_bytes=1_000_000,
+    )
+    assert payments[0].cash_register_id == correct_register_id
+    assert payments[0].pending_shift_cash_assignment is False
+    assert len(movements) == 1
 
 
 def test_checkout_without_register_requires_register_id() -> None:

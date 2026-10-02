@@ -25,7 +25,8 @@ import {
 } from '../lib/quoteForm'
 import { CustomerFormModal } from './CustomerFormModal'
 import { opportunityCompanyLabel } from '../lib/opportunityCustomer'
-import { ensureCustomerForQuote } from '../lib/quoteCustomer'
+import { ensureCustomerForLeadQuote, ensureCustomerForQuote } from '../lib/quoteCustomer'
+import { QuotePartyPicker } from './QuotePartyPicker'
 
 function belongsToBranch(customer, branchId) {
   if (!branchId) return true
@@ -46,6 +47,7 @@ export function QuoteFormModal({
   const products = useCatalogStore((s) => s.products)
   const isOnline = useSessionStore((s) => s.status === 'online')
   const opportunities = useCrmStore((s) => s.opportunities)
+  const leads = useCrmStore((s) => s.leads)
   const convertToCustomer = useCrmStore((s) => s.convertToCustomer)
   const updateOpportunity = useCrmStore((s) => s.updateOpportunity)
   const addQuote = useCrmStore((s) => s.addQuote)
@@ -76,6 +78,8 @@ export function QuoteFormModal({
     setDraft({
       ...emptyQuoteDraft(),
       customerId: initialContext?.customerId || '',
+      leadId: initialContext?.leadId || '',
+      partyType: initialContext?.leadId ? 'lead' : (initialContext?.customerId ? 'customer' : ''),
       opportunityId: initialContext?.opportunityId || '',
       branchId: initialContext?.branchId || '',
     })
@@ -132,16 +136,13 @@ export function QuoteFormModal({
     [sellableCatalog, branchPool],
   )
 
-  const customerOptions = useMemo(() => [
-    { value: '', label: 'Seleccionar cliente' },
-    ...customers
-      .filter((customer) => {
-        if (customer.isDefault) return false
-        const branchId = selectedOpportunity?.branchId || draft.branchId
-        return !branchId || belongsToBranch(customer, branchId)
-      })
-      .map((customer) => ({ value: customer.id, label: customer.name })),
-  ], [customers, selectedOpportunity, draft.branchId])
+  const partyValue = useMemo(() => {
+    if (draft.partyType === 'lead' && draft.leadId) return { type: 'lead', id: draft.leadId }
+    if (draft.partyType === 'customer' && draft.customerId) return { type: 'customer', id: draft.customerId }
+    if (draft.customerId) return { type: 'customer', id: draft.customerId }
+    if (draft.leadId) return { type: 'lead', id: draft.leadId }
+    return null
+  }, [draft])
 
   const oppOptions = useMemo(() => [
     { value: '', label: 'Sin oportunidad' },
@@ -157,7 +158,7 @@ export function QuoteFormModal({
   )
   const total = sumQuoteLines(itemsPreview)
 
-  const hasLinkedCustomer = Boolean(draft.customerId)
+  const hasLinkedCustomer = Boolean(draft.customerId || draft.leadId)
   const opportunityLabel = selectedOpportunity ? opportunityCompanyLabel(selectedOpportunity) : ''
   const canQuoteWithoutLinkedCustomer = Boolean(selectedOpportunity && opportunityLabel)
 
@@ -233,7 +234,27 @@ export function QuoteFormModal({
       return
     }
     let customer = customers.find((item) => item.id === draft.customerId)
-    if (!customer) {
+    let opportunityId = draft.opportunityId || null
+    if (draft.partyType === 'lead' && draft.leadId) {
+      const lead = leads.find((item) => item.id === draft.leadId)
+      const ensured = await ensureCustomerForLeadQuote({
+        lead,
+        opportunities,
+        addCustomer,
+        updateOpportunity,
+      })
+      if (!ensured?.id) {
+        toast.error('El lead necesita sucursal para cotizar')
+        return
+      }
+      opportunityId = ensured.opportunityId || opportunityId
+      customer = useCustomersStore.getState().customers.find((item) => item.id === ensured.id) || { id: ensured.id }
+      setDraft((current) => ({
+        ...current,
+        customerId: ensured.id,
+        opportunityId: opportunityId || current.opportunityId,
+      }))
+    } else if (!customer) {
       const ensured = await ensureCustomerForQuote({
         customerId: draft.customerId || null,
         opportunity: selectedOpportunity,
@@ -241,7 +262,7 @@ export function QuoteFormModal({
         updateOpportunity,
       })
       if (!ensured?.id) {
-        toast.error('Selecciona o crea un cliente para continuar')
+        toast.error('Selecciona un lead o cliente para continuar')
         return
       }
       customer = useCustomersStore.getState().customers.find((item) => item.id === ensured.id) || ensured
@@ -274,7 +295,7 @@ export function QuoteFormModal({
       const payload = {
         customerId: customer.id,
         customerName: customer.name,
-        opportunityId: draft.opportunityId || null,
+        opportunityId,
         branchId,
         items,
         total,
@@ -339,24 +360,40 @@ export function QuoteFormModal({
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Cliente</label>
-              <Select
-                value={draft.customerId}
-                onChange={(value) => {
-                  const customer = customers.find((item) => item.id === value)
-                  const ids = customer?.branchIds?.length
-                    ? customer.branchIds
-                    : customer?.branchId
-                      ? [customer.branchId]
-                      : []
+              <label className="mb-1 block text-xs font-medium text-slate-500">Lead / Cliente</label>
+              <QuotePartyPicker
+                value={partyValue}
+                branchId={selectedOpportunity?.branchId || draft.branchId || null}
+                disabled={Boolean(selectedOpportunity?.customerId && selectedOpportunity?.leadId) || !editable}
+                onChange={(party) => {
+                  if (!party) return
+                  if (party.type === 'customer') {
+                    const customer = customers.find((item) => item.id === party.id)
+                    const ids = customer?.branchIds?.length
+                      ? customer.branchIds
+                      : customer?.branchId
+                        ? [customer.branchId]
+                        : []
+                    setDraft((current) => ({
+                      ...current,
+                      partyType: 'customer',
+                      customerId: party.id,
+                      leadId: '',
+                      branchId: ids.includes(current.branchId) ? current.branchId : ids[0] || current.branchId,
+                    }))
+                    return
+                  }
+                  const lead = leads.find((item) => item.id === party.id)
+                  const opportunity = opportunities.find((item) => item.leadId === party.id)
                   setDraft((current) => ({
                     ...current,
-                    customerId: value,
-                    branchId: ids.includes(current.branchId) ? current.branchId : ids[0] || current.branchId,
+                    partyType: 'lead',
+                    leadId: party.id,
+                    customerId: opportunity?.customerId || '',
+                    opportunityId: opportunity?.id || current.opportunityId,
+                    branchId: lead?.branchId || opportunity?.branchId || current.branchId,
                   }))
                 }}
-                options={customerOptions}
-                disabled={Boolean(selectedOpportunity?.customerId) || !editable}
               />
             </div>
             <div>

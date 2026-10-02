@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as Icons from 'lucide-react'
-import { Printer, Download, Ban } from 'lucide-react'
+import { Printer, Download, Ban, DollarSign } from 'lucide-react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -12,13 +12,16 @@ import { usePosStore } from '@/stores/posStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { PermissionElevationModal } from '@/components/auth/PermissionElevationModal'
 import { formatDOP } from '@/lib/format'
-import { fmtDateTime, METHOD_LABELS, METHOD_ICON } from '../lib/crm'
+import { fmtDateTime, METHOD_LABELS, METHOD_ICON, saleStatusBadge } from '../lib/crm'
 import { buildInvoiceDataFromSale, downloadSaleInvoicePdf, printSaleInvoice } from '../lib/sales'
 import { collectSalePaymentProofs, findReceivableForSale } from '../lib/saleProofs'
 import { AttachmentProofSection } from '@/components/ui/AttachmentProofSection'
 import { posApi } from '@/services/posApi'
 import { mapReceivableFromApi } from '@/services/adapters/pos'
 import { cn } from '@/lib/utils'
+import { ReceivablePaymentModal } from '@/modules/pos/components/ReceivablePaymentModal'
+import { getBalance } from '@/modules/pos/lib/receivables'
+import { QUOTE_REVISION_EVENT_LABELS } from '@/modules/crm/lib/quoteRevisions'
 
 const VOID_INVOICE_PERMISSION = 'sales.invoice.void'
 
@@ -40,11 +43,14 @@ export function SaleDetailModal({ open, onClose, sale }) {
   const paymentMethods = useConfigStore((s) => s.paymentMethods)
   const customers = useCustomersStore((s) => s.customers)
   const ensureSaleDetail = useCrmStore((s) => s.ensureSaleDetail)
+  const ensureQuoteDetail = useCrmStore((s) => s.ensureQuoteDetail)
+  const quotes = useCrmStore((s) => s.quotes)
   const voidSale = usePosStore((s) => s.voidSale)
   const downloadPaymentProof = usePosStore((s) => s.downloadPaymentProof)
   const receivables = usePosStore((s) => s.receivables)
   const mutating = usePosStore((s) => s.mutating)
   const canVoidInvoice = useSessionStore((s) => s.hasPermission(VOID_INVOICE_PERMISSION))
+  const canCollectReceivables = useSessionStore((s) => s.hasPermission('pos.receivables.collect'))
   const isOnline = useSessionStore((s) => s.status === 'online')
   const [detail, setDetail] = useState(sale)
   const [loadingDetail, setLoadingDetail] = useState(false)
@@ -53,11 +59,26 @@ export function SaleDetailModal({ open, onClose, sale }) {
   const [voidReason, setVoidReason] = useState('')
   const [voidError, setVoidError] = useState('')
   const [receivableDetail, setReceivableDetail] = useState(null)
+  const [collectPaymentOpen, setCollectPaymentOpen] = useState(false)
+  const [quoteDetail, setQuoteDetail] = useState(null)
+  const [loadingQuote, setLoadingQuote] = useState(false)
+
+  const refreshReceivableForSale = (saleId) => {
+    if (!saleId) return
+    const cached = findReceivableForSale(usePosStore.getState().receivables, saleId)
+    setReceivableDetail(cached)
+    if (!isOnline) return
+    posApi.getReceivableForSale(saleId)
+      .then((response) => setReceivableDetail(mapReceivableFromApi(response)))
+      .catch(() => setReceivableDetail(findReceivableForSale(usePosStore.getState().receivables, saleId)))
+  }
 
   useEffect(() => {
     if (!open || !sale) {
       setDetail(null)
       setReceivableDetail(null)
+      setCollectPaymentOpen(false)
+      setQuoteDetail(null)
       return
     }
     setDetail(sale)
@@ -88,6 +109,28 @@ export function SaleDetailModal({ open, onClose, sale }) {
     return () => { cancelled = true }
   }, [open, sale, isOnline, ensureSaleDetail, receivables])
 
+  useEffect(() => {
+    if (!open || !sale) return
+    const quoteId = sale.quoteId || quotes.find((item) => item.convertedSaleId === sale.id)?.id
+    if (!quoteId) {
+      setQuoteDetail(null)
+      return
+    }
+    let cancelled = false
+    setLoadingQuote(true)
+    ensureQuoteDetail(quoteId)
+      .then((loaded) => {
+        if (!cancelled) setQuoteDetail(loaded)
+      })
+      .catch(() => {
+        if (!cancelled) setQuoteDetail(quotes.find((item) => item.id === quoteId) || null)
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingQuote(false)
+      })
+    return () => { cancelled = true }
+  }, [open, sale, quotes, ensureQuoteDetail])
+
   const ctx = useMemo(
     () => ({ branches, settings, paymentMethods, customers }),
     [branches, settings, paymentMethods, customers]
@@ -100,6 +143,12 @@ export function SaleDetailModal({ open, onClose, sale }) {
   const invoice = buildInvoiceDataFromSale(detail, ctx)
   const isVoided = detail.status === 'voided'
   const documentId = detail.number || detail.id.toUpperCase()
+  const receivableBalance = receivableDetail ? getBalance(receivableDetail) : 0
+  const statusBadge = saleStatusBadge(detail, receivableDetail)
+  const canRegisterPayment = !isVoided
+    && canCollectReceivables
+    && receivableDetail
+    && receivableBalance > 0
   const paymentProofs = collectSalePaymentProofs(detail, receivableDetail)
   const proofSubtitle = [
     METHOD_LABELS[detail.method] || detail.method,
@@ -184,7 +233,7 @@ export function SaleDetailModal({ open, onClose, sale }) {
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <p className="font-heading text-lg font-bold text-slate-900" data-testid="sale-detail-id">{documentId}</p>
-              <Badge tone={isVoided ? 'danger' : 'success'}>{isVoided ? 'Anulada' : 'Completada'}</Badge>
+              <Badge tone={statusBadge.tone} data-testid="sale-detail-status">{statusBadge.label}</Badge>
             </div>
             <p className="mt-1 text-sm text-slate-500">{fmtDateTime(detail.createdAt)} · {branchName}</p>
             <p className="mt-2 font-semibold text-slate-800">{detail.customer?.name || 'Cliente Mostrador'}</p>
@@ -229,6 +278,48 @@ export function SaleDetailModal({ open, onClose, sale }) {
           </table>
         </div>
 
+        {quoteDetail && (
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4" data-testid="sale-detail-quote-history">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Cotización origen</p>
+            <p className="mt-1 font-mono text-sm font-semibold text-slate-800">
+              {quoteDetail.number}
+              {quoteDetail.invoiceNumber ? ` → ${quoteDetail.invoiceNumber}` : ''}
+            </p>
+            {loadingQuote ? (
+              <p className="mt-3 text-sm text-slate-500">Cargando historial…</p>
+            ) : (quoteDetail.revisions || []).length === 0 ? (
+              <p className="mt-3 text-sm text-slate-500">Sin revisiones registradas.</p>
+            ) : (
+              <ul className="mt-3 max-h-56 space-y-3 overflow-y-auto scrollbar-thin">
+                {quoteDetail.revisions.map((revision) => (
+                  <li key={revision.revision} className="rounded-lg border border-slate-100 bg-white p-3 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-semibold text-slate-800">
+                        {QUOTE_REVISION_EVENT_LABELS[revision.event] || revision.event}
+                      </span>
+                      <span className="text-xs text-slate-400">{fmtDateTime(revision.occurredAt)}</span>
+                    </div>
+                    <p className="mt-1 text-slate-600">
+                      {revision.snapshot?.customerName || quoteDetail.customerName}
+                      {' · '}
+                      {formatDOP(Number(revision.snapshot?.total) || 0)}
+                    </p>
+                    {revision.snapshot?.lines?.length > 0 && (
+                      <ul className="mt-2 space-y-0.5 text-xs text-slate-500">
+                        {revision.snapshot.lines.map((line, index) => (
+                          <li key={index}>
+                            {line.name} × {line.qty} — {formatDOP(Number(line.unitPrice) || 0)}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         <AttachmentProofSection
           title="Comprobantes de ingreso"
           subtitle={proofSubtitle}
@@ -256,6 +347,15 @@ export function SaleDetailModal({ open, onClose, sale }) {
           <Button variant="secondary" onClick={download} disabled={loadingDetail} data-testid="sale-detail-download">
             <Download className="h-4 w-4" /> Descargar PDF
           </Button>
+          {canRegisterPayment && (
+            <Button
+              onClick={() => setCollectPaymentOpen(true)}
+              disabled={loadingDetail}
+              data-testid="sale-detail-collect-payment"
+            >
+              <DollarSign className="h-4 w-4" /> Registrar pago
+            </Button>
+          )}
           {!isVoided && (
             <Button variant="danger" onClick={beginVoid} disabled={loadingDetail || Boolean(mutating)} data-testid="sale-detail-void">
               <Ban className="h-4 w-4" /> Anular factura
@@ -295,6 +395,15 @@ export function SaleDetailModal({ open, onClose, sale }) {
         permissionCode={VOID_INVOICE_PERMISSION}
         description="Para anular una factura, un supervisor con permiso debe autorizar esta sesión por 3 minutos."
         onElevated={() => setVoidOpen(true)}
+      />
+
+      <ReceivablePaymentModal
+        open={collectPaymentOpen}
+        onClose={() => {
+          setCollectPaymentOpen(false)
+          refreshReceivableForSale(detail.id)
+        }}
+        receivable={collectPaymentOpen ? receivableDetail : null}
       />
     </Modal>
   )

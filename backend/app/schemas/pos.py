@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated, Literal, Self
+from typing import Annotated, Any, Literal, Self
 from uuid import UUID
 
 from pydantic import Field, PlainSerializer, field_validator, model_validator
@@ -555,10 +555,21 @@ class QuoteListItemResponse(ApiModel):
     version: int
 
 
+QuoteRevisionEvent = Literal["created", "updated", "invoiced", "cancelled"]
+
+
+class QuoteRevisionResponse(ApiModel):
+    revision: int
+    event: QuoteRevisionEvent
+    occurred_at: datetime
+    snapshot: dict[str, Any]
+
+
 class QuoteDetailResponse(QuoteListItemResponse):
     lines: list[QuoteLineResponse]
     notes: str | None
     converted_sale_id: UUID | None
+    revisions: list[QuoteRevisionResponse] = Field(default_factory=list)
 
 
 class PaginatedQuotesResponse(ApiModel):

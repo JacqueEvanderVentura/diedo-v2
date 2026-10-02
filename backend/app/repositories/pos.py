@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
@@ -35,7 +35,9 @@ from app.db.models.sales import (
     SalesDocumentCounter,
     SalesQuote,
     SalesQuoteLine,
+    SalesQuoteRevision,
 )
+from app.services.quote_revisions import build_quote_revision_snapshot, revision_occurred_at
 
 
 @dataclass(frozen=True)
@@ -92,6 +94,7 @@ class QuoteRecord:
     converted_sale_number: str | None = None
     converted_receivable_id: UUID | None = None
     converted_sale_settlement_policy: str | None = None
+    revisions: tuple[SalesQuoteRevision, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -609,6 +612,55 @@ class PosRepository:
         self._session.flush()
         self.replace_quote_lines(quote, lines)
 
+    def list_quote_revisions(
+        self, workspace_id: UUID, quote_id: UUID
+    ) -> tuple[SalesQuoteRevision, ...]:
+        rows = self._session.scalars(
+            select(SalesQuoteRevision)
+            .where(
+                SalesQuoteRevision.workspace_id == workspace_id,
+                SalesQuoteRevision.quote_id == quote_id,
+            )
+            .order_by(SalesQuoteRevision.revision)
+        ).all()
+        return tuple(rows)
+
+    def append_quote_revision(
+        self,
+        record: QuoteRecord,
+        *,
+        event: str,
+        actor_platform_user_id: UUID,
+        occurred_at: datetime | None = None,
+        invoice_number: str | None = None,
+    ) -> None:
+        quote = record.quote
+        next_revision = (
+            self._session.scalar(
+                select(func.max(SalesQuoteRevision.revision)).where(
+                    SalesQuoteRevision.workspace_id == quote.workspace_id,
+                    SalesQuoteRevision.quote_id == quote.id,
+                )
+            )
+            or 0
+        ) + 1
+        when = occurred_at or revision_occurred_at(quote, event)
+        self._session.add(
+            SalesQuoteRevision(
+                workspace_id=quote.workspace_id,
+                quote_id=quote.id,
+                revision=next_revision,
+                event=event,
+                occurred_at=when,
+                actor_platform_user_id=actor_platform_user_id,
+                snapshot=build_quote_revision_snapshot(
+                    quote,
+                    record.lines,
+                    invoice_number=invoice_number or record.converted_sale_number,
+                ),
+            )
+        )
+
     def replace_quote_lines(self, quote: SalesQuote, lines: Sequence[SalesQuoteLine]) -> None:
         existing = self._session.scalars(
             select(SalesQuoteLine).where(
@@ -626,6 +678,11 @@ class PosRepository:
 
     def quote_record(self, quote: SalesQuote) -> QuoteRecord:
         return self._quote_records((quote,), include_details=True)[0]
+
+    def quote_record_with_revisions(self, quote: SalesQuote) -> QuoteRecord:
+        record = self.quote_record(quote)
+        revisions = self.list_quote_revisions(quote.workspace_id, quote.id)
+        return replace(record, revisions=revisions)
 
     def list_quotes(
         self,

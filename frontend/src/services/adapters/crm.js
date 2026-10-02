@@ -79,6 +79,12 @@ export function mapCrmQuoteFromApi(record) {
       record?.invoiceCollection
       || record?.invoice_collection
       || null,
+    revisions: (quote.revisions || []).map((revision) => ({
+      revision: revision.revision,
+      event: revision.event,
+      occurredAt: revision.occurredAt || revision.occurred_at,
+      snapshot: revision.snapshot || {},
+    })),
   }
 }
 

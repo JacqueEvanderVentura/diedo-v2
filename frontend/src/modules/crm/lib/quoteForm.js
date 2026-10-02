@@ -5,6 +5,8 @@ export function emptyQuoteLine() {
 export function emptyQuoteDraft() {
   return {
     customerId: '',
+    leadId: '',
+    partyType: '',
     opportunityId: '',
     branchId: '',
     lines: [emptyQuoteLine()],
