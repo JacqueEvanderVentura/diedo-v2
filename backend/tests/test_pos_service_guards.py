@@ -582,12 +582,43 @@ def test_receivable_payment_replay_concurrency_and_business_guards() -> None:
         amount: Decimal = Decimal("10"),
         register_id: object | None = None,
         register: object | None = None,
-    ) -> None:
-        service = _service(Repository())
+        branch_register: object | None = None,
+    ) -> list[object]:
+        payments: list[object] = []
+
+        class PayRepository:
+            def payment_by_key(self, *_args: object) -> object | None:
+                return None
+
+            def current_register(self, _workspace_id: object, _branch_id: object, lock: bool = False):
+                return branch_register
+
+            def add_payment(self, payment: object) -> None:
+                payments.append(payment)
+
+            def receivable_record(self, value: object) -> object:
+                return value
+
+            def add_audit(self, *_args: object, **_kwargs: object) -> None:
+                return None
+
+            def add_movement(self, *_args: object, **_kwargs: object) -> None:
+                return None
+
+        service = _service(
+            PayRepository(),
+            session=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        )
         service._locked_receivable = lambda *_args: current  # type: ignore[method-assign]
         service._require_payment_method = lambda *_args: method  # type: ignore[method-assign]
         if register is not None:
             service._locked_open_register = lambda *_args: register  # type: ignore[method-assign]
+        service._set_receivable_status = lambda *_args: None  # type: ignore[method-assign]
+        service._sync_appointment_balance = lambda *_args: None  # type: ignore[method-assign]
+        service._payment_snapshot = lambda *_args: {}  # type: ignore[method-assign]
+        service._fingerprint = lambda *_args: "fp"  # type: ignore[method-assign]
+        service._derived_key = lambda *_args: "derived"  # type: ignore[method-assign]
+        service._apply_cash_effect = lambda *_args: None  # type: ignore[method-assign]
         service.create_receivable_payment(
             principal=principal,
             grant=grant,
@@ -605,6 +636,7 @@ def test_receivable_payment_replay_concurrency_and_business_guards() -> None:
             storage=SimpleNamespace(),  # type: ignore[arg-type]
             max_bytes=100,
         )
+        return payments
 
     card = SimpleNamespace(
         id=method_id,
@@ -638,19 +670,30 @@ def test_receivable_payment_replay_concurrency_and_business_guards() -> None:
         )
     cash = SimpleNamespace(
         id=method_id,
+        code="cash",
+        name="Efectivo",
+        channel="cash",
         settlement_policy="immediate",
         requires_evidence=False,
         affects_cash_drawer=True,
     )
-    with pytest.raises(InvalidOperationError, match="caja abierta"):
-        guarded_call(receivable(), cash)
-    with pytest.raises(InvalidOperationError, match="otra sucursal"):
-        guarded_call(
-            receivable(branch_id=uuid7()),
-            cash,
-            register_id=uuid7(),
-            register=SimpleNamespace(id=uuid7(), branch_id=uuid7()),
-        )
+    parked = guarded_call(receivable(), cash)
+    assert len(parked) == 1
+    assert parked[0].pending_shift_cash_assignment is True
+    assert parked[0].cash_register_id is None
+
+    branch_id = uuid7()
+    correct_register = SimpleNamespace(id=uuid7(), branch_id=branch_id)
+    wrong_register = SimpleNamespace(id=uuid7(), branch_id=uuid7())
+    committed = guarded_call(
+        receivable(branch_id=branch_id),
+        cash,
+        register_id=uuid7(),
+        register=wrong_register,
+        branch_register=correct_register,
+    )
+    assert committed[0].cash_register_id == correct_register.id
+    assert committed[0].pending_shift_cash_assignment is False
 
 
 def test_receivable_payment_evidence_and_storage_failures() -> None:
