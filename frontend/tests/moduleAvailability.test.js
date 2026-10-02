@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   API_CONNECTED_MODULES,
+  canAccessCrmCommerce,
   isApiConnectedModule,
   isModuleAvailable,
   requiresFinanceData,
@@ -133,10 +134,15 @@ describe('moduleAvailability', () => {
       permission: 'pos.receivables.read',
     })
     expect(routeRequirement('/crm/pipeline')).toEqual({ module: 'crm', permission: 'crm.read' })
+    expect(routeRequirement('/crm/cotizaciones')).toEqual({ module: 'sales', permission: 'sales.read' })
+    expect(routeRequirement('/crm/ventas')).toEqual({ module: 'sales', permission: 'sales.read' })
+    expect(routeRequirement('/crm/compras')).toEqual({ module: 'sales', permission: 'sales.read' })
     expect(routeRequirement('/finanzas')).toEqual({ module: 'finance', permission: 'finance.read' })
     expect(routeRequirement('/reportes/generales')).toEqual({
       module: 'reporting',
       permission: 'report.read',
     })
+    expect(canAccessCrmCommerce(['crm', 'sales'], ['crm.read', 'sales.read'])).toBe(true)
+    expect(canAccessCrmCommerce(['crm'], ['crm.read'])).toBe(false)
   })
 })

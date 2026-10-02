@@ -32,6 +32,7 @@ from app.repositories.backoffice import (
 from app.repositories.users import RoleAssignmentSpec, UsersRepository
 from app.repositories.workspace_provisioning import WorkspaceProvisioningRepository
 from app.services.errors import ConflictError, InvalidOperationError, ResourceNotFoundError
+from app.services.module_catalog import display_name_for_module
 from app.services.platform_workspace import PLATFORM_WORKSPACE_SLUG
 from app.services.subscription_plans import (
     PlanRecord,
@@ -448,7 +449,10 @@ class BackofficeService:
             .where(ModuleDefinition.status == "available")
             .order_by(ModuleDefinition.code)
         )
-        return tuple((code, name, list(dependencies or ())) for code, name, dependencies in rows)
+        return tuple(
+            (code, display_name_for_module(code, name), list(dependencies or ()))
+            for code, name, dependencies in rows
+        )
 
     def update_plan(
         self,

@@ -90,6 +90,7 @@ from app.schemas.pos import (
     SaleStatus,
     VoidRequest,
 )
+from app.services.authorization import AuthorizationService
 from app.services.crm import CrmService
 from app.services.crm_discovery import CrmDiscoveryService, LeadDiscoveryQuery
 
@@ -1031,8 +1032,8 @@ def get_sale(
 def get_crm_state(
     response: Response,
     database: DatabaseSession,
+    principal: CurrentPrincipal,
     crm_grant: CrmReadGrant,
-    sales_grant: SalesReadGrant,
     branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
 ) -> CrmStateResponse:
     response.headers["Cache-Control"] = "no-store"
@@ -1071,21 +1072,24 @@ def get_crm_state(
         page=1,
         page_size=200,
     )
-    quotes = service.list_quotes(
-        crm_grant=crm_grant,
-        sales_grant=sales_grant,
-        branch_id=branch_id,
-        customer_id=None,
-        crm_status=None,
-        page=1,
-        page_size=200,
-    )
+    quotes_items: tuple[Any, ...] = ()
+    sales_grant = AuthorizationService(database).optional_permission(principal, "sales.read")
+    if sales_grant is not None:
+        quotes_items = service.list_quotes(
+            crm_grant=crm_grant,
+            sales_grant=sales_grant,
+            branch_id=branch_id,
+            customer_id=None,
+            crm_status=None,
+            page=1,
+            page_size=200,
+        ).items
     return CrmStateResponse(
         settings=_workspace_settings_response(service.workspace_settings(crm_grant)),
         leads=[_lead_response(item) for item in leads.items],
         opportunities=[_opportunity_response(item) for item in opportunities.items],
         activities=[_activity_response(item) for item in activities.items],
-        quotes=[_crm_quote_list_response(item) for item in quotes.items],
+        quotes=[_crm_quote_list_response(item) for item in quotes_items],
     )
 
 

@@ -32,9 +32,9 @@ export const NAV_GROUPS = [
       { label: 'Leads', to: '/crm/leads' },
       { label: 'Pipeline', to: '/crm/pipeline' },
       { label: 'Seguimientos', to: '/crm/seguimiento' },
-      { label: 'Cotizaciones y facturas', to: '/crm/cotizaciones' },
-      { label: 'Compras por Cliente', to: '/crm/compras' },
-      { label: 'Ventas', to: '/crm/ventas' },
+      { label: 'Cotizaciones y facturas', to: '/crm/cotizaciones', module: 'sales', permission: 'sales.read' },
+      { label: 'Compras por Cliente', to: '/crm/compras', module: 'sales', permission: 'sales.read' },
+      { label: 'Ventas', to: '/crm/ventas', module: 'sales', permission: 'sales.read' },
     ],
   },
   {
@@ -65,7 +65,7 @@ export const NAV_GROUPS = [
   },
   {
     id: 'finanzas',
-    module: 'accounting',
+    module: 'finance',
     label: 'Finanzas',
     icon: 'Wallet',
     children: [

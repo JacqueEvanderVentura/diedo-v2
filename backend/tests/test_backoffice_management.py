@@ -476,3 +476,45 @@ def test_plan_catalog_is_versioned_audited_and_does_not_change_existing_entitlem
     assert event["workspaceId"] is None
     assert event["details"]["before"]["description"] == "Before"
     assert event["details"]["after"]["description"] == "After"
+
+
+def test_backoffice_module_names_match_erp_navigation(client, operator):
+    modules = {
+        item["code"]: item["name"]
+        for item in client.get(f"{BASE}/modules", headers=operator).json()["items"]
+    }
+    assert modules["crm"] == "CRM"
+    assert modules["pos"] == "Terminal POS"
+    assert modules["hr"] == "RRHH"
+    assert modules["appointments"] == "Agenda"
+
+
+def test_crm_core_is_available_without_sales_module(client, operator):
+    company = workspace(client, operator)
+    updated = client.patch(
+        f"{BASE}/workspaces/{company['workspaceId']}",
+        headers=operator,
+        json={
+            "version": company["version"],
+            "enabledModules": ["foundation", "iam", "dashboard", "crm", "catalog"],
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    assert "crm" in updated.json()["enabledModules"]
+    assert "sales" not in updated.json()["enabledModules"]
+
+    owner = login(client, company["owner"]["email"])
+    me = client.get("/api/v1/auth/me", headers=owner)
+    assert me.status_code == 200, me.text
+    assert "crm" in me.json()["enabledModules"]
+    assert "sales" not in me.json()["enabledModules"]
+
+    overview = client.get("/api/v1/crm/overview", headers=owner)
+    assert overview.status_code == 200, overview.text
+    state = client.get("/api/v1/crm/state", headers=owner)
+    assert state.status_code == 200, state.text
+    assert state.json()["quotes"] == []
+    customers = client.get("/api/v1/crm/customers", headers=owner)
+    assert customers.status_code == 200, customers.text
+    quotes = client.get("/api/v1/crm/quotes", headers=owner)
+    assert quotes.status_code == 403, quotes.text

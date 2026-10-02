@@ -124,6 +124,16 @@ class AuthorizationService:
             allowed_branch_ids=allowed_branch_ids,
         )
 
+    def optional_permission(
+        self,
+        principal: AuthPrincipal,
+        permission_code: str,
+    ) -> PermissionGrant | None:
+        try:
+            return self.require_permission(principal, permission_code)
+        except AuthorizationError:
+            return None
+
     def permission_codes_for_branches(
         self,
         principal: AuthPrincipal,

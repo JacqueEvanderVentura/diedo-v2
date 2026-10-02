@@ -30,6 +30,7 @@ from app.db.models import (
 )
 from app.db.models.agenda import DEFAULT_APPOINTMENT_RESOURCES
 from app.db.models.inventory import DEFAULT_ASSET_CATEGORIES
+from app.services.module_catalog import MODULE_DEFINITIONS
 from app.services.platform_workspace import (
     LOCAL_BACKOFFICE_OPERATOR_EMAIL,
     PLATFORM_WORKSPACE_SLUG,
@@ -688,27 +689,7 @@ _ROLE_TEMPLATES = (
 
 _LOCAL_OWNER_EMAIL = "owner@erp.dev"
 
-_MODULES: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
-    ("foundation", "Foundation", "core", "available", ()),
-    ("dashboard", "Dashboard", "optional", "available", ("foundation",)),
-    ("iam", "Identity and access", "core", "available", ("foundation",)),
-    ("crm", "Customer relationship management", "optional", "available", ("foundation",)),
-    ("catalog", "Product and service catalog", "optional", "available", ("foundation",)),
-    ("sales", "Sales", "optional", "available", ("crm", "catalog")),
-    ("purchasing", "Purchasing", "optional", "available", ("foundation", "catalog")),
-    ("inventory", "Inventory and assets", "optional", "available", ("foundation", "catalog")),
-    ("incidents", "Incidents", "optional", "available", ("foundation",)),
-    ("chat", "Chat", "optional", "available", ("foundation", "crm")),
-    ("finance", "Finanzas", "optional", "available", ("foundation",)),
-    ("reporting", "Reportes", "optional", "available", ("foundation",)),
-    ("accounting", "Accounting", "optional", "planned", ("sales", "purchasing")),
-    ("hr", "Human resources", "optional", "available", ("foundation",)),
-    ("payroll", "Payroll", "optional", "planned", ("hr", "accounting")),
-    ("pos", "Point of sale", "optional", "available", ("sales", "inventory")),
-    ("carwash", "Carwash", "optional", "available", ("pos", "hr")),
-    ("appointments", "Appointments", "optional", "available", ("crm", "catalog", "hr")),
-    ("lodging", "Lodging", "optional", "planned", ("crm", "catalog", "sales")),
-)
+_MODULES = MODULE_DEFINITIONS
 
 _UNITS_OF_MEASURE = (
     ("unit", "Unidad", "ud"),

@@ -100,13 +100,15 @@ export function buildCrmOverviewKpis(stats) {
 }
 
 /** Orden del embudo comercial para las tarjetas de navegación. */
-export function buildCrmNavCards({ crmDiscovery = false }) {
+const COMMERCE_NAV_KEYS = new Set(['cotizaciones', 'ventas', 'compras'])
+
+export function buildCrmNavCards({ crmDiscovery = false, includeCommerce = true }) {
   const leadsTitle = crmDiscovery ? 'Leads & Discovery' : 'Leads'
   const leadsDesc = crmDiscovery
     ? 'Descubre negocios en la web, puntúalos y conviértelos.'
     : 'Registra leads, puntúalos y llévalos al pipeline o a cliente.'
 
-  return [
+  const cards = [
     { title: leadsTitle, desc: leadsDesc, to: '/crm/leads', tone: 'violet', navKey: 'leads' },
     {
       title: 'Pipeline',
@@ -158,4 +160,6 @@ export function buildCrmNavCards({ crmDiscovery = false }) {
       navKey: 'reportes',
     },
   ]
+  if (includeCommerce) return cards
+  return cards.filter((card) => !COMMERCE_NAV_KEYS.has(card.navKey))
 }

@@ -11,6 +11,7 @@ import { ModulePicker } from '../components/ModulePicker'
 import { SubscriptionForm } from '../components/SubscriptionForm'
 import { AuditPanel } from '../components/AuditPanel'
 import { workspacePlanPayload } from '../backofficeForm'
+import { moduleLabel } from '@/lib/moduleLabels'
 
 import { BackofficeSelect as Select } from '../components/BackofficeSelect'
 
@@ -293,7 +294,7 @@ export default function CompaniaDetailPage() {
           <p className="mt-3 text-sm text-slate-500">
             Módulos efectivos:{' '}
             {workspace.enabledModules
-              ?.map((code) => modules.find((item) => item.code === code)?.name || code)
+              ?.map((code) => moduleLabel(code, modules.find((item) => item.code === code)?.name || code))
               .join(', ') || 'Ninguno'}
             .
           </p>

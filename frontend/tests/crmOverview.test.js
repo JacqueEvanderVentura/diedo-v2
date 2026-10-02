@@ -81,4 +81,12 @@ describe('buildCrmOverviewKpis', () => {
     expect(keys.indexOf('pipeline')).toBeLessThan(keys.indexOf('cotizaciones'))
     expect(keys.indexOf('cotizaciones')).toBeLessThan(keys.indexOf('clientes'))
   })
+
+  it('oculta cotizaciones y ventas si no hay módulo comercial', () => {
+    const keys = buildCrmNavCards({ includeCommerce: false }).map((c) => c.navKey)
+    expect(keys).not.toContain('cotizaciones')
+    expect(keys).not.toContain('ventas')
+    expect(keys).toContain('leads')
+    expect(keys).toContain('clientes')
+  })
 })

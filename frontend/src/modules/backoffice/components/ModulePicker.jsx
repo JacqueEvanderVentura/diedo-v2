@@ -1,4 +1,5 @@
 import { CORE_MODULES, toggleModuleSelection } from '../backofficeForm'
+import { moduleLabel } from '@/lib/moduleLabels'
 
 export function ModulePicker({ modules, selected, onChange, disabled = false }) {
   return (
@@ -13,7 +14,7 @@ export function ModulePicker({ modules, selected, onChange, disabled = false }) 
             onClick={() => onChange(toggleModuleSelection(selected, module.code, modules))}
             className={`rounded-full px-3 py-1.5 text-xs font-medium disabled:opacity-60 ${selected.includes(module.code) ? 'bg-blue-100 text-blue-800 ring-1 ring-blue-200' : 'bg-slate-100 text-slate-600'}`}
           >
-            {module.name}
+            {moduleLabel(module.code, module.name)}
           </button>
         ))}
       </div>

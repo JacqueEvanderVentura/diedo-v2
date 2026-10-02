@@ -15,6 +15,7 @@ from app.services.errors import (
     ConflictError,
     ResourceNotFoundError,
 )
+from app.services.module_catalog import display_name_for_module
 from app.services.modules import ModuleAccessService
 
 
@@ -76,7 +77,7 @@ class PermissionsService:
         modules = tuple(
             PermissionModule(
                 code=key[0],
-                name=key[1],
+                name=display_name_for_module(key[0], key[1]),
                 enabled=key[0] in enabled_modules,
                 permissions=tuple(items),
             )

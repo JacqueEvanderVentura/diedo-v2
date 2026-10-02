@@ -34,6 +34,11 @@ export function isModuleAvailable(moduleCode, enabledModules = []) {
     && (MODULE_DEPENDENCIES[moduleCode] || []).every((dependency) => enabled.has(dependency))
 }
 
+export function canAccessCrmCommerce(enabledModules = [], permissionCodes = []) {
+  const permissions = permissionCodes instanceof Set ? permissionCodes : new Set(permissionCodes || [])
+  return isModuleAvailable('sales', enabledModules) && permissions.has('sales.read')
+}
+
 export function requiresFinanceData(pathname = '') {
   return pathname === '/finanzas'
     || pathname.startsWith('/finanzas/')
@@ -79,6 +84,15 @@ export function routeRequirement(pathname) {
   }
   if (pathname.startsWith('/rrhh/solicitudes')) {
     return { module: 'hr', permission: 'hr.leave.request' }
+  }
+  if (pathname === '/crm/cotizaciones' || pathname.startsWith('/crm/cotizaciones/')) {
+    return { module: 'sales', permission: 'sales.read' }
+  }
+  if (pathname === '/crm/compras' || pathname.startsWith('/crm/compras/')) {
+    return { module: 'sales', permission: 'sales.read' }
+  }
+  if (pathname === '/crm/ventas' || pathname.startsWith('/crm/ventas/')) {
+    return { module: 'sales', permission: 'sales.read' }
   }
   if (pathname.startsWith('/crm/clientes')) {
     return { module: 'crm', permission: 'customer.read' }

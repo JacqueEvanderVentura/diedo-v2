@@ -71,6 +71,7 @@ import {
 } from '@/services/adapters/pos'
 import { useConfigStore } from '@/stores/configStore'
 import { syncWorkspacePaymentMethods } from '@/lib/paymentMethodsSync'
+import { canAccessCrmCommerce } from '@/services/moduleAvailability'
 
 const saleDetailRequests = new Map()
 let crmGeneration = 0
@@ -79,6 +80,12 @@ const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random()
 const now = () => new Date().toISOString()
 const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString()
 const isOnline = () => useSessionStore.getState().status === 'online'
+const crmCommerceEnabled = () => {
+  const session = useSessionStore.getState()
+  if (session.status === 'demo') return true
+  return canAccessCrmCommerce(session.user?.enabledModules, session.user?.effectivePermissionCodes)
+}
+const emptyCrmPage = () => ({ items: [] })
 
 function replaceById(items, entity) {
   return items.map((item) => (item.id === entity.id ? entity : item))
@@ -143,7 +150,7 @@ async function loadOnlineSection(section) {
     case 'pipeline': {
       const [oppsRes, quotes] = await Promise.all([
         crmApi.opportunities({ page: 1, pageSize: CRM_INFINITE_PAGE_SIZE }),
-        readAllPages(crmApi.quotes),
+        crmCommerceEnabled() ? readAllPages(crmApi.quotes) : emptyCrmPage(),
         syncWorkspacePaymentMethods(),
       ])
       const oppsMapped = mapOpportunitiesPaginatedFromApi(oppsRes)
@@ -168,8 +175,8 @@ async function loadOnlineSection(section) {
     case 'customers': {
       const pageSize = CRM_INFINITE_PAGE_SIZE
       const [salesRes, quotesRes, oppsRes, activitiesRes] = await Promise.all([
-        crmApi.sales({ page: 1, pageSize }),
-        crmApi.quotes({ page: 1, pageSize: 100 }),
+        crmCommerceEnabled() ? crmApi.sales({ page: 1, pageSize }) : emptyCrmPage(),
+        crmCommerceEnabled() ? crmApi.quotes({ page: 1, pageSize: 100 }) : emptyCrmPage(),
         crmApi.opportunities({ page: 1, pageSize }),
         crmApi.activities({ page: 1, pageSize: 100 }),
       ])
@@ -183,6 +190,9 @@ async function loadOnlineSection(section) {
       }
     }
     case 'quotes': {
+      if (!crmCommerceEnabled()) {
+        return { quotes: [] }
+      }
       const [quotes, opportunities, customers] = await Promise.all([
         readAllPages(crmApi.quotes),
         readAllPages(crmApi.opportunities),
@@ -196,6 +206,9 @@ async function loadOnlineSection(section) {
       }
     }
     case 'purchases': {
+      if (!crmCommerceEnabled()) {
+        return { sales: [] }
+      }
       const [sales, customers] = await Promise.all([
         readAllPages(crmApi.sales),
         readAllPages(crmApi.customers),
@@ -206,6 +219,9 @@ async function loadOnlineSection(section) {
       }
     }
     case 'sales': {
+      if (!crmCommerceEnabled()) {
+        return { sales: [] }
+      }
       const sales = await readAllPages(crmApi.sales)
       return { sales: mapCrmSalesPageFromApi(sales) }
     }
@@ -401,7 +417,7 @@ export const useCrmStore = create(
           const [stateResponse, customerResponse, salesResponse, overview] = await Promise.all([
             crmApi.state(),
             readAllPages(crmApi.customers),
-            readAllPages(crmApi.sales),
+            crmCommerceEnabled() ? readAllPages(crmApi.sales) : emptyCrmPage(),
             crmApi.overview(),
           ])
           const mapped = mapCrmStateFromApi(stateResponse)
