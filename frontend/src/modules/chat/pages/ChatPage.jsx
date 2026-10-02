@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, Loader2, RefreshCw, Settings } from 'lucide-react'
+import { AlertTriangle, RefreshCw, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { useActiveBranchScope } from '@/hooks/useActiveBranchScope'
 import { useSessionStore } from '@/stores/sessionStore'
@@ -21,12 +21,15 @@ export default function ChatPage() {
   const [search, setSearch] = useState('')
   const [channelFilter, setChannelFilter] = useState('')
   const [loading, setLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState(null)
   const [mobileShowThread, setMobileShowThread] = useState(false)
   const [searchDebounced, setSearchDebounced] = useState('')
   const [pollTick, setPollTick] = useState(0)
   const selectedIdRef = useRef(null)
+  const conversationsRef = useRef(conversations)
   selectedIdRef.current = selectedId
+  conversationsRef.current = conversations
 
   const selectedConversation = useMemo(
     () => conversations.find((item) => item.id === selectedId) || null,
@@ -39,7 +42,9 @@ export default function ChatPage() {
       return
     }
     setError(null)
-    setLoading(true)
+    const background = conversationsRef.current.length > 0
+    if (background) setRefreshing(true)
+    else setLoading(true)
     try {
       const params = {
         branchId: activeBranchId,
@@ -62,6 +67,7 @@ export default function ChatPage() {
       setError(err?.message || 'No se pudieron cargar las conversaciones.')
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }, [online, activeBranchId, channelFilter, searchDebounced])
 
@@ -104,7 +110,7 @@ export default function ChatPage() {
             onClick={refreshAll}
             disabled={loading || !online}
           >
-            <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+            <RefreshCw className={loading || refreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
             Actualizar
           </Button>
           <Link to="/configuracion?open=chat-canales">
@@ -138,13 +144,6 @@ export default function ChatPage() {
             Reintentar
           </Button>
         </div>
-      )}
-
-      {loading && conversations.length > 0 && (
-        <p className="flex items-center gap-2 text-xs text-slate-400">
-          <Loader2 className="h-3 w-3 animate-spin" />
-          Actualizando…
-        </p>
       )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">

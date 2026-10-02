@@ -64,7 +64,9 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
   const [selectedBranchIds, setSelectedBranchIds] = useState([])
   const [oauthSelect, setOauthSelect] = useState(null)
   const [savingBranches, setSavingBranches] = useState(false)
+  const [selectingAccountId, setSelectingAccountId] = useState(null)
   const oauthPollRef = useRef(null)
+  const selectingAccountRef = useRef(null)
 
   const stopOauthPoll = useCallback(() => {
     if (oauthPollRef.current) {
@@ -283,7 +285,9 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
   }
 
   const completeOAuthSelection = async (providerAccountId) => {
-    if (!oauthSelect) return
+    if (!oauthSelect || selectingAccountRef.current) return
+    selectingAccountRef.current = providerAccountId
+    setSelectingAccountId(providerAccountId)
     try {
       const account = await chatApi.completeOAuth({
         oauthStateId: oauthSelect.oauthStateId,
@@ -298,6 +302,9 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
       openBranchModal(account)
     } catch (error) {
       toast.error(error?.message || 'No se pudo completar la conexión.')
+    } finally {
+      selectingAccountRef.current = null
+      setSelectingAccountId(null)
     }
   }
 
@@ -471,7 +478,10 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
 
       <Modal
         open={Boolean(oauthSelect)}
-        onClose={() => setOauthSelect(null)}
+        onClose={() => {
+          if (selectingAccountId) return
+          setOauthSelect(null)
+        }}
         title="Elige la cuenta Meta"
       >
         {oauthSelect && (
@@ -481,13 +491,23 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
               <span className="font-medium">{CHANNEL_META[oauthSelect.channel]?.label}</span>.
             </p>
             <ul className="space-y-2">
-              {oauthSelect.candidates.map((candidate) => (
+              {oauthSelect.candidates.map((candidate) => {
+                const pending = selectingAccountId === candidate.providerAccountId
+                return (
                 <li key={candidate.providerAccountId}>
                   <button
                     type="button"
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-sm hover:border-blue-200 hover:bg-blue-50/40"
+                    disabled={Boolean(selectingAccountId)}
+                    aria-busy={pending}
+                    className={cn(
+                      'flex w-full items-start gap-3 rounded-lg border border-slate-200 px-3 py-2 text-left text-sm hover:border-blue-200 hover:bg-blue-50/40 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:border-slate-200 disabled:hover:bg-transparent',
+                    )}
                     onClick={() => completeOAuthSelection(candidate.providerAccountId)}
                   >
+                    {pending ? (
+                      <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-blue-600" aria-hidden />
+                    ) : null}
+                    <span className="min-w-0">
                     <span className="font-medium text-slate-800">{candidate.displayName}</span>
                     {candidate.phoneNumber ? (
                       <span className="mt-0.5 block text-sm text-slate-700">
@@ -497,9 +517,11 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
                     <span className="mt-0.5 block text-xs text-slate-500">
                       ID {candidate.providerAccountId}
                     </span>
+                    </span>
                   </button>
                 </li>
-              ))}
+                )
+              })}
             </ul>
           </div>
         )}
