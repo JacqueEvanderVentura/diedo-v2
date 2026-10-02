@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import shutil
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from tempfile import SpooledTemporaryFile
@@ -38,6 +39,8 @@ class AttachmentStorage(Protocol):
     def open(self, storage_key: str) -> BinaryIO: ...
 
     def delete(self, storage_key: str) -> None: ...
+
+    def delete_prefix(self, prefix: str) -> None: ...
 
 
 class LocalAttachmentStorage:
@@ -90,6 +93,16 @@ class LocalAttachmentStorage:
 
     def delete(self, storage_key: str) -> None:
         self.path_for(storage_key).unlink(missing_ok=True)
+
+    def delete_prefix(self, prefix: str) -> None:
+        normalized = prefix.rstrip("/")
+        if not normalized or "\\" in normalized:
+            raise ValueError("Invalid attachment storage prefix.")
+        candidate = (self._root / normalized).resolve()
+        if candidate == self._root or self._root not in candidate.parents:
+            raise ValueError("Invalid attachment storage prefix.")
+        if candidate.exists():
+            shutil.rmtree(candidate, ignore_errors=True)
 
 
 class S3AttachmentStorage:
@@ -162,6 +175,19 @@ class S3AttachmentStorage:
     def delete(self, storage_key: str) -> None:
         key = str(_validate_storage_key(storage_key))
         self._client.delete_object(Bucket=self._bucket, Key=key)
+
+    def delete_prefix(self, prefix: str) -> None:
+        normalized = prefix if prefix.endswith("/") else f"{prefix}/"
+        _validate_storage_key(normalized + "placeholder")
+        paginator = self._client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self._bucket, Prefix=normalized):
+            contents = page.get("Contents") or []
+            if not contents:
+                continue
+            self._client.delete_objects(
+                Bucket=self._bucket,
+                Delete={"Objects": [{"Key": item["Key"]} for item in contents]},
+            )
 
 
 def _validate_storage_key(storage_key: str) -> PurePosixPath:

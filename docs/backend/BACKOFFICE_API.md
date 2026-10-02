@@ -25,6 +25,7 @@ El aprovisionamiento crea en una transacción el workspace, entidad legal inicia
 | `POST /workspaces` | Crear compañía con owner nuevo o existente. |
 | `GET /workspaces/{workspaceId}` | Ficha, owner, sucursales, plan, módulos y suscripción. |
 | `PATCH /workspaces/{workspaceId}` | Nombre, estado, plan o módulos. |
+| `POST /workspaces/{workspaceId}/data-reset` | Borra data operativa del tenant (ventas, CRM, inventario, adjuntos, etc.) y deja identidad, miembros, IAM, plan y sucursales. Requiere `confirmationSlug` igual al slug de la compañía. |
 | `GET /workspaces/{workspaceId}/members` | Miembros paginados, sin recorte a 500. |
 | `GET /workspaces/{workspaceId}/member-options` | Roles, sucursales y entidades para asignaciones IAM. |
 | `GET /workspaces/{workspaceId}/members/{membershipId}` | Acceso individual y versión actual. |

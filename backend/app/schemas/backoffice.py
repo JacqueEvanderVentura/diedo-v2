@@ -341,3 +341,20 @@ class BackofficeAuditListResponse(ApiModel):
     page_size: int
     total_items: int
     total_pages: int
+
+
+class WorkspaceDataResetRequest(ApiModel):
+    confirmation_slug: str = Field(min_length=3, max_length=63)
+
+    @field_validator("confirmation_slug", mode="before")
+    @classmethod
+    def normalize_confirmation_slug(cls, value: object) -> object:
+        return value.strip().lower() if isinstance(value, str) else value
+
+
+class WorkspaceDataResetResponse(ApiModel):
+    workspace_id: UUID
+    reset_at: AwareDatetime
+    deleted_counts: dict[str, int]
+    storage_cleanup: str
+    storage_keys_removed: int

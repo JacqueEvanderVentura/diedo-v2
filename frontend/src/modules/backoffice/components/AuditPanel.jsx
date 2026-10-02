@@ -10,6 +10,7 @@ const actions = {
   'platform_operator.create': 'Operador de plataforma creado',
   'workspace.provision': 'Compañía creada',
   'workspace.backoffice_update': 'Compañía o módulos actualizados',
+  'workspace.backoffice_data_reset': 'Data operativa reiniciada',
   'plan.backoffice_update': 'Plan actualizado',
   'subscription.backoffice_update': 'Suscripción actualizada',
   'user.backoffice_create': 'Acceso registrado',

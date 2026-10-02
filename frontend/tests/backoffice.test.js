@@ -22,6 +22,7 @@ vi.mock('@/services/backofficeApi', () => ({
     listWorkspaceMembers: vi.fn(),
     listAudit: vi.fn(),
     updateWorkspace: vi.fn(),
+    resetWorkspaceData: vi.fn(),
   },
 }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
@@ -163,6 +164,53 @@ it('cambiar plan carga sus módulos antes de guardar y muestra personalización 
       version: 2,
       planCode: 'basico',
       enabledModules: ['foundation', 'iam'],
+    })
+  )
+})
+
+it('exige el slug antes de reiniciar la data operativa', async () => {
+  backofficeApi.getWorkspace.mockResolvedValue({
+    workspaceId: 'w1',
+    slug: 'acme-demo',
+    name: 'Acme Demo',
+    version: 1,
+    status: 'active',
+    branches: [{ id: 'b1', code: 'MAIN', name: 'Principal', status: 'active' }],
+  })
+  backofficeApi.listPlans.mockResolvedValue({ items: [] })
+  backofficeApi.listModules.mockResolvedValue({ items: [] })
+  backofficeApi.listWorkspaceMembers.mockResolvedValue({ items: [], totalItems: 0, totalPages: 0 })
+  backofficeApi.listAudit.mockResolvedValue({ items: [], totalItems: 0, totalPages: 0 })
+  backofficeApi.resetWorkspaceData.mockResolvedValue({ workspaceId: 'w1' })
+
+  render(
+    React.createElement(
+      MemoryRouter,
+      { initialEntries: ['/backoffice/companias/w1'] },
+      React.createElement(
+        Routes,
+        null,
+        React.createElement(Route, {
+          path: '/backoffice/companias/:workspaceId',
+          element: React.createElement(CompaniaDetailPage),
+        })
+      )
+    )
+  )
+
+  fireEvent.click(await screen.findByTestId('companias-reset-data'))
+  const confirmButton = await screen.findByRole('button', { name: 'Reiniciar data' })
+  expect(confirmButton.hasAttribute('disabled')).toBe(true)
+
+  fireEvent.change(screen.getByTestId('companias-reset-dialog-phrase-input'), {
+    target: { value: 'acme-demo' },
+  })
+  expect(confirmButton.hasAttribute('disabled')).toBe(false)
+
+  fireEvent.click(confirmButton)
+  await waitFor(() =>
+    expect(backofficeApi.resetWorkspaceData).toHaveBeenCalledWith('w1', {
+      confirmationSlug: 'acme-demo',
     })
   )
 })

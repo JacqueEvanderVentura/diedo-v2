@@ -20,6 +20,7 @@ export const administrationApi = {
   createPaymentMethod: (payload) => apiClient.post('/api/v1/payment-methods', payload),
   updatePaymentMethod: (id, payload) => apiClient.patch(`/api/v1/payment-methods/${id}`, payload),
   archivePaymentMethod: (id, version) => apiClient.delete(`/api/v1/payment-methods/${id}`, { version }),
+  resetWorkspaceData: (payload) => apiClient.post('/api/v1/workspace/data-reset', payload),
 }
 
 export const administrationGateway = createModuleGateway({

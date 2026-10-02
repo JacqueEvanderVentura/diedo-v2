@@ -4,12 +4,14 @@ from uuid import UUID
 from fastapi import APIRouter, Query, Response, status
 
 from app.api.deps import (
+    AttachmentStorageDep,
     BranchManageGrant,
     BranchReadGrant,
     CurrentPrincipal,
     DatabaseSession,
     LegalEntityManageGrant,
     LegalEntityReadGrant,
+    WorkspaceAdminGrant,
     WorkspaceReadGrant,
     WorkspaceUpdateGrant,
 )
@@ -36,9 +38,11 @@ from app.schemas.administration import (
     UpdateWorkspaceSettingsRequest,
     WorkspaceSettingsResponse,
 )
+from app.schemas.backoffice import WorkspaceDataResetRequest, WorkspaceDataResetResponse
 from app.schemas.common import ErrorResponse
 from app.services.administration import AdministrationService
 from app.services.authorization import AuthorizationService
+from app.services.workspace_reset import WorkspaceResetService
 
 router = APIRouter(prefix="/api/v1", tags=["administration"])
 
@@ -157,6 +161,37 @@ def update_workspace_settings(
         changes=changes,
     )
     return _workspace_response(workspace)
+
+
+@router.post("/workspace/data-reset", responses=_RESPONSES)
+def reset_workspace_data(
+    payload: WorkspaceDataResetRequest,
+    database: DatabaseSession,
+    grant: WorkspaceAdminGrant,
+    principal: CurrentPrincipal,
+    storage: AttachmentStorageDep,
+) -> WorkspaceDataResetResponse:
+    reset_service = WorkspaceResetService(database)
+    result = reset_service.reset_operational_data(
+        grant.workspace_id,
+        confirmation_slug=payload.confirmation_slug,
+        actor_platform_user_id=principal.platform_user_id,
+        audit_action="workspace.data_reset",
+        actor_type="tenant",
+    )
+    database.commit()
+    cleanup, removed = reset_service.purge_workspace_storage(
+        storage,
+        grant.workspace_id,
+        result.pending_storage_keys,
+    )
+    return WorkspaceDataResetResponse(
+        workspace_id=result.workspace_id,
+        reset_at=result.reset_at,
+        deleted_counts=result.deleted_counts,
+        storage_cleanup=cleanup,
+        storage_keys_removed=removed,
+    )
 
 
 @router.get("/legal-entities", responses=_RESPONSES)

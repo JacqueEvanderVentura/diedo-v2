@@ -31,6 +31,7 @@ from app.repositories.backoffice import (
 )
 from app.repositories.users import RoleAssignmentSpec, UsersRepository
 from app.repositories.workspace_provisioning import WorkspaceProvisioningRepository
+from app.services.attachment_storage import AttachmentStorage
 from app.services.errors import ConflictError, InvalidOperationError, ResourceNotFoundError
 from app.services.module_catalog import display_name_for_module
 from app.services.platform_workspace import PLATFORM_WORKSPACE_SLUG
@@ -44,6 +45,7 @@ from app.services.workspace_provisioning import (
     ProvisionedWorkspace,
     WorkspaceProvisioningService,
 )
+from app.services.workspace_reset import WorkspaceResetResult, WorkspaceResetService
 
 _WORKSPACE_SCOPED_ROLES = frozenset({"workspace_admin", "manager"})
 _ALLOWED_ROLE_CODES = frozenset({"workspace_admin", "manager", "supervisor", "cashier", "seller"})
@@ -66,6 +68,37 @@ class BackofficeService:
     def get_workspace(self, workspace_id: UUID) -> BackofficeWorkspaceRecord:
         workspace = self._require_customer_workspace(workspace_id)
         return self._repository.workspace_record(workspace)
+
+    def reset_workspace_data(
+        self,
+        workspace_id: UUID,
+        *,
+        confirmation_slug: str,
+        storage: AttachmentStorage | None = None,
+    ) -> WorkspaceResetResult:
+        self._require_customer_workspace(workspace_id, lock=True)
+        reset_service = WorkspaceResetService(self._session)
+        result = reset_service.reset_operational_data(
+            workspace_id,
+            confirmation_slug=confirmation_slug,
+            actor_platform_user_id=self._actor_id,
+        )
+        self._session.commit()
+        if storage is None:
+            return result
+        cleanup, removed = reset_service.purge_workspace_storage(
+            storage,
+            workspace_id,
+            result.pending_storage_keys,
+        )
+        return WorkspaceResetResult(
+            workspace_id=result.workspace_id,
+            reset_at=result.reset_at,
+            deleted_counts=result.deleted_counts,
+            storage_cleanup=cleanup,
+            storage_keys_removed=removed,
+            pending_storage_keys=result.pending_storage_keys,
+        )
 
     def overview(self) -> BackofficeOverviewRecord:
         return self._repository.overview()

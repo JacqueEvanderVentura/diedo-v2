@@ -7,6 +7,8 @@ export const backofficeApi = {
   createWorkspace: (payload) => apiClient.post('/api/v1/backoffice/workspaces', payload),
   updateWorkspace: (workspaceId, payload) =>
     apiClient.patch(`/api/v1/backoffice/workspaces/${workspaceId}`, payload),
+  resetWorkspaceData: (workspaceId, payload) =>
+    apiClient.post(`/api/v1/backoffice/workspaces/${workspaceId}/data-reset`, payload),
   listPlans: () => apiClient.get('/api/v1/backoffice/plans'),
   updatePlan: (planId, payload) => apiClient.patch(`/api/v1/backoffice/plans/${planId}`, payload),
   listModules: () => apiClient.get('/api/v1/backoffice/modules'),

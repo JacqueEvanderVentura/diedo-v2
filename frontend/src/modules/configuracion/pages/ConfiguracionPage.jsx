@@ -16,7 +16,10 @@ import DataImportPanel from '../components/DataImportPanel'
 import PerfilWorkspacePanel from '../components/PerfilWorkspacePanel'
 import AgendaCabinasPanel from '../components/AgendaCabinasPanel'
 import ChatChannelsPanel from '../components/ChatChannelsPanel'
+import WorkspaceDataResetPanel from '../components/WorkspaceDataResetPanel'
 import { SETTINGS_ITEMS, SETTINGS_SECTIONS } from '../lib/settingsHub'
+import { useSessionStore } from '@/stores/sessionStore'
+import { isWorkspaceAdmin } from '@/services/adapters/iam'
 import { filterSettingsSections, shouldForceExpandSettingsItem } from '../lib/settingsSearch'
 
 function resolveOpenTarget(openParam) {
@@ -51,6 +54,7 @@ const EMBED_MAP = {
   perfil: PerfilWorkspacePanel,
   'agenda-cabinas': AgendaCabinasPanel,
   'chat-canales': ChatChannelsPanel,
+  'data-reset': WorkspaceDataResetPanel,
 }
 
 function EmbedPanel({ embedKey, visibleBlockIds }) {
@@ -150,8 +154,20 @@ export default function ConfiguracionPage() {
   const openTarget = useMemo(() => resolveOpenTarget(openParam), [openParam])
   const [query, setQuery] = useState('')
   const [openId, setOpenId] = useState(() => openTarget?.itemId ?? null)
+  const online = useSessionStore((state) => state.status === 'online')
+  const sessionUser = useSessionStore((state) => state.user)
+  const showAdminSettings = online && isWorkspaceAdmin(sessionUser)
 
-  const sections = useMemo(() => filterSettingsSections(SETTINGS_SECTIONS, query), [query])
+  const hubSections = useMemo(
+    () =>
+      SETTINGS_SECTIONS.map((section) => ({
+        ...section,
+        items: (section.items || []).filter((item) => !item.adminOnly || showAdminSettings),
+      })).filter((section) => section.items.length > 0),
+    [showAdminSettings],
+  )
+
+  const sections = useMemo(() => filterSettingsSections(hubSections, query), [hubSections, query])
   const visibleItems = useMemo(() => sections.flatMap((section) => section.items), [sections])
   const hasForcedExpand = visibleItems.some((item) => shouldForceExpandSettingsItem(item, query))
   const hasExpanded = Boolean(openId) || hasForcedExpand

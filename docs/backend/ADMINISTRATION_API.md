@@ -12,6 +12,7 @@ HTTP 409.
 | Method | Route | Permission | Purpose |
 |---|---|---|---|
 | GET/PATCH | `/api/v1/workspace/settings` | `workspace.read/update` | Read/update name, currency, locale, timezone and default tax rate. |
+| POST | `/api/v1/workspace/data-reset` | `workspace.update` + rol `workspace_admin` | Borra data operativa del tenant actual (mismo alcance que backoffice). Body: `{ "confirmationSlug": "<slug>" }`. Revoca todas las sesiones del workspace. |
 | GET/PATCH | `/api/v1/legal-entities/{id}` | `legal_entity.read/manage` | Read/update the workspace-owned legal entity. |
 | GET/POST | `/api/v1/branches` | `branch.read/manage` | List visible branches or create one workspace-wide. |
 | PATCH/DELETE | `/api/v1/branches/{id}` | `branch.manage` | Update or archive a branch. |

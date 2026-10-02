@@ -10,6 +10,7 @@ import { Pagination } from '../components/Pagination'
 import { ModulePicker } from '../components/ModulePicker'
 import { SubscriptionForm } from '../components/SubscriptionForm'
 import { AuditPanel } from '../components/AuditPanel'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { workspacePlanPayload } from '../backofficeForm'
 import { moduleLabel } from '@/lib/moduleLabels'
 
@@ -42,6 +43,8 @@ export default function CompaniaDetailPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [resetDialogOpen, setResetDialogOpen] = useState(false)
+  const [resetting, setResetting] = useState(false)
   const loadSequence = useRef(0)
 
   const load = useCallback(async () => {
@@ -122,6 +125,24 @@ export default function CompaniaDetailPage() {
       setError(err.message || 'No se pudo actualizar el plan.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const confirmDataReset = async () => {
+    if (!workspace) return
+    setResetting(true)
+    try {
+      await backofficeApi.resetWorkspaceData(workspaceId, {
+        confirmationSlug: workspace.slug,
+      })
+      setResetDialogOpen(false)
+      setRevision((n) => n + 1)
+      await load()
+      toast.success('Data operativa reiniciada. Los usuarios deberán iniciar sesión de nuevo.')
+    } catch (err) {
+      setError(err.message || 'No se pudo reiniciar la data operativa.')
+    } finally {
+      setResetting(false)
     }
   }
 
@@ -389,7 +410,37 @@ export default function CompaniaDetailPage() {
             ))}
           </ul>
         </Card>
+        <Card className="border-red-100 p-6 lg:col-span-2" data-testid="companias-danger-zone">
+          <h3 className="text-sm font-semibold text-red-800">Zona de peligro</h3>
+          <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-600">
+            Reinicia la data operativa de esta compañía: ventas, clientes, inventario, CRM,
+            chat y adjuntos. No elimina usuarios, plan, suscripción ni sucursales. Esta acción
+            es irreversible.
+          </p>
+          <Button
+            type="button"
+            variant="danger"
+            className="mt-4"
+            disabled={saving || resetting}
+            onClick={() => setResetDialogOpen(true)}
+            data-testid="companias-reset-data"
+          >
+            Reiniciar data operativa
+          </Button>
+        </Card>
       </div>
+      <ConfirmDialog
+        open={resetDialogOpen}
+        onClose={() => !resetting && setResetDialogOpen(false)}
+        onConfirm={confirmDataReset}
+        title="Reiniciar data operativa"
+        description={`Se borrará toda la información operativa de «${workspace.name}». Los accesos activos quedarán revocados.`}
+        confirmLabel="Reiniciar data"
+        confirmPhrase={workspace.slug}
+        confirmPhraseLabel={`Escribe el slug «${workspace.slug}» para confirmar`}
+        busy={resetting}
+        testId="companias-reset-dialog"
+      />
       <AuditPanel workspaceId={workspaceId} revision={revision} />
     </div>
   )

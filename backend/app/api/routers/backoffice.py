@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import AwareDatetime
 
-from app.api.deps import DatabaseSession
+from app.api.deps import AttachmentStorageDep, DatabaseSession
 from app.config import settings
 from app.core.errors import raise_api_error
 from app.repositories.auth import AuthRepository
@@ -44,6 +44,8 @@ from app.schemas.backoffice import (
     UpdateBackofficeSubscriptionRequest,
     UpdateBackofficeUserRequest,
     UpdateBackofficeWorkspaceRequest,
+    WorkspaceDataResetRequest,
+    WorkspaceDataResetResponse,
 )
 from app.schemas.common import ErrorResponse
 from app.schemas.users import (
@@ -272,6 +274,32 @@ def update_workspace(
         expected_version=payload.version,
     )
     return _detail_response(database, record)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/data-reset",
+    responses=_RESPONSES,
+    summary="Reset operational data for a customer workspace",
+)
+def reset_workspace_data(
+    workspace_id: UUID,
+    payload: WorkspaceDataResetRequest,
+    database: DatabaseSession,
+    storage: AttachmentStorageDep,
+    _access: BackofficeAccess,
+) -> WorkspaceDataResetResponse:
+    result = BackofficeService(database, _access).reset_workspace_data(
+        workspace_id,
+        confirmation_slug=payload.confirmation_slug,
+        storage=storage,
+    )
+    return WorkspaceDataResetResponse(
+        workspace_id=result.workspace_id,
+        reset_at=result.reset_at,
+        deleted_counts=result.deleted_counts,
+        storage_cleanup=result.storage_cleanup,
+        storage_keys_removed=result.storage_keys_removed,
+    )
 
 
 @router.post(

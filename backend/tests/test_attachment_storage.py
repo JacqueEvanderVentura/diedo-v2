@@ -122,3 +122,15 @@ def test_local_storage_open_uses_the_confined_path(tmp_path: Path) -> None:
 
     with storage.open("workspace/image.png") as downloaded:
         assert downloaded.read() == content
+
+
+def test_local_storage_delete_prefix_removes_workspace_directory(tmp_path: Path) -> None:
+    storage = LocalAttachmentStorage(tmp_path)
+    storage.save(
+        BytesIO(b"%PDF-1.4"),
+        storage_key="ws-1/documents/a.pdf",
+        content_type="application/pdf",
+        max_bytes=1024,
+    )
+    storage.delete_prefix("ws-1/")
+    assert not (tmp_path / "ws-1").exists()

@@ -10,6 +10,7 @@ import {
   UserCircle,
   Bell,
   Lock,
+  AlertTriangle,
   Palette,
   Globe,
   Database,
@@ -126,6 +127,18 @@ export const SETTINGS_SECTIONS = [
       },
       { id: 'notificaciones', title: 'Notificaciones', subtitle: 'Configura alertas y preferencias', icon: Bell, kind: 'stub' },
       { id: 'seguridad', title: 'Seguridad', subtitle: 'Contraseña y autenticación', icon: Lock, kind: 'stub' },
+      {
+        id: 'zona-peligro',
+        title: 'Zona de peligro',
+        subtitle: 'Reinicia la data operativa del negocio',
+        icon: AlertTriangle,
+        kind: 'embed',
+        embed: 'data-reset',
+        adminOnly: true,
+        blocks: [
+          { id: 'reset', title: 'Reiniciar data operativa', keywords: ['borrar', 'limpiar', 'wipe'] },
+        ],
+      },
     ],
   },
   {

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.session import get_session
+from app.repositories.users import UsersRepository
 from app.services.attachment_storage import (
     AttachmentStorage,
     LocalAttachmentStorage,
@@ -16,7 +17,7 @@ from app.services.attachment_storage import (
 from app.services.auth import AuthPrincipal, AuthService
 from app.services.authorization import AuthorizationService, PermissionGrant
 from app.services.carwash_rate_limit import CarwashMutationRateLimiter
-from app.services.errors import AuthenticationError
+from app.services.errors import AuthenticationError, AuthorizationError
 
 DatabaseSession = Annotated[Session, Depends(get_session)]
 
@@ -100,6 +101,18 @@ WorkspaceUpdateGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("workspace.update")),
 ]
+
+
+def require_workspace_admin(
+    database: DatabaseSession,
+    grant: Annotated[PermissionGrant, Depends(require_permission("workspace.update"))],
+) -> PermissionGrant:
+    if not UsersRepository(database).is_workspace_admin(grant.workspace_id, grant.membership_id):
+        raise AuthorizationError("Solo un administrador del workspace puede realizar esta acción.")
+    return grant
+
+
+WorkspaceAdminGrant = Annotated[PermissionGrant, Depends(require_workspace_admin)]
 DashboardReadGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("dashboard.read")),

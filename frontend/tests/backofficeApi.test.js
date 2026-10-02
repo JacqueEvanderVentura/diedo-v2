@@ -35,4 +35,11 @@ describe('Backoffice HTTP contracts', () => {
       { version: 2, status: 'active' }
     )
   })
+  it('reinicia la data operativa con confirmación de slug', () => {
+    backofficeApi.resetWorkspaceData('w1', { confirmationSlug: 'acme-demo' })
+    expect(apiClient.post).toHaveBeenLastCalledWith(
+      '/api/v1/backoffice/workspaces/w1/data-reset',
+      { confirmationSlug: 'acme-demo' }
+    )
+  })
 })
