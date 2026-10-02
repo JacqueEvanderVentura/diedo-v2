@@ -6,7 +6,13 @@ from uuid import uuid7
 import pytest
 from app.core.errors import ResourceNotFoundError
 from app.core.security import hash_password
-from app.db.models import Branch, PlatformUser, WorkspaceMembership
+from app.db.models import (
+    Branch,
+    ModuleDefinition,
+    ModuleEntitlement,
+    PlatformUser,
+    WorkspaceMembership,
+)
 from app.db.session import get_engine, session_scope
 from app.services.authorization import PermissionGrant
 from app.services.demo_seed import seed_demo_data
@@ -382,3 +388,52 @@ def test_report_endpoints_require_auth_and_return_live_contracts(client: TestCli
     assert supply_usage.status_code == 200, supply_usage.text
     assert supply_usage.json()
     assert sum(Decimal(row["quantity"]) for row in supply_usage.json()) >= Decimal("10")
+
+
+@pytest.mark.integration
+def test_agenda_report_requires_appointments_module(client: TestClient) -> None:
+    password = "reports-agenda-module-password-not-a-secret"
+    with session_scope() as session:
+        seeded = seed_demo_data(session, hash_password(password), enabled=True)
+        workspace_id = seeded.workspace_id
+        assert workspace_id is not None
+        agenda = session.scalar(
+            select(ModuleDefinition).where(ModuleDefinition.code == "appointments")
+        )
+        assert agenda is not None
+        entitlement = session.scalar(
+            select(ModuleEntitlement).where(
+                ModuleEntitlement.workspace_id == workspace_id,
+                ModuleEntitlement.module_definition_id == agenda.id,
+            )
+        )
+        assert entitlement is not None
+        entitlement.status = "disabled"
+
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@erp.dev", "password": password},
+    )
+    assert login.status_code == 200, login.text
+    headers = {"Authorization": f"Bearer {login.json()['accessToken']}"}
+
+    assert client.get("/api/v1/reports/agenda/summary", headers=headers).status_code == 403
+    assert client.get("/api/v1/reports/agenda/appointments", headers=headers).status_code == 403
+    general = client.get(
+        "/api/v1/reports/general/summary", headers=headers, params={"period": "month"}
+    )
+    assert general.status_code == 200, general.text
+
+    with session_scope() as session:
+        agenda = session.scalar(
+            select(ModuleDefinition).where(ModuleDefinition.code == "appointments")
+        )
+        assert agenda is not None
+        entitlement = session.scalar(
+            select(ModuleEntitlement).where(
+                ModuleEntitlement.workspace_id == workspace_id,
+                ModuleEntitlement.module_definition_id == agenda.id,
+            )
+        )
+        assert entitlement is not None
+        entitlement.status = "enabled"

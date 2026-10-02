@@ -85,7 +85,7 @@ export const NAV_GROUPS = [
     children: [
       { label: 'Generales', to: '/reportes/generales' },
       { label: 'Membresías', to: '/reportes/membresias' },
-      { label: 'Agenda', to: '/reportes/agenda' },
+      { label: 'Agenda', to: '/reportes/agenda', module: 'appointments' },
       { label: 'Inventario', to: '/reportes/inventario' },
       { label: 'Dividendos', to: '/reportes/dividendos' },
       { label: 'Personal', to: '/reportes/personal' },

@@ -49,6 +49,9 @@ export function routeRequirement(pathname) {
   if (pathname === '/carwash' || pathname.startsWith('/carwash/')) {
     return { module: 'carwash', permission: 'carwash.read' }
   }
+  if (pathname === '/reportes/agenda' || pathname.startsWith('/reportes/agenda/')) {
+    return { module: 'appointments', permission: 'report.read' }
+  }
   if (pathname === '/reportes' || pathname.startsWith('/reportes/')) {
     return { module: 'reporting', permission: 'report.read' }
   }

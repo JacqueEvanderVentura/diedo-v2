@@ -67,6 +67,7 @@ from app.schemas.reports import (
 )
 from app.services.authorization import PermissionGrant
 from app.services.errors import ResourceNotFoundError
+from app.services.modules import ModuleAccessService
 
 _T = TypeVar("_T")
 _MONTHS = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic")
@@ -107,6 +108,7 @@ class _InventoryRow:
 class ReportsService:
     def __init__(self, session: Session) -> None:
         self._repository = ReportsRepository(session)
+        self._module_access = ModuleAccessService(session)
 
     def consolidated(
         self,
@@ -1058,6 +1060,7 @@ class ReportsService:
         branch_id: UUID | None,
         now: datetime | None,
     ) -> ReportContext:
+        self._module_access.require_module(grant.workspace_id, "appointments")
         effective_period: ReportPeriod = "quarter" if period == "all" else period
         context = self._context(grant, period=effective_period, branch_id=branch_id, now=now)
         return context

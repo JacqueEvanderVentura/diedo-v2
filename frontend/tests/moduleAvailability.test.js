@@ -142,6 +142,10 @@ describe('moduleAvailability', () => {
       module: 'reporting',
       permission: 'report.read',
     })
+    expect(routeRequirement('/reportes/agenda')).toEqual({
+      module: 'appointments',
+      permission: 'report.read',
+    })
     expect(canAccessCrmCommerce(['crm', 'sales'], ['crm.read', 'sales.read'])).toBe(true)
     expect(canAccessCrmCommerce(['crm'], ['crm.read'])).toBe(false)
   })
