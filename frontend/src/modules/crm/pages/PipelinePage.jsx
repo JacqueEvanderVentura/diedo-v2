@@ -13,10 +13,8 @@ import { OPPORTUNITY_STAGES, STAGE_META } from '@/data/crm'
 import { formatDOP } from '@/lib/format'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { cn } from '@/lib/utils'
-import { currentSessionActor } from '@/lib/sessionActor'
 import { useSessionStore } from '@/stores/sessionStore'
 import { usePointerKanban } from '@/modules/crm/hooks/usePointerKanban'
 import { CloseOpportunityInvoiceModal } from '@/modules/crm/components/CloseOpportunityInvoiceModal'
@@ -36,24 +34,12 @@ import { CustomerFormModal } from '../components/CustomerFormModal'
 import { QuoteFormModal } from '../components/QuoteFormModal'
 import {
   customersForOpportunityBranch,
-  isOpportunityCreateReady,
   opportunityCustomerDefaults,
 } from '../lib/pipelineForm'
 import { ensureCustomerForQuote } from '../lib/quoteCustomer'
 import { opportunityMatchesQuery } from '../lib/pipelineSearch'
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
 import { IncrementalListFooter } from '@/components/ui/IncrementalListFooter'
-
-const emptyOpportunity = () => ({
-  title: '',
-  customerName: '',
-  customerId: '',
-  value: '',
-  leadId: '',
-  branchId: '',
-  stage: 'nuevo',
-  notes: '',
-})
 
 function belongsToBranch(customer, branchId) {
   if (!branchId) return true
@@ -154,7 +140,6 @@ export default function PipelinePage() {
   const closeOpportunityWithInvoice = useCrmStore((state) => state.closeOpportunityWithInvoice)
   const addQuote = useCrmStore((state) => state.addQuote)
   const updateQuote = useCrmStore((state) => state.updateQuote)
-  const addOpportunity = useCrmStore((state) => state.addOpportunity)
   const products = useCatalogStore((state) => state.products)
   const convertToCustomer = useCrmStore((state) => state.convertToCustomer)
   const leads = useCrmStore((state) => state.leads)
@@ -163,16 +148,13 @@ export default function PipelinePage() {
   const paymentMethods = useConfigStore((state) => state.paymentMethods)
   const canInvoice = useSessionStore((state) => state.hasPermission(PIPELINE_INVOICE_PERMISSION))
   const sessionBranchId = useSessionStore((state) => state.user?.branchIds?.[0])
-  const sessionMembershipId = useSessionStore((state) => state.user?.membershipId)
-
-  const [modalOpen, setModalOpen] = useState(false)
+  const [newQuoteOpen, setNewQuoteOpen] = useState(false)
+  const [newQuoteContext, setNewQuoteContext] = useState(null)
   const [linkingOpportunity, setLinkingOpportunity] = useState(null)
   const [linkCustomerId, setLinkCustomerId] = useState('')
   const [branchIds, setBranchIds] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
-  const [form, setForm] = useState(emptyOpportunity())
   const [busyOpportunityId, setBusyOpportunityId] = useState(null)
-  const [saving, setSaving] = useState(false)
   const [pendingClose, setPendingClose] = useState(null)
   const [closePaymentMethod, setClosePaymentMethod] = useState('efectivo')
   const [elevationOpen, setElevationOpen] = useState(false)
@@ -393,71 +375,15 @@ export default function PipelinePage() {
     isDisabled: Boolean(busyOpportunityId),
   })
 
-  const selectedCustomer = activeCustomers.find((customer) => customer.id === form.customerId)
-  const formBranches = branches.filter((branch) => (
-    branch.active && (!selectedCustomer || belongsToBranch(selectedCustomer, branch.id))
-  ))
   const linkableCustomers = linkingOpportunity
     ? activeCustomers.filter((customer) => belongsToBranch(customer, linkingOpportunity.branchId))
     : []
 
-  const selectLead = (leadId) => {
-    const lead = leads.find((item) => item.id === leadId)
-    setForm((current) => ({
-      ...current,
-      leadId,
-      customerId: '',
-      customerName: lead ? lead.company || lead.name : '',
-      branchId: lead?.branchId || current.branchId,
-      title: current.title || (lead ? `${lead.company || lead.name} — Oportunidad` : ''),
-    }))
-  }
-
-  const selectCustomer = (customerId) => {
-    const customer = activeCustomers.find((item) => item.id === customerId)
-    setForm((current) => ({
-      ...current,
-      customerId,
-      leadId: '',
-      customerName: customer?.name || '',
-      branchId: customer?.branchIds?.[0] || customer?.branchId || current.branchId,
-      title: current.title || (customer ? `${customer.name} — Oportunidad` : ''),
-    }))
-  }
-
-  const openCreate = () => {
-    setForm({
-      ...emptyOpportunity(),
+  const openNewQuote = () => {
+    setNewQuoteContext({
       branchId: sessionBranchId || branches.find((branch) => branch.active)?.id || '',
     })
-    setModalOpen(true)
-  }
-
-  const submit = async () => {
-    if (!isOpportunityCreateReady(form)) {
-      return toast.error('Completa título, nombre del cliente y sucursal')
-    }
-    setSaving(true)
-    try {
-      await addOpportunity({
-        title: form.title.trim(),
-        customerName: form.customerName.trim(),
-        customerId: form.customerId || null,
-        value: Number(form.value) || 0,
-        leadId: form.leadId || null,
-        stage: form.stage,
-        branchId: form.branchId,
-        assignedUserId: sessionMembershipId || currentSessionActor().id,
-        notes: form.notes.trim(),
-      })
-      setModalOpen(false)
-      setForm(emptyOpportunity())
-      toast.success('Oportunidad creada y vinculada')
-    } catch (error) {
-      toast.error(error.message || 'No se pudo crear la oportunidad')
-    } finally {
-      setSaving(false)
-    }
+    setNewQuoteOpen(true)
   }
 
   const convertOpportunity = async (opportunity) => {
@@ -487,17 +413,6 @@ export default function PipelinePage() {
     if (!linkingOpportunity) return
     setCustomerFormDefaults(opportunityCustomerDefaults(linkingOpportunity))
     setCustomerFormTarget('link')
-    setCustomerFormOpen(true)
-  }
-
-  const openCreateCustomerForNewOpp = () => {
-    setCustomerFormDefaults({
-      name: form.customerName || '',
-      company: form.customerName || '',
-      customerType: 'b2b',
-      branchIds: form.branchId ? [form.branchId] : [],
-    })
-    setCustomerFormTarget('create-opp')
     setCustomerFormOpen(true)
   }
 
@@ -560,16 +475,6 @@ export default function PipelinePage() {
     }
     if (customerFormTarget === 'link' && linkingOpportunity) {
       await attachCustomerToOpportunity(linkingOpportunity, customer)
-      return
-    }
-    if (customerFormTarget === 'create-opp') {
-      selectCustomer(customer.id)
-      setForm((current) => ({
-        ...current,
-        customerName: customer.name,
-        branchId: customer.branchIds?.[0] || customer.branchId || current.branchId,
-      }))
-      toast.success('Cliente listo para la oportunidad')
     }
   }
 
@@ -606,17 +511,6 @@ export default function PipelinePage() {
     return () => observer.disconnect()
   }, [])
 
-  const leadOptions = [
-    { value: '', label: 'Sin lead' },
-    ...leads
-      .filter((lead) => !lead.opportunityId && lead.status !== 'convertido')
-      .map((lead) => ({ value: lead.id, label: lead.company || lead.name })),
-  ]
-  const customerOptions = [
-    { value: '', label: 'Sin cliente' },
-    ...activeCustomers.map((customer) => ({ value: customer.id, label: customer.name })),
-  ]
-
   return (
     <div
       className="mx-auto flex h-full min-h-0 w-full max-w-[1600px] flex-col gap-4 overflow-hidden p-6 sm:p-8"
@@ -647,8 +541,8 @@ export default function PipelinePage() {
               className={CRM_BRANCH_FILTER_CLASS}
               testId="pipeline-branch-filter"
             />
-            <Button onClick={openCreate} disabled={!can.manage}>
-              <Plus className="h-4 w-4" /> Nueva oportunidad
+            <Button onClick={openNewQuote} disabled={!can.quote}>
+              <Plus className="h-4 w-4" /> Nueva cotización
             </Button>
           </div>
         </div>
@@ -747,68 +641,18 @@ export default function PipelinePage() {
         </div>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Nueva oportunidad">
-        <div className="space-y-4">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Lead origen</label>
-            <Select value={form.leadId} onChange={selectLead} options={leadOptions} data-testid="opportunity-lead" />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Cliente existente</label>
-            <Select value={form.customerId} onChange={selectCustomer} options={customerOptions} data-testid="opportunity-customer" />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Título</label>
-            <Input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Empresa o cliente</label>
-            <Input
-              value={form.customerName}
-              disabled={Boolean(form.leadId || form.customerId)}
-              onChange={(event) => setForm((current) => ({
-                ...current,
-                customerName: event.target.value,
-                title: current.title || (event.target.value ? `${event.target.value} — Oportunidad` : ''),
-              }))}
-            />
-          </div>
-          {!form.customerId && (
-            <Button type="button" size="sm" variant="secondary" onClick={openCreateCustomerForNewOpp}>
-              <UserPlus className="h-3.5 w-3.5" /> Crear cliente
-            </Button>
-          )}
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Sucursal</label>
-            <BranchMultiSelect
-              branches={formBranches}
-              branchIds={form.branchId ? [form.branchId] : []}
-              onChange={(ids) => setForm((current) => ({ ...current, branchId: ids[0] || '' }))}
-              selectionMode="single"
-              showAllOption={false}
-              disabled={Boolean(form.leadId)}
-              className="w-full"
-              testId="opportunity-branch"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Valor (DOP)</label>
-            <Input type="number" min="0" value={form.value} onChange={(event) => setForm((current) => ({ ...current, value: event.target.value }))} />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Etapa inicial</label>
-            <Select value={form.stage} onChange={(stage) => setForm((current) => ({ ...current, stage }))} options={OPPORTUNITY_STAGES.map((stage) => ({ value: stage, label: STAGE_META[stage].label }))} />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Notas</label>
-            <Input value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
-            <Button onClick={submit} disabled={saving}>{saving ? 'Creando...' : 'Crear'}</Button>
-          </div>
-        </div>
-      </Modal>
+      <QuoteFormModal
+        open={newQuoteOpen}
+        onClose={() => {
+          setNewQuoteOpen(false)
+          setNewQuoteContext(null)
+        }}
+        initialContext={newQuoteContext}
+        onSaved={() => {
+          setNewQuoteOpen(false)
+          setNewQuoteContext(null)
+        }}
+      />
 
       <CloseOpportunityInvoiceModal
         open={Boolean(pendingOpportunity) && canInvoice}

@@ -2,7 +2,7 @@ import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { List, Search, ScanSearch, MapPin, Phone, Globe, Import, UserCheck, Briefcase, Plus, Pencil, Trash2, CheckSquare, Square } from 'lucide-react'
+import { List, Search, ScanSearch, MapPin, Phone, Globe, Import, UserCheck, Plus, Pencil, Trash2, CheckSquare, Square } from 'lucide-react'
 import { useCrmStore } from '@/stores/crmStore'
 import { searchBusinesses } from '@/services/leadSearch'
 import {
@@ -11,7 +11,7 @@ import {
   ACQUISITION_SOURCE_LABELS,
   STAGE_META,
 } from '@/data/crm'
-import { leadPipelineStage, opportunityStageToLeadStatus } from '../lib/pipelineLeads'
+import { leadPipelineStage } from '../lib/pipelineLeads'
 import { buildLeadWhatsAppVariables } from '@/lib/whatsapp'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -53,9 +53,6 @@ function LeadsListaTab({ onEditLead }) {
   const branches = useConfigStore((s) => s.branches)
   const businessName = useConfigStore((s) => s.settings?.businessName || '')
   const convertToCustomer = useCrmStore((s) => s.convertToCustomer)
-  const addToPipeline = useCrmStore((s) => s.addToPipeline)
-  const updateLead = useCrmStore((s) => s.updateLead)
-  const updateOpportunity = useCrmStore((s) => s.updateOpportunity)
   const setLeadStarRating = useCrmStore((s) => s.setLeadStarRating)
   const leadsListMeta = useCrmStore((s) => s.leadsListMeta)
   const fetchLeadsPage = useCrmStore((s) => s.fetchLeadsPage)
@@ -204,39 +201,6 @@ function LeadsListaTab({ onEditLead }) {
     })
   }
 
-  const setLeadPipelineStage = async (lead, stage) => {
-    const opportunity = opportunityByLeadId.get(lead.id)
-    try {
-      if (opportunity) {
-        const patch = { stage }
-        if (stage === 'perdido' && !opportunity.lostReason) {
-          patch.lostReason = 'Otro'
-        }
-        await updateOpportunity(opportunity.id, patch)
-      } else {
-        await updateLead(lead.id, { status: opportunityStageToLeadStatus(stage) })
-      }
-    } catch (error) {
-      toast.error(error.message || 'No se pudo actualizar la etapa')
-    }
-  }
-
-  const sendToPipeline = async (leadId) => {
-    try {
-      const opportunity = await addToPipeline(leadId)
-      if (!opportunity) return toast.error('No se encontró el lead')
-      const lead = useCrmStore.getState().leads.find((item) => item.id === leadId)
-      setHandoff({
-        leadId,
-        opportunityId: opportunity.id,
-        customerId: opportunity.customerId || lead?.customerId || null,
-      })
-      toast.success('Oportunidad creada. Elige el siguiente paso en la tarjeta del lead.')
-    } catch (error) {
-      toast.error(error.message || 'No se pudo enviar el lead al pipeline')
-    }
-  }
-
   const convertLead = async (leadId) => {
     try {
       const customer = await convertToCustomer(leadId)
@@ -378,27 +342,11 @@ function LeadsListaTab({ onEditLead }) {
                       >
                         <Trash2 className="h-3.5 w-3.5" /> Eliminar
                       </Button>
-                      {lead.opportunityId ? (
-                        <Button size="sm" variant="secondary" disabled>
-                          <Briefcase className="h-3.5 w-3.5" /> En pipeline
-                        </Button>
-                      ) : (
-                        <Button size="sm" variant="secondary" onClick={() => sendToPipeline(lead.id)}>
-                          <Briefcase className="h-3.5 w-3.5" /> Pipeline
-                        </Button>
-                      )}
                       <Button size="sm" disabled={!can.convert} onClick={() => convertLead(lead.id)}>
                         <UserCheck className="h-3.5 w-3.5" /> Convertir
                       </Button>
                     </>
                   )}
-                  <Select
-                    disabled={!can.manage}
-                    value={pipelineStage}
-                    onChange={(v) => setLeadPipelineStage(lead, v)}
-                    options={OPPORTUNITY_STAGES.map((s) => ({ value: s, label: STAGE_META[s].label }))}
-                    className="w-40"
-                  />
                 </div>
               </div>
               {handoff?.leadId === lead.id && (

@@ -25,7 +25,12 @@ import {
 } from '../lib/quoteForm'
 import { CustomerFormModal } from './CustomerFormModal'
 import { opportunityCompanyLabel } from '../lib/opportunityCustomer'
-import { ensureCustomerForLeadQuote, ensureCustomerForQuote } from '../lib/quoteCustomer'
+import {
+  ensureCustomerForLeadQuote,
+  ensureCustomerForQuote,
+  resolveOpportunityForQuote,
+} from '../lib/quoteCustomer'
+import { currentSessionActor } from '@/lib/sessionActor'
 import { QuotePartyPicker } from './QuotePartyPicker'
 
 function belongsToBranch(customer, branchId) {
@@ -50,8 +55,10 @@ export function QuoteFormModal({
   const leads = useCrmStore((s) => s.leads)
   const convertToCustomer = useCrmStore((s) => s.convertToCustomer)
   const updateOpportunity = useCrmStore((s) => s.updateOpportunity)
+  const addOpportunity = useCrmStore((s) => s.addOpportunity)
   const addQuote = useCrmStore((s) => s.addQuote)
   const updateQuote = useCrmStore((s) => s.updateQuote)
+  const sessionMembershipId = useSessionStore((s) => s.user?.membershipId)
 
   const [draft, setDraft] = useState(emptyQuoteDraft)
   const [saving, setSaving] = useState(false)
@@ -144,14 +151,6 @@ export function QuoteFormModal({
     return null
   }, [draft])
 
-  const oppOptions = useMemo(() => [
-    { value: '', label: 'Sin oportunidad' },
-    ...opportunities.map((opportunity) => ({
-      value: opportunity.id,
-      label: opportunity.title,
-    })),
-  ], [opportunities])
-
   const itemsPreview = useMemo(
     () => quoteLinesToItems(draft.lines, catalogById),
     [draft.lines, catalogById],
@@ -234,9 +233,11 @@ export function QuoteFormModal({
       return
     }
     let customer = customers.find((item) => item.id === draft.customerId)
-    let opportunityId = draft.opportunityId || null
+    let leadForQuote = null
+    let opportunityId = draft.opportunityId || initialContext?.opportunityId || null
     if (draft.partyType === 'lead' && draft.leadId) {
       const lead = leads.find((item) => item.id === draft.leadId)
+      leadForQuote = lead
       const ensured = await ensureCustomerForLeadQuote({
         lead,
         opportunities,
@@ -289,6 +290,26 @@ export function QuoteFormModal({
         return
       }
     }
+
+    if (!leadForQuote && draft.leadId) {
+      leadForQuote = leads.find((item) => item.id === draft.leadId) || null
+    }
+
+    opportunityId = await resolveOpportunityForQuote({
+      editing,
+      explicitOpportunityId: editing ? (quote?.opportunityId || opportunityId) : opportunityId,
+      opportunities,
+      customerId: customer.id,
+      leadId: draft.leadId || leadForQuote?.id || null,
+      lead: leadForQuote,
+      branchId,
+      customerName: customer.name,
+      items,
+      total,
+      addOpportunity,
+      updateOpportunity,
+      assignedUserId: sessionMembershipId || currentSessionActor().id,
+    })
 
     setSaving(true)
     try {
@@ -358,8 +379,7 @@ export function QuoteFormModal({
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
+          <div>
               <label className="mb-1 block text-xs font-medium text-slate-500">Lead / Cliente</label>
               <QuotePartyPicker
                 value={partyValue}
@@ -395,24 +415,6 @@ export function QuoteFormModal({
                   }))
                 }}
               />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Oportunidad</label>
-              <Select
-                value={draft.opportunityId}
-                onChange={(value) => {
-                  const opportunity = opportunities.find((item) => item.id === value)
-                  setDraft((current) => ({
-                    ...current,
-                    opportunityId: value,
-                    customerId: opportunity?.customerId || current.customerId,
-                    branchId: opportunity?.branchId || current.branchId,
-                  }))
-                }}
-                options={oppOptions}
-                disabled={Boolean(initialContext?.opportunityId) || !editable}
-              />
-            </div>
           </div>
 
           <div>

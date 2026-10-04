@@ -20,7 +20,6 @@ import { CustomerFormModal } from '@/modules/crm/components/CustomerFormModal'
 import { CustomerDetailPanel } from '@/modules/crm/components/CustomerDetailModal'
 import { QuoteFormModal } from '@/modules/crm/components/QuoteFormModal'
 import { ActivityFormModal } from '@/modules/crm/components/ActivityFormModal'
-import { CustomerQuickOpportunityModal } from '@/modules/crm/components/CustomerQuickOpportunityModal'
 import { AppointmentFormModal } from '@/modules/agenda/components/AppointmentFormModal'
 import { SaleDetailModal } from '@/modules/crm/components/SaleDetailModal'
 import { cn } from '@/lib/utils'
@@ -53,8 +52,6 @@ export function SimplifiedCustomersPanel() {
   const [quoteContext, setQuoteContext] = useState(null)
   const [taskOpen, setTaskOpen] = useState(false)
   const [taskCustomerId, setTaskCustomerId] = useState('')
-  const [opportunityOpen, setOpportunityOpen] = useState(false)
-  const [opportunityCustomer, setOpportunityCustomer] = useState(null)
   const [saleDetail, setSaleDetail] = useState(null)
 
   useEffect(() => {
@@ -255,10 +252,6 @@ export function SimplifiedCustomersPanel() {
                   setTaskCustomerId(c.id)
                   setTaskOpen(true)
                 }}
-                onNewOpportunity={(c) => {
-                  setOpportunityCustomer(c)
-                  setOpportunityOpen(true)
-                }}
                 onOpenSale={(sale) => setSaleDetail(sale)}
               />
             ) : (
@@ -297,11 +290,6 @@ export function SimplifiedCustomersPanel() {
         open={taskOpen}
         onClose={() => { setTaskOpen(false); setTaskCustomerId('') }}
         defaultCustomerId={taskCustomerId}
-      />
-      <CustomerQuickOpportunityModal
-        open={opportunityOpen}
-        onClose={() => { setOpportunityOpen(false); setOpportunityCustomer(null) }}
-        customer={opportunityCustomer}
       />
       <SaleDetailModal
         open={Boolean(saleDetail)}

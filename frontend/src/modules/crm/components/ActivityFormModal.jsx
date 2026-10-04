@@ -83,27 +83,13 @@ export function ActivityFormModal({ open, onClose, activity, defaultOpportunityI
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
-  const selectOpportunity = (opportunityId) => {
-    const opportunity = opportunities.find((item) => item.id === opportunityId)
-    setForm((current) => ({
-      ...current,
-      opportunityId,
-      leadId: opportunity?.leadId || null,
-      customerId: opportunity?.customerId || '',
-      customerName: opportunity?.customerName || current.customerName,
-      branchId: opportunity?.branchId || current.branchId,
-    }))
-  }
-
   const selectCustomer = (customerId) => {
     const customer = customers.find((item) => item.id === customerId)
     setForm((current) => ({
       ...current,
       customerId,
       customerName: customer?.name || '',
-      branchId: current.opportunityId
-        ? current.branchId
-        : customer?.branchId || customer?.branchIds?.[0] || current.branchId,
+      branchId: customer?.branchId || customer?.branchIds?.[0] || current.branchId,
     }))
   }
 
@@ -141,10 +127,6 @@ export function ActivityFormModal({ open, onClose, activity, defaultOpportunityI
     }
   }
 
-  const opportunityOptions = [
-    { value: '', label: 'Sin oportunidad' },
-    ...opportunities.map((item) => ({ value: item.id, label: item.title })),
-  ]
   const customerOptions = [
     { value: '', label: 'Sin cliente' },
     ...customers.filter((c) => !c.isDefault).map((c) => ({ value: c.id, label: c.name })),
@@ -169,23 +151,13 @@ export function ActivityFormModal({ open, onClose, activity, defaultOpportunityI
           <Input value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="Ej. Llamar al cliente" data-testid="activity-title" />
         </div>
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-slate-600">Oportunidad (opcional)</label>
-          <Select
-            value={form.opportunityId}
-            onChange={selectOpportunity}
-            options={opportunityOptions}
-            disabled={editing}
-            data-testid="activity-opportunity"
-          />
-        </div>
-        <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Cliente (opcional)</label>
           <Select
             value={form.customerId}
             onChange={selectCustomer}
             placeholder="Seleccionar cliente"
             options={customerOptions}
-            disabled={editing || Boolean(form.opportunityId && form.customerId) || Boolean(defaultCustomerId)}
+            disabled={editing || Boolean(defaultCustomerId)}
           />
         </div>
         <div>

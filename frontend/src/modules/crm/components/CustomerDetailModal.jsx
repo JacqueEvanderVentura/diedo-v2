@@ -13,7 +13,6 @@ import {
   CalendarPlus,
   Building2,
   FileText,
-  Briefcase,
   CheckSquare,
 } from 'lucide-react'
 import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
@@ -52,7 +51,6 @@ export function CustomerDetailPanel({
   onSchedule,
   onQuote,
   onNewTask,
-  onNewOpportunity,
   onOpenSale,
 }) {
   const can = useCrmCapabilities()
@@ -157,9 +155,6 @@ export function CustomerDetailPanel({
           <div className="flex flex-wrap gap-2" data-testid="customer-detail-actions">
             <Button size="sm" variant="secondary" disabled={!can.quote} onClick={() => onQuote?.(customer)}>
               <FileText className="h-3.5 w-3.5" /> Cotizar
-            </Button>
-            <Button size="sm" variant="secondary" disabled={!can.manage} onClick={() => onNewOpportunity?.(customer)}>
-              <Briefcase className="h-3.5 w-3.5" /> Oportunidad
             </Button>
             <Button size="sm" variant="secondary" disabled={!can.manage} onClick={() => onNewTask?.(customer)}>
               <CheckSquare className="h-3.5 w-3.5" /> Tarea
@@ -360,7 +355,6 @@ export function CustomerDetailModal({
   onSchedule,
   onQuote,
   onNewTask,
-  onNewOpportunity,
   onOpenSale,
 }) {
   return (
@@ -373,7 +367,6 @@ export function CustomerDetailModal({
           onSchedule={onSchedule}
           onQuote={onQuote}
           onNewTask={onNewTask}
-          onNewOpportunity={onNewOpportunity}
           onOpenSale={onOpenSale}
         />
       )}
