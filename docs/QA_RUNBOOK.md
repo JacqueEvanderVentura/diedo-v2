@@ -33,7 +33,9 @@ No hay servicio `web` en Railway para QA: el frontend es solo Cloudflare Worker.
 
 ## Datos iniciales
 
-La base y el bucket se cargaron desde producción (solo lectura en prod). QA contiene datos reales: tratar como confidencial; no enviar correos (`EMAIL_ENABLED=false`).
+La base y el bucket se cargaron desde producción (solo lectura en prod). En el corte inicial se restauró un `pg_dump` custom y se copiaron **8** objetos al bucket QA. QA contiene datos reales: tratar como confidencial; no enviar correos (`EMAIL_ENABLED=false`).
+
+**Pendiente opcional en Railway:** existe un patch staged con el servicio `s3-copy-prod-to-qa` (artefacto del agente). No aplicar `accept-deploy` de ese patch; eliminarlo desde el dashboard si aparece en el canvas de `diedo-qa`.
 
 ## Verificación
 
