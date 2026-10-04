@@ -10,10 +10,15 @@ function parseFile(filePath) {
 describe('Cloudflare static deployment configuration', () => {
   it('publica sin dominio propio y compila CI contra Railway', () => {
     const config = JSON.parse(fs.readFileSync('wrangler.jsonc', 'utf8'))
-    for (const environment of Object.values(config.env)) {
+    const apiOrigins = {
+      preview: 'https://api-production-b1fb.up.railway.app',
+      production: 'https://api-production-b1fb.up.railway.app',
+      qa: 'https://api-qa-6ed7.up.railway.app',
+    }
+    for (const [envName, environment] of Object.entries(config.env)) {
       expect(environment.workers_dev).toBe(true)
       expect(environment.routes ?? []).toEqual([])
-      expect(environment.vars.API_ORIGIN).toBe('https://api-production-b1fb.up.railway.app')
+      expect(environment.vars.API_ORIGIN).toBe(apiOrigins[envName])
     }
     const workflowsDir = path.join('..', '.github', 'workflows')
     const ci = fs.readFileSync(path.join(workflowsDir, 'ci.yml'), 'utf8')
@@ -80,6 +85,7 @@ describe('Cloudflare static deployment configuration', () => {
     expect(raw).toContain('"directory": "./dist"')
     expect(raw).toContain('"name": "diedo-frontend-preview"')
     expect(raw).toContain('"name": "diedo-frontend-production"')
+    expect(raw).toContain('"name": "diedo-frontend-qa"')
   })
 
   it('usar assets versionados para cache de largo plazo', () => {

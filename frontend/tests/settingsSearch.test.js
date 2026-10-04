@@ -17,7 +17,10 @@ describe('filterSettingsSections', () => {
   it('muestra toda la sección Cuenta al buscar el separador', () => {
     const result = filterSettingsSections(SETTINGS_SECTIONS, 'cuenta')
     expect(titles(result)).toEqual([
-      { title: 'Cuenta', items: ['Perfil', 'Notificaciones', 'Seguridad'] },
+      {
+        title: 'Cuenta',
+        items: ['Perfil', 'Notificaciones', 'Seguridad', 'Zona de peligro'],
+      },
     ])
     expect(result[0].items.every((item) => item.visibleBlockIds == null)).toBe(true)
   })
