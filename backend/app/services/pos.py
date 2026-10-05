@@ -1345,7 +1345,9 @@ class PosService:
                 "customerId",
             )
         if resolved_tenders is not None:
-            tender_total = money(sum(tender.amount for tender in resolved_tenders))
+            tender_total = money(
+                sum((tender.amount for tender in resolved_tenders), Decimal("0"))
+            )
             if tender_total != priced.total:
                 raise InvalidOperationError(
                     "La suma de los pagos debe coincidir con el total de la venta.",
@@ -2138,7 +2140,14 @@ class PosService:
             )
         record = self._repository.receivable_record(receivable)
         payments_total = money(
-            sum(row.payment.amount for row in record.payments if row.payment.status == "posted")
+            sum(
+                (
+                    row.payment.amount
+                    for row in record.payments
+                    if row.payment.status == "posted"
+                ),
+                Decimal("0"),
+            )
         )
         if receivable.approval_pending_amount > 0 and receivable.paid_amount <= payments_total:
             receivable.approval_pending_amount = Decimal("0")
@@ -2200,7 +2209,14 @@ class PosService:
             raise ResourceNotFoundError("El comprobante no existe.", "proofId")
         record = self._repository.receivable_record(receivable)
         payments_total = money(
-            sum(row.payment.amount for row in record.payments if row.payment.status == "posted")
+            sum(
+                (
+                    row.payment.amount
+                    for row in record.payments
+                    if row.payment.status == "posted"
+                ),
+                Decimal("0"),
+            )
         )
         if receivable.paid_amount > payments_total:
             receivable.paid_amount = payments_total
@@ -2627,7 +2643,9 @@ class PosService:
                 "customerId",
             )
         if resolved_tenders is not None:
-            tender_total = money(sum(tender.amount for tender in resolved_tenders))
+            tender_total = money(
+                sum((tender.amount for tender in resolved_tenders), Decimal("0"))
+            )
             if tender_total != priced.total:
                 raise InvalidOperationError(
                     "La suma de los pagos debe coincidir con el total de la venta.",
@@ -2727,10 +2745,13 @@ class PosService:
             outstanding = money(priced.total - paid_amount - approval_pending_amount)
             cash_drawer_total = money(
                 sum(
-                    tender.amount
-                    for tender in resolved_tenders
-                    if tender.method.settlement_policy == "immediate"
-                    and tender.method.affects_cash_drawer
+                    (
+                        tender.amount
+                        for tender in resolved_tenders
+                        if tender.method.settlement_policy == "immediate"
+                        and tender.method.affects_cash_drawer
+                    ),
+                    Decimal("0"),
                 )
             )
             if cash_drawer_total > 0:
@@ -2830,20 +2851,20 @@ class PosService:
                     for line in existing_lines:
                         self._session.delete(line)
                     self._session.flush()
-                    for line in sale_record.lines:
+                    for sale_line in sale_record.lines:
                         self._session.add(
                             CustomerReceivableLine(
                                 workspace_id=grant.workspace_id,
                                 receivable_id=receivable.id,
-                                position=line.position,
-                                sale_line_id=line.id,
-                                item_id=line.item_id,
-                                item_name=line.item_name,
-                                item_sku=line.item_sku,
-                                unit_symbol=line.unit_symbol,
-                                quantity=line.quantity,
-                                unit_price=line.unit_price,
-                                line_total=line.line_total,
+                                position=sale_line.position,
+                                sale_line_id=sale_line.id,
+                                item_id=sale_line.item_id,
+                                item_name=sale_line.item_name,
+                                item_sku=sale_line.item_sku,
+                                unit_symbol=sale_line.unit_symbol,
+                                quantity=sale_line.quantity,
+                                unit_price=sale_line.unit_price,
+                                line_total=sale_line.line_total,
                             )
                         )
                     self._sync_appointment_balance(receivable)
@@ -2922,20 +2943,20 @@ class PosService:
                 for line in existing_lines:
                     self._session.delete(line)
                 self._session.flush()
-                for line in sale_record.lines:
+                for sale_line in sale_record.lines:
                     self._session.add(
                         CustomerReceivableLine(
                             workspace_id=grant.workspace_id,
                             receivable_id=receivable.id,
-                            position=line.position,
-                            sale_line_id=line.id,
-                            item_id=line.item_id,
-                            item_name=line.item_name,
-                            item_sku=line.item_sku,
-                            unit_symbol=line.unit_symbol,
-                            quantity=line.quantity,
-                            unit_price=line.unit_price,
-                            line_total=line.line_total,
+                            position=sale_line.position,
+                            sale_line_id=sale_line.id,
+                            item_id=sale_line.item_id,
+                            item_name=sale_line.item_name,
+                            item_sku=sale_line.item_sku,
+                            unit_symbol=sale_line.unit_symbol,
+                            quantity=sale_line.quantity,
+                            unit_price=sale_line.unit_price,
+                            line_total=sale_line.line_total,
                         )
                     )
                 self._sync_appointment_balance(receivable)
