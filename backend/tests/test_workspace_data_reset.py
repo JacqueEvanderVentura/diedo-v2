@@ -80,9 +80,7 @@ def test_tenant_reset_happy_path(
 
     with session_scope() as session:
         customers = session.scalar(
-            select(func.count())
-            .select_from(Customer)
-            .where(Customer.workspace_id == workspace_id)
+            select(func.count()).select_from(Customer).where(Customer.workspace_id == workspace_id)
         )
         memberships = session.scalar(
             select(func.count())
