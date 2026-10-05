@@ -14,7 +14,7 @@ from app.services.local_bootstrap import (
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
-from tests.test_backoffice_management import member, workspace
+from tests.test_backoffice_management import PASSWORD, member, workspace
 
 _OPERATOR_PASSWORD = "Backoffice!Reset-Test-1"
 
@@ -44,7 +44,7 @@ def test_tenant_reset_happy_path(
     company = workspace(client, operator_headers)
     slug = company["slug"]
     workspace_id = company["workspaceId"]
-    owner_headers = _login(client, company["owner"]["email"], _OPERATOR_PASSWORD)
+    owner_headers = _login(client, company["owner"]["email"], PASSWORD)
     branch_id = company["branches"][0]["id"]
 
     customer = client.post(
@@ -102,7 +102,7 @@ def test_tenant_reset_happy_path(
     me = client.get("/api/v1/auth/me", headers=owner_headers)
     assert me.status_code == 401
 
-    owner_headers_fresh = _login(client, company["owner"]["email"], _OPERATOR_PASSWORD)
+    owner_headers_fresh = _login(client, company["owner"]["email"], PASSWORD)
     idempotent = client.post(
         "/api/v1/workspace/data-reset",
         headers=owner_headers_fresh,
@@ -118,7 +118,7 @@ def test_tenant_reset_rejects_non_admin(
 ) -> None:
     company = workspace(client, operator_headers)
     seller = member(client, operator_headers, company, admin=False)
-    seller_headers = _login(client, seller["email"], _OPERATOR_PASSWORD)
+    seller_headers = _login(client, seller["email"], PASSWORD)
     response = client.post(
         "/api/v1/workspace/data-reset",
         headers=seller_headers,
