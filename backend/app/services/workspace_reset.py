@@ -8,8 +8,6 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-AuditActorType = Literal["operator", "api_key", "tenant"]
-
 from sqlalchemy import delete, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
@@ -104,6 +102,8 @@ from app.services.attachment_storage import AttachmentStorage
 from app.services.errors import ConflictError, ResourceNotFoundError
 from app.services.platform_workspace import PLATFORM_WORKSPACE_SLUG
 from app.services.workspace_provisioning import _PAYMENT_METHODS, _UNITS_OF_MEASURE
+
+AuditActorType = Literal["operator", "api_key", "tenant"]
 
 logger = logging.getLogger(__name__)
 
