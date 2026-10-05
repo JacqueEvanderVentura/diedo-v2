@@ -1345,9 +1345,7 @@ class PosService:
                 "customerId",
             )
         if resolved_tenders is not None:
-            tender_total = money(
-                sum((tender.amount for tender in resolved_tenders), Decimal("0"))
-            )
+            tender_total = money(sum((tender.amount for tender in resolved_tenders), Decimal("0")))
             if tender_total != priced.total:
                 raise InvalidOperationError(
                     "La suma de los pagos debe coincidir con el total de la venta.",
@@ -2141,11 +2139,7 @@ class PosService:
         record = self._repository.receivable_record(receivable)
         payments_total = money(
             sum(
-                (
-                    row.payment.amount
-                    for row in record.payments
-                    if row.payment.status == "posted"
-                ),
+                (row.payment.amount for row in record.payments if row.payment.status == "posted"),
                 Decimal("0"),
             )
         )
@@ -2210,11 +2204,7 @@ class PosService:
         record = self._repository.receivable_record(receivable)
         payments_total = money(
             sum(
-                (
-                    row.payment.amount
-                    for row in record.payments
-                    if row.payment.status == "posted"
-                ),
+                (row.payment.amount for row in record.payments if row.payment.status == "posted"),
                 Decimal("0"),
             )
         )
@@ -2643,9 +2633,7 @@ class PosService:
                 "customerId",
             )
         if resolved_tenders is not None:
-            tender_total = money(
-                sum((tender.amount for tender in resolved_tenders), Decimal("0"))
-            )
+            tender_total = money(sum((tender.amount for tender in resolved_tenders), Decimal("0")))
             if tender_total != priced.total:
                 raise InvalidOperationError(
                     "La suma de los pagos debe coincidir con el total de la venta.",
