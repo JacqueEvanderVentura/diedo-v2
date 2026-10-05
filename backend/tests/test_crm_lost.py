@@ -29,97 +29,84 @@ def _owner(client: TestClient) -> tuple[dict[str, str], str]:
 
 
 @pytest.mark.integration
-def test_lost_opportunity_persists_and_reopening_preserves_audit_and_lead() -> None:
+def test_lost_lead_persists_and_reopening_preserves_audit() -> None:
     marker = uuid7().hex[-12:]
     with TestClient(app) as client:
         headers, branch_id = _owner(client)
         lead = client.post(
             "/api/v1/crm/leads",
             headers={**headers, "Idempotency-Key": f"lost-lead-{marker}"},
-            json={"branchId": branch_id, "name": f"Prospecto {marker}"},
+            json={"branchId": branch_id, "name": f"Prospecto {marker}", "status": "propuesta"},
         )
         assert lead.status_code == 201, lead.text
-        opportunity = client.post(
-            f"/api/v1/crm/leads/{lead.json()['id']}/opportunity",
-            headers={**headers, "Idempotency-Key": f"lost-opportunity-{marker}"},
-            json={"stage": "propuesta"},
-        )
-        assert opportunity.status_code == 201, opportunity.text
-        opportunity_id = opportunity.json()["id"]
-        lead_status_before_loss = client.get(
-            f"/api/v1/crm/leads/{lead.json()['id']}", headers=headers
-        ).json()["status"]
-
         lost = client.patch(
-            f"/api/v1/crm/opportunities/{opportunity_id}",
+            f"/api/v1/crm/leads/{lead.json()['id']}",
             headers=headers,
             json={
-                "version": opportunity.json()["version"],
-                "stage": "perdido",
+                "version": lead.json()["version"],
+                "status": "perdido",
                 "lostReason": "Precio alto",
             },
         )
         assert lost.status_code == 200, lost.text
         assert lost.json()["lostReason"] == "Precio alto"
-        assert lost.json()["closedAt"] is not None
+        assert lost.json()["pipelineClosedAt"] is not None
         assert (
             client.get(f"/api/v1/crm/leads/{lead.json()['id']}", headers=headers).json()["status"]
-            == lead_status_before_loss
+            == "perdido"
         )
         listing = client.get(
-            "/api/v1/crm/opportunities",
+            "/api/v1/crm/leads",
             headers=headers,
-            params={"stage": "perdido", "page": 1, "pageSize": 1},
+            params={"status": "perdido", "page": 1, "pageSize": 50},
         )
         assert listing.status_code == 200, listing.text
-        assert listing.json()["totalItems"] >= 1
-        assert (
-            client.get(f"/api/v1/crm/opportunities/{opportunity_id}", headers=headers).json()[
-                "lostReason"
-            ]
-            == "Precio alto"
-        )
+        assert any(item["id"] == lead.json()["id"] for item in listing.json()["items"])
 
         reopened = client.patch(
-            f"/api/v1/crm/opportunities/{opportunity_id}",
+            f"/api/v1/crm/leads/{lead.json()['id']}",
             headers=headers,
-            json={"version": lost.json()["version"], "stage": "negociacion"},
+            json={"version": lost.json()["version"], "status": "negociacion"},
         )
         assert reopened.status_code == 200, reopened.text
-        assert reopened.json()["stage"] == "negociacion"
+        assert reopened.json()["status"] == "negociacion"
         assert reopened.json()["lostReason"] is None
-        assert reopened.json()["closedAt"] is None
+        assert reopened.json()["pipelineClosedAt"] is None
         with session_scope() as session:
             saved_lead = session.get(CrmLead, UUID(lead.json()["id"]))
             assert saved_lead is not None
-            assert saved_lead.status == "calificado"
+            assert saved_lead.status == "negociacion"
             audits = session.scalars(
                 select(AuditEntry)
                 .where(
-                    AuditEntry.target_type == "crm_opportunity",
-                    AuditEntry.target_id == UUID(opportunity_id),
-                    AuditEntry.action == "crm.opportunity.update",
+                    AuditEntry.target_type == "crm_lead",
+                    AuditEntry.target_id == UUID(lead.json()["id"]),
+                    AuditEntry.action == "crm.lead.update",
                 )
                 .order_by(AuditEntry.occurred_at.desc())
             ).all()
             assert any(row.details.get("lostReason") == "Precio alto" for row in audits)
             assert any(
                 row.details.get("previousLostReason") == "Precio alto"
-                and row.details.get("previousStage") == "perdido"
-                and row.details.get("stage") == "negociacion"
+                and row.details.get("previousStatus") == "perdido"
+                and row.details.get("status") == "negociacion"
                 for row in audits
             )
 
         stale = client.patch(
-            f"/api/v1/crm/opportunities/{opportunity_id}",
+            f"/api/v1/crm/leads/{lead.json()['id']}",
             headers=headers,
-            json={"version": lost.json()["version"], "stage": "nuevo"},
+            json={"version": lost.json()["version"], "status": "nuevo"},
         )
         assert stale.status_code == 409
         assert (
             client.patch(
-                f"/api/v1/crm/opportunities/{opportunity_id}",
-                json={"version": reopened.json()["version"], "stage": "perdido", "lostReason": "X"},
+                f"/api/v1/crm/leads/{lead.json()['id']}",
+                json={
+                    "version": reopened.json()["version"],
+                    "status": "perdido",
+                    "lostReason": "X",
+                },
             ).status_code
             == 401
         )
@@ -147,15 +134,15 @@ def test_lost_opportunity_persists_and_reopening_preserves_audit_and_lead() -> N
         assert cashier_login.status_code == 200, cashier_login.text
         cashier_headers = {"Authorization": f"Bearer {cashier_login.json()['accessToken']}"}
         denied = client.patch(
-            f"/api/v1/crm/opportunities/{opportunity_id}",
+            f"/api/v1/crm/leads/{lead.json()['id']}",
             headers=cashier_headers,
-            json={"version": reopened.json()["version"], "stage": "nuevo"},
+            json={"version": reopened.json()["version"], "status": "nuevo"},
         )
         assert denied.status_code == 403
 
 
 @pytest.mark.integration
-def test_reopening_does_not_change_a_converted_lead() -> None:
+def test_reopening_does_not_change_a_closed_lead() -> None:
     marker = uuid7().hex[-12:]
     with TestClient(app) as client:
         headers, branch_id = _owner(client)
@@ -165,12 +152,6 @@ def test_reopening_does_not_change_a_converted_lead() -> None:
             json={"branchId": branch_id, "name": f"Convertido {marker}"},
         )
         assert lead.status_code == 201, lead.text
-        opportunity = client.post(
-            f"/api/v1/crm/leads/{lead.json()['id']}/opportunity",
-            headers={**headers, "Idempotency-Key": f"converted-lost-opp-{marker}"},
-            json={"stage": "propuesta"},
-        )
-        assert opportunity.status_code == 201, opportunity.text
         current_lead = client.get(f"/api/v1/crm/leads/{lead.json()['id']}", headers=headers)
         converted = client.post(
             f"/api/v1/crm/leads/{lead.json()['id']}/convert",
@@ -178,83 +159,74 @@ def test_reopening_does_not_change_a_converted_lead() -> None:
             json={"version": current_lead.json()["version"]},
         )
         assert converted.status_code == 200, converted.text
-        current_opportunity = client.get(
-            f"/api/v1/crm/opportunities/{opportunity.json()['id']}", headers=headers
-        ).json()
+        current_lead = client.get(f"/api/v1/crm/leads/{lead.json()['id']}", headers=headers).json()
         lost = client.patch(
-            f"/api/v1/crm/opportunities/{opportunity.json()['id']}",
+            f"/api/v1/crm/leads/{lead.json()['id']}",
             headers=headers,
             json={
-                "version": current_opportunity["version"],
-                "stage": "perdido",
+                "version": current_lead["version"],
+                "status": "perdido",
                 "lostReason": "Otro motivo",
             },
         )
-        assert lost.status_code == 200, lost.text
-        reopened = client.patch(
-            f"/api/v1/crm/opportunities/{opportunity.json()['id']}",
-            headers=headers,
-            json={"version": lost.json()["version"], "stage": "propuesta"},
-        )
-        assert reopened.status_code == 200, reopened.text
-        assert (
-            client.get(f"/api/v1/crm/leads/{lead.json()['id']}", headers=headers).json()["status"]
-            == "convertido"
-        )
+        assert lost.status_code == 409
 
 
 @pytest.mark.integration
-def test_lost_standalone_opportunity_searches_customer_phone_and_name() -> None:
+def test_lost_lead_search_by_phone_and_name() -> None:
     marker = uuid7().hex[-12:]
     with TestClient(app) as client:
         headers, branch_id = _owner(client)
         phone = f"809-{marker[-7:]}"
-        customer = client.post(
-            "/api/v1/customers",
+        first = client.post(
+            "/api/v1/crm/leads",
+            headers={**headers, "Idempotency-Key": f"lost-search-1-{marker}"},
+            json={
+                "branchId": branch_id,
+                "name": f"Cliente sin lead {marker}",
+                "phone": phone,
+                "status": "nuevo",
+            },
+        )
+        assert first.status_code == 201, first.text
+        client.patch(
+            f"/api/v1/crm/leads/{first.json()['id']}",
             headers=headers,
             json={
-                "displayName": f"Cliente sin lead {marker}",
-                "phone": phone,
-                "branchIds": [branch_id],
-            },
-        )
-        assert customer.status_code == 201, customer.text
-        opportunity = client.post(
-            "/api/v1/crm/opportunities",
-            headers={**headers, "Idempotency-Key": f"lost-standalone-{marker}"},
-            json={
-                "branchId": branch_id,
-                "customerId": customer.json()["id"],
-                "title": f"Plan {marker}",
-                "customerName": f"Cliente sin lead {marker}",
-                "stage": "perdido",
+                "version": first.json()["version"],
+                "status": "perdido",
                 "lostReason": "Sin presupuesto",
             },
         )
-        assert opportunity.status_code == 201, opportunity.text
         second = client.post(
-            "/api/v1/crm/opportunities",
-            headers={**headers, "Idempotency-Key": f"lost-standalone-second-{marker}"},
+            "/api/v1/crm/leads",
+            headers={**headers, "Idempotency-Key": f"lost-search-2-{marker}"},
             json={
                 "branchId": branch_id,
-                "customerId": customer.json()["id"],
-                "title": f"Plan adicional {marker}",
-                "customerName": f"Cliente sin lead {marker}",
-                "stage": "perdido",
-                "lostReason": "Sin presupuesto",
+                "company": f"Plan adicional {marker}",
+                "status": "nuevo",
             },
         )
         assert second.status_code == 201, second.text
+        client.patch(
+            f"/api/v1/crm/leads/{second.json()['id']}",
+            headers=headers,
+            json={
+                "version": second.json()["version"],
+                "status": "perdido",
+                "lostReason": "Sin presupuesto",
+            },
+        )
         for search in (phone, marker):
             first_page = client.get(
-                "/api/v1/crm/opportunities",
+                "/api/v1/crm/leads",
                 headers=headers,
-                params={"stage": "perdido", "search": search, "page": 1, "pageSize": 1},
+                params={"status": "perdido", "search": search, "page": 1, "pageSize": 1},
             )
             second_page = client.get(
-                "/api/v1/crm/opportunities",
+                "/api/v1/crm/leads",
                 headers=headers,
-                params={"stage": "perdido", "search": search, "page": 2, "pageSize": 1},
+                params={"status": "perdido", "search": search, "page": 2, "pageSize": 1},
             )
             assert first_page.status_code == 200, first_page.text
             assert second_page.status_code == 200, second_page.text
@@ -263,11 +235,4 @@ def test_lost_standalone_opportunity_searches_customer_phone_and_name() -> None:
             assert {
                 first_page.json()["items"][0]["id"],
                 second_page.json()["items"][0]["id"],
-            } == {opportunity.json()["id"], second.json()["id"]}
-        other_branch = client.get(
-            "/api/v1/crm/opportunities",
-            headers=headers,
-            params={"stage": "perdido", "search": marker, "branchIds": str(uuid7())},
-        )
-        assert other_branch.status_code == 200, other_branch.text
-        assert other_branch.json()["totalItems"] == 0
+            } == {first.json()["id"], second.json()["id"]}

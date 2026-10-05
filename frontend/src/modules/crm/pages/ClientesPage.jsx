@@ -24,7 +24,6 @@ import { CustomerFormModal } from '../components/CustomerFormModal'
 import { CustomerDetailModal } from '../components/CustomerDetailModal'
 import { QuoteFormModal } from '../components/QuoteFormModal'
 import { ActivityFormModal } from '../components/ActivityFormModal'
-import { CustomerQuickOpportunityModal } from '../components/CustomerQuickOpportunityModal'
 import { SaleDetailModal } from '../components/SaleDetailModal'
 import { AppointmentFormModal } from '@/modules/agenda/components/AppointmentFormModal'
 import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
@@ -104,8 +103,6 @@ export default function ClientesPage() {
   const [quoteContext, setQuoteContext] = useState(null)
   const [taskOpen, setTaskOpen] = useState(false)
   const [taskCustomerId, setTaskCustomerId] = useState('')
-  const [opportunityOpen, setOpportunityOpen] = useState(false)
-  const [opportunityCustomer, setOpportunityCustomer] = useState(null)
   const [saleDetail, setSaleDetail] = useState(null)
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState(() => new Set())
@@ -610,10 +607,6 @@ export default function ClientesPage() {
           setTaskCustomerId(c.id)
           setTaskOpen(true)
         }}
-        onNewOpportunity={(c) => {
-          setOpportunityCustomer(c)
-          setOpportunityOpen(true)
-        }}
         onOpenSale={(sale) => setSaleDetail(sale)}
       />
       <QuoteFormModal
@@ -625,11 +618,6 @@ export default function ClientesPage() {
         open={taskOpen}
         onClose={() => { setTaskOpen(false); setTaskCustomerId('') }}
         defaultCustomerId={taskCustomerId}
-      />
-      <CustomerQuickOpportunityModal
-        open={opportunityOpen}
-        onClose={() => { setOpportunityOpen(false); setOpportunityCustomer(null) }}
-        customer={opportunityCustomer}
       />
       <SaleDetailModal
         open={!!saleDetail}

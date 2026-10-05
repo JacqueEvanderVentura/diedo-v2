@@ -19,6 +19,17 @@ PaymentChannel = Literal[
 PaymentSettlementPolicy = Literal["immediate", "pending_confirmation", "receivable"]
 
 
+class BranchBillingDocuments(ApiModel):
+    trade_name: str = Field(default="", max_length=160)
+    legal_name: str = Field(default="", max_length=160)
+    rnc: str = Field(default="", max_length=32)
+    address: str = Field(default="", max_length=300)
+    phone: str = Field(default="", max_length=40)
+    email: EmailStr | None = None
+    logo_data_url: str = Field(default="", max_length=700_000)
+    footer_note: str = Field(default="", max_length=500)
+
+
 class WorkspaceSettingsResponse(ApiModel):
     id: UUID
     name: str
@@ -26,6 +37,7 @@ class WorkspaceSettingsResponse(ApiModel):
     timezone: str
     locale: str
     tax_default_rate: Decimal
+    billing_documents: BranchBillingDocuments = Field(default_factory=BranchBillingDocuments)
     version: int
 
 
@@ -35,6 +47,7 @@ class UpdateWorkspaceSettingsRequest(ApiModel):
     timezone: str | None = Field(default=None, min_length=3, max_length=64)
     locale: str | None = Field(default=None, min_length=2, max_length=16)
     tax_default_rate: Decimal | None = Field(default=None, ge=0, le=100)
+    billing_documents: BranchBillingDocuments | None = None
     version: int = Field(ge=1)
 
     @field_validator("name")
@@ -145,6 +158,7 @@ class BranchDetails(ApiModel):
     schedule: str = Field(default="", max_length=120)
     independent_business: bool = False
     partners: list[BranchPartner] = Field(default_factory=list, max_length=50)
+    billing_documents: BranchBillingDocuments | None = None
 
     @model_validator(mode="after")
     def validate_partner_shares(self) -> BranchDetails:
@@ -161,6 +175,7 @@ class BranchDetailsPatch(ApiModel):
     schedule: str = Field(default="", max_length=120)
     independent_business: bool = False
     partners: list[BranchPartner] = Field(default_factory=list, max_length=50)
+    billing_documents: BranchBillingDocuments | None = None
 
     @model_validator(mode="after")
     def validate_partner_shares(self) -> BranchDetailsPatch:

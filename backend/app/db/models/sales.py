@@ -90,10 +90,10 @@ class SalesQuote(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             name="fk_sales_quotes_workspace_payment_method",
         ),
         ForeignKeyConstraint(
-            ["workspace_id", "opportunity_id"],
-            ["crm_opportunities.workspace_id", "crm_opportunities.id"],
+            ["workspace_id", "lead_id"],
+            ["crm_leads.workspace_id", "crm_leads.id"],
             ondelete="RESTRICT",
-            name="fk_sales_quotes_workspace_opportunity",
+            name="fk_sales_quotes_workspace_lead",
         ),
         CheckConstraint("kind IN ('quote', 'held')", name="kind_values"),
         CheckConstraint("origin IN ('pos', 'crm')", name="origin_values"),
@@ -132,7 +132,7 @@ class SalesQuote(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             name="status_closed_at_consistent",
         ),
         CheckConstraint(
-            "(origin = 'pos' AND opportunity_id IS NULL AND crm_status IS NULL) OR "
+            "(origin = 'pos' AND lead_id IS NULL AND crm_status IS NULL) OR "
             "(origin = 'crm' AND crm_status IN "
             "('borrador', 'enviada', 'aceptada', 'rechazada', 'vencida'))",
             name="crm_origin_consistent",
@@ -155,9 +155,9 @@ class SalesQuote(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             "status",
         ),
         Index(
-            "ix_sales_quotes_workspace_opportunity",
+            "ix_sales_quotes_workspace_lead",
             "workspace_id",
-            "opportunity_id",
+            "lead_id",
             "updated_at",
         ),
     )
@@ -167,7 +167,7 @@ class SalesQuote(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     )
     branch_id: Mapped[UUID] = mapped_column(nullable=False)
     customer_id: Mapped[UUID | None] = mapped_column(nullable=True)
-    opportunity_id: Mapped[UUID | None] = mapped_column(nullable=True)
+    lead_id: Mapped[UUID | None] = mapped_column(nullable=True)
     document_number: Mapped[str] = mapped_column(String(32), nullable=False)
     kind: Mapped[str] = mapped_column(
         String(16), nullable=False, default="quote", server_default=text("'quote'")
@@ -488,6 +488,7 @@ class Sale(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     void_idempotency_key: Mapped[str | None] = mapped_column(String(128))
     void_request_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    channel_origin: Mapped[str | None] = mapped_column(String(32))
 
 
 class SaleLine(UuidPrimaryKeyMixin, Base):
@@ -541,6 +542,52 @@ class SaleLine(UuidPrimaryKeyMixin, Base):
     tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     tax_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     line_total: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+
+
+class SaleTenderLine(UuidPrimaryKeyMixin, TimestampMixin, Base):
+    """Per-tender allocation for split POS checkouts."""
+
+    __tablename__ = "sale_tender_lines"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "id", name="uq_sale_tender_lines_workspace_id"),
+        UniqueConstraint(
+            "workspace_id",
+            "sale_id",
+            "position",
+            name="uq_sale_tender_lines_position",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "sale_id"],
+            ["sales.workspace_id", "sales.id"],
+            ondelete="RESTRICT",
+            name="fk_sale_tender_lines_workspace_sale",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "payment_method_id"],
+            ["payment_methods.workspace_id", "payment_methods.id"],
+            ondelete="RESTRICT",
+            name="fk_sale_tender_lines_workspace_payment_method",
+        ),
+        CheckConstraint("position >= 1", name="position_positive"),
+        CheckConstraint("amount > 0", name="amount_positive"),
+        CheckConstraint(
+            "status IN ('settled', 'awaiting_approval')",
+            name="status_values",
+        ),
+        Index("ix_sale_tender_lines_workspace_sale", "workspace_id", "sale_id"),
+    )
+
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
+    )
+    sale_id: Mapped[UUID] = mapped_column(nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    payment_method_id: Mapped[UUID] = mapped_column(nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    settlement_policy: Mapped[str] = mapped_column(String(24), nullable=False)
+    payment_channel: Mapped[str] = mapped_column(String(24), nullable=False)
+    reference: Mapped[str | None] = mapped_column(String(160))
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
 
 
 class CustomerReceivable(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
@@ -613,6 +660,9 @@ class CustomerReceivable(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base
         CheckConstraint("amount > 0", name="amount_positive"),
         CheckConstraint("paid_amount >= 0", name="paid_amount_non_negative"),
         CheckConstraint("paid_amount <= amount", name="paid_amount_within_amount"),
+        CheckConstraint(
+            "approval_pending_amount >= 0", name="approval_pending_amount_non_negative"
+        ),
         CheckConstraint(
             "(status = 'pending' AND paid_amount = 0 AND paid_at IS NULL AND "
             "cancelled_at IS NULL) OR "
@@ -694,6 +744,9 @@ class CustomerReceivable(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base
     customer_phone: Mapped[str | None] = mapped_column(String(40))
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     paid_amount: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), nullable=False, default=Decimal("0"), server_default=text("0")
+    )
+    approval_pending_amount: Mapped[Decimal] = mapped_column(
         Numeric(14, 2), nullable=False, default=Decimal("0"), server_default=text("0")
     )
     status: Mapped[str] = mapped_column(

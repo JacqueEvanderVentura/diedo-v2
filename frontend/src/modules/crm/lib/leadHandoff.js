@@ -1,8 +1,9 @@
-export function buildLeadHandoffPaths({ opportunityId, customerId }) {
+export function buildLeadHandoffPaths({ leadId, customerId }) {
+  const inPipeline = Boolean(leadId)
   return {
-    pipeline: opportunityId ? '/crm/pipeline' : null,
-    quote: opportunityId
-      ? `/crm/cotizaciones?opportunityId=${encodeURIComponent(opportunityId)}`
+    pipeline: inPipeline ? '/crm/pipeline' : null,
+    quote: leadId
+      ? `/crm/cotizaciones?leadId=${encodeURIComponent(leadId)}`
       : customerId
         ? `/crm/cotizaciones?customerId=${encodeURIComponent(customerId)}`
         : null,
@@ -17,7 +18,6 @@ export function readLeadHandoffContext(leads, leadId) {
   if (!lead) return null
   return {
     leadId,
-    opportunityId: lead.opportunityId || null,
     customerId: lead.customerId || null,
   }
 }

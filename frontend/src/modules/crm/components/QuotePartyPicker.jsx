@@ -17,7 +17,6 @@ export function QuotePartyPicker({
   testId = 'quote-party-picker',
 }) {
   const leads = useCrmStore((s) => s.leads)
-  const opportunities = useCrmStore((s) => s.opportunities)
   const customers = useCustomersStore((s) => s.customers)
   const user = useSessionStore((s) => s.user)
 
@@ -42,7 +41,7 @@ export function QuotePartyPicker({
   )
 
   const displayName = value?.id
-    ? quotePartyLabel(value, { leads, customers: scopedCustomers, opportunities })
+    ? quotePartyLabel(value, { leads, customers: scopedCustomers })
     : 'Buscar lead o cliente…'
 
   useEffect(() => {

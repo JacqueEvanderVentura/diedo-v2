@@ -40,6 +40,7 @@ export function useHorizontalScrollStrip(ref, options = {}) {
     const onPointerDown = (event) => {
       if (!enableDrag) return
       if (event.button !== 0) return
+      if (event.target.closest('button, a, input, select, textarea, label, [role="button"]')) return
       drag = {
         pointerId: event.pointerId,
         startX: event.clientX,
@@ -77,6 +78,10 @@ export function useHorizontalScrollStrip(ref, options = {}) {
       }
       if (wasDragging) {
         const suppressClick = (clickEvent) => {
+          if (clickEvent.target.closest('button, a, input, select, textarea, label, [role="button"]')) {
+            element.removeEventListener('click', suppressClick, true)
+            return
+          }
           clickEvent.preventDefault()
           clickEvent.stopImmediatePropagation()
           element.removeEventListener('click', suppressClick, true)

@@ -321,13 +321,24 @@ describe('store online de Terminal POS', () => {
       expectedCash: '500',
       version: 1,
     })
+    mocks.state.mockResolvedValue({
+      ...apiState(),
+      register: {
+        id: 'new-register',
+        status: 'open',
+        branchId,
+        openingCash: '500',
+        expectedCash: '500',
+        version: 1,
+      },
+    })
     await usePosStore.getState().openRegister(500)
 
     expect(mocks.openRegister).toHaveBeenCalledWith(
       expect.objectContaining({ branchId }),
       expect.any(Object)
     )
-    expect(mocks.state).not.toHaveBeenCalled()
+    expect(mocks.state).toHaveBeenCalledWith({ branchId })
     expect(mocks.listRegisters).toHaveBeenCalled()
     expect(usePosStore.getState()).toMatchObject({
       register: { id: 'new-register', open: true },

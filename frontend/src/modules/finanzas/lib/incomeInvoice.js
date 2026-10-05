@@ -22,7 +22,7 @@ export async function resolveSaleForIncomeInvoice(saleId) {
 export async function printIncomeInvoice(income, ctx) {
   if (!isPosIncome(income)) throw new Error('Este ingreso no tiene factura asociada.')
   const sale = await resolveSaleForIncomeInvoice(income.id)
-  printSaleInvoice(sale, ctx)
+  await printSaleInvoice(sale, ctx)
 }
 
 export async function downloadIncomeInvoice(income, ctx) {

@@ -145,9 +145,7 @@ export function FlashItemModal({ onClose }) {
     const { branchId } = usePosStore.getState()
     const { branches: allBranches, settings } = useConfigStore.getState()
     const nextTaxDefault = settings?.taxDefault ?? 18
-    const activeBranches = allBranches.filter((b) => (
-      b.active !== false && (!isOnline || b.id === branchId)
-    ))
+    const activeBranches = allBranches.filter((b) => b.active !== false)
     const ids = activeBranches.map((b) => b.id)
 
     setBranches(activeBranches)

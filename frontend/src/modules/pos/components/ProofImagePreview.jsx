@@ -2,7 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { toast } from 'sonner'
-import { Copy, Download, Paperclip, ZoomIn, X } from 'lucide-react'
+import { Copy, Download, Paperclip, Trash2, ZoomIn, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { modalBackdropTransition, modalPanelTransition } from '@/lib/motion'
 import { cn } from '@/lib/utils'
@@ -112,7 +112,7 @@ export function ImageLightbox({ open, src, alt, onClose }) {
 /**
  * Inline proof preview (Kubo-style): object-fit contain, enlarge lightbox, copy + download.
  */
-export function ProofImagePreview({ proof, loadProof, onDownload, className }) {
+export function ProofImagePreview({ proof, loadProof, onDownload, onDelete, className }) {
   const [previewUrl, setPreviewUrl] = useState(null)
   const [blob, setBlob] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -290,6 +290,19 @@ export function ProofImagePreview({ proof, loadProof, onDownload, className }) {
             <Download className="h-3.5 w-3.5" />
             Descargar
           </Button>
+          {onDelete && (
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              onClick={() => onDelete(proof)}
+              disabled={Boolean(busy)}
+              data-testid="proof-preview-delete"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Eliminar
+            </Button>
+          )}
         </div>
       </div>
 

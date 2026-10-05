@@ -162,6 +162,7 @@ export const useConfigStore = create(
       paymentMethods: SEED_METHODS,
       users: SEED_USERS,
       settings: SEED_SETTINGS,
+      workspaceBillingHydrated: false,
       permissions: buildDefaultMatrix(),
       whatsappTemplates: structuredClone(DEFAULT_WHATSAPP_TEMPLATES),
 
@@ -239,8 +240,10 @@ export const useConfigStore = create(
 
       // ---- settings ----
       updateSettings: (data) => set((s) => ({ settings: { ...s.settings, ...data } })),
+      markWorkspaceBillingHydrated: (hydrated = true) => set({ workspaceBillingHydrated: Boolean(hydrated) }),
       updateBillingDocuments: (data) =>
         set((s) => ({
+          workspaceBillingHydrated: true,
           settings: {
             ...s.settings,
             billingDocuments: { ...s.settings.billingDocuments, ...data },
@@ -309,6 +312,7 @@ export const useConfigStore = create(
           state.whatsappTemplates = mergedWa
         }
         if (Array.isArray(state.users)) state.users = state.users.map(({ password: _password, ...user }) => user)
+        state.workspaceBillingHydrated = false
         return state
       },
     }

@@ -15,7 +15,9 @@ from sqlalchemy.orm import Session
 from app.db.models.administration import PaymentMethod
 from app.db.models.agenda import Appointment
 from app.db.models.audit import AuditEntry
+from app.db.models.carwash_operations import CarwashWash
 from app.db.models.catalog import Item, ItemBranchAssignment, UnitOfMeasure
+from app.db.models.finance import FinancePosIncomeCorrection
 from app.db.models.foundation import Branch, Workspace
 from app.db.models.inventory import (
     InventoryItemProfile,
@@ -36,6 +38,7 @@ from app.db.models.sales import (
     SalesQuote,
     SalesQuoteLine,
     SalesQuoteRevision,
+    SaleTenderLine,
 )
 from app.services.quote_revisions import build_quote_revision_snapshot, revision_occurred_at
 
@@ -104,6 +107,13 @@ class SaleRecord:
     customer: Customer | None
     payment_method: PaymentMethod
     lines: tuple[SaleLine, ...]
+    quote_origin: str | None = None
+
+
+@dataclass(frozen=True)
+class SaleTenderLineRecord:
+    line: SaleTenderLine
+    payment_method: PaymentMethod
 
 
 @dataclass(frozen=True)
@@ -797,6 +807,131 @@ class PosRepository:
             self._session.add(line)
         self._session.flush()
 
+    def replace_sale_lines(self, sale: Sale, lines: Sequence[SaleLine]) -> None:
+        existing = self._session.scalars(
+            select(SaleLine).where(
+                SaleLine.workspace_id == sale.workspace_id,
+                SaleLine.sale_id == sale.id,
+            )
+        ).all()
+        for line in existing:
+            self._session.delete(line)
+        self._session.flush()
+        for line in lines:
+            line.sale_id = sale.id
+            self._session.add(line)
+        self._session.flush()
+
+    def delete_sale_tender_lines(self, workspace_id: UUID, sale_id: UUID) -> None:
+        existing = self._session.scalars(
+            select(SaleTenderLine).where(
+                SaleTenderLine.workspace_id == workspace_id,
+                SaleTenderLine.sale_id == sale_id,
+            )
+        ).all()
+        for line in existing:
+            self._session.delete(line)
+        self._session.flush()
+
+    def delete_receivable_graph(self, receivable: CustomerReceivable) -> None:
+        proofs = self._session.scalars(
+            select(PaymentProof).where(
+                PaymentProof.workspace_id == receivable.workspace_id,
+                PaymentProof.receivable_id == receivable.id,
+            )
+        ).all()
+        for proof in proofs:
+            self._session.delete(proof)
+        lines = self._session.scalars(
+            select(CustomerReceivableLine).where(
+                CustomerReceivableLine.workspace_id == receivable.workspace_id,
+                CustomerReceivableLine.receivable_id == receivable.id,
+            )
+        ).all()
+        for line in lines:
+            self._session.delete(line)
+        self._session.delete(receivable)
+        self._session.flush()
+
+    def delete_sale_record(self, sale: Sale) -> None:
+        self.delete_sale_tender_lines(sale.workspace_id, sale.id)
+        lines = self._session.scalars(
+            select(SaleLine).where(
+                SaleLine.workspace_id == sale.workspace_id,
+                SaleLine.sale_id == sale.id,
+            )
+        ).all()
+        for line in lines:
+            self._session.delete(line)
+        self._session.delete(sale)
+        self._session.flush()
+
+    def carwash_wash_for_sale(self, workspace_id: UUID, sale_id: UUID) -> CarwashWash | None:
+        return self._session.scalar(
+            select(CarwashWash).where(
+                CarwashWash.workspace_id == workspace_id,
+                CarwashWash.sale_id == sale_id,
+            )
+        )
+
+    def active_finance_pos_income_correction(
+        self, workspace_id: UUID, sale_id: UUID
+    ) -> FinancePosIncomeCorrection | None:
+        return self._session.scalar(
+            select(FinancePosIncomeCorrection).where(
+                FinancePosIncomeCorrection.workspace_id == workspace_id,
+                FinancePosIncomeCorrection.sale_id == sale_id,
+                FinancePosIncomeCorrection.record_status == "active",
+            )
+        )
+
+    def add_sale_tender_lines(self, lines: Sequence[SaleTenderLine]) -> None:
+        for line in lines:
+            self._session.add(line)
+        self._session.flush()
+
+    def list_sale_tender_lines(
+        self,
+        workspace_id: UUID,
+        sale_id: UUID,
+    ) -> tuple[SaleTenderLine, ...]:
+        return tuple(
+            self._session.scalars(
+                select(SaleTenderLine)
+                .where(
+                    SaleTenderLine.workspace_id == workspace_id,
+                    SaleTenderLine.sale_id == sale_id,
+                )
+                .order_by(SaleTenderLine.position)
+            ).all()
+        )
+
+    def list_sale_tender_line_records(
+        self,
+        workspace_id: UUID,
+        sale_id: UUID,
+    ) -> tuple[SaleTenderLineRecord, ...]:
+        lines = self.list_sale_tender_lines(workspace_id, sale_id)
+        if not lines:
+            return ()
+        method_ids = {line.payment_method_id for line in lines}
+        methods = {
+            method.id: method
+            for method in self._session.scalars(
+                select(PaymentMethod).where(
+                    PaymentMethod.workspace_id == workspace_id,
+                    PaymentMethod.id.in_(method_ids),
+                )
+            )
+        }
+        records: list[SaleTenderLineRecord] = []
+        for line in lines:
+            method = methods.get(line.payment_method_id)
+            if method is None:
+                raise RuntimeError("Sale tender payment method disappeared.")
+            records.append(SaleTenderLineRecord(line=line, payment_method=method))
+        return tuple(records)
+
     def sale_record(self, sale: Sale) -> SaleRecord:
         return self._sale_records((sale,), include_details=True)[0]
 
@@ -1160,6 +1295,24 @@ class PosRepository:
             )
         )
 
+    def list_proofs_for_receivable(
+        self, workspace_id: UUID, receivable_id: UUID
+    ) -> tuple[PaymentProof, ...]:
+        return tuple(
+            self._session.scalars(
+                select(PaymentProof)
+                .where(
+                    PaymentProof.workspace_id == workspace_id,
+                    PaymentProof.receivable_id == receivable_id,
+                )
+                .order_by(PaymentProof.created_at, PaymentProof.id)
+            ).all()
+        )
+
+    def delete_proof(self, proof: PaymentProof) -> None:
+        self._session.delete(proof)
+        self._session.flush()
+
     def get_proof(
         self,
         *,
@@ -1425,6 +1578,18 @@ class PosRepository:
         branch_ids = {sale.branch_id for sale in sales}
         customer_ids = {sale.customer_id for sale in sales if sale.customer_id is not None}
         method_ids = {sale.payment_method_id for sale in sales}
+        quote_ids = {sale.quote_id for sale in sales if sale.quote_id is not None}
+        quote_origins: dict[UUID, str] = {}
+        if quote_ids:
+            quote_origins = {
+                quote.id: quote.origin
+                for quote in self._session.scalars(
+                    select(SalesQuote).where(
+                        SalesQuote.workspace_id == workspace_id,
+                        SalesQuote.id.in_(quote_ids),
+                    )
+                )
+            }
         branches = {
             branch.id: branch
             for branch in self._session.scalars(
@@ -1480,6 +1645,9 @@ class PosRepository:
                     ),
                     payment_method=method,
                     lines=tuple(lines.get(sale.id, ())),
+                    quote_origin=(
+                        quote_origins.get(sale.quote_id) if sale.quote_id is not None else None
+                    ),
                 )
             )
         return tuple(records)

@@ -4,17 +4,34 @@ import { cn } from '@/lib/utils'
 import { useConfigStore } from '@/stores/configStore'
 import { HorizontalScrollStrip } from '@/components/ui/HorizontalScrollStrip'
 
+const POS_CATEGORY_TYPES = new Set(['producto', 'servicio', 'product', 'service'])
+
+function isPosCatalogCategory(category) {
+  if (!category?.id || String(category.id).startsWith('fin-')) return false
+  const kind = String(category.categoryKind || category.type || 'producto').toLowerCase()
+  return POS_CATEGORY_TYPES.has(kind)
+}
+
 export function CategoryBubbles({ active, onChange, onNewItem }) {
   const categories = useConfigStore((s) => s.categories)
-  const items = useMemo(() => [{ id: 'all', name: 'Todos' }, ...categories], [categories])
+  const items = useMemo(
+    () => [{ id: 'all', name: 'Todos' }, ...categories.filter(isPosCatalogCategory)],
+    [categories]
+  )
   return (
     <div className="mb-4 flex items-center gap-3" data-testid="pos-category-bubbles">
-      <HorizontalScrollStrip className="flex flex-1 gap-3 pb-1" testId="pos-category-scroll">
+      <HorizontalScrollStrip
+        className="flex flex-1 gap-3 pb-1"
+        testId="pos-category-scroll"
+        enableDrag={false}
+      >
         {items.map((cat) => {
-          const isActive = active === cat.id
+          const isActive = String(active) === String(cat.id)
           return (
             <button
               key={cat.id}
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
               onClick={() => onChange(cat.id)}
               data-testid={`pos-category-${cat.id}`}
               className={cn(

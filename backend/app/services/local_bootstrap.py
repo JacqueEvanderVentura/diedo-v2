@@ -586,6 +586,22 @@ _PERMISSIONS = (
         "Void posted invoices and record compensating movements.",
         110,
     ),
+    (
+        "sales.invoice.edit",
+        "sales",
+        "invoice.edit",
+        "Editar facturas",
+        "Edit posted invoices and reconcile stock, cash, and receivables.",
+        120,
+    ),
+    (
+        "sales.invoice.delete",
+        "sales",
+        "invoice.delete",
+        "Eliminar facturas",
+        "Permanently remove posted invoices without applied collections or cash history.",
+        130,
+    ),
 )
 
 _TERMINAL_POS_PERMISSION_CODES = tuple(

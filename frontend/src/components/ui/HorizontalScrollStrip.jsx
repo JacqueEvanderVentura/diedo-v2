@@ -5,9 +5,9 @@ import { cn } from '@/lib/utils'
 /**
  * Horizontal overflow row: hidden scrollbar, wheel → smooth scroll, click-drag.
  */
-export function HorizontalScrollStrip({ className, children, testId }) {
+export function HorizontalScrollStrip({ className, children, testId, enableDrag = true }) {
   const scrollRef = useRef(null)
-  useHorizontalScrollStrip(scrollRef)
+  useHorizontalScrollStrip(scrollRef, { enableDrag })
 
   return (
     <div

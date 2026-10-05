@@ -51,7 +51,13 @@ function GeneralSettings({ settings, online, canMutate, onSaved }) {
         })
         const mapped = mapWorkspaceSettingsFromApi(result)
         onSaved(mapped)
-        localUpdate({ ...mapped, taxDefault: mapped.taxDefault })
+        localUpdate({
+          businessName: mapped.businessName,
+          region: mapped.region,
+          taxDefault: mapped.taxDefault,
+          version: mapped.version,
+          billingDocuments: mapped.billingDocuments,
+        })
       } else {
         localUpdate({ ...form, taxDefault: Number(form.taxDefault) || 0 })
       }
@@ -188,9 +194,12 @@ export default function SucursalesPage({ embedded = false, visibleBlockIds }) {
         timezone: sessionUser?.workspace?.timezone || 'America/Santo_Domingo',
       }))
       successMessage = 'Sucursal creada'
-    } else if (tab === 'general') {
+    } else if (tab === 'general' || tab === 'documents') {
       if (!canManageBranch) throw new Error('No tienes permiso para actualizar sucursales.')
       await administrationGateway.mutate('updateBranch', editing.id, branchGeneralPatchToApi(data, editing))
+      successMessage = tab === 'documents'
+        ? 'Datos de cotizaciones y facturas actualizados'
+        : 'Sucursal actualizada'
     } else if (tab === 'socios') {
       if (!canManageBranch) throw new Error('No tienes permiso para actualizar sucursales.')
       await administrationGateway.mutate('updateBranch', editing.id, branchPartnersPatchToApi(data, editing))
@@ -219,6 +228,7 @@ export default function SucursalesPage({ embedded = false, visibleBlockIds }) {
 
     const reloaded = await load()
     if (!reloaded) throw new Error('El cambio se guardó, pero no se pudieron recuperar datos vigentes. Recarga antes de continuar.')
+    if (online) await useSessionStore.getState().refreshCurrentUser()
     toast.success(successMessage)
   }
 

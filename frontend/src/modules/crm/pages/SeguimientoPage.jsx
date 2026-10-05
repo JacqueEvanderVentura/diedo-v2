@@ -69,11 +69,11 @@ function ActivityCard({ act, users, onToggle, onEdit }) {
                 Ver cliente
               </Link>
             )}
-            {act.opportunityId && (
+            {act.leadId && (
               <Link
                 to="/crm/pipeline"
                 className="text-blue-600 hover:underline"
-                data-testid={`activity-link-opportunity-${act.id}`}
+                data-testid={`activity-link-lead-${act.id}`}
               >
                 Ver en pipeline
               </Link>
@@ -111,21 +111,21 @@ function ActivityCard({ act, users, onToggle, onEdit }) {
   )
 }
 
-function OpportunityRow({ opportunity, onNewTask, onNavigate }) {
+function PipelineLeadRow({ lead, onNewTask, onNavigate }) {
   const paths = buildLeadHandoffPaths({
-    opportunityId: opportunity.id,
-    customerId: opportunity.customerId || null,
+    leadId: lead.id,
+    customerId: lead.customerId || null,
   })
-  const stage = STAGE_META[opportunity.stage]
+  const stage = STAGE_META[lead.status]
 
   return (
-    <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" data-testid={`seguimiento-opp-${opportunity.id}`}>
+    <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" data-testid={`seguimiento-lead-${lead.id}`}>
       <div>
-        <p className="font-semibold text-slate-900">{opportunity.title}</p>
-        <p className="text-sm text-slate-500">{opportunity.customerName}</p>
+        <p className="font-semibold text-slate-900">{lead.company || lead.name}</p>
+        <p className="text-sm text-slate-500">{lead.phone || lead.email || '—'}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-        <Button size="sm" variant="secondary" onClick={() => onNewTask(opportunity.id)}>
+        <Button size="sm" variant="secondary" onClick={() => onNewTask(lead.id)}>
           <CalendarPlus className="h-3.5 w-3.5" /> Tarea
         </Button>
         {paths.quote && (
@@ -139,8 +139,8 @@ function OpportunityRow({ opportunity, onNewTask, onNavigate }) {
           </Button>
         )}
         <div className="text-right">
-          <p className="font-heading font-bold text-emerald-600">{formatDOP(opportunity.value)}</p>
-          <Badge tone={stage?.tone || 'brand'}>{stage?.label || opportunity.stage}</Badge>
+          <p className="font-heading font-bold text-emerald-600">{formatDOP(lead.pipelineValue || 0)}</p>
+          <Badge tone={stage?.tone || 'brand'}>{stage?.label || lead.status}</Badge>
         </div>
       </div>
     </Card>
@@ -152,7 +152,7 @@ export default function SeguimientoPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const activities = useCrmStore((s) => s.activities)
-  const opportunities = useCrmStore((s) => s.opportunities)
+  const leads = useCrmStore((s) => s.leads)
   const toggleActivityComplete = useCrmStore((s) => s.toggleActivityComplete)
   const users = useConfigStore((s) => s.users)
   const sessionUser = useSessionStore((s) => s.user)
@@ -161,7 +161,7 @@ export default function SeguimientoPage() {
   const [branchIds, setBranchIds] = useState([])
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [defaultOpportunityId, setDefaultOpportunityId] = useState('')
+  const [defaultLeadId, setDefaultLeadId] = useState('')
   const [defaultCustomerId, setDefaultCustomerId] = useState('')
 
   const requestedCustomerId = searchParams.get('customerId') || ''
@@ -175,24 +175,10 @@ export default function SeguimientoPage() {
       : users
   ), [sessionUser?.membershipId, sessionUser?.name, users])
 
-  const requestedOpportunityId = searchParams.get('opportunityId') || ''
-
-  useEffect(() => {
-    if (!requestedOpportunityId) return
-    if (!opportunities.some((opportunity) => opportunity.id === requestedOpportunityId)) return
-    setDefaultOpportunityId(requestedOpportunityId)
-    setEditing(null)
-    setView('actividades')
-    setFormOpen(true)
-    const nextParams = new URLSearchParams(searchParams)
-    nextParams.delete('opportunityId')
-    setSearchParams(nextParams, { replace: true })
-  }, [opportunities, requestedOpportunityId, searchParams, setSearchParams])
-
   useEffect(() => {
     if (!requestedCustomerId) return
     setDefaultCustomerId(requestedCustomerId)
-    setDefaultOpportunityId('')
+    setDefaultLeadId('')
     setEditing(null)
     setView('actividades')
     setFormOpen(true)
@@ -201,14 +187,14 @@ export default function SeguimientoPage() {
     setSearchParams(nextParams, { replace: true })
   }, [requestedCustomerId, searchParams, setSearchParams])
 
-  const oppBranchMap = useMemo(
-    () => Object.fromEntries(opportunities.map((o) => [o.id, o.branchId])),
-    [opportunities]
+  const leadBranchMap = useMemo(
+    () => Object.fromEntries(leads.map((l) => [l.id, l.branchId])),
+    [leads]
   )
 
   const grouped = useMemo(() => {
     const branchMatch = (act) => matchesBranches(act, branchIds, (row) => {
-      const id = row.branchId || oppBranchMap[row.opportunityId]
+      const id = row.branchId || leadBranchMap[row.leadId]
       return id ? [id] : []
     })
     const pending = activities.filter((a) => !a.completedAt && branchMatch(a))
@@ -220,39 +206,41 @@ export default function SeguimientoPage() {
     overdue.sort((a, b) => new Date(a.dueAt) - new Date(b.dueAt))
     completed.sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt))
     return { overdue, upcoming, completed }
-  }, [activities, branchIds, oppBranchMap])
+  }, [activities, branchIds, leadBranchMap])
 
-  const filteredOpportunities = useMemo(() => (
-    opportunities.filter((o) => matchesBranches(o, branchIds, (row) => (row.branchId ? [row.branchId] : [])))
-  ), [opportunities, branchIds])
+  const filteredPipelineLeads = useMemo(() => (
+    leads
+      .filter((l) => !['nuevo'].includes(l.status) || l.pipelineValue > 0)
+      .filter((l) => matchesBranches(l, branchIds, (row) => (row.branchId ? [row.branchId] : [])))
+  ), [leads, branchIds])
 
-  const oppsByDate = useMemo(() => {
+  const leadsByDate = useMemo(() => {
     const groups = {}
-    filteredOpportunities.forEach((o) => {
-      const key = new Date(o.createdAt).toLocaleDateString('es-DO', { year: 'numeric', month: 'long', day: 'numeric' })
+    filteredPipelineLeads.forEach((l) => {
+      const key = new Date(l.updatedAt || l.createdAt).toLocaleDateString('es-DO', { year: 'numeric', month: 'long', day: 'numeric' })
       if (!groups[key]) groups[key] = []
-      groups[key].push(o)
+      groups[key].push(l)
     })
-    return Object.entries(groups).sort((a, b) => new Date(b[1][0].createdAt) - new Date(a[1][0].createdAt))
-  }, [filteredOpportunities])
+    return Object.entries(groups).sort((a, b) => new Date(b[1][0].updatedAt || b[1][0].createdAt) - new Date(a[1][0].updatedAt || a[1][0].createdAt))
+  }, [filteredPipelineLeads])
 
   const openNew = () => {
     setEditing(null)
-    setDefaultOpportunityId('')
+    setDefaultLeadId('')
     setDefaultCustomerId('')
     setFormOpen(true)
   }
 
-  const openForOpportunity = (opportunityId) => {
+  const openForLead = (leadId) => {
     setEditing(null)
-    setDefaultOpportunityId(opportunityId)
+    setDefaultLeadId(leadId)
     setView('actividades')
     setFormOpen(true)
   }
 
   const openEdit = (act) => {
     setEditing(act)
-    setDefaultOpportunityId(act.opportunityId || '')
+    setDefaultLeadId(act.leadId || '')
     setFormOpen(true)
   }
 
@@ -267,7 +255,7 @@ export default function SeguimientoPage() {
   const closeForm = () => {
     setFormOpen(false)
     setEditing(null)
-    setDefaultOpportunityId('')
+    setDefaultLeadId('')
     setDefaultCustomerId('')
   }
 
@@ -276,7 +264,7 @@ export default function SeguimientoPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="font-heading text-2xl font-bold text-slate-900">Seguimiento</h2>
-          <p className="text-sm text-slate-500">Actividades y oportunidades organizadas cronológicamente.</p>
+          <p className="text-sm text-slate-500">Actividades y leads en seguimiento, organizados cronológicamente.</p>
         </div>
         {view === 'actividades' && (
           <Button onClick={openNew} data-testid="activity-new" disabled={!can.manage}>
@@ -296,7 +284,7 @@ export default function SeguimientoPage() {
       <div className="grid w-full max-w-md grid-cols-2 rounded-xl bg-slate-100 p-1">
         {[
           { id: 'actividades', label: 'Actividades' },
-          { id: 'oportunidades', label: 'Oportunidades' },
+          { id: 'pipeline', label: 'Pipeline' },
         ].map((t) => (
           <button
             key={t.id}
@@ -352,17 +340,17 @@ export default function SeguimientoPage() {
         </div>
       )}
 
-      {view === 'oportunidades' && (
+      {view === 'pipeline' && (
         <div className="space-y-6">
-          {oppsByDate.map(([date, opps]) => (
+          {leadsByDate.map(([date, rows]) => (
             <div key={date}>
               <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-400">{date}</h3>
               <div className="space-y-2">
-                {opps.map((o) => (
-                  <OpportunityRow
-                    key={o.id}
-                    opportunity={o}
-                    onNewTask={openForOpportunity}
+                {rows.map((lead) => (
+                  <PipelineLeadRow
+                    key={lead.id}
+                    lead={lead}
+                    onNewTask={openForLead}
                     onNavigate={navigate}
                   />
                 ))}
@@ -377,7 +365,7 @@ export default function SeguimientoPage() {
         open={formOpen}
         onClose={closeForm}
         activity={editing}
-        defaultOpportunityId={defaultOpportunityId}
+        defaultLeadId={defaultLeadId}
         defaultCustomerId={defaultCustomerId}
       />
     </div>

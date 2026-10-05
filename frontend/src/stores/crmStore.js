@@ -21,9 +21,6 @@ import {
   mapLeadFromApi,
   mapLeadsPageFromApi,
   mapLeadsPaginatedFromApi,
-  mapOpportunityFromApi,
-  mapOpportunitiesPageFromApi,
-  mapOpportunitiesPaginatedFromApi,
 } from '@/services/adapters/crm'
 import {
   CRM_INFINITE_PAGE_SIZE,
@@ -32,12 +29,15 @@ import {
 } from '@/modules/crm/constants/paging'
 import {
   emptyListMeta,
-  fetchMissingLeadsForOpportunities,
   listMetaFromPaginated,
 } from '@/modules/crm/lib/crmListLoading'
 import {
   SIMPLIFIED_WORKSPACE_STAGES,
-  buildSimplifiedOpportunityQuery,
+  buildSimplifiedLeadQuery,
+  countSimplifiedWorkspaceStageCounts,
+  filterLeadsForSimplifiedWorkspace,
+  leadsMatchingSimplifiedWorkspaceFilters,
+  needsSimplifiedWorkspaceClientFilter,
 } from '@/modules/crm/lib/simplifiedWorkspaceQuery'
 import { paginateSlice } from '@/modules/reportes/lib/pagination'
 import { appendQuoteRevision } from '@/modules/crm/lib/quoteRevisions'
@@ -57,14 +57,11 @@ import {
   resolveQuoteInvoicePaymentMethod,
 } from '@/modules/crm/lib/quoteInvoice'
 import { buildLeadConvertRequest, buildLeadOfflineCustomer } from '@/modules/crm/lib/leadConversion'
+import { PIPELINE_OPEN_STAGES } from '@/modules/crm/lib/pipelineLeads'
 import {
-  buildOpportunityDraftFromLead,
-  leadsMissingPipeline,
-} from '@/modules/crm/lib/pipelineLeads'
-import {
-  effectiveOpportunityCustomerId,
-  resolveCustomerForOpportunity,
-} from '@/modules/crm/lib/opportunityCustomer'
+  effectiveLeadCustomerId,
+  resolveCustomerForLead,
+} from '@/modules/crm/lib/leadCustomer'
 import {
   mapCheckoutFromApi,
   mapReceivablesPageFromApi,
@@ -134,58 +131,47 @@ async function loadOnlineSection(section) {
     }
     case 'leads': {
       const pageSize = DEFAULT_CRM_PAGE_SIZE
-      const [leadsRes, discoveryCapabilities, oppsRes] = await Promise.all([
+      const [leadsRes, discoveryCapabilities] = await Promise.all([
         crmApi.leads({ page: 1, pageSize }),
         crmApi.discoveryCapabilities(),
-        crmApi.opportunities({ page: 1, pageSize: 200 }),
       ])
       const leadsMapped = mapLeadsPaginatedFromApi(leadsRes)
-      const oppsMapped = mapOpportunitiesPaginatedFromApi(oppsRes)
       return {
         leads: leadsMapped.items,
         leadsListMeta: listMetaFromPaginated(leadsMapped, { pageSize }),
         discoveryCapabilities,
-        opportunities: oppsMapped.items,
-        opportunitiesListMeta: listMetaFromPaginated(oppsMapped, { pageSize: 200 }),
       }
     }
     case 'pipeline': {
-      const [oppsRes, quotes] = await Promise.all([
-        crmApi.opportunities({ page: 1, pageSize: CRM_INFINITE_PAGE_SIZE }),
+      const [leadsRes, quotes] = await Promise.all([
+        crmApi.leads({ page: 1, pageSize: CRM_INFINITE_PAGE_SIZE }),
         crmCommerceEnabled() ? readAllPages(crmApi.quotes) : emptyCrmPage(),
         syncWorkspacePaymentMethods(),
       ])
-      const oppsMapped = mapOpportunitiesPaginatedFromApi(oppsRes)
-      const extraLeads = await fetchMissingLeadsForOpportunities([], oppsMapped.items)
+      const leadsMapped = mapLeadsPaginatedFromApi(leadsRes)
       return {
         quotes: mapCrmQuotesPageFromApi(quotes),
-        opportunities: oppsMapped.items,
-        opportunitiesListMeta: listMetaFromPaginated(oppsMapped),
-        leads: extraLeads,
+        leads: leadsMapped.items,
+        leadsListMeta: listMetaFromPaginated(leadsMapped),
       }
     }
     case 'activities': {
-      const [activities, opportunities] = await Promise.all([
-        readAllPages(crmApi.activities),
-        readAllPages(crmApi.opportunities),
-      ])
+      const activities = await readAllPages(crmApi.activities)
       return {
         activities: mapActivitiesPageFromApi(activities),
-        opportunities: mapOpportunitiesPageFromApi(opportunities),
       }
     }
     case 'customers': {
       const pageSize = CRM_INFINITE_PAGE_SIZE
-      const [salesRes, quotesRes, oppsRes, activitiesRes] = await Promise.all([
+      const [salesRes, quotesRes, leadsRes, activitiesRes] = await Promise.all([
         crmCommerceEnabled() ? crmApi.sales({ page: 1, pageSize }) : emptyCrmPage(),
         crmCommerceEnabled() ? crmApi.quotes({ page: 1, pageSize: 100 }) : emptyCrmPage(),
-        crmApi.opportunities({ page: 1, pageSize }),
+        crmApi.leads({ page: 1, pageSize }),
         crmApi.activities({ page: 1, pageSize: 100 }),
       ])
-      const oppsMapped = mapOpportunitiesPaginatedFromApi(oppsRes)
+      const leadsMapped = mapLeadsPaginatedFromApi(leadsRes)
       const result = {
-        opportunities: oppsMapped.items,
-        opportunitiesListMeta: listMetaFromPaginated(oppsMapped),
+        leads: leadsMapped.items,
         activities: mapActivitiesPageFromApi(activitiesRes),
       }
       if (crmCommerceEnabled()) {
@@ -198,15 +184,15 @@ async function loadOnlineSection(section) {
       if (!crmCommerceEnabled()) {
         return {}
       }
-      const [quotes, opportunities, customers] = await Promise.all([
+      const [quotes, leads, customers] = await Promise.all([
         readAllPages(crmApi.quotes),
-        readAllPages(crmApi.opportunities),
+        readAllPages(crmApi.leads),
         readAllPages(crmApi.customers),
         syncWorkspacePaymentMethods().catch(() => []),
       ])
       return {
         quotes: mapCrmQuotesPageFromApi(quotes),
-        opportunities: mapOpportunitiesPageFromApi(opportunities),
+        leads: mapLeadsPageFromApi(leads),
         customers: mapCrmCustomersPageFromApi(customers),
       }
     }
@@ -310,45 +296,39 @@ function normalizeLead(raw) {
     createdAt: raw.createdAt || now(),
     updatedAt: raw.updatedAt || now(),
     customerId: raw.customerId || null,
-    opportunityId: raw.opportunityId || null,
+    pipelineValue: Number(raw.pipelineValue) || 0,
+    lostReason: raw.lostReason || null,
+    pipelineClosedAt: raw.pipelineClosedAt || null,
     version: raw.version || 1,
   }
 }
 
 const RAW_SEED_LEADS = [
-  { name: 'Glamour Studio RD', company: 'Glamour Studio', location: 'Santo Domingo', rawSnippet: 'Salón de belleza con citas y venta de productos', source: 'serp', acquisitionSource: 'instagram', status: 'calificado', phone: '809-555-1001' },
-  { name: 'Spa Zen Caribe', company: 'Spa Zen', location: 'Piantini, SD', rawSnippet: 'Spa wellness masajes faciales reservas online', source: 'serp', acquisitionSource: 'whatsapp', status: 'contactado', phone: '809-555-1002' },
+  { name: 'Glamour Studio RD', company: 'Glamour Studio', location: 'Santo Domingo', rawSnippet: 'Salón de belleza con citas y venta de productos', source: 'serp', acquisitionSource: 'instagram', status: 'propuesta', pipelineValue: 45000, phone: '809-555-1001', customerId: 'c2' },
+  { name: 'Spa Zen Caribe', company: 'Spa Zen', location: 'Piantini, SD', rawSnippet: 'Spa wellness masajes faciales reservas online', source: 'serp', acquisitionSource: 'whatsapp', status: 'negociacion', pipelineValue: 78000, phone: '809-555-1002' },
   { name: 'Clínica Dental Sonrisa', company: 'Dental Sonrisa', location: 'Santiago', rawSnippet: 'Consultorio dental citas pacientes', source: 'referral', acquisitionSource: 'referral', status: 'nuevo', phone: '809-555-1003', branchId: 'charm-santiago' },
   { name: 'Café Colonial', company: 'Café Colonial', location: 'Zona Colonial', rawSnippet: 'Restaurante café comida rápida POS', source: 'manual', acquisitionSource: 'pos_walk_in', status: 'nuevo', branchId: 'charm-este' },
   { name: 'Boutique Estilo', company: 'Boutique Estilo', location: 'Las Terrenas', rawSnippet: 'Tienda retail ropa inventario', source: 'import', acquisitionSource: 'otros', status: 'contactado', branchId: 'charm-santiago' },
-  { name: 'AutoShine Carwash', company: 'AutoShine', location: 'Los Alcarrizos', rawSnippet: 'Car wash lavado autos citas membresías', source: 'serp', acquisitionSource: 'whatsapp', status: 'calificado', phone: '809-555-1006' },
-  { name: 'FitLife Gym', company: 'FitLife', location: 'Naco', rawSnippet: 'Gimnasio fitness clases membresías CRM', source: 'serp', acquisitionSource: 'instagram', status: 'nuevo', phone: '809-555-1007' },
-  { name: 'Ferretería El Martillo', company: 'El Martillo', location: 'San Cristóbal', rawSnippet: 'Ferretería retail inventario multi sucursal', source: 'manual', acquisitionSource: 'otros', status: 'descartado' },
-  { name: 'Nails & More', company: 'Nails & More', location: 'Bávaro', rawSnippet: 'Nail salon belleza citas', source: 'serp', acquisitionSource: 'referral', status: 'calificado', phone: '809-555-1009' },
+  { name: 'AutoShine Carwash', company: 'AutoShine', location: 'Los Alcarrizos', rawSnippet: 'Car wash lavado autos citas membresías', source: 'serp', acquisitionSource: 'whatsapp', status: 'contactado', pipelineValue: 32000, phone: '809-555-1006', branchId: 'charm-santiago' },
+  { name: 'FitLife Gym', company: 'FitLife', location: 'Naco', rawSnippet: 'Gimnasio fitness clases membresías CRM', source: 'serp', acquisitionSource: 'instagram', status: 'nuevo', pipelineValue: 55000, phone: '809-555-1007' },
+  { name: 'Ferretería El Martillo', company: 'El Martillo', location: 'San Cristóbal', rawSnippet: 'Ferretería retail inventario multi sucursal', source: 'manual', acquisitionSource: 'otros', status: 'perdido', lostReason: 'Sin presupuesto' },
+  { name: 'Nails & More', company: 'Nails & More', location: 'Bávaro', rawSnippet: 'Nail salon belleza citas', source: 'serp', acquisitionSource: 'referral', status: 'propuesta', pipelineValue: 28000, phone: '809-555-1009' },
   { name: 'Restaurante Mar Azul', company: 'Mar Azul', location: 'Boca Chica', rawSnippet: 'Restaurante mariscos facturación caja', source: 'referral', acquisitionSource: 'whatsapp', status: 'contactado', phone: '809-555-1010' },
-]
-
-const SEED_OPPORTUNITIES = [
-  { id: 'opp-1', title: 'Glamour Studio — Suite Agenda+POS', leadId: 'lead-seed-1', customerId: 'c2', customerName: 'Glamour Studio RD', stage: 'propuesta', value: 45000, branchId: 'charm-dn', assignedUserId: 'u1', notes: 'Interesados en agenda y POS', createdAt: daysAgo(12), updatedAt: daysAgo(2) },
-  { id: 'opp-2', title: 'Spa Zen — Implementación completa', leadId: 'lead-seed-2', customerName: 'Spa Zen Caribe', stage: 'negociacion', value: 78000, branchId: 'charm-dn', assignedUserId: 'u2', notes: '', createdAt: daysAgo(20), updatedAt: daysAgo(1) },
-  { id: 'opp-3', title: 'AutoShine — POS + membresías', leadId: 'lead-seed-6', customerName: 'AutoShine Carwash', stage: 'contactado', value: 32000, branchId: 'charm-santiago', assignedUserId: 'u1', notes: '', createdAt: daysAgo(5), updatedAt: daysAgo(3) },
-  { id: 'opp-4', title: 'FitLife — CRM y agenda', leadId: 'lead-seed-7', customerName: 'FitLife Gym', stage: 'nuevo', value: 55000, branchId: 'charm-dn', assignedUserId: 'u2', notes: '', createdAt: daysAgo(3), updatedAt: daysAgo(3) },
-  { id: 'opp-5', title: 'Dental Sonrisa — Agenda clínica', leadId: 'lead-seed-3', customerName: 'Clínica Dental Sonrisa', stage: 'cerrado', value: 62000, branchId: 'charm-santiago', assignedUserId: 'u1', notes: 'Ganada', createdAt: daysAgo(45), updatedAt: daysAgo(10) },
 ]
 
 const hoursFromNow = (h) => new Date(Date.now() + h * 3600000).toISOString()
 
 const SEED_ACTIVITIES = [
-  { id: 'act-1', type: 'llamada', title: 'Llamada inicial Glamour Studio', description: 'Presentación de módulos Agenda y POS', opportunityId: 'opp-1', leadId: 'lead-seed-1', customerName: 'Glamour Studio RD', assignedUserId: 'u1', dueAt: daysAgo(2), completedAt: daysAgo(2), createdAt: daysAgo(3) },
-  { id: 'act-2', type: 'email', title: 'Propuesta enviada Spa Zen', description: 'Cotización suite completa', opportunityId: 'opp-2', leadId: 'lead-seed-2', customerName: 'Spa Zen Caribe', assignedUserId: 'u2', dueAt: daysAgo(1), completedAt: daysAgo(1), createdAt: daysAgo(2) },
-  { id: 'act-3', type: 'reunion', title: 'Demo AutoShine', description: 'Demostración POS en sitio', opportunityId: 'opp-3', leadId: 'lead-seed-6', customerName: 'AutoShine Carwash', assignedUserId: 'u1', dueAt: hoursFromNow(3), completedAt: null, createdAt: daysAgo(1) },
-  { id: 'act-4', type: 'tarea', title: 'Seguimiento FitLife', description: 'Enviar caso de éxito gym', opportunityId: 'opp-4', leadId: 'lead-seed-7', customerName: 'FitLife Gym', assignedUserId: 'u2', dueAt: hoursFromNow(26), completedAt: null, createdAt: daysAgo(0) },
+  { id: 'act-1', type: 'llamada', title: 'Llamada inicial Glamour Studio', description: 'Presentación de módulos Agenda y POS', leadId: 'lead-seed-1', customerName: 'Glamour Studio RD', assignedUserId: 'u1', dueAt: daysAgo(2), completedAt: daysAgo(2), createdAt: daysAgo(3) },
+  { id: 'act-2', type: 'email', title: 'Propuesta enviada Spa Zen', description: 'Cotización suite completa', leadId: 'lead-seed-2', customerName: 'Spa Zen Caribe', assignedUserId: 'u2', dueAt: daysAgo(1), completedAt: daysAgo(1), createdAt: daysAgo(2) },
+  { id: 'act-3', type: 'reunion', title: 'Demo AutoShine', description: 'Demostración POS en sitio', leadId: 'lead-seed-6', customerName: 'AutoShine Carwash', assignedUserId: 'u1', dueAt: hoursFromNow(3), completedAt: null, createdAt: daysAgo(1) },
+  { id: 'act-4', type: 'tarea', title: 'Seguimiento FitLife', description: 'Enviar caso de éxito gym', leadId: 'lead-seed-7', customerName: 'FitLife Gym', assignedUserId: 'u2', dueAt: hoursFromNow(26), completedAt: null, createdAt: daysAgo(0) },
   { id: 'act-5', type: 'tarea', title: 'Llamar a Nicole Sosa', description: 'Confirmar próxima sesión de prueba', customerName: 'Nicole Sosa', assignedUserId: 'u1', dueAt: hoursFromNow(-2), completedAt: null, createdAt: daysAgo(0) },
 ]
 
 const SEED_QUOTES = [
-  { id: 'qt-1', number: 'COT-2026-001', opportunityId: 'opp-1', customerId: 'c2', customerName: 'Glamour Studio RD', status: 'enviada', total: 45000, items: [{ name: 'Módulo Agenda', qty: 1, price: 25000 }, { name: 'Módulo POS', qty: 1, price: 20000 }], branchId: 'charm-dn', validUntil: daysAgo(-15), createdAt: daysAgo(5), updatedAt: daysAgo(5) },
-  { id: 'qt-2', number: 'COT-2026-002', opportunityId: 'opp-2', customerName: 'Spa Zen Caribe', status: 'borrador', total: 78000, items: [{ name: 'Suite Helios Completa', qty: 1, price: 78000 }], branchId: 'charm-dn', validUntil: daysAgo(-20), createdAt: daysAgo(2), updatedAt: daysAgo(2) },
+  { id: 'qt-1', number: 'COT-2026-001', leadId: 'lead-seed-1', customerId: 'c2', customerName: 'Glamour Studio RD', status: 'enviada', total: 45000, items: [{ name: 'Módulo Agenda', qty: 1, price: 25000 }, { name: 'Módulo POS', qty: 1, price: 20000 }], branchId: 'charm-dn', validUntil: daysAgo(-15), createdAt: daysAgo(5), updatedAt: daysAgo(5) },
+  { id: 'qt-2', number: 'COT-2026-002', leadId: 'lead-seed-2', customerName: 'Spa Zen Caribe', status: 'borrador', total: 78000, items: [{ name: 'Suite Helios Completa', qty: 1, price: 78000 }], branchId: 'charm-dn', validUntil: daysAgo(-20), createdAt: daysAgo(2), updatedAt: daysAgo(2) },
 ]
 
 function buildSeedLeads() {
@@ -362,8 +342,6 @@ export const useCrmStore = create(
     (set, get) => ({
       leads: [],
       leadsListMeta: emptyListMeta(),
-      opportunities: [],
-      opportunitiesListMeta: emptyListMeta(),
       activities: [],
       quotes: [],
       customers: [],
@@ -406,7 +384,6 @@ export const useCrmStore = create(
         if (!online) {
           set({
             leads: buildSeedLeads(),
-            opportunities: SEED_OPPORTUNITIES,
             activities: SEED_ACTIVITIES,
             quotes: SEED_QUOTES,
             sales: [],
@@ -414,7 +391,6 @@ export const useCrmStore = create(
             dataState: { status: 'demo', source: 'demo', error: null },
             hydrating: false,
           })
-          await get().syncLeadsToPipeline()
           return get()
         }
         set({ hydrating: true, error: null, dataState: { status: 'loading', source: 'api', error: null } })
@@ -565,25 +541,23 @@ export const useCrmStore = create(
       /** @deprecated Usar paginación por página */
       loadMoreLeads: async () => get().setLeadsPage(get().leadsListMeta.page + 1),
 
-      loadMoreOpportunities: async () => {
+      loadMorePipelineLeads: async () => {
         if (!isOnline()) return
-        const meta = get().opportunitiesListMeta
+        const meta = get().leadsListMeta
         if (meta.loadingMore || meta.page >= meta.totalPages) return
-        set({ opportunitiesListMeta: { ...meta, loadingMore: true } })
+        set({ leadsListMeta: { ...meta, loadingMore: true } })
         try {
-          const response = await crmApi.opportunities({
+          const response = await crmApi.leads({
             page: meta.page + 1,
             pageSize: CRM_INFINITE_PAGE_SIZE,
           })
-          const mapped = mapOpportunitiesPaginatedFromApi(response)
-          const extraLeads = await fetchMissingLeadsForOpportunities(get().leads, mapped.items)
+          const mapped = mapLeadsPaginatedFromApi(response)
           set((state) => ({
-            opportunities: upsertById(state.opportunities, mapped.items),
-            opportunitiesListMeta: listMetaFromPaginated(mapped),
-            leads: extraLeads.length ? upsertById(state.leads, extraLeads) : state.leads,
+            leads: upsertById(state.leads, mapped.items),
+            leadsListMeta: listMetaFromPaginated(mapped),
           }))
         } catch (error) {
-          set({ opportunitiesListMeta: { ...get().opportunitiesListMeta, loadingMore: false } })
+          set({ leadsListMeta: { ...get().leadsListMeta, loadingMore: false } })
           throw error
         }
       },
@@ -659,24 +633,17 @@ export const useCrmStore = create(
         }))
         try {
           if (!isOnline()) {
-            const range = dateFilter?.period === 'all' ? null : resolvePeriodRange(dateFilter)
             const q = search.trim().toLowerCase()
-            const leads = get().leads.length ? get().leads : buildSeedLeads()
-            const opportunities = get().opportunities.length ? get().opportunities : SEED_OPPORTUNITIES
-            const filtered = opportunities
-              .filter((item) => item.stage === stage)
-              .filter((item) => matchesBranches(item.branchId, branchIds))
-              .filter((item) => {
-                const updated = new Date(item.updatedAt || item.createdAt || 0)
-                return !range || (updated >= range.start && updated <= range.end)
-              })
-              .filter((item) => {
-                if (!q) return true
-                const lead = leads.find((l) => l.id === item.leadId)
-                const title = (item.customerName || lead?.name || '').toLowerCase()
-                const phone = (lead?.phone || '').toLowerCase()
-                return title.includes(q) || phone.includes(q)
-              })
+            const allLeads = get().leads.length ? get().leads : buildSeedLeads()
+            const filtered = filterLeadsForSimplifiedWorkspace(
+              allLeads.filter((item) => item.status === stage),
+              { branchIds, dateFilter },
+            ).filter((item) => {
+              if (!q) return true
+              const title = (item.company || item.name || '').toLowerCase()
+              const phone = (item.phone || '').toLowerCase()
+              return title.includes(q) || phone.includes(q)
+            })
             const slice = paginateSlice(filtered, { page, pageSize })
             set((state) => ({
               simplifiedWorkspace: {
@@ -689,12 +656,12 @@ export const useCrmStore = create(
                 loading: false,
                 error: null,
               },
-              opportunities: upsertById(state.opportunities, slice.items),
+              leads: upsertById(state.leads, slice.items),
             }))
             return get().simplifiedWorkspace
           }
 
-          const params = buildSimplifiedOpportunityQuery({
+          const { params } = buildSimplifiedLeadQuery({
             stage,
             page,
             pageSize,
@@ -702,13 +669,17 @@ export const useCrmStore = create(
             branchIds,
             dateFilter,
           })
-          const response = await crmApi.opportunities(params)
-          const mapped = mapOpportunitiesPaginatedFromApi(response)
-          const leadIds = [...new Set(mapped.items.map((item) => item.leadId).filter(Boolean))]
-          const leadRecords = await Promise.all(
-            leadIds.map((leadId) => crmApi.getLead(leadId).then(mapLeadFromApi).catch(() => null))
-          )
-          const leadsFetched = leadRecords.filter(Boolean)
+          const response = await crmApi.leads(params)
+          let mapped = mapLeadsPaginatedFromApi(response)
+          if (branchIds?.length > 1 || dateFilter?.period !== 'all') {
+            const filtered = filterLeadsForSimplifiedWorkspace(mapped.items, { branchIds, dateFilter })
+            mapped = {
+              ...mapped,
+              items: filtered,
+              totalItems: filtered.length,
+              totalPages: Math.max(1, Math.ceil(filtered.length / pageSize)),
+            }
+          }
           set((state) => ({
             simplifiedWorkspace: {
               ...state.simplifiedWorkspace,
@@ -720,8 +691,7 @@ export const useCrmStore = create(
               loading: false,
               error: null,
             },
-            opportunities: upsertById(state.opportunities, mapped.items),
-            leads: upsertById(state.leads, leadsFetched),
+            leads: upsertById(state.leads, mapped.items),
           }))
           return get().simplifiedWorkspace
         } catch (error) {
@@ -738,35 +708,18 @@ export const useCrmStore = create(
           simplifiedWorkspace: { ...state.simplifiedWorkspace, countsLoading: true, countsError: null },
         }))
         try {
+          const countFromLeads = (leads) => countSimplifiedWorkspaceStageCounts(leads, { search, branchIds, dateFilter })
+
           if (!isOnline()) {
-            const range = dateFilter?.period === 'all' ? null : resolvePeriodRange(dateFilter)
-            const q = search.trim().toLowerCase()
-            const leads = get().leads.length ? get().leads : buildSeedLeads()
-            const opportunities = get().opportunities.length ? get().opportunities : SEED_OPPORTUNITIES
-            const stageCounts = Object.fromEntries(SIMPLIFIED_WORKSPACE_STAGES.map((id) => [id, 0]))
-            opportunities
-              .filter((item) => matchesBranches(item.branchId, branchIds))
-              .filter((item) => {
-                const updated = new Date(item.updatedAt || item.createdAt || 0)
-                return !range || (updated >= range.start && updated <= range.end)
-              })
-              .filter((item) => {
-                if (!q) return true
-                const lead = leads.find((l) => l.id === item.leadId)
-                const title = (item.customerName || lead?.name || '').toLowerCase()
-                const phone = (lead?.phone || '').toLowerCase()
-                return title.includes(q) || phone.includes(q)
-              })
-              .forEach((item) => {
-                if (stageCounts[item.stage] !== undefined) stageCounts[item.stage] += 1
-              })
+            const allLeads = get().leads.length ? get().leads : buildSeedLeads()
+            const stageCounts = countFromLeads(allLeads)
             set((state) => ({
               simplifiedWorkspace: { ...state.simplifiedWorkspace, stageCounts, countsLoading: false, countsError: null },
             }))
             return stageCounts
           }
 
-          const base = buildSimplifiedOpportunityQuery({
+          const baseQuery = buildSimplifiedLeadQuery({
             stage: SIMPLIFIED_WORKSPACE_STAGES[0],
             page: 1,
             pageSize: 1,
@@ -774,12 +727,43 @@ export const useCrmStore = create(
             branchIds,
             dateFilter,
           })
+
+          const readLeadPage = async (params) => {
+            const response = await crmApi.leads(params)
+            return mapLeadsPaginatedFromApi(response)
+          }
+
+          if (needsSimplifiedWorkspaceClientFilter({ branchIds, dateFilter })) {
+            const stageCounts = Object.fromEntries(SIMPLIFIED_WORKSPACE_STAGES.map((id) => [id, 0]))
+            await Promise.all(
+              SIMPLIFIED_WORKSPACE_STAGES.map(async (stageId) => {
+                const { items } = await readAllPages(readLeadPage, {
+                  ...baseQuery.params,
+                  status: stageId,
+                  pageSize: 200,
+                })
+                stageCounts[stageId] = leadsMatchingSimplifiedWorkspaceFilters(items, {
+                  search,
+                  branchIds,
+                  dateFilter,
+                }).length
+              }),
+            )
+            set((state) => ({
+              simplifiedWorkspace: { ...state.simplifiedWorkspace, stageCounts, countsLoading: false, countsError: null },
+            }))
+            return stageCounts
+          }
+
           const responses = await Promise.all(
-            SIMPLIFIED_WORKSPACE_STAGES.map((stageId) => crmApi.opportunities({ ...base, stage: stageId }))
+            SIMPLIFIED_WORKSPACE_STAGES.map((stageId) => crmApi.leads({
+              ...baseQuery.params,
+              status: stageId,
+            }))
           )
           const stageCounts = Object.fromEntries(
             SIMPLIFIED_WORKSPACE_STAGES.map((stageId, index) => {
-              const mapped = mapOpportunitiesPaginatedFromApi(responses[index])
+              const mapped = mapLeadsPaginatedFromApi(responses[index])
               return [stageId, mapped.totalItems]
             })
           )
@@ -795,8 +779,8 @@ export const useCrmStore = create(
         }
       },
 
-      fetchSimplifiedWorkspaceDetailActivities: async (opportunityId) => {
-        if (!opportunityId) {
+      fetchSimplifiedWorkspaceDetailActivities: async (leadId) => {
+        if (!leadId) {
           set((state) => ({
             simplifiedWorkspace: {
               ...state.simplifiedWorkspace,
@@ -813,7 +797,7 @@ export const useCrmStore = create(
           if (!isOnline()) {
             const detailActivities = get()
               .activities
-              .filter((item) => item.opportunityId === opportunityId)
+              .filter((item) => item.leadId === leadId)
               .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
             set((state) => ({
               simplifiedWorkspace: {
@@ -825,7 +809,7 @@ export const useCrmStore = create(
             return detailActivities
           }
           const response = await crmApi.activities({
-            opportunityId,
+            leadId,
             page: 1,
             pageSize: 50,
           })
@@ -848,31 +832,30 @@ export const useCrmStore = create(
         }
       },
 
-      applySimplifiedFollowUp: async (opportunityId, { dueAt, title, description }) => {
-        const opportunity = get().opportunities.find((item) => item.id === opportunityId)
-          || get().simplifiedWorkspace.items.find((item) => item.id === opportunityId)
-        if (!opportunity) throw new Error('Oportunidad no encontrada.')
+      applySimplifiedFollowUp: async (leadId, { dueAt, title, description }) => {
+        const lead = get().leads.find((item) => item.id === leadId)
+          || get().simplifiedWorkspace.items.find((item) => item.id === leadId)
+        if (!lead) throw new Error('Lead no encontrado.')
         const dueIso = dueAt ? new Date(dueAt).toISOString() : null
         await get().addActivity({
           type: 'tarea',
           title: title || 'Seguimiento programado',
           description: description || null,
-          opportunityId: opportunity.id,
-          leadId: opportunity.leadId || null,
-          customerId: opportunity.customerId || null,
-          customerName: opportunity.customerName,
-          branchId: opportunity.branchId,
+          leadId: lead.id,
+          customerId: lead.customerId || null,
+          customerName: lead.company || lead.name,
+          branchId: lead.branchId,
           dueAt: dueIso,
         })
-        if (opportunity.stage !== 'negociacion') {
-          await get().updateOpportunity(opportunityId, { stage: 'negociacion' })
+        if (lead.status !== 'negociacion') {
+          await get().updateLead(leadId, { status: 'negociacion' })
         }
       },
 
-      applySimplifiedLost: async (opportunityId, lostReason) => {
+      applySimplifiedLost: async (leadId, lostReason) => {
         const reason = String(lostReason || '').trim()
         if (!reason) throw new Error('Selecciona un motivo de pérdida.')
-        await get().updateOpportunity(opportunityId, { stage: 'perdido', lostReason: reason })
+        await get().updateLead(leadId, { status: 'perdido', lostReason: reason })
       },
 
       addLead: async (data) => {
@@ -882,7 +865,6 @@ export const useCrmStore = create(
             const response = await crmApi.createLead(leadPayload(lead))
             const saved = mapLeadFromApi(response)
             set((s) => ({ leads: [saved, ...s.leads] }))
-            await get().syncLeadsToPipeline([saved.id])
             return saved
           } catch (error) {
             reportMutationError(set, error)
@@ -890,7 +872,6 @@ export const useCrmStore = create(
           }
         }
         set((s) => ({ leads: [lead, ...s.leads] }))
-        await get().syncLeadsToPipeline([lead.id])
         return lead
       },
 
@@ -908,7 +889,6 @@ export const useCrmStore = create(
             })
             const saved = (response.items || []).map(mapLeadFromApi)
             set((s) => ({ leads: [...saved, ...s.leads] }))
-            await get().syncLeadsToPipeline(saved.map((item) => item.id))
             return saved
           } catch (error) {
             reportMutationError(set, error)
@@ -916,7 +896,6 @@ export const useCrmStore = create(
           }
         }
         set((s) => ({ leads: [...newLeads, ...s.leads] }))
-        await get().syncLeadsToPipeline(newLeads.map((item) => item.id))
         return newLeads
       },
 
@@ -933,7 +912,7 @@ export const useCrmStore = create(
           const payload = { version: current.version }
           const fields = [
             'name', 'company', 'email', 'phone', 'website', 'instagramUrl', 'location', 'status',
-            'starRating', 'rawSnippet', 'acquisitionSource',
+            'starRating', 'rawSnippet', 'acquisitionSource', 'pipelineValue', 'lostReason', 'customerId',
           ]
           fields.forEach((field) => {
             if (data[field] !== undefined) payload[field] = data[field]
@@ -960,7 +939,6 @@ export const useCrmStore = create(
         if (!isOnline()) {
           set((state) => ({
             leads: state.leads.filter((lead) => !ids.includes(lead.id)),
-            opportunities: state.opportunities.filter((opp) => !ids.includes(opp.leadId)),
             activities: state.activities.filter((act) => !ids.includes(act.leadId)),
           }))
           return { items: ids.map((id) => ({ leadId: id, status: 'deleted' })) }
@@ -972,7 +950,6 @@ export const useCrmStore = create(
         if (deleted.size) {
           set((state) => ({
             leads: state.leads.filter((lead) => !deleted.has(lead.id)),
-            opportunities: state.opportunities.filter((opp) => !deleted.has(opp.leadId)),
             activities: state.activities.filter((act) => !deleted.has(act.leadId)),
             leadsListMeta: {
               ...state.leadsListMeta,
@@ -1004,150 +981,45 @@ export const useCrmStore = create(
         const customer = await useCustomersStore.getState().addCustomer(buildLeadOfflineCustomer(lead))
         set((s) => ({
           leads: s.leads.map((l) =>
-            l.id === leadId ? { ...l, status: 'convertido', customerId: customer.id, updatedAt: now() } : l
+            l.id === leadId
+              ? { ...l, status: 'cerrado', customerId: customer.id, updatedAt: now() }
+              : l
           ),
-          opportunities: s.opportunities.map((opportunity) => (
-            opportunity.leadId === leadId
-              ? { ...opportunity, customerId: customer.id, customerName: customer.name, updatedAt: now() }
-              : opportunity
-          )),
         }))
         return customer
       },
 
-      syncLeadsToPipeline: async (leadIds = null) => {
-        const pending = leadIds
-          ? leadsMissingPipeline(get().leads.filter((lead) => leadIds.includes(lead.id)))
-          : leadsMissingPipeline(get().leads)
-        for (const lead of pending) {
-          try {
-            await get().addToPipeline(lead.id)
-          } catch {
-            // Best-effort: un lead fallido no debe bloquear el resto.
-          }
-        }
-        return pending.length
-      },
+      syncLeadsToPipeline: async () => 0,
 
-      addToPipeline: async (leadId) => {
-        const lead = get().leads.find((l) => l.id === leadId)
-        if (!lead) return null
-        if (lead.opportunityId) {
-          return get().opportunities.find((opportunity) => opportunity.id === lead.opportunityId) || null
-        }
-        const ts = now()
-        const opp = buildOpportunityDraftFromLead(lead, {
-          id: genId('opp'),
-          timestamps: { createdAt: ts, updatedAt: ts },
-        })
-        if (isOnline()) {
-          try {
-            const response = await crmApi.createLeadOpportunity(leadId, {
-              title: opp.title,
-              stage: opp.stage,
-              value: opp.value,
-              notes: opp.notes || null,
-            })
-            const saved = mapOpportunityFromApi(response)
-            const updatedLead = mapLeadFromApi(await crmApi.getLead(leadId))
-            set((s) => ({
-              opportunities: [saved, ...s.opportunities.filter((item) => item.id !== saved.id)],
-              leads: s.leads.map((item) => (
-                item.id === leadId
-                  ? updatedLead
-                  : item
-              )),
-            }))
-            return saved
-          } catch (error) {
-            reportMutationError(set, error)
-            throw error
-          }
-        }
-        set((s) => ({
-          opportunities: [opp, ...s.opportunities],
-          leads: s.leads.map((l) => (
-            l.id === leadId ? { ...l, opportunityId: opp.id, updatedAt: ts } : l
-          )),
-        }))
-        return opp
-      },
+      addToPipeline: async (leadId) => get().leads.find((lead) => lead.id === leadId) || null,
 
-      addOpportunity: async (data) => {
-        const opp = { id: genId('opp'), createdAt: now(), updatedAt: now(), stage: 'nuevo', value: 0, ...data }
-        if (isOnline()) {
-          try {
-            const response = await crmApi.createOpportunity({
-              branchId: opp.branchId,
-              leadId: opp.leadId || null,
-              customerId: opp.customerId || null,
-              assignedMembershipId: opp.assignedUserId || null,
-              title: opp.title,
-              customerName: opp.customerName,
-              stage: opp.stage,
-              value: opp.value,
-              notes: opp.notes || null,
-            })
-            const saved = mapOpportunityFromApi(response)
-            set((s) => ({
-              opportunities: [saved, ...s.opportunities.filter((item) => item.id !== saved.id)],
-              leads: saved.leadId
-                ? s.leads.map((lead) => (
-                    lead.id === saved.leadId
-                      ? { ...lead, opportunityId: saved.id }
-                      : lead
-                  ))
-                : s.leads,
-            }))
-            return saved
-          } catch (error) {
-            reportMutationError(set, error)
-            throw error
-          }
-        }
-        set((s) => ({
-          opportunities: [opp, ...s.opportunities],
-          leads: opp.leadId
-            ? s.leads.map((lead) => (
-                lead.id === opp.leadId
-                  ? { ...lead, opportunityId: opp.id }
-                  : lead
-              ))
-            : s.leads,
-        }))
-        return opp
-      },
+      updateLeadStage: (id, status) => get().updateLead(id, { status }),
 
-      updateOpportunityStage: (id, stage) => get().updateOpportunity(id, { stage }),
-
-      closeOpportunityWithInvoice: async (opportunityId, { paymentMethod = 'efectivo', customerId } = {}) => {
+      closeLeadWithInvoice: async (leadId, {
+        paymentMethod = 'efectivo',
+        customerId,
+        reference = null,
+        proof = null,
+        collectionMode,
+      } = {}) => {
         const customers = useCustomersStore.getState().customers
-        let opportunity = get().opportunities.find((item) => item.id === opportunityId)
-        const resolvedId = customerId || effectiveOpportunityCustomerId(opportunity, customers)
-        if (resolvedId && !opportunity?.customerId) {
-          const linked = customers.find((item) => item.id === resolvedId)
-            || resolveCustomerForOpportunity(opportunity, customers)
-          await get().updateOpportunity(opportunityId, {
-            customerId: resolvedId,
-            customerName: linked?.name || opportunity?.customerName,
-          })
-        } else if (customerId && customerId !== opportunity?.customerId) {
-          const linked = customers.find((item) => item.id === customerId)
-          await get().updateOpportunity(opportunityId, {
-            customerId,
-            customerName: linked?.name || opportunity?.customerName,
-          })
+        let lead = get().leads.find((item) => item.id === leadId)
+        const resolvedId = customerId || effectiveLeadCustomerId(lead, customers)
+        if (resolvedId && !lead?.customerId) {
+          await get().updateLead(leadId, { customerId: resolvedId })
+        } else if (customerId && customerId !== lead?.customerId) {
+          await get().updateLead(leadId, { customerId })
         }
-        opportunity = get().opportunities.find((item) => item.id === opportunityId)
-        const validationError = validatePipelineClose({ opportunity, quotes: get().quotes })
+        lead = get().leads.find((item) => item.id === leadId)
+        const validationError = validatePipelineClose({ lead, quotes: get().quotes })
         if (validationError) throw new Error(validationError)
 
-        const quote = findBillableQuote(get().quotes, opportunityId)
+        const quote = findBillableQuote(get().quotes, leadId)
         if (!quote) throw new Error('No se encontró una cotización facturable.')
 
         const customer = useCustomersStore.getState().customers.find(
-          (item) => item.id === opportunity.customerId
-        ) || { id: opportunity.customerId, name: opportunity.customerName, phone: null }
+          (item) => item.id === lead.customerId
+        ) || { id: lead.customerId, name: lead.company || lead.name, phone: lead.phone || null }
 
         let sale
         if (isOnline()) {
@@ -1158,12 +1030,16 @@ export const useCrmStore = create(
           if (billableQuote.convertedSaleId) {
             sale = mapSaleFromApi(await crmApi.getSale(billableQuote.convertedSaleId))
           } else {
-            sale = (await get().invoiceQuote(billableQuote.id, { paymentMethod })).sale
+            sale = (await get().invoiceQuote(billableQuote.id, {
+              paymentMethod,
+              collectionMode,
+              reference,
+              proof,
+            })).sale
           }
-
         } else {
           sale = buildDemoSaleFromPipeline({
-            opportunity,
+            lead,
             quote,
             customer,
             paymentMethod,
@@ -1178,49 +1054,16 @@ export const useCrmStore = create(
           await get().updateQuote(quote.id, { status: 'aceptada' })
         }
 
-        await get().updateOpportunity(opportunityId, { stage: 'cerrado' })
+        await get().updateLead(leadId, { status: 'cerrado' })
         return sale
       },
 
-      updateOpportunity: async (id, data) => {
-        const current = get().opportunities.find((opportunity) => opportunity.id === id)
-        if (isOnline() && current) {
-          const payload = { version: current.version }
-          const fields = ['customerId', 'title', 'customerName', 'stage', 'value', 'notes', 'lostReason']
-          fields.forEach((field) => {
-            if (data[field] !== undefined) payload[field] = data[field]
-          })
-          if (payload.stage === 'perdido' && !payload.lostReason) {
-            payload.lostReason = 'Marcada como perdida desde el pipeline.'
-          }
-          try {
-            const response = await crmApi.updateOpportunity(id, payload)
-            const saved = mapOpportunityFromApi(response)
-            set((s) => ({ opportunities: replaceById(s.opportunities, saved) }))
-            return saved
-          } catch (error) {
-            reportMutationError(set, error)
-            throw error
-          }
-        }
-        if (!current) return null
-        const updated = {
-          ...current, ...data, updatedAt: now(),
-          ...(data.stage === 'perdido' ? { closedAt: current.closedAt || now() } : {}),
-          ...(data.stage && !['perdido', 'cerrado'].includes(data.stage)
-            ? { lostReason: null, closedAt: null }
-            : {}),
-        }
-        set((s) => ({ opportunities: replaceById(s.opportunities, updated) }))
-        return updated
-      },
+      closeOpportunityWithInvoice: (leadId, options) => get().closeLeadWithInvoice(leadId, options),
 
       addActivity: async (data) => {
-        const relatedOpportunity = get().opportunities.find(
-          (opportunity) => opportunity.id === data.opportunityId
-        )
+        const relatedLead = get().leads.find((lead) => lead.id === data.leadId)
         const branchId = data.branchId
-          || relatedOpportunity?.branchId
+          || relatedLead?.branchId
           || useSessionStore.getState().user?.branchIds?.[0]
         const act = {
           id: genId('act'),
@@ -1235,7 +1078,6 @@ export const useCrmStore = create(
             const response = await crmApi.createActivity({
               branchId,
               leadId: act.leadId || null,
-              opportunityId: act.opportunityId || null,
               customerId: act.customerId || null,
               assignedMembershipId: act.assignedUserId || null,
               type: act.type,
@@ -1316,7 +1158,7 @@ export const useCrmStore = create(
         if (isOnline()) {
           try {
             const response = await crmApi.createQuote({
-              opportunityId: quote.opportunityId || null,
+              leadId: quote.leadId || null,
               customerId: quote.customerId,
               branchId: quote.branchId,
               lines: quote.items.map((item) => ({
@@ -1351,7 +1193,7 @@ export const useCrmStore = create(
           if (data.status !== undefined) payload.status = data.status
           if (data.validUntil !== undefined) payload.validUntil = data.validUntil
           if (data.notes !== undefined) payload.notes = data.notes
-          if (data.opportunityId !== undefined) payload.opportunityId = data.opportunityId
+          if (data.leadId !== undefined) payload.leadId = data.leadId
           if (data.customerId !== undefined) payload.customerId = data.customerId
           if (data.branchId !== undefined) payload.branchId = data.branchId
           const lineSource = data.lines ?? data.items
@@ -1468,7 +1310,15 @@ export const useCrmStore = create(
               },
               `crm-quote-invoice-${quoteId}`
             )
-            const { sale, receivableId, parkedForNextShift } = mapCheckoutFromApi(response)
+            const checkout = mapCheckoutFromApi(response)
+            const sale = checkout.sale
+              ? {
+                ...checkout.sale,
+                origin: checkout.sale.origin || 'pipeline',
+                channel: checkout.sale.channel || 'crm',
+              }
+              : null
+            const { receivableId, parkedForNextShift } = checkout
             if (!sale) throw new Error('No se pudo registrar la factura.')
             if (receivableId && proof) {
               const { usePosStore } = await import('@/stores/posStore')
@@ -1585,14 +1435,15 @@ export const useCrmStore = create(
             throw error
           }
         }
-        const opportunity = quote.opportunityId
-          ? get().opportunities.find((item) => item.id === quote.opportunityId)
+        const lead = quote.leadId
+          ? get().leads.find((item) => item.id === quote.leadId)
           : null
         const sale = buildDemoSaleFromPipeline({
-          opportunity: opportunity || {
+          lead: lead || {
             id: null,
             branchId: quote.branchId,
-            customerName: quote.customerName,
+            name: quote.customerName,
+            company: quote.customerName,
           },
           quote,
           customer: customer || { id: quote.customerId, name: quote.customerName },
@@ -1639,8 +1490,6 @@ export const useCrmStore = create(
         set({
         leads: [],
         leadsListMeta: emptyListMeta(),
-        opportunities: [],
-        opportunitiesListMeta: emptyListMeta(),
         activities: [],
         quotes: [],
         customers: [],
@@ -1672,23 +1521,22 @@ export const useCrmStore = create(
       },
 
       getOverviewStats: () => {
-        const { leads, opportunities } = get()
-        const qualified = leads.filter((l) => l.status === 'calificado').length
+        const { leads } = get()
+        const qualified = leads.filter((l) => ['propuesta', 'negociacion'].includes(l.status)).length
         const convertedMonth = leads.filter((l) => {
-          if (l.status !== 'convertido') return false
-          const d = new Date(l.updatedAt)
+          if (l.status !== 'cerrado') return false
+          const d = new Date(l.pipelineClosedAt || l.updatedAt)
           const n = new Date()
           return d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear()
         }).length
-        const pipelineValue = opportunities
-          .filter((o) => !['cerrado', 'perdido'].includes(o.stage))
-          .reduce((a, o) => a + (o.value || 0), 0)
+        const openLeads = leads.filter((l) => PIPELINE_OPEN_STAGES.includes(l.status))
+        const pipelineValue = openLeads.reduce((a, l) => a + (l.pipelineValue || 0), 0)
         return {
           totalLeads: leads.length,
           qualifiedLeads: qualified,
           convertedMonth,
           pipelineValue,
-          openOpportunities: opportunities.filter((o) => !['cerrado', 'perdido'].includes(o.stage)).length,
+          openOpportunities: openLeads.length,
         }
       },
     }),

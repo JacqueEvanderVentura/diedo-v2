@@ -178,49 +178,27 @@ class DemoCrmLeadFixture(ApiModel):
     source_url: str | None = Field(default=None, max_length=1000)
     scraped_at: datetime | None = None
     raw_snippet: str | None = Field(default=None, max_length=4000)
-    status: Literal["nuevo", "contactado", "calificado", "descartado", "convertido"]
+    status: Literal["nuevo", "contactado", "propuesta", "negociacion", "cerrado", "perdido"]
     star_rating: Decimal | None = Field(default=None, ge=0, le=5)
+    pipeline_value: Decimal = Field(default=Decimal("0"), ge=0, max_digits=14, decimal_places=2)
+    lost_reason: str | None = Field(default=None, max_length=1000)
+    pipeline_closed_at: datetime | None = None
     converted_customer_seed_key: str | None = None
     created_at: datetime
     updated_at: datetime
 
     @model_validator(mode="after")
     def require_consistent_conversion(self) -> DemoCrmLeadFixture:
-        if (self.status == "convertido") != (self.converted_customer_seed_key is not None):
-            raise ValueError("Converted demo leads require convertedCustomerSeedKey exclusively.")
+        if (self.status == "cerrado") != (self.converted_customer_seed_key is not None):
+            raise ValueError("Closed demo leads require convertedCustomerSeedKey exclusively.")
+        if self.status == "perdido" and not self.lost_reason:
+            raise ValueError("Lost demo leads require lostReason.")
+        if (self.status == "perdido") != (self.pipeline_closed_at is not None):
+            raise ValueError("Lost demo leads require pipelineClosedAt exclusively.")
         if not self.name.strip() and not self.company.strip():
             raise ValueError("Demo leads require a name or company.")
         if self.updated_at < self.created_at:
             raise ValueError("Demo lead updatedAt cannot precede createdAt.")
-        return self
-
-
-class DemoCrmOpportunityFixture(ApiModel):
-    seed_key: str = Field(pattern=r"^[a-z0-9-]+$")
-    branch_code: str
-    assigned_user_seed_key: str
-    lead_seed_key: str | None = None
-    customer_seed_key: str | None = None
-    title: str = Field(min_length=2, max_length=240)
-    customer_name: str = Field(min_length=1, max_length=200)
-    stage: Literal["nuevo", "contactado", "propuesta", "negociacion", "cerrado", "perdido"]
-    value: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
-    currency_code: str = Field(default="DOP", min_length=3, max_length=3)
-    notes: str | None = Field(default=None, max_length=2000)
-    lost_reason: str | None = Field(default=None, max_length=1000)
-    created_at: datetime
-    updated_at: datetime
-    closed_at: datetime | None = None
-
-    @model_validator(mode="after")
-    def require_consistent_stage(self) -> DemoCrmOpportunityFixture:
-        is_closed = self.stage in {"cerrado", "perdido"}
-        if is_closed != (self.closed_at is not None):
-            raise ValueError("Closed demo opportunities require closedAt exclusively.")
-        if self.stage == "perdido" and not self.lost_reason:
-            raise ValueError("Lost demo opportunities require lostReason.")
-        if self.updated_at < self.created_at:
-            raise ValueError("Demo opportunity updatedAt cannot precede createdAt.")
         return self
 
 
@@ -229,7 +207,6 @@ class DemoCrmActivityFixture(ApiModel):
     branch_code: str
     assigned_user_seed_key: str
     lead_seed_key: str | None = None
-    opportunity_seed_key: str | None = None
     customer_seed_key: str | None = None
     activity_type: Literal["llamada", "email", "reunion", "nota", "tarea"]
     title: str = Field(min_length=2, max_length=240)
@@ -242,8 +219,8 @@ class DemoCrmActivityFixture(ApiModel):
 
     @model_validator(mode="after")
     def require_relationship(self) -> DemoCrmActivityFixture:
-        if not any((self.lead_seed_key, self.opportunity_seed_key, self.customer_seed_key)):
-            raise ValueError("Demo CRM activities require a lead, opportunity, or customer.")
+        if not any((self.lead_seed_key, self.customer_seed_key)):
+            raise ValueError("Demo CRM activities require a lead or customer.")
         if self.updated_at < self.created_at:
             raise ValueError("Demo activity updatedAt cannot precede createdAt.")
         return self
@@ -252,7 +229,6 @@ class DemoCrmActivityFixture(ApiModel):
 class CrmFixture(ApiModel):
     customer_profiles: list[DemoCustomerCrmProfileFixture] = Field(default_factory=list)
     leads: list[DemoCrmLeadFixture] = Field(default_factory=list)
-    opportunities: list[DemoCrmOpportunityFixture] = Field(default_factory=list)
     activities: list[DemoCrmActivityFixture] = Field(default_factory=list)
 
 
@@ -581,7 +557,7 @@ class DemoPosQuoteFixture(ApiModel):
     created_by_user_seed_key: str
     kind: Literal["quote", "held"] = "quote"
     origin: Literal["pos", "crm"] = "pos"
-    opportunity_seed_key: str | None = None
+    lead_seed_key: str | None = None
     crm_status: Literal["borrador", "enviada", "aceptada", "rechazada", "vencida"] | None = None
     status: Literal["open", "converted", "cancelled", "expired"] = "open"
     payment_method_seed_key: str | None = None
@@ -605,11 +581,9 @@ class DemoPosQuoteFixture(ApiModel):
             raise ValueError("Only open demo quotes may omit closedAt.")
         if self.updated_at < self.created_at:
             raise ValueError("Demo quote updatedAt cannot precede createdAt.")
-        if self.origin == "crm" and (self.crm_status is None or self.opportunity_seed_key is None):
-            raise ValueError("CRM demo quotes require crmStatus and opportunitySeedKey.")
-        if self.origin == "pos" and (
-            self.crm_status is not None or self.opportunity_seed_key is not None
-        ):
+        if self.origin == "crm" and (self.crm_status is None or self.lead_seed_key is None):
+            raise ValueError("CRM demo quotes require crmStatus and leadSeedKey.")
+        if self.origin == "pos" and (self.crm_status is not None or self.lead_seed_key is not None):
             raise ValueError("POS demo quotes cannot define CRM fields.")
         return self
 

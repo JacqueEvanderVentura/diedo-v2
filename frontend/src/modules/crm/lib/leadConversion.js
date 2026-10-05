@@ -1,13 +1,22 @@
 import { resolveInstagramUrl } from './simplifiedOffer'
 
-/** Payload para convertir un lead en cliente B2B (API + demo). */
+function resolveLeadCustomerType(lead) {
+  const raw = String(lead?.customerType || lead?.type || lead?.segment || '').toLowerCase()
+  if (['b2c', 'consumer', 'individual', 'persona'].some((token) => raw.includes(token))) {
+    return { api: 'individual', offline: 'b2c' }
+  }
+  return { api: 'business', offline: 'b2b' }
+}
+
+/** Payload para convertir un lead en cliente (API + demo). */
 export function buildLeadConvertRequest(lead) {
   const displayName = (lead?.company || lead?.name || '').trim()
+  const customerType = resolveLeadCustomerType(lead).api
   return {
     version: lead.version,
-    customerType: 'business',
+    customerType,
     displayName,
-    businessName: displayName,
+    businessName: customerType === 'business' ? displayName : undefined,
     email: lead.email,
     phone: lead.phone,
     branchIds: lead.branchId ? [lead.branchId] : undefined,
@@ -18,14 +27,15 @@ export function buildLeadConvertRequest(lead) {
 
 export function buildLeadOfflineCustomer(lead) {
   const name = (lead?.company || lead?.name || '').trim()
+  const customerType = resolveLeadCustomerType(lead).offline
   return {
     name,
-    company: name,
+    company: customerType === 'b2b' ? name : '',
     phone: lead.phone,
     email: lead.email,
     instagramUrl: resolveInstagramUrl(lead),
     notes: lead.scoreNotes || '',
-    customerType: 'b2b',
+    customerType,
     customerStatus: 'prospecto',
     branchId: lead.branchId,
     branchIds: lead.branchId ? [lead.branchId] : undefined,

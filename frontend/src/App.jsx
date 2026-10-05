@@ -9,6 +9,7 @@ import { useAgendaStore } from './stores/agendaStore'
 import { useCatalogStore } from './stores/catalogStore'
 import { configFacade } from './services/configFacade'
 import { WorkspaceScopeSync } from '@/components/branch/WorkspaceScopeSync'
+import { hydrateWorkspaceBillingSettings } from '@/modules/configuracion/lib/workspaceSettings'
 
 export default function App() {
   useLenis(false)
@@ -34,6 +35,9 @@ export default function App() {
     if (isPlatformOperator || (status !== 'demo' && !workspaceId)) return
     const session = useSessionStore.getState()
     const requests = []
+    if (status === 'online') {
+      requests.push(hydrateWorkspaceBillingSettings({ force: true }))
+    }
     if (status === 'demo' || (session.hasModule('crm') && session.hasPermission('customer.read'))) {
       requests.push(hydrateCustomers({ force: false }))
     }

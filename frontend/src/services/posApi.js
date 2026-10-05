@@ -115,6 +115,16 @@ export const posApi = {
     payload,
     idempotencyOptions(idempotencyKey)
   ),
+  updateSale: (saleId, payload, { idempotencyKey } = {}) => apiClient.patch(
+    `${POS_BASE}/sales/${saleId}`,
+    payload,
+    idempotencyOptions(idempotencyKey)
+  ),
+  deleteSale: (saleId, { version, idempotencyKey } = {}) => apiClient.delete(
+    `${POS_BASE}/sales/${saleId}`,
+    { version },
+    idempotencyOptions(idempotencyKey)
+  ),
 
   listReceivables: (params) => apiClient.get(`${POS_BASE}/receivables`, params),
   receivablesSummary: (params) => apiClient.get(`${POS_BASE}/receivables/summary`, params),
@@ -148,6 +158,19 @@ export const posApi = {
     `${POS_BASE}/payments/${paymentId}/reverse`,
     payload,
     idempotencyOptions(idempotencyKey)
+  ),
+  approveReceivablePayment: (receivableId, payload, { idempotencyKey } = {}) => apiClient.post(
+    `${POS_BASE}/receivables/${receivableId}/approve`,
+    payload,
+    idempotencyOptions(idempotencyKey)
+  ),
+  unapproveReceivablePayment: (receivableId, payload, { idempotencyKey } = {}) => apiClient.post(
+    `${POS_BASE}/receivables/${receivableId}/unapprove`,
+    payload,
+    idempotencyOptions(idempotencyKey)
+  ),
+  deleteReceivableProof: (receivableId, proofId, { version } = {}) => apiClient.delete(
+    `${POS_BASE}/receivables/${receivableId}/proofs/${proofId}?version=${version}`,
   ),
   downloadProof: (proofOrUrl) => apiClient.blob(proofUrl(proofOrUrl)),
 }

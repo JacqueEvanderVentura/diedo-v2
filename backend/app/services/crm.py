@@ -20,7 +20,6 @@ from app.core.request_context import get_request_id
 from app.db.models import (
     CrmActivity,
     CrmLead,
-    CrmOpportunity,
     CrmSettings,
     CustomerCrmProfile,
     WorkspaceMembership,
@@ -30,7 +29,6 @@ from app.repositories.crm import (
     CustomerCrmRecord,
     EntityPage,
     LeadRecord,
-    OpportunityRecord,
     OverviewValues,
 )
 from app.repositories.master_data import MasterDataRepository
@@ -247,10 +245,9 @@ class CrmService:
         )
         if lead is None:
             raise ResourceNotFoundError("El lead no existe.", "leadId")
-        if lead.status == "convertido":
-            raise ConflictError("Un lead convertido ya no puede editarse.", "status")
+        if lead.status == "cerrado":
+            raise ConflictError("Un lead cerrado ya no puede editarse.", "status")
         self._require_version(lead.version, expected_version)
-        previous_name = lead.company or lead.name
         if "assigned_membership_id" in changes:
             assignee = changes["assigned_membership_id"]
             lead.assigned_membership_id = self._assignee(
@@ -264,7 +261,6 @@ class CrmService:
             "website",
             "instagram_url",
             "location",
-            "status",
             "raw_snippet",
         ):
             if field in changes:
@@ -280,26 +276,67 @@ class CrmService:
             lead.star_rating = changes["star_rating"]
         if "acquisition_source" in changes:
             lead.acquisition_source = changes["acquisition_source"]
+        if "pipeline_value" in changes:
+            lead.pipeline_value = cast(Decimal, changes["pipeline_value"])
+        previous_status = lead.status
+        previous_lost_reason = lead.lost_reason
+        if "status" in changes:
+            status = cast(str, changes["status"])
+            lost_reason = self._optional_text(
+                cast(str | None, changes.get("lost_reason", lead.lost_reason))
+            )
+            if status == "perdido" and not lost_reason:
+                raise InvalidOperationError("Un lead perdido requiere motivo.", "lostReason")
+            lead.status = status
+            lead.lost_reason = lost_reason if status == "perdido" else None
+            if status == "perdido":
+                if status != previous_status or lead.pipeline_closed_at is None:
+                    lead.pipeline_closed_at = datetime.now(UTC)
+            else:
+                lead.pipeline_closed_at = None
+        elif "lost_reason" in changes:
+            if lead.status != "perdido":
+                raise InvalidOperationError(
+                    "Solo puedes indicar motivo en un lead perdido.", "lostReason"
+                )
+            lost_reason = self._optional_text(cast(str | None, changes["lost_reason"]))
+            if not lost_reason:
+                raise InvalidOperationError("Un lead perdido requiere motivo.", "lostReason")
+            lead.lost_reason = lost_reason
         if not lead.name and not lead.company:
             raise InvalidOperationError("El lead requiere nombre o empresa.", "name")
-        current_name = lead.company or lead.name
-        opportunity = self._repository.opportunity_for_lead(grant.workspace_id, lead.id)
-        if (
-            opportunity is not None
-            and current_name != previous_name
-            and opportunity.customer_name == previous_name
-        ):
-            opportunity.customer_name = current_name
-            opportunity.updated_by_platform_user_id = principal.platform_user_id
-            opportunity.version += 1
         lead.updated_by_platform_user_id = principal.platform_user_id
         lead.version += 1
+        audit_details: dict[str, Any] = {
+            "changedFields": sorted(changes),
+            "status": lead.status,
+            "version": lead.version,
+        }
+        if lead.status != previous_status:
+            audit_details["previousStatus"] = previous_status
+        if lead.status == "perdido":
+            audit_details["lostReason"] = lead.lost_reason
+        if previous_status == "perdido" and lead.status != "perdido":
+            audit_details["previousLostReason"] = previous_lost_reason
+        if lead.status == "cerrado" and lead.converted_customer_id:
+            customer = self._repository.customer(
+                grant.workspace_id,
+                lead.converted_customer_id,
+                branch_id=lead.branch_id,
+                allowed_branch_ids=grant.allowed_branch_ids,
+            )
+            if customer is not None and not customer.instagram_url:
+                instagram_url = _lead_instagram_url(lead)
+                if instagram_url:
+                    customer.instagram_url = instagram_url
+                    customer.updated_by_platform_user_id = principal.platform_user_id
+                    customer.version += 1
         self._audit(
             principal,
             "crm.lead.update",
             "crm_lead",
             lead.id,
-            {"changedFields": sorted(changes), "version": lead.version},
+            audit_details,
         )
         self._session.commit()
         return self._repository.lead_record(lead)
@@ -326,33 +363,25 @@ class CrmService:
                         }
                     )
                     continue
-                if lead.status == "convertido":
+                if lead.status == "cerrado":
                     results.append(
                         {
                             "lead_id": lead_id,
                             "status": "error",
-                            "message": "No se puede eliminar un lead convertido.",
+                            "message": "No se puede eliminar un lead cerrado.",
                         }
                     )
                     continue
-                opportunity = self._repository.opportunity_for_lead(grant.workspace_id, lead.id)
-                if opportunity is not None:
-                    record = self._repository.opportunity_record(opportunity)
-                    if record.quote_count > 0:
-                        results.append(
-                            {
-                                "lead_id": lead_id,
-                                "status": "error",
-                                "message": "El lead tiene cotizaciones vinculadas.",
-                            }
-                        )
-                        continue
-                    self._repository.delete_activities_for_lead(
-                        grant.workspace_id, lead.id, opportunity.id
+                if self._repository.quote_count_for_lead(grant.workspace_id, lead.id) > 0:
+                    results.append(
+                        {
+                            "lead_id": lead_id,
+                            "status": "error",
+                            "message": "El lead tiene cotizaciones vinculadas.",
+                        }
                     )
-                    self._repository.remove_opportunity(opportunity)
-                else:
-                    self._repository.delete_activities_for_lead(grant.workspace_id, lead.id, None)
+                    continue
+                self._repository.delete_activities_for_lead(grant.workspace_id, lead.id)
                 self._repository.remove_lead(lead)
                 self._audit(
                     principal,
@@ -374,298 +403,6 @@ class CrmService:
                 )
         return results
 
-    def list_opportunities(
-        self,
-        grant: PermissionGrant,
-        *,
-        branch_id: UUID | None,
-        branch_ids: list[UUID] | None,
-        stage: str | None,
-        customer_id: UUID | None,
-        search: str | None,
-        updated_after: datetime | None,
-        updated_before: datetime | None,
-        page: int,
-        page_size: int,
-    ) -> PageResult:
-        self._require_optional_branch(grant, branch_id)
-        resolved_branch_ids: tuple[UUID, ...] | None = None
-        if branch_ids:
-            unique_ids = tuple(dict.fromkeys(branch_ids))
-            for item in unique_ids:
-                self._require_optional_branch(grant, item)
-            if grant.allowed_branch_ids is not None:
-                resolved_branch_ids = tuple(
-                    item for item in unique_ids if item in grant.allowed_branch_ids
-                )
-            else:
-                resolved_branch_ids = unique_ids
-        return self._page(
-            self._repository.list_opportunities(
-                workspace_id=grant.workspace_id,
-                allowed_branch_ids=grant.allowed_branch_ids,
-                branch_id=branch_id if not resolved_branch_ids else None,
-                branch_ids=resolved_branch_ids,
-                stage=stage,
-                customer_id=customer_id,
-                search=self._optional_text(search),
-                updated_after=updated_after,
-                updated_before=updated_before,
-                page=page,
-                page_size=page_size,
-            ),
-            page,
-            page_size,
-        )
-
-    def get_opportunity(self, grant: PermissionGrant, opportunity_id: UUID) -> OpportunityRecord:
-        opportunity = self._repository.opportunity(
-            grant.workspace_id, opportunity_id, grant.allowed_branch_ids
-        )
-        if opportunity is None:
-            raise ResourceNotFoundError("La oportunidad no existe.", "opportunityId")
-        return self._repository.opportunity_record(opportunity)
-
-    def create_opportunity(
-        self,
-        *,
-        principal: AuthPrincipal,
-        grant: PermissionGrant,
-        values: dict[str, Any],
-        idempotency_key: str,
-    ) -> OpportunityRecord:
-        fingerprint = self._fingerprint(values)
-        existing = self._repository.opportunity_by_key(grant.workspace_id, idempotency_key)
-        if existing is not None:
-            self._require_branch(grant, existing.branch_id)
-            self._require_fingerprint(existing.request_fingerprint, fingerprint)
-            return self._repository.opportunity_record(existing)
-        branch_id = cast(UUID, values["branch_id"])
-        self._require_branch(grant, branch_id)
-        lead_id = cast(UUID | None, values.get("lead_id"))
-        lead = None
-        if lead_id is not None:
-            lead = self._repository.lead(
-                grant.workspace_id, lead_id, grant.allowed_branch_ids, lock=True
-            )
-            if lead is None:
-                raise ResourceNotFoundError("El lead no existe.", "leadId")
-            if lead.branch_id != branch_id:
-                raise InvalidOperationError(
-                    "El lead y la oportunidad deben pertenecer a la misma sucursal.", "branchId"
-                )
-            if self._repository.opportunity_for_lead(grant.workspace_id, lead.id) is not None:
-                raise ConflictError("El lead ya tiene una oportunidad.", "leadId")
-        customer_id = cast(UUID | None, values.get("customer_id"))
-        customer = None
-        if customer_id is not None:
-            customer = self._repository.customer(
-                grant.workspace_id,
-                customer_id,
-                branch_id=branch_id,
-                allowed_branch_ids=grant.allowed_branch_ids,
-            )
-            if customer is None:
-                raise ResourceNotFoundError("El cliente no existe en la sucursal.", "customerId")
-        workspace = self._repository.workspace(grant.workspace_id)
-        if workspace is None:
-            raise ResourceNotFoundError("El workspace no existe.", "workspaceId")
-        stage = cast(str, values.get("stage", "nuevo"))
-        lost_reason = self._optional_text(cast(str | None, values.get("lost_reason")))
-        if stage == "perdido" and not lost_reason:
-            raise InvalidOperationError("Una oportunidad perdida requiere motivo.", "lostReason")
-        opportunity = CrmOpportunity(
-            workspace_id=grant.workspace_id,
-            branch_id=branch_id,
-            lead_id=lead.id if lead else None,
-            customer_id=customer.id if customer else None,
-            assigned_membership_id=self._assignee(
-                grant.workspace_id,
-                cast(UUID | None, values.get("assigned_membership_id")),
-                grant.membership_id,
-            ),
-            title=cast(str, values["title"]),
-            customer_name=(
-                customer.display_name if customer else cast(str, values["customer_name"])
-            ),
-            stage=stage,
-            value=cast(Decimal, values.get("value", Decimal("0"))),
-            currency_code=workspace.default_currency,
-            notes=self._optional_text(cast(str | None, values.get("notes"))),
-            lost_reason=lost_reason,
-            closed_at=datetime.now(UTC) if stage in {"cerrado", "perdido"} else None,
-            creation_idempotency_key=idempotency_key,
-            request_fingerprint=fingerprint,
-            created_by_platform_user_id=principal.platform_user_id,
-            updated_by_platform_user_id=principal.platform_user_id,
-        )
-        if lead is not None and lead.status == "nuevo":
-            lead.status = "contactado"
-            lead.updated_by_platform_user_id = principal.platform_user_id
-            lead.version += 1
-        try:
-            self._repository.add_opportunity(opportunity)
-            self._audit(
-                principal,
-                "crm.opportunity.create",
-                "crm_opportunity",
-                opportunity.id,
-                {"branchId": str(branch_id), "stage": stage},
-            )
-            self._session.commit()
-            return self._repository.opportunity_record(opportunity)
-        except IntegrityError as exc:
-            self._session.rollback()
-            replay = self._repository.opportunity_by_key(grant.workspace_id, idempotency_key)
-            if replay is not None:
-                self._require_fingerprint(replay.request_fingerprint, fingerprint)
-                return self._repository.opportunity_record(replay)
-            raise ConflictError("No se pudo crear la oportunidad.") from exc
-
-    def create_opportunity_for_lead(
-        self,
-        *,
-        principal: AuthPrincipal,
-        grant: PermissionGrant,
-        lead_id: UUID,
-        values: dict[str, Any],
-        idempotency_key: str,
-    ) -> OpportunityRecord:
-        lead = self._repository.lead(grant.workspace_id, lead_id, grant.allowed_branch_ids)
-        if lead is None:
-            raise ResourceNotFoundError("El lead no existe.", "leadId")
-        payload = {
-            "branch_id": lead.branch_id,
-            "lead_id": lead.id,
-            "customer_id": lead.converted_customer_id,
-            "assigned_membership_id": lead.assigned_membership_id,
-            "title": values.get("title") or f"{lead.company or lead.name} — Oportunidad",
-            "customer_name": lead.company or lead.name,
-            "stage": values.get("stage")
-            or ("propuesta" if lead.status == "calificado" else "contactado"),
-            "value": values.get("value") if values.get("value") is not None else Decimal("0"),
-            "notes": values.get("notes"),
-            "lost_reason": values.get("lost_reason"),
-        }
-        return self.create_opportunity(
-            principal=principal,
-            grant=grant,
-            values=payload,
-            idempotency_key=idempotency_key,
-        )
-
-    def update_opportunity(
-        self,
-        *,
-        principal: AuthPrincipal,
-        grant: PermissionGrant,
-        opportunity_id: UUID,
-        expected_version: int,
-        changes: dict[str, Any],
-    ) -> OpportunityRecord:
-        opportunity = self._repository.opportunity(
-            grant.workspace_id, opportunity_id, grant.allowed_branch_ids, lock=True
-        )
-        if opportunity is None:
-            raise ResourceNotFoundError("La oportunidad no existe.", "opportunityId")
-        self._require_version(opportunity.version, expected_version)
-        previous_stage = opportunity.stage
-        previous_lost_reason = opportunity.lost_reason
-        if "assigned_membership_id" in changes:
-            opportunity.assigned_membership_id = self._assignee(
-                grant.workspace_id,
-                cast(UUID | None, changes["assigned_membership_id"]),
-                grant.membership_id,
-            )
-        if "customer_id" in changes:
-            customer_id = cast(UUID | None, changes["customer_id"])
-            if customer_id is None:
-                opportunity.customer_id = None
-            else:
-                customer = self._repository.customer(
-                    grant.workspace_id,
-                    customer_id,
-                    branch_id=opportunity.branch_id,
-                    allowed_branch_ids=grant.allowed_branch_ids,
-                )
-                if customer is None:
-                    raise ResourceNotFoundError("El cliente no existe.", "customerId")
-                opportunity.customer_id = customer.id
-                opportunity.customer_name = customer.display_name
-        for field in ("title", "customer_name", "value", "notes"):
-            if field in changes:
-                setattr(opportunity, field, changes[field])
-        stage = cast(str, changes.get("stage", opportunity.stage))
-        lost_reason = self._optional_text(
-            cast(str | None, changes.get("lost_reason", opportunity.lost_reason))
-        )
-        if stage == "perdido" and not lost_reason:
-            raise InvalidOperationError("Una oportunidad perdida requiere motivo.", "lostReason")
-        opportunity.stage = stage
-        opportunity.lost_reason = lost_reason if stage == "perdido" else None
-        if stage in {"cerrado", "perdido"}:
-            if stage != previous_stage or opportunity.closed_at is None:
-                opportunity.closed_at = datetime.now(UTC)
-        else:
-            opportunity.closed_at = None
-        if (
-            previous_stage == "perdido"
-            and stage in {"nuevo", "contactado", "propuesta", "negociacion"}
-            and opportunity.lead_id
-        ):
-            lead = self._repository.lead(
-                grant.workspace_id, opportunity.lead_id, grant.allowed_branch_ids, lock=True
-            )
-            if lead is not None and lead.status != "convertido":
-                lead_status = {
-                    "nuevo": "nuevo",
-                    "contactado": "contactado",
-                    "propuesta": "calificado",
-                    "negociacion": "calificado",
-                }[stage]
-                if lead.status != lead_status:
-                    lead.status = lead_status
-                    lead.updated_by_platform_user_id = principal.platform_user_id
-                    lead.version += 1
-        if stage == "cerrado" and opportunity.customer_id and opportunity.lead_id:
-            customer = self._repository.customer(
-                grant.workspace_id,
-                opportunity.customer_id,
-                branch_id=opportunity.branch_id,
-                allowed_branch_ids=grant.allowed_branch_ids,
-            )
-            lead = self._repository.lead(
-                grant.workspace_id, opportunity.lead_id, grant.allowed_branch_ids
-            )
-            if customer is not None and lead is not None and not customer.instagram_url:
-                instagram_url = _lead_instagram_url(lead)
-                if instagram_url:
-                    customer.instagram_url = instagram_url
-                    customer.updated_by_platform_user_id = principal.platform_user_id
-                    customer.version += 1
-        opportunity.updated_by_platform_user_id = principal.platform_user_id
-        opportunity.version += 1
-        audit_details: dict[str, Any] = {
-            "changedFields": sorted(changes),
-            "stage": stage,
-            "version": opportunity.version,
-        }
-        if stage != previous_stage:
-            audit_details["previousStage"] = previous_stage
-        if stage == "perdido":
-            audit_details["lostReason"] = lost_reason
-        if previous_stage == "perdido" and stage != "perdido":
-            audit_details["previousLostReason"] = previous_lost_reason
-        self._audit(
-            principal,
-            "crm.opportunity.update",
-            "crm_opportunity",
-            opportunity.id,
-            audit_details,
-        )
-        self._session.commit()
-        return self._repository.opportunity_record(opportunity)
-
     def list_activities(
         self,
         grant: PermissionGrant,
@@ -674,7 +411,7 @@ class CrmService:
         activity_type: str | None,
         completed: bool | None,
         overdue: bool | None,
-        opportunity_id: UUID | None,
+        lead_id: UUID | None,
         customer_id: UUID | None,
         page: int,
         page_size: int,
@@ -689,7 +426,7 @@ class CrmService:
                 activity_type=activity_type,
                 completed=completed,
                 overdue=overdue,
-                opportunity_id=opportunity_id,
+                lead_id=lead_id,
                 customer_id=customer_id,
                 now=self._utc_now(now),
                 page=page,
@@ -731,15 +468,6 @@ class CrmService:
                 raise ResourceNotFoundError("El lead no existe.", "leadId")
             self._require_same_branch(branch_id, lead.branch_id, "leadId")
             customer_name = customer_name or lead.company or lead.name
-        opportunity_id = cast(UUID | None, values.get("opportunity_id"))
-        if opportunity_id is not None:
-            opportunity = self._repository.opportunity(
-                grant.workspace_id, opportunity_id, grant.allowed_branch_ids
-            )
-            if opportunity is None:
-                raise ResourceNotFoundError("La oportunidad no existe.", "opportunityId")
-            self._require_same_branch(branch_id, opportunity.branch_id, "opportunityId")
-            customer_name = customer_name or opportunity.customer_name
         customer_id = cast(UUID | None, values.get("customer_id"))
         if customer_id is not None:
             customer = self._repository.customer(
@@ -755,7 +483,6 @@ class CrmService:
             workspace_id=grant.workspace_id,
             branch_id=branch_id,
             lead_id=lead_id,
-            opportunity_id=opportunity_id,
             customer_id=customer_id,
             assigned_membership_id=self._assignee(
                 grant.workspace_id,
@@ -875,7 +602,7 @@ class CrmService:
         if lead is None:
             raise ResourceNotFoundError("El lead no existe.", "leadId")
         fingerprint = self._fingerprint(values)
-        if lead.status == "convertido":
+        if lead.status == "cerrado":
             self._require_fingerprint(
                 lead.conversion_request_fingerprint,
                 fingerprint,
@@ -937,23 +664,13 @@ class CrmService:
                 updated_by_platform_user_id=principal.platform_user_id,
             )
             self._repository.add_customer_profile(profile)
-            lead.status = "convertido"
+            lead.status = "cerrado"
             lead.converted_customer_id = customer_record.id
             lead.converted_at = datetime.now(UTC)
             lead.conversion_idempotency_key = idempotency_key
             lead.conversion_request_fingerprint = fingerprint
             lead.updated_by_platform_user_id = principal.platform_user_id
             lead.version += 1
-            opportunity = self._repository.opportunity_for_lead(crm_grant.workspace_id, lead.id)
-            if opportunity is not None:
-                opportunity.customer_id = customer_record.id
-                if (
-                    opportunity.customer_name == lead.company
-                    or opportunity.customer_name == lead.name
-                ):
-                    opportunity.customer_name = display_name
-                opportunity.updated_by_platform_user_id = principal.platform_user_id
-                opportunity.version += 1
             self._audit(
                 principal,
                 "crm.lead.convert",
@@ -1168,18 +885,20 @@ class CrmService:
             is None
         ):
             raise ResourceNotFoundError("El cliente no existe en la sucursal.", "customerId")
-        opportunity_id = cast(UUID | None, values.get("opportunity_id"))
-        if opportunity_id is not None:
-            opportunity = self._repository.opportunity(
-                grant.workspace_id, opportunity_id, grant.allowed_branch_ids
+        lead_id = cast(UUID | None, values.get("lead_id"))
+        if lead_id is not None:
+            lead = self._repository.lead(
+                grant.workspace_id, lead_id, grant.allowed_branch_ids, lock=True
             )
-            if opportunity is None:
-                raise ResourceNotFoundError("La oportunidad no existe.", "opportunityId")
-            self._require_same_branch(branch_id, opportunity.branch_id, "opportunityId")
-            if opportunity.customer_id is not None and opportunity.customer_id != customer_id:
-                raise InvalidOperationError(
-                    "La oportunidad está vinculada a otro cliente.", "customerId"
-                )
+            if lead is None:
+                raise ResourceNotFoundError("El lead no existe.", "leadId")
+            self._require_same_branch(branch_id, lead.branch_id, "leadId")
+            if lead.converted_customer_id is not None and lead.converted_customer_id != customer_id:
+                raise InvalidOperationError("El lead está vinculado a otro cliente.", "customerId")
+            if lead.status in {"nuevo", "contactado"}:
+                lead.status = "propuesta"
+                lead.updated_by_platform_user_id = principal.platform_user_id
+                lead.version += 1
         payload = {
             "kind": "quote",
             "branch_id": branch_id,
@@ -1192,7 +911,7 @@ class CrmService:
             "notes": values.get("notes"),
             "due_at": values.get("valid_until"),
             "origin": "crm",
-            "opportunity_id": opportunity_id,
+            "lead_id": lead_id,
             "crm_status": values.get("status", "borrador"),
         }
         return PosService(self._session).create_quote(
@@ -1218,23 +937,19 @@ class CrmService:
             raise ResourceNotFoundError("La cotización CRM no existe.", "quoteId")
         branch_id = cast(UUID, changes.get("branch_id", current.quote.branch_id))
         customer_id = cast(UUID, changes.get("customer_id", current.quote.customer_id))
-        opportunity_id = cast(
-            UUID | None, changes.get("opportunity_id", current.quote.opportunity_id)
-        )
+        lead_id = cast(UUID | None, changes.get("lead_id", current.quote.lead_id))
         if customer_id is None:
             raise InvalidOperationError("La cotización CRM requiere un cliente.", "customerId")
-        if opportunity_id is not None:
-            opportunity = self._repository.opportunity(
-                grant.workspace_id, opportunity_id, grant.allowed_branch_ids
-            )
-            if opportunity is None:
-                raise ResourceNotFoundError("La oportunidad no existe.", "opportunityId")
-            self._require_same_branch(branch_id, opportunity.branch_id, "opportunityId")
-            if opportunity.customer_id is not None and opportunity.customer_id != customer_id:
-                raise InvalidOperationError(
-                    "La oportunidad está vinculada a otro cliente.", "customerId"
-                )
+        if lead_id is not None:
+            lead = self._repository.lead(grant.workspace_id, lead_id, grant.allowed_branch_ids)
+            if lead is None:
+                raise ResourceNotFoundError("El lead no existe.", "leadId")
+            self._require_same_branch(branch_id, lead.branch_id, "leadId")
+            if lead.converted_customer_id is not None and lead.converted_customer_id != customer_id:
+                raise InvalidOperationError("El lead está vinculado a otro cliente.", "customerId")
         translated = dict(changes)
+        if "lead_id" in translated:
+            translated["lead_id"] = lead_id
         if "valid_until" in translated:
             translated["due_at"] = translated.pop("valid_until")
         if "status" in translated:
@@ -1330,6 +1045,7 @@ class CrmService:
             "branch_id": record.quote.branch_id,
             "customer_id": record.quote.customer_id,
             "payment_method_id": payment_method_id,
+            "channel_origin": "pipeline",
             "quote_id": quote_id,
             "quote_version": expected_version,
             "discount_type": "fixed" if record.quote.discount_mode == "amount" else "percent",
@@ -1341,12 +1057,29 @@ class CrmService:
         }
         if register_id is not None:
             checkout_values["register_id"] = register_id
-        return PosService(self._session).checkout(
+        result = PosService(self._session).checkout(
             principal=principal,
             grant=sell_grant,
             values=checkout_values,
             idempotency_key=idempotency_key,
         )
+        if record.quote.lead_id is not None and not replaying:
+            lead = self._repository.lead(
+                crm_grant.workspace_id,
+                record.quote.lead_id,
+                crm_grant.allowed_branch_ids,
+                lock=True,
+            )
+            if (
+                lead is not None
+                and lead.converted_customer_id == record.quote.customer_id
+                and lead.status != "cerrado"
+            ):
+                lead.status = "cerrado"
+                lead.updated_by_platform_user_id = principal.platform_user_id
+                lead.version += 1
+                self._session.commit()
+        return result
 
     def overview(
         self,
@@ -1392,6 +1125,11 @@ class CrmService:
         branch_id = cast(UUID, values["branch_id"])
         self._require_branch(grant, branch_id)
         star_rating = values.get("star_rating")
+        status = cast(str, values.get("status", "nuevo"))
+        lost_reason = self._optional_text(cast(str | None, values.get("lost_reason")))
+        if status == "perdido" and not lost_reason:
+            raise InvalidOperationError("Un lead perdido requiere motivo.", "lostReason")
+        pipeline_closed_at = datetime.now(UTC) if status == "perdido" else None
         return CrmLead(
             workspace_id=grant.workspace_id,
             branch_id=branch_id,
@@ -1412,8 +1150,11 @@ class CrmService:
             source_url=str(values["source_url"]) if values.get("source_url") else None,
             scraped_at=cast(datetime | None, values.get("scraped_at")),
             raw_snippet=self._optional_text(cast(str | None, values.get("raw_snippet"))),
-            status=cast(str, values.get("status", "nuevo")),
+            status=status,
             star_rating=star_rating,
+            pipeline_value=cast(Decimal, values.get("pipeline_value", Decimal("0"))),
+            lost_reason=lost_reason if status == "perdido" else None,
+            pipeline_closed_at=pipeline_closed_at,
             converted_customer_id=None,
             converted_at=None,
             creation_idempotency_key=idempotency_key,
@@ -1519,7 +1260,6 @@ class CrmService:
                     {
                         "external_id": external_hint,
                         "lead_id": None,
-                        "opportunity_id": None,
                         "customer_id": None,
                         "status": "error",
                         "message": message,
@@ -1542,15 +1282,10 @@ class CrmService:
                 if existing_lead is not None:
                     self._require_branch(grant, existing_lead.branch_id)
                     lead_record = self._repository.lead_record(existing_lead)
-                    existing_opp = self._repository.opportunity_for_lead(
-                        grant.workspace_id, lead_record.lead.id
-                    )
-                    opp_id = existing_opp.id if existing_opp is not None else None
                     results.append(
                         {
                             "external_id": item.get("external_id"),
                             "lead_id": lead_record.lead.id,
-                            "opportunity_id": opp_id,
                             "customer_id": lead_record.lead.converted_customer_id,
                             "status": "skipped",
                             "message": "Ya importado para este externalId.",
@@ -1569,7 +1304,9 @@ class CrmService:
                     "location": item.get("location"),
                     "source": "import",
                     "acquisition_source": item.get("acquisition_source"),
-                    "status": "nuevo",
+                    "status": item.get("status", "nuevo"),
+                    "pipeline_value": item.get("pipeline_value", Decimal("0")),
+                    "lost_reason": item.get("lost_reason"),
                     "raw_snippet": f"kommo:{external_id}" if item.get("external_id") else None,
                 }
                 if assigned_membership_id is not None:
@@ -1580,27 +1317,18 @@ class CrmService:
                     values=lead_values,
                     idempotency_key=lead_key,
                 )
-                opp_key = self._import_idempotency_key("pl-opp", external_id)
-                existing_opp = self._repository.opportunity_for_lead(
-                    grant.workspace_id, lead_record.lead.id
-                )
-                if existing_opp is not None:
-                    opp_record = self._repository.opportunity_record(existing_opp)
-                else:
-                    lead = lead_record.lead
-                    title = item.get("title") or f"{lead.company or lead.name}"
-                    opp_record = self.create_opportunity_for_lead(
+                pipeline_status = cast(str, item.get("status", "nuevo"))
+                if pipeline_status != lead_record.lead.status or item.get("pipeline_value"):
+                    lead_record = self.update_lead(
                         principal=principal,
                         grant=grant,
                         lead_id=lead_record.lead.id,
-                        values={
-                            "title": title,
-                            "stage": item.get("stage", "nuevo"),
-                            "value": item.get("value", Decimal("0")),
-                            "notes": item.get("notes"),
+                        expected_version=lead_record.lead.version,
+                        changes={
+                            "status": pipeline_status,
+                            "pipeline_value": item.get("pipeline_value", Decimal("0")),
                             "lost_reason": item.get("lost_reason"),
                         },
-                        idempotency_key=opp_key,
                     )
                 customer_id = None
                 if item.get("convert"):
@@ -1624,7 +1352,6 @@ class CrmService:
                     {
                         "external_id": item.get("external_id"),
                         "lead_id": lead_record.lead.id,
-                        "opportunity_id": opp_record.opportunity.id,
                         "customer_id": customer_id,
                         "status": "created",
                         "message": None,
@@ -1635,7 +1362,6 @@ class CrmService:
                     {
                         "external_id": item.get("external_id"),
                         "lead_id": None,
-                        "opportunity_id": None,
                         "customer_id": None,
                         "status": "error",
                         "message": str(exc),
@@ -1665,9 +1391,6 @@ class CrmService:
                 lead = self._repository.lead_by_key(grant.workspace_id, lead_key)
                 if lead is None:
                     raise ResourceNotFoundError("El lead importado no existe.", "leadExternalId")
-                opportunity = self._repository.opportunity_for_lead(grant.workspace_id, lead.id)
-                if opportunity is None:
-                    raise ResourceNotFoundError("El lead no tiene oportunidad.", "leadExternalId")
                 activity_key = self._import_idempotency_key(
                     "pl-act", str(external_id or f"{lead_external_id}-{raw.get('title')}")
                 )
@@ -1677,7 +1400,6 @@ class CrmService:
                     values={
                         "branch_id": branch_id,
                         "lead_id": lead.id,
-                        "opportunity_id": opportunity.id,
                         "type": "tarea",
                         "title": raw["title"],
                         "description": raw.get("description"),

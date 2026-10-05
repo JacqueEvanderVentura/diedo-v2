@@ -24,7 +24,8 @@ describe('billingDocuments', () => {
     expect(data.businessName).toBe('Mi Spa')
     expect(data.businessRnc).toBe('1-1111111-1')
     const html = buildInvoiceHtml({ ...data, issuedAt: 'hoy', paymentMethod: 'Efectivo' })
-    expect(html).toContain('RNC 1-1111111-1')
+    expect(html).toContain('RNC: 1-1111111-1')
+    expect(html).toContain('invoice-footer-divider')
     expect(html).toContain('data:image/png;base64,abc')
   })
 

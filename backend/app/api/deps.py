@@ -201,6 +201,14 @@ PosVoidGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("sales.invoice.void")),
 ]
+SalesInvoiceEditGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("sales.invoice.edit")),
+]
+SalesInvoiceDeleteGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("sales.invoice.delete")),
+]
 PurchasingReadGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("purchasing.read")),

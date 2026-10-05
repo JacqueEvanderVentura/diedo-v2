@@ -74,7 +74,6 @@ export default function CotizacionesPage() {
   const settings = useConfigStore((s) => s.settings)
   const paymentMethods = useConfigStore((s) => s.paymentMethods)
   const customers = useCustomersStore((s) => s.customers)
-  const opportunities = useCrmStore((s) => s.opportunities)
   const updateQuote = useCrmStore((s) => s.updateQuote)
   const deleteQuote = useCrmStore((s) => s.deleteQuote)
   const invoiceQuote = useCrmStore((s) => s.invoiceQuote)
@@ -105,7 +104,6 @@ export default function CotizacionesPage() {
   const isStandardCrm = uiMode !== 'simplified'
   const docFilter = parseDocFilter(searchParams.get('doc'))
 
-  const requestedOpportunityId = searchParams.get('opportunityId') || ''
   const requestedCustomerId = searchParams.get('customerId') || ''
   const requestedLeadId = searchParams.get('leadId') || ''
 
@@ -132,54 +130,35 @@ export default function CotizacionesPage() {
   }
 
   useEffect(() => {
-    if (!requestedOpportunityId) return
-    const opportunity = opportunities.find((item) => item.id === requestedOpportunityId)
-    if (!opportunity) return
-    setEditingQuote(null)
-    setInitialContext({
-      opportunityId: opportunity.id,
-      customerId: opportunity.customerId || '',
-      branchId: opportunity.branchId || '',
-    })
-    setFormOpen(true)
-    const nextParams = new URLSearchParams(searchParams)
-    nextParams.delete('opportunityId')
-    setSearchParams(nextParams, { replace: true })
-  }, [opportunities, requestedOpportunityId, searchParams, setSearchParams])
-
-  useEffect(() => {
-    if (requestedOpportunityId || requestedCustomerId || !requestedLeadId) return
+    if (requestedCustomerId || !requestedLeadId) return
     const lead = useCrmStore.getState().leads.find((item) => item.id === requestedLeadId)
-    const opportunity = useCrmStore.getState().opportunities.find((item) => item.leadId === requestedLeadId)
     if (!lead) return
     setEditingQuote(null)
     setInitialContext({
       leadId: lead.id,
-      customerId: opportunity?.customerId || '',
-      opportunityId: opportunity?.id || '',
-      branchId: lead.branchId || opportunity?.branchId || '',
+      customerId: lead.customerId || '',
+      branchId: lead.branchId || '',
     })
     setFormOpen(true)
     const nextParams = new URLSearchParams(searchParams)
     nextParams.delete('leadId')
     setSearchParams(nextParams, { replace: true })
-  }, [requestedLeadId, requestedOpportunityId, requestedCustomerId, searchParams, setSearchParams])
+  }, [requestedLeadId, requestedCustomerId, searchParams, setSearchParams])
 
   useEffect(() => {
-    if (requestedOpportunityId || !requestedCustomerId || requestedLeadId) return
+    if (!requestedCustomerId || requestedLeadId) return
     const customer = customers.find((item) => item.id === requestedCustomerId)
     if (!customer) return
     setEditingQuote(null)
     setInitialContext({
       customerId: customer.id,
-      opportunityId: '',
       branchId: customer.branchIds?.[0] || customer.branchId || '',
     })
     setFormOpen(true)
     const nextParams = new URLSearchParams(searchParams)
     nextParams.delete('customerId')
     setSearchParams(nextParams, { replace: true })
-  }, [customers, requestedCustomerId, requestedOpportunityId, searchParams, setSearchParams])
+  }, [customers, requestedCustomerId, requestedLeadId, searchParams, setSearchParams])
 
   const enrichedQuotes = useMemo(
     () => quotes.map((quote) => resolveQuoteBilling(quote, receivables, sales)),
@@ -271,12 +250,16 @@ export default function CotizacionesPage() {
   }
 
   const printQuote = (quote) => {
-    printQuoteDocument(quote, documentCtx)
+    printQuoteDocument(quote, documentCtx).catch((error) => {
+      toast.error(error.message || 'No se pudo imprimir la cotización.')
+    })
     toast.success('Enviando cotización a impresión…')
   }
 
   const downloadQuote = (quote) => {
-    downloadQuotePdf(quote, documentCtx)
+    downloadQuotePdf(quote, documentCtx).catch((error) => {
+      toast.error(error.message || 'No se pudo descargar la cotización.')
+    })
     toast.success('Cotización descargada')
   }
 
@@ -477,7 +460,9 @@ export default function CotizacionesPage() {
       toast.error('No se encontró la factura asociada')
       return
     }
-    printSaleInvoice(sale, documentCtx)
+    printSaleInvoice(sale, documentCtx).catch((error) => {
+      toast.error(error.message || 'No se pudo imprimir la factura.')
+    })
     toast.success('Enviando factura a impresión…')
   }
 
