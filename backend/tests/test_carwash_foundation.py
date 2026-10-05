@@ -35,7 +35,7 @@ EXPECTED_CODES = {
 }
 
 
-def test_carwash_is_registered_but_not_enabled_by_bootstrap_or_plans() -> None:
+def test_carwash_is_registered_but_not_enabled_by_bootstrap() -> None:
     with session_scope() as session:
         summary = bootstrap_local_foundation(session)
         module = session.scalar(select(ModuleDefinition).where(ModuleDefinition.code == "carwash"))
@@ -52,7 +52,11 @@ def test_carwash_is_registered_but_not_enabled_by_bootstrap_or_plans() -> None:
         )
         assert codes == EXPECTED_CODES
         for plan in SubscriptionPlanRepository(session).list_plans():
-            assert "carwash" not in plan.module_codes
+            if plan.code == "completo":
+                assert "carwash" in plan.module_codes
+                assert "chat" in plan.module_codes
+            else:
+                assert "carwash" not in plan.module_codes
         assigned = set(
             session.scalars(
                 select(Permission.code)
