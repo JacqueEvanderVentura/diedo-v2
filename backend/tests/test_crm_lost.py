@@ -189,7 +189,7 @@ def test_lost_lead_search_by_phone_and_name() -> None:
             },
         )
         assert first.status_code == 201, first.text
-        client.patch(
+        lost_first = client.patch(
             f"/api/v1/crm/leads/{first.json()['id']}",
             headers=headers,
             json={
@@ -198,6 +198,7 @@ def test_lost_lead_search_by_phone_and_name() -> None:
                 "lostReason": "Sin presupuesto",
             },
         )
+        assert lost_first.status_code == 200, lost_first.text
         second = client.post(
             "/api/v1/crm/leads",
             headers={**headers, "Idempotency-Key": f"lost-search-2-{marker}"},
@@ -208,7 +209,7 @@ def test_lost_lead_search_by_phone_and_name() -> None:
             },
         )
         assert second.status_code == 201, second.text
-        client.patch(
+        lost_second = client.patch(
             f"/api/v1/crm/leads/{second.json()['id']}",
             headers=headers,
             json={
@@ -217,22 +218,32 @@ def test_lost_lead_search_by_phone_and_name() -> None:
                 "lostReason": "Sin presupuesto",
             },
         )
-        for search in (phone, marker):
-            first_page = client.get(
-                "/api/v1/crm/leads",
-                headers=headers,
-                params={"status": "perdido", "search": search, "page": 1, "pageSize": 1},
-            )
-            second_page = client.get(
-                "/api/v1/crm/leads",
-                headers=headers,
-                params={"status": "perdido", "search": search, "page": 2, "pageSize": 1},
-            )
-            assert first_page.status_code == 200, first_page.text
-            assert second_page.status_code == 200, second_page.text
-            assert first_page.json()["totalItems"] == 2
-            assert second_page.json()["totalItems"] == 2
-            assert {
-                first_page.json()["items"][0]["id"],
-                second_page.json()["items"][0]["id"],
-            } == {first.json()["id"], second.json()["id"]}
+        assert lost_second.status_code == 200, lost_second.text
+
+        phone_page = client.get(
+            "/api/v1/crm/leads",
+            headers=headers,
+            params={"status": "perdido", "search": phone, "page": 1, "pageSize": 1},
+        )
+        assert phone_page.status_code == 200, phone_page.text
+        assert phone_page.json()["totalItems"] == 1
+        assert phone_page.json()["items"][0]["id"] == first.json()["id"]
+
+        first_page = client.get(
+            "/api/v1/crm/leads",
+            headers=headers,
+            params={"status": "perdido", "search": marker, "page": 1, "pageSize": 1},
+        )
+        second_page = client.get(
+            "/api/v1/crm/leads",
+            headers=headers,
+            params={"status": "perdido", "search": marker, "page": 2, "pageSize": 1},
+        )
+        assert first_page.status_code == 200, first_page.text
+        assert second_page.status_code == 200, second_page.text
+        assert first_page.json()["totalItems"] == 2
+        assert second_page.json()["totalItems"] == 2
+        assert {
+            first_page.json()["items"][0]["id"],
+            second_page.json()["items"][0]["id"],
+        } == {first.json()["id"], second.json()["id"]}

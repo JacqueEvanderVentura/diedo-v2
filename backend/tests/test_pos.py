@@ -871,7 +871,7 @@ def test_terminal_pos_complete_http_flow(client: TestClient, tmp_path: Path) -> 
             "amount": "10.00",
             "methodId": methods["cash"]["id"],
             "registerId": register_id,
-            "version": "1",
+            "version": str(listed_receivable["version"]),
             "reference": f"PARTIAL-{suffix}",
         }
         collector_email = _create_branch_scoped_pos_user(
@@ -892,8 +892,15 @@ def test_terminal_pos_complete_http_flow(client: TestClient, tmp_path: Path) -> 
         assert partial["status"] == "partial"
         assert partial["paidTotal"] == "10.00"
         assert partial["balance"] == "20.00"
-        assert partial["version"] == 2
-        assert set(partial) == {"id", "status", "paidTotal", "balance", "version"}
+        assert partial["version"] == listed_receivable["version"] + 1
+        assert set(partial) == {
+            "id",
+            "status",
+            "paidTotal",
+            "approvalPendingAmount",
+            "balance",
+            "version",
+        }
         collector_detail = client.get(
             f"/api/v1/pos/receivables/{receivable_id}", headers=collector_headers
         )
@@ -906,7 +913,7 @@ def test_terminal_pos_complete_http_flow(client: TestClient, tmp_path: Path) -> 
                 "amount": "20.01",
                 "methodId": methods["cash"]["id"],
                 "registerId": register_id,
-                "version": "2",
+                "version": str(partial["version"]),
             },
         )
         assert overpayment.status_code == 400
@@ -917,7 +924,7 @@ def test_terminal_pos_complete_http_flow(client: TestClient, tmp_path: Path) -> 
             "amount": "20.00",
             "methodId": methods["cash"]["id"],
             "registerId": register_id,
-            "version": "2",
+            "version": str(partial["version"]),
             "reference": f"FINAL-{suffix}",
         }
         final_response = client.post(
@@ -930,7 +937,7 @@ def test_terminal_pos_complete_http_flow(client: TestClient, tmp_path: Path) -> 
         assert final_receivable["status"] == "paid"
         assert final_receivable["paidTotal"] == "30.00"
         assert final_receivable["balance"] == "0.00"
-        assert final_receivable["version"] == 3
+        assert final_receivable["version"] == partial["version"] + 1
         final_detail_response = client.get(
             f"/api/v1/pos/receivables/{receivable_id}", headers=headers
         )
@@ -948,7 +955,7 @@ def test_terminal_pos_complete_http_flow(client: TestClient, tmp_path: Path) -> 
             data=final_payment_data,
         )
         assert replayed_final.status_code == 201, replayed_final.text
-        assert replayed_final.json()["version"] == 3
+        assert replayed_final.json()["version"] == final_receivable["version"]
         replayed_detail_response = client.get(
             f"/api/v1/pos/receivables/{receivable_id}", headers=headers
         )
@@ -1957,7 +1964,7 @@ def test_receivable_proof_upload_sets_approval_and_approve_clears_pending(
     assert unapprove.status_code == 200, unapprove.text
     rejected = unapprove.json()
     assert rejected["approvalPendingAmount"] == "0.00"
-    assert rejected["paidAmount"] == "0.00"
+    assert rejected["paidTotal"] == "0.00"
     assert rejected["status"] == "pending"
 
     proof_response = client.post(
@@ -1981,7 +1988,11 @@ def test_receivable_proof_upload_sets_approval_and_approve_clears_pending(
     cxc = reject_pending.json()
     assert cxc["approvalPendingAmount"] == "0.00"
     assert cxc["status"] == "pending"
-    assert len(cxc["proofs"]) >= 1
+    after_reject = client.get(
+        f"/api/v1/pos/receivables/{receivable_id}",
+        headers=headers,
+    ).json()
+    assert len(after_reject["proofs"]) >= 1
 
 
 @pytest.mark.integration
