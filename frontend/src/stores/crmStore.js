@@ -4,6 +4,7 @@ import { ephemeralJsonStorage } from '@/services/storagePolicy'
 import { registerSensitiveStateCleaner } from '@/services/storagePolicy'
 import { currentSessionActor } from '@/lib/sessionActor'
 import { recordSerpUsage } from '@/modules/crm/lib/serpQuota'
+import { isDiscoveryLeadSource } from '@/data/crm'
 import { useCustomersStore } from '@/stores/customersStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { crmApi } from '@/services/crmApi'
@@ -16,6 +17,7 @@ import {
   mapCrmOverviewFromApi,
   mapCrmQuoteFromApi,
   mapCrmQuotesPageFromApi,
+  mapQuotesPaginatedFromApi,
   mapCrmSalesPageFromApi,
   mapCrmStateFromApi,
   mapLeadFromApi,
@@ -39,6 +41,7 @@ import {
   leadsMatchingSimplifiedWorkspaceFilters,
   needsSimplifiedWorkspaceClientFilter,
 } from '@/modules/crm/lib/simplifiedWorkspaceQuery'
+import { formatLeadStageMoveTitle } from '@/modules/crm/lib/leadStageLabels'
 import { paginateSlice } from '@/modules/reportes/lib/pagination'
 import { appendQuoteRevision } from '@/modules/crm/lib/quoteRevisions'
 import { matchesBranches } from '@/lib/branches'
@@ -184,17 +187,8 @@ async function loadOnlineSection(section) {
       if (!crmCommerceEnabled()) {
         return {}
       }
-      const [quotes, leads, customers] = await Promise.all([
-        readAllPages(crmApi.quotes),
-        readAllPages(crmApi.leads),
-        readAllPages(crmApi.customers),
-        syncWorkspacePaymentMethods().catch(() => []),
-      ])
-      return {
-        quotes: mapCrmQuotesPageFromApi(quotes),
-        leads: mapLeadsPageFromApi(leads),
-        customers: mapCrmCustomersPageFromApi(customers),
-      }
+      await syncWorkspacePaymentMethods().catch(() => [])
+      return {}
     }
     case 'purchases': {
       if (!crmCommerceEnabled()) {
@@ -285,7 +279,8 @@ function normalizeLead(raw) {
     instagramUrl: raw.instagramUrl || null,
     location: raw.location || '',
     source: raw.source || 'manual',
-    acquisitionSource: raw.acquisitionSource || null,
+    acquisitionSource:
+      raw.acquisitionSource || (isDiscoveryLeadSource(raw.source) ? 'ai' : null),
     sourceUrl: raw.sourceUrl || null,
     scrapedAt: raw.scrapedAt || null,
     rawSnippet: raw.rawSnippet || '',
@@ -344,6 +339,7 @@ export const useCrmStore = create(
       leadsListMeta: emptyListMeta(),
       activities: [],
       quotes: [],
+      quotesListMeta: emptyListMeta(),
       customers: [],
       sales: [],
       overview: null,
@@ -541,6 +537,125 @@ export const useCrmStore = create(
       /** @deprecated Usar paginación por página */
       loadMoreLeads: async () => get().setLeadsPage(get().leadsListMeta.page + 1),
 
+      fetchQuotesPage: async ({
+        page = 1,
+        pageSize,
+        branchId,
+        updatedAfter,
+        updatedBefore,
+        append = false,
+      } = {}) => {
+        if (!isOnline() || !crmCommerceEnabled()) return get().quotes
+        const meta = get().quotesListMeta
+        const targetPage = Math.max(1, page)
+        const targetSize = normalizeCrmPageSize(pageSize ?? meta.pageSize)
+        const branchKey = branchId ?? meta.branchId ?? null
+        const afterKey = updatedAfter ?? meta.updatedAfter ?? null
+        const beforeKey = updatedBefore ?? meta.updatedBefore ?? null
+        const loadingMore = append && targetPage > 1
+        set({
+          quotesListMeta: {
+            ...meta,
+            page: targetPage,
+            pageSize: targetSize,
+            branchId: branchKey,
+            updatedAfter: afterKey,
+            updatedBefore: beforeKey,
+            loading: !loadingMore,
+            loadingMore,
+            error: null,
+          },
+        })
+        try {
+          const response = await crmApi.quotes({
+            page: targetPage,
+            pageSize: targetSize,
+            branchId: branchKey || undefined,
+            updatedAfter: afterKey || undefined,
+            updatedBefore: beforeKey || undefined,
+          })
+          const mapped = mapQuotesPaginatedFromApi(response)
+          const mergeQuoteList = (previous, incoming) => {
+            const merged = append ? upsertById(previous, incoming) : incoming
+            return merged.map((quote) => {
+              const prior = previous.find((item) => item.id === quote.id)
+              if (
+                prior?.invoiceCollection
+                || prior?.receivableId
+                || prior?.invoicePaymentMethod
+                || quote.invoiceCollection
+                || quote.receivableId
+              ) {
+                return {
+                  ...quote,
+                  invoiceCollection: mergeInvoiceCollection(
+                    quote.invoiceCollection,
+                    prior?.invoiceCollection
+                  ),
+                  receivableId: quote.receivableId || prior?.receivableId || null,
+                  invoicePaymentMethod: quote.invoicePaymentMethod || prior?.invoicePaymentMethod || null,
+                }
+              }
+              return quote
+            })
+          }
+          set((state) => ({
+            quotes: mergeQuoteList(state.quotes, mapped.items),
+            quotesListMeta: listMetaFromPaginated(mapped, {
+              pageSize: targetSize,
+              branchId: branchKey,
+              updatedAfter: afterKey,
+              updatedBefore: beforeKey,
+            }),
+          }))
+          return mapped.items
+        } catch (error) {
+          set({
+            quotesListMeta: {
+              ...get().quotesListMeta,
+              loading: false,
+              loadingMore: false,
+              error,
+            },
+          })
+          throw error
+        }
+      },
+
+      loadMoreQuotes: async () => {
+        if (!isOnline()) return
+        const meta = get().quotesListMeta
+        if (meta.loadingMore || meta.loading || meta.page >= meta.totalPages) return
+        return get().fetchQuotesPage({
+          page: meta.page + 1,
+          pageSize: meta.pageSize,
+          branchId: meta.branchId,
+          updatedAfter: meta.updatedAfter,
+          updatedBefore: meta.updatedBefore,
+          append: true,
+        })
+      },
+
+      /** Full quote sync for simplified workspace timeline (not used by cotizaciones list). */
+      syncWorkspaceQuotes: async () => {
+        if (!isOnline() || !crmCommerceEnabled()) return get().quotes
+        const quotes = await readAllPages(crmApi.quotes)
+        const mapped = mapCrmQuotesPageFromApi(quotes)
+        set((state) => ({
+          quotes: mapped.map((quote) => {
+            const prior = state.quotes.find((item) => item.id === quote.id)
+            if (!prior) return quote
+            return {
+              ...quote,
+              invoiceCollection: mergeInvoiceCollection(quote.invoiceCollection, prior.invoiceCollection),
+              receivableId: quote.receivableId || prior.receivableId || null,
+              invoicePaymentMethod: quote.invoicePaymentMethod || prior.invoicePaymentMethod || null,
+            }
+          }),
+        }))
+        return mapped
+      },
+
       loadMorePipelineLeads: async () => {
         if (!isOnline()) return
         const meta = get().leadsListMeta
@@ -671,8 +786,8 @@ export const useCrmStore = create(
           })
           const response = await crmApi.leads(params)
           let mapped = mapLeadsPaginatedFromApi(response)
-          if (branchIds?.length > 1 || dateFilter?.period !== 'all') {
-            const filtered = filterLeadsForSimplifiedWorkspace(mapped.items, { branchIds, dateFilter })
+          if (branchIds?.length > 1) {
+            const filtered = filterLeadsForSimplifiedWorkspace(mapped.items, { branchIds, dateFilter: { period: 'all' } })
             mapped = {
               ...mapped,
               items: filtered,
@@ -899,9 +1014,10 @@ export const useCrmStore = create(
         return newLeads
       },
 
-      updateLead: async (id, data) => {
+      updateLead: async (id, data, retryAfterVersionConflict = false) => {
         const current = get().leads.find((lead) => lead.id === id)
         if (!current) throw new Error('Lead no encontrado.')
+        const statusChanged = data.status !== undefined && data.status !== current.status
         set((s) => ({
           leads: s.leads.map((l) => {
             if (l.id !== id) return l
@@ -921,14 +1037,41 @@ export const useCrmStore = create(
             const response = await crmApi.updateLead(id, payload)
             const saved = mapLeadFromApi(response)
             set((s) => ({ leads: replaceById(s.leads, saved) }))
+            if (statusChanged) {
+              await get().fetchSimplifiedWorkspaceDetailActivities(id).catch(() => {})
+            }
             return saved
           } catch (error) {
+            const versionConflict =
+              error?.parameter === 'version'
+              || String(error?.message || '').includes('última lectura')
+            if (versionConflict && !retryAfterVersionConflict) {
+              try {
+                const refreshed = await crmApi.getLead(id)
+                const savedLead = mapLeadFromApi(refreshed)
+                set((s) => ({ leads: replaceById(s.leads, savedLead) }))
+                return get().updateLead(id, data, true)
+              } catch {
+                /* fall through to default error handling */
+              }
+            }
             set((state) => ({
               leads: state.leads.map((lead) => (lead.id === id ? current : lead)),
             }))
             reportMutationError(set, error)
             throw error
           }
+        }
+        if (statusChanged) {
+          await get().addActivity({
+            type: 'nota',
+            title: formatLeadStageMoveTitle(current.status, data.status),
+            leadId: id,
+            customerId: current.customerId || null,
+            customerName: current.company || current.name,
+            branchId: current.branchId,
+            completedAt: now(),
+          }).catch(() => {})
         }
         return get().leads.find((lead) => lead.id === id)
       },
@@ -1005,21 +1148,22 @@ export const useCrmStore = create(
         const customers = useCustomersStore.getState().customers
         let lead = get().leads.find((item) => item.id === leadId)
         const resolvedId = customerId || effectiveLeadCustomerId(lead, customers)
-        if (resolvedId && !lead?.customerId) {
-          await get().updateLead(leadId, { customerId: resolvedId })
-        } else if (customerId && customerId !== lead?.customerId) {
-          await get().updateLead(leadId, { customerId })
+        let quote = findBillableQuote(get().quotes, leadId)
+        if (resolvedId && quote && quote.customerId !== resolvedId) {
+          quote = await get().updateQuote(quote.id, { customerId: resolvedId }) || quote
         }
         lead = get().leads.find((item) => item.id === leadId)
-        const validationError = validatePipelineClose({ lead, quotes: get().quotes })
+        const effectiveCustomerId = resolvedId || lead?.customerId || quote?.customerId || null
+        const leadForClose = lead ? { ...lead, customerId: effectiveCustomerId } : null
+        const validationError = validatePipelineClose({ lead: leadForClose, quotes: get().quotes })
         if (validationError) throw new Error(validationError)
 
-        const quote = findBillableQuote(get().quotes, leadId)
+        quote = findBillableQuote(get().quotes, leadId)
         if (!quote) throw new Error('No se encontró una cotización facturable.')
 
         const customer = useCustomersStore.getState().customers.find(
-          (item) => item.id === lead.customerId
-        ) || { id: lead.customerId, name: lead.company || lead.name, phone: lead.phone || null }
+          (item) => item.id === effectiveCustomerId
+        ) || { id: effectiveCustomerId, name: lead.company || lead.name, phone: lead.phone || null }
 
         let sale
         if (isOnline()) {
@@ -1054,7 +1198,21 @@ export const useCrmStore = create(
           await get().updateQuote(quote.id, { status: 'aceptada' })
         }
 
-        await get().updateLead(leadId, { status: 'cerrado' })
+        if (isOnline()) {
+          let closedLead = get().leads.find((item) => item.id === leadId)
+          try {
+            const refreshed = await crmApi.getLead(leadId)
+            closedLead = mapLeadFromApi(refreshed)
+            set((s) => ({ leads: replaceById(s.leads, closedLead) }))
+          } catch {
+            /* keep local state */
+          }
+          if (closedLead?.status !== 'cerrado') {
+            closedLead = await get().updateLead(leadId, { status: 'cerrado' })
+          }
+        } else {
+          await get().updateLead(leadId, { status: 'cerrado' })
+        }
         return sale
       },
 
@@ -1172,6 +1330,15 @@ export const useCrmStore = create(
             })
             const saved = mapCrmQuoteFromApi(response)
             set((s) => ({ quotes: [saved, ...s.quotes.filter((item) => item.id !== saved.id)] }))
+            if (saved.leadId) {
+              try {
+                const leadResponse = await crmApi.getLead(saved.leadId)
+                const lead = mapLeadFromApi(leadResponse)
+                set((s) => ({ leads: replaceById(s.leads, lead) }))
+              } catch {
+                /* pipeline sync may still retry via updateLead version handling */
+              }
+            }
             return saved
           } catch (error) {
             reportMutationError(set, error)
@@ -1261,6 +1428,14 @@ export const useCrmStore = create(
             const detail = mapCrmQuoteFromApi(response)
             set((state) => ({ quotes: replaceById(state.quotes, detail) }))
             return detail
+          })
+          .catch((error) => {
+            if (error?.status === 404) {
+              set((state) => ({
+                quotes: state.quotes.filter((quote) => quote.id !== quoteId),
+              }))
+            }
+            throw error
           })
           .finally(() => quoteDetailRequests.delete(key))
         quoteDetailRequests.set(key, request)
@@ -1467,10 +1642,16 @@ export const useCrmStore = create(
       },
 
       deleteQuote: async (id) => {
-        const current = get().quotes.find((quote) => quote.id === id)
-        if (isOnline() && current) {
+        let current = get().quotes.find((quote) => quote.id === id)
+        if (isOnline()) {
           try {
-            const response = await crmApi.cancelQuote(id, current.version)
+            if (!current) {
+              current = await get().ensureQuoteDetail(id).catch(() => null)
+            }
+            if (!current) {
+              throw new Error('La cotización no existe.')
+            }
+            const response = await crmApi.cancelQuote(id, current.version, 'Descartada desde CRM')
             const saved = mapCrmQuoteFromApi(response)
             set((s) => ({ quotes: replaceById(s.quotes, saved) }))
             return saved
@@ -1479,8 +1660,18 @@ export const useCrmStore = create(
             throw error
           }
         }
-        set((s) => ({ quotes: s.quotes.filter((q) => q.id !== id) }))
-        return current || null
+        const discarded = current
+          ? {
+            ...current,
+            structuralStatus: 'cancelled',
+            status: 'rechazada',
+            updatedAt: now(),
+          }
+          : null
+        if (discarded) {
+          set((s) => ({ quotes: replaceById(s.quotes, discarded) }))
+        }
+        return discarded
       },
 
       clearSensitive: () => {

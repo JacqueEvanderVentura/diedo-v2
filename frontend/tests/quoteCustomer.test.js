@@ -30,7 +30,7 @@ describe('ensureCustomerForQuote', () => {
       updateLead,
     })
     expect(addCustomer).toHaveBeenCalled()
-    expect(updateLead).toHaveBeenCalledWith('lead-1', { customerId: 'new-c' })
+    expect(updateLead).not.toHaveBeenCalled()
     expect(result).toEqual({ id: 'new-c', name: 'Spa Zen' })
   })
 })
@@ -54,7 +54,7 @@ describe('ensureCustomerForLeadQuote', () => {
       updateLead,
     })
     expect(addCustomer).toHaveBeenCalled()
-    expect(updateLead).toHaveBeenCalledWith('lead-2', { customerId: 'new-c' })
+    expect(updateLead).not.toHaveBeenCalled()
     expect(result).toEqual({ id: 'new-c', leadId: 'lead-2' })
   })
 })

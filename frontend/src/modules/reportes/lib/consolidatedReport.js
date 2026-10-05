@@ -24,6 +24,7 @@ export function acquisitionBucket(source, channel) {
   if (SOCIAL_SOURCES.has(source)) return 'social'
   if (source === 'referral') return 'referral'
   if (source === 'app' || source === 'self_booking') return 'app'
+  if (source === 'ai') return 'ai'
   if (source === 'otros') return 'otros'
   return 'otros'
 }
@@ -33,6 +34,7 @@ export const ACQUISITION_BUCKET_LABELS = {
   social: 'Redes sociales',
   referral: 'Referidos',
   app: 'App Helios 360',
+  ai: ACQUISITION_SOURCE_LABELS.ai,
   otros: ACQUISITION_SOURCE_LABELS.otros,
   unknown: 'Sin origen',
 }
@@ -42,6 +44,7 @@ export const ACQUISITION_BUCKET_COLORS = {
   social: '#22c55e',
   referral: '#f59e0b',
   app: '#a855f7',
+  ai: '#0ea5e9',
   otros: '#64748b',
   unknown: '#94a3b8',
 }

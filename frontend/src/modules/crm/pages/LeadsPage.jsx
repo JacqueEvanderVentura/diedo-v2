@@ -5,10 +5,10 @@ import { toast } from 'sonner'
 import { List, Search, ScanSearch, MapPin, Phone, Globe, Import, UserCheck, Plus, Pencil, Trash2, CheckSquare, Square } from 'lucide-react'
 import { useCrmStore } from '@/stores/crmStore'
 import { searchBusinesses } from '@/services/leadSearch'
+import { crmApi } from '@/services/crmApi'
 import {
   OPPORTUNITY_STAGES,
-  SOURCE_LABELS,
-  ACQUISITION_SOURCE_LABELS,
+  leadOriginBadgeLabels,
   STAGE_META,
 } from '@/data/crm'
 import { leadPipelineStage } from '../lib/pipelineLeads'
@@ -45,6 +45,9 @@ const STAR_SORT_OPTIONS = [
   { value: 'desc', label: 'Estrellas: mayor a menor' },
   { value: 'asc', label: 'Estrellas: menor a mayor' },
 ]
+
+const DISCOVERY_UNAVAILABLE_MESSAGE =
+  'La búsqueda con inteligencia artificial no está disponible. Favor de contactar al proveedor.'
 
 function LeadsListaTab({ onEditLead }) {
   const can = useCrmCapabilities()
@@ -286,12 +289,11 @@ function LeadsListaTab({ onEditLead }) {
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="font-heading font-semibold text-slate-900">{lead.company || lead.name}</h3>
                     <Badge tone={meta.tone}>{meta.label}</Badge>
-                    <Badge tone="neutral">{SOURCE_LABELS[lead.source] || lead.source}</Badge>
-                    {lead.acquisitionSource && (
-                      <Badge tone="brand">
-                        {ACQUISITION_SOURCE_LABELS[lead.acquisitionSource] || lead.acquisitionSource}
+                    {leadOriginBadgeLabels(lead).map((label) => (
+                      <Badge key={label} tone={label === 'AI' ? 'neutral' : 'brand'}>
+                        {label}
                       </Badge>
-                    )}
+                    ))}
                   </div>
                   <div className="flex flex-wrap gap-3 text-sm text-slate-500">
                     {lead.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{lead.location}</span>}
@@ -387,6 +389,8 @@ function LeadsDescubrirTab() {
   const addLeadsBatch = useCrmStore((s) => s.addLeadsBatch)
   const branches = useConfigStore((state) => state.branches)
 
+  const [discoveryStatus, setDiscoveryStatus] = useState(null)
+
   const [q, setQ] = useState('')
   const [location, setLocation] = useState('Santo Domingo, República Dominicana')
   const [loading, setLoading] = useState(false)
@@ -399,6 +403,12 @@ function LeadsDescubrirTab() {
     setBranchId(branches.find((branch) => branch.active)?.id || '')
   }, [branchId, branches])
 
+  useEffect(() => {
+    crmApi.discoveryCapabilities()
+      .then((capabilities) => setDiscoveryStatus(capabilities))
+      .catch(() => setDiscoveryStatus(null))
+  }, [])
+
   const runSearch = async () => {
     if (!q.trim()) return toast.error('Ingresa un término de búsqueda')
     setLoading(true)
@@ -410,6 +420,9 @@ function LeadsDescubrirTab() {
       if (found.length === 0) toast.info('Sin resultados para esta búsqueda')
     } catch (err) {
       if (err.code === 'QUOTA_EXCEEDED') toast.error('Límite de búsquedas alcanzado. Intenta más tarde.')
+      else if (err.code === 'DISCOVERY_NOT_CONFIGURED' || (err.status === 503 && err.parameter === 'provider')) {
+        toast.error(DISCOVERY_UNAVAILABLE_MESSAGE)
+      } else if (err.message) toast.error(err.message)
       else toast.error('No se pudo completar la búsqueda. Intenta de nuevo.')
     } finally {
       setLoading(false)
@@ -439,8 +452,18 @@ function LeadsDescubrirTab() {
     }
   }
 
+  const discoveryReady = discoveryStatus?.enabled === true
+
   return (
     <div className="space-y-4">
+      {discoveryStatus && !discoveryReady && (
+        <p
+          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+          data-testid="leads-discovery-not-configured"
+        >
+          {DISCOVERY_UNAVAILABLE_MESSAGE}
+        </p>
+      )}
       <div className="grid gap-3 sm:grid-cols-3">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ej: salón de belleza, restaurante..." className="rounded-xl border-0 bg-white px-4 py-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-600" />
         <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Ubicación" className="rounded-xl border-0 bg-white px-4 py-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-600" />
@@ -454,7 +477,7 @@ function LeadsDescubrirTab() {
           testId="leads-import-branch"
         />
       </div>
-      <Button onClick={runSearch} disabled={loading}>
+      <Button onClick={runSearch} disabled={loading || (discoveryStatus && !discoveryReady)}>
         <Search className="h-4 w-4" /> {loading ? 'Buscando...' : 'Buscar negocios'}
       </Button>
 

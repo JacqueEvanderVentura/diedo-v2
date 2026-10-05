@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Trash2, UserPlus, Package } from 'lucide-react'
+import { Plus, Trash2, UserPlus, Package, Loader2 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -31,6 +31,8 @@ import {
   syncLeadPipelineValue,
 } from '../lib/quoteCustomer'
 import { QuotePartyPicker } from './QuotePartyPicker'
+import { crmApi } from '@/services/crmApi'
+import { mapLeadFromApi } from '@/services/adapters/crm'
 
 export function QuoteFormModal({
   open,
@@ -43,6 +45,8 @@ export function QuoteFormModal({
   const customers = useCustomersStore((s) => s.customers)
   const addCustomer = useCustomersStore((s) => s.addCustomer)
   const products = useCatalogStore((s) => s.products)
+  const catalogHydrated = useCatalogStore((s) => s.apiContext.hydrated)
+  const hydrateCatalog = useCatalogStore((s) => s.hydrateFromApi)
   const isOnline = useSessionStore((s) => s.status === 'online')
   const leads = useCrmStore((s) => s.leads)
   const updateLead = useCrmStore((s) => s.updateLead)
@@ -52,6 +56,8 @@ export function QuoteFormModal({
   const [draft, setDraft] = useState(emptyQuoteDraft)
   const [saving, setSaving] = useState(false)
   const [customerModalOpen, setCustomerModalOpen] = useState(false)
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [contextLead, setContextLead] = useState(null)
 
   const editing = Boolean(quote)
   const canManage = useSessionStore((s) => s.status === 'demo' || (s.hasPermission('crm.manage') && s.hasPermission('sales.quote.manage')))
@@ -61,15 +67,39 @@ export function QuoteFormModal({
     if (!open) return
     if (quote) {
       setDraft(draftFromQuote(quote))
+      setContextLead(null)
       return
     }
     if (initialContext?.leadId) {
       const lead = leads.find((item) => item.id === initialContext.leadId)
       if (lead) {
+        setContextLead(lead)
         setDraft(draftFromLead(lead))
         return
       }
+      if (isOnline) {
+        let cancelled = false
+        crmApi.getLead(initialContext.leadId)
+          .then((response) => {
+            if (cancelled) return
+            const fetched = mapLeadFromApi(response)
+            setContextLead(fetched)
+            setDraft(draftFromLead(fetched))
+          })
+          .catch(() => {
+            if (cancelled) return
+            setDraft({
+              ...emptyQuoteDraft(),
+              customerId: initialContext?.customerId || '',
+              leadId: initialContext.leadId,
+              partyType: 'lead',
+              branchId: initialContext?.branchId || '',
+            })
+          })
+        return () => { cancelled = true }
+      }
     }
+    setContextLead(null)
     setDraft({
       ...emptyQuoteDraft(),
       customerId: initialContext?.customerId || '',
@@ -77,11 +107,19 @@ export function QuoteFormModal({
       partyType: initialContext?.leadId ? 'lead' : (initialContext?.customerId ? 'customer' : ''),
       branchId: initialContext?.branchId || '',
     })
-  }, [open, quote, initialContext, leads])
+  }, [open, quote, initialContext, leads, isOnline])
+
+  useEffect(() => {
+    if (!open || !isOnline || catalogHydrated) return
+    setCatalogLoading(true)
+    hydrateCatalog(branches)
+      .catch(() => {})
+      .finally(() => setCatalogLoading(false))
+  }, [open, isOnline, catalogHydrated, hydrateCatalog, branches])
 
   const selectedLead = useMemo(
-    () => leads.find((item) => item.id === draft.leadId),
-    [leads, draft.leadId],
+    () => contextLead || leads.find((item) => item.id === draft.leadId),
+    [contextLead, leads, draft.leadId],
   )
   const selectedCustomer = useMemo(
     () => customers.find((item) => item.id === draft.customerId),
@@ -186,9 +224,6 @@ export function QuoteFormModal({
       partyType: 'customer',
       branchId: current.branchId || customer.branchIds?.[0] || customer.branchId || '',
     }))
-    if (selectedLead?.id && !selectedLead.customerId) {
-      await updateLead(selectedLead.id, { customerId: customer.id })
-    }
     toast.success('Cliente listo para cotizar')
   }
 
@@ -197,67 +232,65 @@ export function QuoteFormModal({
       toast.error('Esta cotización no se puede editar en su estado actual')
       return
     }
-    let customer = customers.find((item) => item.id === draft.customerId)
-    let leadId = draft.leadId || null
-    let lead = leadId ? leads.find((item) => item.id === leadId) : null
-
-    if (draft.partyType === 'lead' && draft.leadId) {
-      lead = leads.find((item) => item.id === draft.leadId)
-      const ensured = await ensureCustomerForLeadQuote({
-        lead,
-        addCustomer,
-        updateLead,
-      })
-      if (!ensured?.id) {
-        toast.error('El lead necesita sucursal para cotizar')
-        return
-      }
-      leadId = ensured.leadId || lead?.id || leadId
-      customer = useCustomersStore.getState().customers.find((item) => item.id === ensured.id) || { id: ensured.id }
-      setDraft((current) => ({ ...current, customerId: ensured.id, leadId }))
-    } else if (!customer) {
-      const ensured = await ensureCustomerForQuote({
-        customerId: draft.customerId || null,
-        lead: selectedLead,
-        addCustomer,
-        updateLead,
-      })
-      if (!ensured?.id) {
-        toast.error('Selecciona un lead o cliente para continuar')
-        return
-      }
-      customer = useCustomersStore.getState().customers.find((item) => item.id === ensured.id) || ensured
-      setDraft((current) => ({ ...current, customerId: ensured.id }))
-    }
-
-    const branchId = draft.branchId || quoteBranches[0]?.id
-    if (!branchId) {
-      toast.error('Selecciona una sucursal')
-      return
-    }
-    const items = quoteLinesToItems(draft.lines, catalogById)
-    if (!items.length) {
-      toast.error('Agrega al menos un producto o servicio')
-      return
-    }
-    const duplicateIds = items.map((item) => item.itemId)
-    if (duplicateIds.length !== new Set(duplicateIds).size) {
-      toast.error('No repitas el mismo producto; ajusta la cantidad en una sola línea')
-      return
-    }
-    for (const item of items) {
-      if (!isProductAvailableAtBranch(catalogById.get(item.itemId), branchId)) {
-        toast.error(`«${item.name}» no está disponible en la sucursal seleccionada`)
-        return
-      }
-    }
-
-    if (!leadId && draft.leadId) {
-      leadId = draft.leadId
-    }
-
     setSaving(true)
     try {
+      let customer = customers.find((item) => item.id === draft.customerId)
+      let leadId = draft.leadId || null
+      let lead = leadId ? leads.find((item) => item.id === leadId) : null
+
+      if (draft.partyType === 'lead' && draft.leadId) {
+        lead = selectedLead || leads.find((item) => item.id === draft.leadId)
+        const ensured = await ensureCustomerForLeadQuote({
+          lead,
+          addCustomer,
+        })
+        if (!ensured?.id) {
+          toast.error('El lead necesita sucursal para cotizar')
+          return
+        }
+        leadId = ensured.leadId || lead?.id || leadId
+        customer = useCustomersStore.getState().customers.find((item) => item.id === ensured.id)
+          || { id: ensured.id, name: lead?.company || lead?.name || '' }
+        setDraft((current) => ({ ...current, customerId: ensured.id, leadId }))
+      } else if (!customer) {
+        const ensured = await ensureCustomerForQuote({
+          customerId: draft.customerId || null,
+          lead: selectedLead,
+          addCustomer,
+        })
+        if (!ensured?.id) {
+          toast.error('Selecciona un lead o cliente para continuar')
+          return
+        }
+        customer = useCustomersStore.getState().customers.find((item) => item.id === ensured.id) || ensured
+        setDraft((current) => ({ ...current, customerId: ensured.id }))
+      }
+
+      const branchId = draft.branchId || quoteBranches[0]?.id
+      if (!branchId) {
+        toast.error('Selecciona una sucursal')
+        return
+      }
+      const items = quoteLinesToItems(draft.lines, catalogById)
+      if (!items.length) {
+        toast.error('Agrega al menos un producto o servicio')
+        return
+      }
+      const duplicateIds = items.map((item) => item.itemId)
+      if (duplicateIds.length !== new Set(duplicateIds).size) {
+        toast.error('No repitas el mismo producto; ajusta la cantidad en una sola línea')
+        return
+      }
+      for (const item of items) {
+        if (!isProductAvailableAtBranch(catalogById.get(item.itemId), branchId)) {
+          toast.error(`«${item.name}» no está disponible en la sucursal seleccionada`)
+          return
+        }
+      }
+
+      if (!leadId && draft.leadId) {
+        leadId = draft.leadId
+      }
       const payload = {
         customerId: customer.id,
         customerName: customer.name,
@@ -267,17 +300,18 @@ export function QuoteFormModal({
         total,
         validUntil: quote?.validUntil || new Date(Date.now() + 15 * 86400000).toISOString(),
       }
+      let saved = null
       if (editing) {
-        await updateQuote(quote.id, payload)
+        saved = await updateQuote(quote.id, payload)
         toast.success('Cotización actualizada')
       } else {
-        await addQuote(payload)
+        saved = await addQuote(payload)
         if (leadId) {
-          await syncLeadPipelineValue({ leadId, total, updateLead })
+          await syncLeadPipelineValue({ leadId, total, updateLead }).catch(() => {})
         }
         toast.success('Cotización creada y vinculada')
       }
-      onSaved?.()
+      onSaved?.(saved)
       onClose()
     } catch (error) {
       toast.error(error.message || 'No se pudo guardar la cotización')
@@ -287,6 +321,8 @@ export function QuoteFormModal({
   }
 
   const catalogEmpty = sellableCatalog.length === 0
+  const catalogReady = !isOnline || catalogHydrated
+  const catalogBlocked = isOnline && (!catalogReady || catalogLoading)
 
   return (
     <>
@@ -297,7 +333,16 @@ export function QuoteFormModal({
         wide
         testId="quote-form-modal"
       >
-        <div className="space-y-4">
+        <div className="relative space-y-4">
+          {catalogBlocked && (
+            <div
+              className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl bg-white/80 backdrop-blur-[1px]"
+              data-testid="quote-form-catalog-loading"
+            >
+              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+              <p className="text-sm text-slate-600">Cargando productos…</p>
+            </div>
+          )}
           {!hasLinkedParty && (
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-sm text-slate-700">Elige un lead o cliente, o créalo aquí.</p>
@@ -312,7 +357,9 @@ export function QuoteFormModal({
             <QuotePartyPicker
               value={partyValue}
               branchId={selectedLead?.branchId || draft.branchId || null}
-              disabled={!editable}
+              pinnedLead={selectedLead}
+              pinnedCustomer={selectedCustomer}
+              disabled={!editable || catalogBlocked}
               onChange={(party) => {
                 if (!party) return
                 if (party.type === 'customer') {
@@ -461,7 +508,7 @@ export function QuoteFormModal({
             <Button variant="secondary" onClick={onClose} disabled={saving}>Cancelar</Button>
             <Button
               onClick={submit}
-              disabled={saving || catalogEmpty || !editable || !hasLinkedParty}
+              disabled={saving || catalogEmpty || catalogBlocked || !editable || !hasLinkedParty}
               data-testid="quote-form-save"
             >
               {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear cotización'}

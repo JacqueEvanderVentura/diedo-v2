@@ -54,6 +54,19 @@ describe('busqueda externa de leads', () => {
     })
   })
 
+  it('expone discovery no configurado cuando el backend responde 503', async () => {
+    const error = new Error('La busqueda de leads por SERP no esta configurada.')
+    error.status = 503
+    error.parameter = 'provider'
+    mocks.searchDiscovery.mockRejectedValue(error)
+
+    await expect(searchBusinesses({ q: 'hoteles', location: 'Punta Cana', num: 10 })).rejects.toMatchObject({
+      code: 'DISCOVERY_NOT_CONFIGURED',
+      status: 503,
+      parameter: 'provider',
+    })
+  })
+
   it('mantiene el codigo de cuota agotada esperado por la interfaz', async () => {
     const error = new Error('Limite horario de busqueda de leads alcanzado.')
     error.status = 429

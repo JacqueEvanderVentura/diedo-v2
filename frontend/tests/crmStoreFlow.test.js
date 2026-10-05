@@ -246,18 +246,29 @@ describe('flujo conectado del store CRM', () => {
   it('ajusta contadores de etapa con filtros de fecha y búsqueda en línea', async () => {
     const recent = new Date().toISOString()
     const old = '2020-01-01T12:00:00.000Z'
-    mocks.leads.mockImplementation(async (params) => ({
-      items: params.status === 'nuevo'
-        ? [
-          pipelineLead({ status: 'nuevo', name: 'DEMO', company: '', updatedAt: recent }),
-          pipelineLead({ id: `${leadId}-old`, status: 'nuevo', name: 'DEMO viejo', updatedAt: old }),
-        ]
-        : [pipelineLead({ status: params.status, name: 'Otro', updatedAt: old })],
-      page: params.page || 1,
-      pageSize: params.pageSize,
-      totalItems: params.status === 'nuevo' ? 2 : 1,
-      totalPages: 1,
-    }))
+    mocks.leads.mockImplementation(async (params) => {
+      const inUpdatedRange = (lead) => {
+        const updated = new Date(lead.updatedAt || lead.createdAt || 0).getTime()
+        const after = params.updatedAfter ? new Date(params.updatedAfter).getTime() : null
+        const before = params.updatedBefore ? new Date(params.updatedBefore).getTime() : null
+        if (after != null && updated < after) return false
+        if (before != null && updated > before) return false
+        return true
+      }
+      const nuevoPool = [
+        pipelineLead({ status: 'nuevo', name: 'DEMO', company: '', updatedAt: recent }),
+        pipelineLead({ id: `${leadId}-old`, status: 'nuevo', name: 'DEMO viejo', updatedAt: old }),
+      ].filter(inUpdatedRange)
+      const otherPool = [pipelineLead({ status: params.status, name: 'Otro', updatedAt: old })].filter(inUpdatedRange)
+      const items = params.status === 'nuevo' ? nuevoPool : otherPool
+      return {
+        items,
+        page: params.page || 1,
+        pageSize: params.pageSize,
+        totalItems: items.length,
+        totalPages: 1,
+      }
+    })
     const { defaultSimplifiedDateFilter } = await import('@/modules/crm/lib/simplifiedWorkspaceQuery')
     const counts = await useCrmStore.getState().fetchSimplifiedWorkspaceStageCounts({
       search: 'demo',

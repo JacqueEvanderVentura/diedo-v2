@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
   patch: vi.fn(),
+  delete: vi.fn(),
 }))
 
 vi.mock('@/services/apiClient', () => ({ apiClient: mocks }))
@@ -40,12 +41,14 @@ describe('cliente API de CRM', () => {
   it('envía mutaciones críticas con versión e idempotencia', async () => {
     mocks.post.mockResolvedValue({})
     mocks.patch.mockResolvedValue({})
+    mocks.delete.mockResolvedValue(undefined)
 
     await crmApi.createLead({ name: 'Ada' }, 'lead-key')
     await crmApi.convertLead('lead-id', { version: 3 }, 'convert-key')
     await crmApi.createQuote({ customerId: 'customer-id' }, 'quote-key')
     await crmApi.updateLead('lead-id', { version: 4, status: 'cerrado' })
     await crmApi.cancelQuote('quote-id', 5, 'Duplicada')
+    await crmApi.deleteQuote('quote-id', 6)
     await crmApi.searchDiscovery({ query: 'spa', location: 'Santo Domingo', limit: 10 })
 
     expect(mocks.post).toHaveBeenNthCalledWith(
@@ -74,6 +77,10 @@ describe('cliente API de CRM', () => {
       4,
       '/api/v1/crm/quotes/quote-id/cancel',
       { version: 5, reason: 'Duplicada' }
+    )
+    expect(mocks.delete).toHaveBeenCalledWith(
+      '/api/v1/crm/quotes/quote-id',
+      { version: 6 },
     )
     expect(mocks.post).toHaveBeenNthCalledWith(
       5,

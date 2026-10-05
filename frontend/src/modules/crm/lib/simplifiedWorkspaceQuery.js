@@ -20,6 +20,11 @@ export function defaultSimplifiedDateFilter() {
   return { period: 'week', dateFrom: null, dateTo: null }
 }
 
+export function simplifiedLeadUpdatedRange(dateFilter) {
+  if (!dateFilter || dateFilter.period === 'all') return null
+  return resolvePeriodRange(dateFilter)
+}
+
 export function buildSimplifiedLeadQuery({
   stage,
   page,
@@ -32,10 +37,17 @@ export function buildSimplifiedLeadQuery({
     status: stage,
     page,
     pageSize,
+    sort: 'updated_at',
+    sortDir: 'desc',
   }
   const q = (search || '').trim()
   if (q) params.search = q
   if (branchIds?.length === 1) params.branchId = branchIds[0]
+  const range = simplifiedLeadUpdatedRange(dateFilter)
+  if (range) {
+    params.updatedAfter = range.start.toISOString()
+    params.updatedBefore = range.end.toISOString()
+  }
   return { params, dateFilter, branchIds }
 }
 
@@ -69,8 +81,8 @@ export function filterLeadsForSimplifiedWorkspace(leads, { branchIds = [], dateF
   })
 }
 
-export function needsSimplifiedWorkspaceClientFilter({ branchIds = [], dateFilter } = {}) {
-  return (branchIds?.length > 1) || (dateFilter?.period !== 'all')
+export function needsSimplifiedWorkspaceClientFilter({ branchIds = [] } = {}) {
+  return branchIds?.length > 1
 }
 
 export function matchesSimplifiedWorkspaceLeadSearch(lead, search = '') {

@@ -10,6 +10,8 @@ export function listMetaFromPaginated(mapped, extras = {}) {
     loadingMore: false,
     search: extras.search ?? '',
     branchId: extras.branchId ?? null,
+    updatedAfter: extras.updatedAfter ?? null,
+    updatedBefore: extras.updatedBefore ?? null,
   }
 }
 
@@ -23,5 +25,7 @@ export function emptyListMeta() {
     loadingMore: false,
     search: '',
     branchId: null,
+    updatedAfter: null,
+    updatedBefore: null,
   }
 }

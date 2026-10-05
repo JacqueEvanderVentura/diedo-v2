@@ -22,6 +22,11 @@ import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
 import { CRM_BRANCH_FILTER_CLASS, matchesBranches } from '@/lib/branches'
 import { ACTIVITY_TYPE_META, STAGE_META } from '@/data/crm'
 import { buildLeadHandoffPaths } from '../lib/leadHandoff'
+import { findLeadLinkedQuote } from '../lib/pipelineInvoice'
+import { QuoteFormModal } from '../components/QuoteFormModal'
+import { LeadQuoteManageModal } from '../components/LeadQuoteManageModal'
+import { useCustomersStore } from '@/stores/customersStore'
+import { customersVisibleToSession } from '@/lib/customerScope'
 import { fmtDateTime } from '../lib/crm'
 import { formatDOP } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
@@ -111,12 +116,13 @@ function ActivityCard({ act, users, onToggle, onEdit }) {
   )
 }
 
-function PipelineLeadRow({ lead, onNewTask, onNavigate }) {
+function PipelineLeadRow({ lead, linkedQuote, onNewTask, onNavigate, onQuote }) {
   const paths = buildLeadHandoffPaths({
     leadId: lead.id,
     customerId: lead.customerId || null,
   })
   const stage = STAGE_META[lead.status]
+  const can = useCrmCapabilities()
 
   return (
     <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" data-testid={`seguimiento-lead-${lead.id}`}>
@@ -128,9 +134,16 @@ function PipelineLeadRow({ lead, onNewTask, onNavigate }) {
         <Button size="sm" variant="secondary" onClick={() => onNewTask(lead.id)}>
           <CalendarPlus className="h-3.5 w-3.5" /> Tarea
         </Button>
-        {paths.quote && (
-          <Button size="sm" variant="secondary" onClick={() => onNavigate(paths.quote)}>
-            <FileText className="h-3.5 w-3.5" /> Cotizar
+        {paths.quote && onQuote && (
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={!can.quote}
+            onClick={() => onQuote(lead, linkedQuote)}
+            data-testid={`seguimiento-lead-quote-${lead.id}`}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            {linkedQuote ? 'Ver cotización' : 'Cotizar'}
           </Button>
         )}
         {paths.pipeline && (
@@ -153,6 +166,12 @@ export default function SeguimientoPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const activities = useCrmStore((s) => s.activities)
   const leads = useCrmStore((s) => s.leads)
+  const quotes = useCrmStore((s) => s.quotes)
+  const hydrateQuotesSection = useCrmStore((s) => s.hydrateSection)
+  const customers = useCustomersStore((s) => s.customers)
+  const settings = useConfigStore((s) => s.settings)
+  const paymentMethods = useConfigStore((s) => s.paymentMethods)
+  const isOnline = useSessionStore((s) => s.status === 'online')
   const toggleActivityComplete = useCrmStore((s) => s.toggleActivityComplete)
   const users = useConfigStore((s) => s.users)
   const sessionUser = useSessionStore((s) => s.user)
@@ -163,8 +182,37 @@ export default function SeguimientoPage() {
   const [editing, setEditing] = useState(null)
   const [defaultLeadId, setDefaultLeadId] = useState('')
   const [defaultCustomerId, setDefaultCustomerId] = useState('')
+  const [newQuoteOpen, setNewQuoteOpen] = useState(false)
+  const [newQuoteContext, setNewQuoteContext] = useState(null)
+  const [manageQuoteId, setManageQuoteId] = useState(null)
 
   const requestedCustomerId = searchParams.get('customerId') || ''
+
+  const activeCustomers = useMemo(
+    () => customersVisibleToSession(customers, sessionUser)
+      .filter((customer) => !customer.isDefault && customer.active !== false),
+    [customers, sessionUser],
+  )
+
+  const quoteDocumentCtx = useMemo(
+    () => ({
+      branches,
+      settings,
+      paymentMethods,
+      customers: activeCustomers,
+    }),
+    [branches, settings, paymentMethods, activeCustomers],
+  )
+
+  const managingQuote = useMemo(() => {
+    if (!manageQuoteId) return null
+    return quotes.find((item) => item.id === manageQuoteId) || null
+  }, [quotes, manageQuoteId])
+
+  useEffect(() => {
+    if (!isOnline) return
+    hydrateQuotesSection('quotes').catch(() => {})
+  }, [hydrateQuotesSection, isOnline])
 
   const visibleUsers = useMemo(() => (
     sessionUser?.membershipId
@@ -259,6 +307,20 @@ export default function SeguimientoPage() {
     setDefaultCustomerId('')
   }
 
+  const openLeadQuote = (lead, linkedQuote) => {
+    if (!lead?.id) return
+    if (linkedQuote?.id) {
+      setManageQuoteId(linkedQuote.id)
+      return
+    }
+    setNewQuoteContext({
+      leadId: lead.id,
+      customerId: lead.customerId || '',
+      branchId: lead.branchId || '',
+    })
+    setNewQuoteOpen(true)
+  }
+
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="crm-seguimiento">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -350,8 +412,10 @@ export default function SeguimientoPage() {
                   <PipelineLeadRow
                     key={lead.id}
                     lead={lead}
+                    linkedQuote={findLeadLinkedQuote(quotes, lead.id)}
                     onNewTask={openForLead}
                     onNavigate={navigate}
+                    onQuote={openLeadQuote}
                   />
                 ))}
               </div>
@@ -367,6 +431,28 @@ export default function SeguimientoPage() {
         activity={editing}
         defaultLeadId={defaultLeadId}
         defaultCustomerId={defaultCustomerId}
+      />
+
+      <QuoteFormModal
+        open={newQuoteOpen}
+        onClose={() => {
+          setNewQuoteOpen(false)
+          setNewQuoteContext(null)
+        }}
+        initialContext={newQuoteContext}
+        onSaved={() => {
+          setNewQuoteOpen(false)
+          setNewQuoteContext(null)
+          hydrateQuotesSection('quotes').catch(() => {})
+        }}
+      />
+
+      <LeadQuoteManageModal
+        open={Boolean(managingQuote)}
+        quote={managingQuote}
+        documentCtx={quoteDocumentCtx}
+        onClose={() => setManageQuoteId(null)}
+        onQuoteChanged={() => hydrateQuotesSection('quotes').catch(() => {})}
       />
     </div>
   )

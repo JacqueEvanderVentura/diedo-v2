@@ -8,7 +8,11 @@ import { Input } from '@/components/ui/Input'
 import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
 import { useConfigStore } from '@/stores/configStore'
 import { useCrmStore } from '@/stores/crmStore'
-import { ACQUISITION_SOURCES, ACQUISITION_SOURCE_LABELS } from '@/data/crm'
+import {
+  ACQUISITION_SOURCES,
+  ACQUISITION_SOURCE_LABELS,
+  defaultAcquisitionSourceForForm,
+} from '@/data/crm'
 import { cn } from '@/lib/utils'
 import { resolveInstagramUrl } from '../lib/simplifiedOffer'
 
@@ -35,7 +39,7 @@ function formFromLead(lead, defaultBranch) {
     website: lead.website || '',
     instagramUrl: lead.instagramUrl || resolveInstagramUrl(lead) || '',
     location: lead.location || '',
-    acquisitionSource: lead.acquisitionSource || 'whatsapp',
+    acquisitionSource: defaultAcquisitionSourceForForm(lead),
   }
 }
 
