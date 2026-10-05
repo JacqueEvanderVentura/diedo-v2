@@ -11,9 +11,7 @@ from app.schemas.common import ApiModel, ImportRowModel
 from app.schemas.instagram import validate_instagram_url
 from app.schemas.pos import QuoteDetailResponse
 
-LeadStatus = Literal[
-    "nuevo", "contactado", "propuesta", "negociacion", "cerrado", "perdido"
-]
+LeadStatus = Literal["nuevo", "contactado", "propuesta", "negociacion", "cerrado", "perdido"]
 EditableLeadStatus = Literal["nuevo", "contactado", "propuesta", "negociacion", "perdido"]
 LeadSource = Literal["manual", "serp", "serper", "referral", "import"]
 LeadDiscoveryProvider = Literal["serpapi", "serper"]
@@ -221,11 +219,7 @@ class UpdateLeadRequest(ApiModel):
     def require_change(self) -> Self:
         if not self.model_fields_set - {"version"}:
             raise ValueError("Debes enviar al menos un cambio.")
-        if (
-            "status" in self.model_fields_set
-            and self.status == "perdido"
-            and not self.lost_reason
-        ):
+        if "status" in self.model_fields_set and self.status == "perdido" and not self.lost_reason:
             raise ValueError("Un lead perdido requiere motivo.")
         return self
 

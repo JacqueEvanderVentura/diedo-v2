@@ -178,9 +178,7 @@ class DemoCrmLeadFixture(ApiModel):
     source_url: str | None = Field(default=None, max_length=1000)
     scraped_at: datetime | None = None
     raw_snippet: str | None = Field(default=None, max_length=4000)
-    status: Literal[
-        "nuevo", "contactado", "propuesta", "negociacion", "cerrado", "perdido"
-    ]
+    status: Literal["nuevo", "contactado", "propuesta", "negociacion", "cerrado", "perdido"]
     star_rating: Decimal | None = Field(default=None, ge=0, le=5)
     pipeline_value: Decimal = Field(default=Decimal("0"), ge=0, max_digits=14, decimal_places=2)
     lost_reason: str | None = Field(default=None, max_length=1000)
@@ -585,9 +583,7 @@ class DemoPosQuoteFixture(ApiModel):
             raise ValueError("Demo quote updatedAt cannot precede createdAt.")
         if self.origin == "crm" and (self.crm_status is None or self.lead_seed_key is None):
             raise ValueError("CRM demo quotes require crmStatus and leadSeedKey.")
-        if self.origin == "pos" and (
-            self.crm_status is not None or self.lead_seed_key is not None
-        ):
+        if self.origin == "pos" and (self.crm_status is not None or self.lead_seed_key is not None):
             raise ValueError("POS demo quotes cannot define CRM fields.")
         return self
 

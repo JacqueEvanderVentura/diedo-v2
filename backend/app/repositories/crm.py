@@ -580,9 +580,7 @@ class CrmRepository:
         )
         total_leads = int(self._session.scalar(lead_base) or 0)
         qualified = int(
-            self._session.scalar(
-                lead_base.where(CrmLead.status.in_(("propuesta", "negociacion")))
-            )
+            self._session.scalar(lead_base.where(CrmLead.status.in_(("propuesta", "negociacion"))))
             or 0
         )
         converted = int(

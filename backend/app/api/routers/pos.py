@@ -730,9 +730,7 @@ def _receivable_list_response(record: ReceivableRecord) -> ReceivableListItemRes
         paid_total=receivable.paid_amount,
         approval_pending_amount=receivable.approval_pending_amount,
         balance=money(
-            receivable.amount
-            - receivable.paid_amount
-            - receivable.approval_pending_amount
+            receivable.amount - receivable.paid_amount - receivable.approval_pending_amount
         ),
         reference=receivable.reference,
         proofs=[_proof_response(proof) for proof in record.proofs],
@@ -762,9 +760,7 @@ def _receivable_state_response(record: ReceivableRecord) -> ReceivableStateRespo
         paid_total=receivable.paid_amount,
         approval_pending_amount=receivable.approval_pending_amount,
         balance=money(
-            receivable.amount
-            - receivable.paid_amount
-            - receivable.approval_pending_amount
+            receivable.amount - receivable.paid_amount - receivable.approval_pending_amount
         ),
         version=receivable.version,
     )

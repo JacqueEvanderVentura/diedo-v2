@@ -894,9 +894,7 @@ class CrmService:
                 raise ResourceNotFoundError("El lead no existe.", "leadId")
             self._require_same_branch(branch_id, lead.branch_id, "leadId")
             if lead.converted_customer_id is not None and lead.converted_customer_id != customer_id:
-                raise InvalidOperationError(
-                    "El lead está vinculado a otro cliente.", "customerId"
-                )
+                raise InvalidOperationError("El lead está vinculado a otro cliente.", "customerId")
             if lead.status in {"nuevo", "contactado"}:
                 lead.status = "propuesta"
                 lead.updated_by_platform_user_id = principal.platform_user_id
@@ -948,9 +946,7 @@ class CrmService:
                 raise ResourceNotFoundError("El lead no existe.", "leadId")
             self._require_same_branch(branch_id, lead.branch_id, "leadId")
             if lead.converted_customer_id is not None and lead.converted_customer_id != customer_id:
-                raise InvalidOperationError(
-                    "El lead está vinculado a otro cliente.", "customerId"
-                )
+                raise InvalidOperationError("El lead está vinculado a otro cliente.", "customerId")
         translated = dict(changes)
         if "lead_id" in translated:
             translated["lead_id"] = lead_id

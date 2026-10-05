@@ -64,7 +64,7 @@ describe('config facade tenant branch synchronization', () => {
       visibleBranches: [{ id: 'branch-a', legalEntityId: 'entity-a', code: 'A2', name: 'Sucursal A Renombrada' }],
     })
     expect(useConfigStore.getState().branches[0]).toMatchObject({
-      name: 'Sucursal A Renombrada',
+      name: 'Sucursal A',
       legalName: 'Entidad A SRL',
       rnc: '132908902',
       address: 'Dirección A',

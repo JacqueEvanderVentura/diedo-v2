@@ -1518,9 +1518,8 @@ class PosService:
                 raise RuntimeError("Deferred sale customer validation was bypassed.")
             payment_reference = sale.payment_reference
             initial_approval = Decimal("0")
-            if (
-                method.settlement_policy == "pending_confirmation"
-                and self._optional_text(payment_reference)
+            if method.settlement_policy == "pending_confirmation" and self._optional_text(
+                payment_reference
             ):
                 initial_approval = priced.total
             receivable = CustomerReceivable(
@@ -1822,9 +1821,7 @@ class PosService:
             raise ConflictError("La cuenta ya no admite pagos.", "status")
         payment_amount = money(amount)
         balance = money(
-            receivable.amount
-            - receivable.paid_amount
-            - receivable.approval_pending_amount
+            receivable.amount - receivable.paid_amount - receivable.approval_pending_amount
         )
         if payment_amount > balance:
             raise InvalidOperationError("El pago excede el saldo pendiente.", "amount")
@@ -2040,9 +2037,7 @@ class PosService:
         )
         try:
             self._repository.add_proof(proof)
-            self._sync_receivable_approval_pending(
-                receivable, enable_from_evidence=True
-            )
+            self._sync_receivable_approval_pending(receivable, enable_from_evidence=True)
             receivable.updated_by_platform_user_id = principal.platform_user_id
             receivable.version += 1
             self._set_receivable_status(receivable)
@@ -2092,9 +2087,7 @@ class PosService:
             raise InvalidOperationError(
                 "Esta cuenta no admite aprobación de comprobante.", "receivableId"
             )
-        proofs = self._repository.list_proofs_for_receivable(
-            grant.workspace_id, receivable.id
-        )
+        proofs = self._repository.list_proofs_for_receivable(grant.workspace_id, receivable.id)
         shift = money(receivable.approval_pending_amount)
         if shift <= 0:
             self._sync_receivable_approval_pending(receivable, proofs=proofs)
@@ -2145,11 +2138,7 @@ class PosService:
             )
         record = self._repository.receivable_record(receivable)
         payments_total = money(
-            sum(
-                row.payment.amount
-                for row in record.payments
-                if row.payment.status == "posted"
-            )
+            sum(row.payment.amount for row in record.payments if row.payment.status == "posted")
         )
         if receivable.approval_pending_amount > 0 and receivable.paid_amount <= payments_total:
             receivable.approval_pending_amount = Decimal("0")
@@ -2211,19 +2200,13 @@ class PosService:
             raise ResourceNotFoundError("El comprobante no existe.", "proofId")
         record = self._repository.receivable_record(receivable)
         payments_total = money(
-            sum(
-                row.payment.amount
-                for row in record.payments
-                if row.payment.status == "posted"
-            )
+            sum(row.payment.amount for row in record.payments if row.payment.status == "posted")
         )
         if receivable.paid_amount > payments_total:
             receivable.paid_amount = payments_total
         storage_key = proof.storage_key
         self._repository.delete_proof(proof)
-        remaining = self._repository.list_proofs_for_receivable(
-            grant.workspace_id, receivable.id
-        )
+        remaining = self._repository.list_proofs_for_receivable(grant.workspace_id, receivable.id)
         self._sync_receivable_approval_pending(receivable, proofs=remaining)
         self._set_receivable_status(receivable)
         receivable.updated_by_platform_user_id = principal.platform_user_id
@@ -2699,9 +2682,7 @@ class PosService:
         self._repository.replace_sale_lines(sale, sale_lines)
         sale_record = self._repository.sale_record(sale)
         self._repository.delete_sale_tender_lines(grant.workspace_id, sale.id)
-        receivable = self._repository.receivable_for_sale(
-            grant.workspace_id, sale.id, lock=True
-        )
+        receivable = self._repository.receivable_for_sale(grant.workspace_id, sale.id, lock=True)
         cash_movement = self._repository.movement_for_sale(grant.workspace_id, sale.id)
         if cash_movement is not None and cash_movement.cash_register_id != register.id:
             raise ConflictError(
@@ -2874,9 +2855,8 @@ class PosService:
                 raise RuntimeError("Deferred sale customer validation was bypassed.")
             payment_reference = sale.payment_reference
             initial_approval = Decimal("0")
-            if (
-                method.settlement_policy == "pending_confirmation"
-                and self._optional_text(payment_reference)
+            if method.settlement_policy == "pending_confirmation" and self._optional_text(
+                payment_reference
             ):
                 initial_approval = priced.total
             if receivable is None:
@@ -3061,9 +3041,7 @@ class PosService:
             request_fingerprint=fingerprint,
             reason="Eliminación de factura",
         )
-        receivable = self._repository.receivable_for_sale(
-            grant.workspace_id, sale.id, lock=True
-        )
+        receivable = self._repository.receivable_for_sale(grant.workspace_id, sale.id, lock=True)
         if receivable is not None:
             self._repository.delete_receivable_graph(receivable)
         quote_id = sale.quote_id
@@ -3097,12 +3075,11 @@ class PosService:
             raise ConflictError("La factura ya fue anulada.", "status")
         if self._repository.carwash_wash_for_sale(grant.workspace_id, sale.id) is not None:
             raise ConflictError("La factura está vinculada a un lavado de Carwash.", "saleId")
-        if self._repository.active_finance_pos_income_correction(
-            grant.workspace_id, sale.id
-        ) is not None:
-            raise ConflictError(
-                "La factura tiene un ingreso registrado en Finanzas.", "saleId"
-            )
+        if (
+            self._repository.active_finance_pos_income_correction(grant.workspace_id, sale.id)
+            is not None
+        ):
+            raise ConflictError("La factura tiene un ingreso registrado en Finanzas.", "saleId")
         receivable = self._repository.receivable_for_sale(grant.workspace_id, sale.id)
         if receivable is not None and receivable.paid_amount > 0:
             raise ConflictError(

@@ -144,6 +144,16 @@ describe('administration adapters', () => {
         email: null,
         manager: 'Grace',
         schedule: '08:00 - 17:00',
+        billing_documents: {
+          trade_name: '',
+          legal_name: '',
+          rnc: '',
+          address: '',
+          phone: '',
+          email: null,
+          logo_data_url: '',
+          footer_note: '',
+        },
       },
       version: 3,
     })
