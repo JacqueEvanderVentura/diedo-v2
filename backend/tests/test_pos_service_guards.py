@@ -590,7 +590,9 @@ def test_receivable_payment_replay_concurrency_and_business_guards() -> None:
             def payment_by_key(self, *_args: object) -> object | None:
                 return None
 
-            def current_register(self, _workspace_id: object, _branch_id: object, lock: bool = False):
+            def current_register(
+                self, _workspace_id: object, _branch_id: object, lock: bool = False
+            ):
                 return branch_register
 
             def add_payment(self, payment: object) -> None:

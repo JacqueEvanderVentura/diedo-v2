@@ -47,7 +47,12 @@ jobs:
 
       - name: Validate Wrangler plan
         env:
-          ENV_NAME: ${{ github.event_name == 'pull_request' && 'preview' || 'production' }}
+          ENV_NAME: >-
+            ${{
+              github.event_name == 'pull_request' && 'preview'
+              || (github.ref == 'refs/heads/qa' && 'qa')
+              || 'production'
+            }}
           CLOUDFLARE_CUSTOM_DOMAIN: ${{ vars.CLOUDFLARE_CUSTOM_DOMAIN }}
         run: |
           node scripts/prepare-deploy.mjs
@@ -67,10 +72,22 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: npx wrangler deploy --config .wrangler.deploy.json --env production
 
+      - name: Deploy to Cloudflare (qa)
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/qa'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy --config .wrangler.deploy.json --env qa
+
       - name: Verify deployed frontend and Railway connection
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         env:
-          DEPLOY_URL: ${{ github.event_name == 'pull_request' && 'https://diedo-frontend-preview.helios360erp.workers.dev' || 'https://diedo-frontend-production.helios360erp.workers.dev' }}
+          DEPLOY_URL: >-
+            ${{
+              github.event_name == 'pull_request' && 'https://diedo-frontend-preview.helios360erp.workers.dev'
+              || (github.ref == 'refs/heads/qa' && 'https://diedo-frontend-qa.helios360erp.workers.dev')
+              || 'https://diedo-frontend-production.helios360erp.workers.dev'
+            }}
         run: |
           sleep 15
           node scripts/check-hosting.mjs "$DEPLOY_URL"
