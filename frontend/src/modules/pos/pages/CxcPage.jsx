@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
@@ -36,7 +36,9 @@ import { ReceivablePaymentModal } from '../components/ReceivablePaymentModal'
 import { ReceivableProofModal } from '../components/ReceivableProofModal'
 import { ReceivableCollectMenu } from '../components/ReceivableCollectMenu'
 import { ProofImagePreview } from '../components/ProofImagePreview'
-import { ReceivablePaymentLog } from '../components/ReceivablePaymentLog'
+import { InvoicePaymentLog } from '../components/InvoicePaymentLog'
+import { posApi } from '@/services/posApi'
+import { mapSaleFromApi } from '@/services/adapters/pos'
 import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
 import {
   ResponsiveList,
@@ -53,8 +55,13 @@ import {
   getPaidAmount,
   getReceivableStatus,
   getReceivableVoidPolicy,
+  requiresPaymentApproval,
   STATUS_META,
   receivableHasPaymentEvidence,
+  canUnapproveReceivablePayment,
+  canShowReceivableUnapprove,
+  canAttachNewReceivableProof,
+  isReceivableProofRequiredError,
 } from '../lib/receivables'
 import {
   buildCxcAccountRows,
@@ -117,6 +124,8 @@ export default function CxcPage() {
   const pagination = usePosStore((s) => s.pagination)
   const taxPct = usePosStore((s) => s.taxPct)
   const markPaid = usePosStore((s) => s.markReceivablePaid)
+  const approveReceivablePayment = usePosStore((s) => s.approveReceivablePayment)
+  const unapproveReceivablePayment = usePosStore((s) => s.unapproveReceivablePayment)
   const attachProof = usePosStore((s) => s.attachReceivableProof)
   const deleteReceivable = usePosStore((s) => s.deleteReceivable)
   const restoreHeldCart = usePosStore((s) => s.restoreHeldCart)
@@ -138,6 +147,7 @@ export default function CxcPage() {
   const [query, setQuery] = useState('')
   const [branchIds, setBranchIds] = useState([])
   const [detail, setDetail] = useState(null)
+  const [saleForPaymentLog, setSaleForPaymentLog] = useState(null)
   const [editRow, setEditRow] = useState(null)
   const [paymentRow, setPaymentRow] = useState(null)
   const [proofRow, setProofRow] = useState(null)
@@ -191,6 +201,62 @@ export default function CxcPage() {
     if (detail?.id === r.id) setDetail(null)
   }
 
+  const openProofUploadForReceivable = (r, hint = 'Sube el comprobante para continuar.') => {
+    usePosStore.setState({ error: null })
+    setProofRow(r)
+    toast.info(hint)
+  }
+
+  const handleProofRequiredError = (r, operationError, fallbackMessage) => {
+    const message = operationError?.message || fallbackMessage
+    if (isReceivableProofRequiredError(message)) {
+      openProofUploadForReceivable(
+        r,
+        requiresPaymentApproval(r)
+          ? 'Sube el comprobante para aprobar el pago.'
+          : 'Sube el comprobante para confirmar el pago.',
+      )
+      return true
+    }
+    toast.error(message)
+    return false
+  }
+
+  const syncOpenDetail = (receivableId) => {
+    if (!receivableId) return
+    setDetail((current) => {
+      if (!current || current.id !== receivableId || current.kind !== 'receivable') return current
+      const fresh = usePosStore.getState().receivables.find((item) => item.id === receivableId)
+      if (!fresh) return current
+      const [row] = buildCxcAccountRows({ receivables: [fresh], taxPct })
+      return row || current
+    })
+  }
+
+  const refreshOpenDetail = async (receivableId) => {
+    if (detail?.id !== receivableId) return
+    if (isOnline) {
+      try {
+        await ensureReceivableDetail(receivableId, { force: true })
+      } catch {
+        /* keep store snapshot */
+      }
+    }
+    syncOpenDetail(receivableId)
+  }
+
+  useEffect(() => {
+    if (!detail?.id || detail.kind !== 'receivable') return
+    const fresh = receivables.find((item) => item.id === detail.id)
+    if (!fresh) return
+    const detailPending = Number(detail.approvalPendingAmount) || 0
+    const freshPending = Number(fresh.approvalPendingAmount) || 0
+    const detailProofId = detail.proof?.id || detail.proofs?.at(-1)?.id
+    const freshProofId = fresh.proof?.id || fresh.proofs?.at(-1)?.id
+    if (detailPending === freshPending && detailProofId === freshProofId) return
+    syncOpenDetail(detail.id)
+  }, [receivables, detail?.id, detail?.kind, detail?.approvalPendingAmount, detail?.proof?.id, taxPct])
+
   const ensureAccountDetail = async (row) => {
     if (!isOnline || row.detailLoaded) return row
     try {
@@ -211,9 +277,28 @@ export default function CxcPage() {
     }
   }
 
+  const loadSaleForPaymentLog = async (saleId) => {
+    if (!saleId || !isOnline) {
+      setSaleForPaymentLog(null)
+      return
+    }
+    try {
+      const response = await posApi.getSale(saleId)
+      setSaleForPaymentLog(mapSaleFromApi(response))
+    } catch {
+      setSaleForPaymentLog(null)
+    }
+  }
+
   const handleOpenDetail = async (row) => {
     const loaded = await ensureAccountDetail(row)
-    if (loaded) setDetail(loaded)
+    if (!loaded) return
+    setDetail(loaded)
+    if (loaded.kind === 'receivable' && loaded.saleId) {
+      await loadSaleForPaymentLog(loaded.saleId)
+    } else {
+      setSaleForPaymentLog(null)
+    }
   }
 
   const handleLoadMore = async () => {
@@ -227,14 +312,55 @@ export default function CxcPage() {
     }
   }
 
+  const handleApprove = async (r) => {
+    if (!canCollectReceivables) {
+      toast.error('No tienes permiso para registrar cobros de CxC.')
+      return false
+    }
+    try {
+      await approveReceivablePayment(r.id)
+      toast.success('Pago aprobado · factura comprobada')
+      closeDetailIfMatch(r)
+      return true
+    } catch (operationError) {
+      if (handleProofRequiredError(r, operationError, 'No se pudo aprobar el pago.')) {
+        return false
+      }
+      return false
+    }
+  }
+
+  const handleUnapprove = async (r) => {
+    if (!canCollectReceivables) {
+      toast.error('No tienes permiso para registrar cobros de CxC.')
+      return false
+    }
+    try {
+      await unapproveReceivablePayment(r.id)
+      toast.success('Pago desaprobado · cuenta por cobrar')
+      closeDetailIfMatch(r)
+      return true
+    } catch (operationError) {
+      toast.error(operationError.message || 'No se pudo desaprobar el pago.')
+      return false
+    }
+  }
+
   const handleConfirm = async (r, payload = {}) => {
+    if (requiresPaymentApproval(r)) {
+      return handleApprove(r)
+    }
     if (!canCollectReceivables) {
       toast.error('No tienes permiso para registrar cobros de CxC.')
       return false
     }
     if (isOnline && !receivableHasPaymentEvidence(r, payload)) {
-      setProofRow(r)
-      toast.info('Ingresa el N° de referencia o sube el comprobante.')
+      openProofUploadForReceivable(r, 'Ingresa el N° de referencia o sube el comprobante.')
+      return false
+    }
+    const proofFile = typeof File !== 'undefined' && payload?.proof instanceof File
+    if (isOnline && ['transferencia', 'link'].includes(r.method) && !proofFile) {
+      openProofUploadForReceivable(r, 'Sube el comprobante para confirmar el pago.')
       return false
     }
     try {
@@ -246,7 +372,9 @@ export default function CxcPage() {
       closeDetailIfMatch(r)
       return true
     } catch (operationError) {
-      toast.error(operationError.message || 'No se pudo confirmar el pago.')
+      if (handleProofRequiredError(r, operationError, 'No se pudo confirmar el pago.')) {
+        return false
+      }
       return false
     }
   }
@@ -284,6 +412,7 @@ export default function CxcPage() {
       await attachProof(r.id, payload)
       toast.success('Comprobante guardado')
       setProofRow(null)
+      await refreshOpenDetail(r.id)
       return true
     } catch (operationError) {
       toast.error(operationError.message || 'No se pudo guardar el comprobante.')
@@ -427,18 +556,41 @@ export default function CxcPage() {
           <Pencil className="h-4 w-4" />
         </button>
       )}
-      {canCollectReceivables && !['paid', 'voided', 'written_off'].includes(r.status) && (
+      {canCollectReceivables && requiresPaymentApproval(r) && (
+        <Button size="sm" onClick={() => handleApprove(r)} data-testid={`cxc-approve-${r.id}`}>
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          Aprobar pago
+        </Button>
+      )}
+      {canCollectReceivables && canShowReceivableUnapprove(r) && (
+        <button
+          type="button"
+          title="Desaprobar pago"
+          aria-label="Desaprobar pago"
+          disabled={Boolean(mutating)}
+          onClick={() => handleUnapprove(r)}
+          className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50"
+          data-testid={`cxc-unapprove-${r.id}`}
+        >
+          <RotateCcw className="h-4 w-4" />
+        </button>
+      )}
+      {canCollectReceivables
+        && !requiresPaymentApproval(r)
+        && !['paid', 'voided', 'written_off', 'approval_pending'].includes(getReceivableStatus(r)) && (
         <>
           <button type="button" title="Registrar pago" onClick={() => setPaymentRow(r)} className="rounded-lg p-2 text-blue-600 hover:bg-blue-50">
             <DollarSign className="h-4 w-4" />
           </button>
-          <ReceivableCollectMenu
-            row={r}
-            onConfirm={handleConfirm}
-            onCash={handleCash}
-            onProof={setProofRow}
-            testId={`cxc-mark-paid-${r.id}`}
-          />
+          {['transferencia', 'link'].includes(r.method) && (
+            <ReceivableCollectMenu
+              row={r}
+              onConfirm={handleConfirm}
+              onCash={handleCash}
+              onProof={setProofRow}
+              testId={`cxc-mark-paid-${r.id}`}
+            />
+          )}
         </>
       )}
       {canManageReceivables && voidPolicy.canVoid && (
@@ -635,7 +787,13 @@ export default function CxcPage() {
         </div>
       )}
 
-      <Modal open={!!detail} onClose={() => setDetail(null)} title="Detalle de cuenta" wide testId="cxc-detail-modal">
+      <Modal
+        open={!!detail}
+        onClose={() => { setDetail(null); setSaleForPaymentLog(null) }}
+        title="Detalle de cuenta"
+        wide
+        testId="cxc-detail-modal"
+      >
         {detail && (
           <div className="space-y-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -704,7 +862,8 @@ export default function CxcPage() {
                   <History className="h-4 w-4 text-blue-600" />
                   <h4 className="font-heading font-semibold text-slate-900">Historial de pagos</h4>
                 </div>
-                <ReceivablePaymentLog
+                <InvoicePaymentLog
+                  sale={saleForPaymentLog}
                   receivable={detail}
                   onReverse={canCollectReceivables ? handleReversePayment : null}
                   onDownload={handleDownloadProof}
@@ -719,31 +878,44 @@ export default function CxcPage() {
                   {canManageReceivables && (
                     <Button variant="secondary" onClick={() => { setEditRow(detail); setDetail(null) }}>Editar</Button>
                   )}
-                  {canCollectReceivables && (
+                  {canCollectReceivables && requiresPaymentApproval(detail) && (
+                    <Button onClick={() => handleApprove(detail)} data-testid="cxc-modal-confirm">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Aprobar pago
+                    </Button>
+                  )}
+                  {canCollectReceivables && canShowReceivableUnapprove(detail) && (
+                    <Button
+                      variant="secondary"
+                      onClick={() => handleUnapprove(detail)}
+                      data-testid="cxc-modal-unapprove"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      Desaprobar pago
+                    </Button>
+                  )}
+                  {canCollectReceivables && !requiresPaymentApproval(detail) && !canUnapproveReceivablePayment(detail) && (
                     <>
                       <Button variant="secondary" onClick={() => { setPaymentRow(detail); setDetail(null) }}>
                         <DollarSign className="h-4 w-4" />
                         Registrar pago
                       </Button>
-                      <Button variant="secondary" onClick={() => setProofRow(detail)}>
-                        <Upload className="h-4 w-4" />
-                        Validar con comprobante
-                      </Button>
+                      {(canAttachNewReceivableProof(detail) || !receivableHasPaymentEvidence(detail, {})) && (
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            const fresh = usePosStore.getState().receivables.find((item) => item.id === detail.id) || detail
+                            const [row] = buildCxcAccountRows({ receivables: [fresh], taxPct })
+                            setProofRow(row || detail)
+                          }}
+                        >
+                          <Upload className="h-4 w-4" />
+                          {canAttachNewReceivableProof(detail) ? 'Subir comprobante' : 'Validar con comprobante'}
+                        </Button>
+                      )}
                     </>
                   )}
                 </div>
-                {canCollectReceivables && (
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <Button variant="secondary" onClick={() => handleConfirm(detail)} data-testid="cxc-modal-confirm">
-                      <CheckCircle2 className="h-4 w-4" />
-                      Confirmar pago
-                    </Button>
-                    <Button onClick={() => handleCash(detail)} data-testid="cxc-modal-cash">
-                      <Banknote className="h-4 w-4" />
-                      Cobrar en efectivo
-                    </Button>
-                  </div>
-                )}
               </div>
             )}
 

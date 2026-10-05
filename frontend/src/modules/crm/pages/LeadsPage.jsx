@@ -2,16 +2,16 @@ import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { List, Search, ScanSearch, MapPin, Phone, Globe, Import, UserCheck, Briefcase, Plus, Pencil, Trash2, CheckSquare, Square } from 'lucide-react'
+import { List, Search, ScanSearch, MapPin, Phone, Globe, Import, UserCheck, Plus, Pencil, Trash2, CheckSquare, Square } from 'lucide-react'
 import { useCrmStore } from '@/stores/crmStore'
 import { searchBusinesses } from '@/services/leadSearch'
+import { crmApi } from '@/services/crmApi'
 import {
   OPPORTUNITY_STAGES,
-  SOURCE_LABELS,
-  ACQUISITION_SOURCE_LABELS,
+  leadOriginBadgeLabels,
   STAGE_META,
 } from '@/data/crm'
-import { leadPipelineStage, opportunityStageToLeadStatus } from '../lib/pipelineLeads'
+import { leadPipelineStage } from '../lib/pipelineLeads'
 import { buildLeadWhatsAppVariables } from '@/lib/whatsapp'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -46,16 +46,15 @@ const STAR_SORT_OPTIONS = [
   { value: 'asc', label: 'Estrellas: menor a mayor' },
 ]
 
+const DISCOVERY_UNAVAILABLE_MESSAGE =
+  'La búsqueda con inteligencia artificial no está disponible. Favor de contactar al proveedor.'
+
 function LeadsListaTab({ onEditLead }) {
   const can = useCrmCapabilities()
   const leads = useCrmStore((s) => s.leads)
-  const opportunities = useCrmStore((s) => s.opportunities)
   const branches = useConfigStore((s) => s.branches)
   const businessName = useConfigStore((s) => s.settings?.businessName || '')
   const convertToCustomer = useCrmStore((s) => s.convertToCustomer)
-  const addToPipeline = useCrmStore((s) => s.addToPipeline)
-  const updateLead = useCrmStore((s) => s.updateLead)
-  const updateOpportunity = useCrmStore((s) => s.updateOpportunity)
   const setLeadStarRating = useCrmStore((s) => s.setLeadStarRating)
   const leadsListMeta = useCrmStore((s) => s.leadsListMeta)
   const fetchLeadsPage = useCrmStore((s) => s.fetchLeadsPage)
@@ -76,14 +75,6 @@ function LeadsListaTab({ onEditLead }) {
   const [starSort, setStarSort] = useState('none')
   const [handoff, setHandoff] = useState(null)
 
-  const opportunityByLeadId = useMemo(() => {
-    const map = new Map()
-    for (const opp of opportunities) {
-      if (opp.leadId) map.set(opp.leadId, opp)
-    }
-    return map
-  }, [opportunities])
-
   useEffect(() => {
     if (!online) return undefined
     const branchId = branchIds.length === 1 ? branchIds[0] : undefined
@@ -100,7 +91,7 @@ function LeadsListaTab({ onEditLead }) {
   const filtered = useMemo(() => {
     const q = online ? '' : query.trim().toLowerCase()
     const rows = leads.filter((l) => {
-      const stage = leadPipelineStage(l, opportunityByLeadId.get(l.id))
+      const stage = leadPipelineStage(l)
       if (stageFilter !== 'all' && stage !== stageFilter) return false
       if (!online || branchIds.length > 1) {
         if (!matchesBranches(l, branchIds)) return false
@@ -112,7 +103,7 @@ function LeadsListaTab({ onEditLead }) {
       return sortLeadsByStarRating(rows, starSort)
     }
     return rows
-  }, [leads, query, stageFilter, branchIds, starSort, opportunityByLeadId, online])
+  }, [leads, query, stageFilter, branchIds, starSort, online])
 
   const offlinePaged = useMemo(
     () => paginateSlice(filtered, { page: offlinePage, pageSize: offlinePageSize }),
@@ -139,7 +130,7 @@ function LeadsListaTab({ onEditLead }) {
     }
 
   const selectableLeadIds = useMemo(
-    () => list.filter((lead) => lead.status !== 'convertido').map((lead) => lead.id),
+    () => list.filter((lead) => lead.status !== 'cerrado').map((lead) => lead.id),
     [list],
   )
 
@@ -183,13 +174,13 @@ function LeadsListaTab({ onEditLead }) {
   }
 
   const requestDeleteLead = (lead) => {
-    if (lead.status === 'convertido') {
-      toast.error('No se puede eliminar un lead convertido.')
+    if (lead.status === 'cerrado') {
+      toast.error('No se puede eliminar un lead cerrado.')
       return
     }
     setConfirm({
       title: 'Eliminar lead',
-      description: `¿Eliminar el lead "${lead.company || lead.name}"? También se quita su oportunidad si no tiene cotizaciones.`,
+      description: `¿Eliminar el lead "${lead.company || lead.name}"? Se omitirá si tiene cotizaciones vinculadas.`,
       onConfirm: () => runDeleteLeads([lead.id]),
     })
   }
@@ -204,48 +195,13 @@ function LeadsListaTab({ onEditLead }) {
     })
   }
 
-  const setLeadPipelineStage = async (lead, stage) => {
-    const opportunity = opportunityByLeadId.get(lead.id)
-    try {
-      if (opportunity) {
-        const patch = { stage }
-        if (stage === 'perdido' && !opportunity.lostReason) {
-          patch.lostReason = 'Otro'
-        }
-        await updateOpportunity(opportunity.id, patch)
-      } else {
-        await updateLead(lead.id, { status: opportunityStageToLeadStatus(stage) })
-      }
-    } catch (error) {
-      toast.error(error.message || 'No se pudo actualizar la etapa')
-    }
-  }
-
-  const sendToPipeline = async (leadId) => {
-    try {
-      const opportunity = await addToPipeline(leadId)
-      if (!opportunity) return toast.error('No se encontró el lead')
-      const lead = useCrmStore.getState().leads.find((item) => item.id === leadId)
-      setHandoff({
-        leadId,
-        opportunityId: opportunity.id,
-        customerId: opportunity.customerId || lead?.customerId || null,
-      })
-      toast.success('Oportunidad creada. Elige el siguiente paso en la tarjeta del lead.')
-    } catch (error) {
-      toast.error(error.message || 'No se pudo enviar el lead al pipeline')
-    }
-  }
-
   const convertLead = async (leadId) => {
     try {
       const customer = await convertToCustomer(leadId)
       const lead = useCrmStore.getState().leads.find((item) => item.id === leadId)
-      const opportunity = useCrmStore.getState().opportunities.find((item) => item.leadId === leadId)
       setHandoff({
         leadId,
         customerId: customer?.id || lead?.customerId || null,
-        opportunityId: opportunity?.id || lead?.opportunityId || null,
       })
       toast.success('Lead convertido a cliente')
     } catch (error) {
@@ -313,8 +269,7 @@ function LeadsListaTab({ onEditLead }) {
 
       <div className="space-y-3">
         {list.map((lead) => {
-          const opportunity = opportunityByLeadId.get(lead.id)
-          const pipelineStage = leadPipelineStage(lead, opportunity)
+          const pipelineStage = leadPipelineStage(lead)
           const meta = STAGE_META[pipelineStage]
           return (
             <Card key={lead.id} className="p-4">
@@ -334,12 +289,11 @@ function LeadsListaTab({ onEditLead }) {
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="font-heading font-semibold text-slate-900">{lead.company || lead.name}</h3>
                     <Badge tone={meta.tone}>{meta.label}</Badge>
-                    <Badge tone="neutral">{SOURCE_LABELS[lead.source] || lead.source}</Badge>
-                    {lead.acquisitionSource && (
-                      <Badge tone="brand">
-                        {ACQUISITION_SOURCE_LABELS[lead.acquisitionSource] || lead.acquisitionSource}
+                    {leadOriginBadgeLabels(lead).map((label) => (
+                      <Badge key={label} tone={label === 'AI' ? 'neutral' : 'brand'}>
+                        {label}
                       </Badge>
-                    )}
+                    ))}
                   </div>
                   <div className="flex flex-wrap gap-3 text-sm text-slate-500">
                     {lead.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{lead.location}</span>}
@@ -378,27 +332,11 @@ function LeadsListaTab({ onEditLead }) {
                       >
                         <Trash2 className="h-3.5 w-3.5" /> Eliminar
                       </Button>
-                      {lead.opportunityId ? (
-                        <Button size="sm" variant="secondary" disabled>
-                          <Briefcase className="h-3.5 w-3.5" /> En pipeline
-                        </Button>
-                      ) : (
-                        <Button size="sm" variant="secondary" onClick={() => sendToPipeline(lead.id)}>
-                          <Briefcase className="h-3.5 w-3.5" /> Pipeline
-                        </Button>
-                      )}
                       <Button size="sm" disabled={!can.convert} onClick={() => convertLead(lead.id)}>
                         <UserCheck className="h-3.5 w-3.5" /> Convertir
                       </Button>
                     </>
                   )}
-                  <Select
-                    disabled={!can.manage}
-                    value={pipelineStage}
-                    onChange={(v) => setLeadPipelineStage(lead, v)}
-                    options={OPPORTUNITY_STAGES.map((s) => ({ value: s, label: STAGE_META[s].label }))}
-                    className="w-40"
-                  />
                 </div>
               </div>
               {handoff?.leadId === lead.id && (
@@ -451,6 +389,8 @@ function LeadsDescubrirTab() {
   const addLeadsBatch = useCrmStore((s) => s.addLeadsBatch)
   const branches = useConfigStore((state) => state.branches)
 
+  const [discoveryStatus, setDiscoveryStatus] = useState(null)
+
   const [q, setQ] = useState('')
   const [location, setLocation] = useState('Santo Domingo, República Dominicana')
   const [loading, setLoading] = useState(false)
@@ -463,6 +403,12 @@ function LeadsDescubrirTab() {
     setBranchId(branches.find((branch) => branch.active)?.id || '')
   }, [branchId, branches])
 
+  useEffect(() => {
+    crmApi.discoveryCapabilities()
+      .then((capabilities) => setDiscoveryStatus(capabilities))
+      .catch(() => setDiscoveryStatus(null))
+  }, [])
+
   const runSearch = async () => {
     if (!q.trim()) return toast.error('Ingresa un término de búsqueda')
     setLoading(true)
@@ -474,6 +420,9 @@ function LeadsDescubrirTab() {
       if (found.length === 0) toast.info('Sin resultados para esta búsqueda')
     } catch (err) {
       if (err.code === 'QUOTA_EXCEEDED') toast.error('Límite de búsquedas alcanzado. Intenta más tarde.')
+      else if (err.code === 'DISCOVERY_NOT_CONFIGURED' || (err.status === 503 && err.parameter === 'provider')) {
+        toast.error(DISCOVERY_UNAVAILABLE_MESSAGE)
+      } else if (err.message) toast.error(err.message)
       else toast.error('No se pudo completar la búsqueda. Intenta de nuevo.')
     } finally {
       setLoading(false)
@@ -503,8 +452,18 @@ function LeadsDescubrirTab() {
     }
   }
 
+  const discoveryReady = discoveryStatus?.enabled === true
+
   return (
     <div className="space-y-4">
+      {discoveryStatus && !discoveryReady && (
+        <p
+          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+          data-testid="leads-discovery-not-configured"
+        >
+          {DISCOVERY_UNAVAILABLE_MESSAGE}
+        </p>
+      )}
       <div className="grid gap-3 sm:grid-cols-3">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ej: salón de belleza, restaurante..." className="rounded-xl border-0 bg-white px-4 py-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-600" />
         <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Ubicación" className="rounded-xl border-0 bg-white px-4 py-3 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-600" />
@@ -518,7 +477,7 @@ function LeadsDescubrirTab() {
           testId="leads-import-branch"
         />
       </div>
-      <Button onClick={runSearch} disabled={loading}>
+      <Button onClick={runSearch} disabled={loading || (discoveryStatus && !discoveryReady)}>
         <Search className="h-4 w-4" /> {loading ? 'Buscando...' : 'Buscar negocios'}
       </Button>
 

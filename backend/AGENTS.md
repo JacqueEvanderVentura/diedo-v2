@@ -1,5 +1,8 @@
 # Backend agent guide
 
+Repo-wide git rule: never merge branches or PRs unless the current user message explicitly says to. See [`AGENTS.md`](../AGENTS.md) and `.cursor/rules/no-auto-merge.mdc`.
+
+
 Architecture and API contracts: [`docs/backend/GLOBAL.md`](../docs/backend/GLOBAL.md).
 
 Coverage policy: [`docs/backend/COVERAGE.md`](../docs/backend/COVERAGE.md).

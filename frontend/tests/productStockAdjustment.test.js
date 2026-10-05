@@ -37,7 +37,10 @@ vi.mock('@/stores/configStore', () => ({
   }),
 }))
 vi.mock('@/stores/sessionStore', () => ({
-  useSessionStore: (selector) => selector({ isOnline: () => true }),
+  useSessionStore: (selector) => selector({
+    isOnline: () => true,
+    hasPermission: () => true,
+  }),
 }))
 vi.mock('sonner', () => ({ toast: { success: mocks.toastSuccess } }))
 vi.mock('@/components/ui/Modal', () => ({

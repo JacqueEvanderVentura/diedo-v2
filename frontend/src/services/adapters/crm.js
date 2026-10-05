@@ -11,18 +11,16 @@ export function mapLeadFromApi(lead) {
   const starRating = lead.starRating
   return {
     ...lead,
+    createdAt: lead.createdAt || lead.created_at,
+    updatedAt: lead.updatedAt || lead.updated_at,
     assignedUserId: lead.assignedMembershipId,
     starRating: starRating == null || starRating === '' ? null : Number(starRating),
     rawSnippet: lead.rawSnippet || '',
     location: lead.location || '',
-  }
-}
-
-export function mapOpportunityFromApi(opportunity) {
-  return {
-    ...opportunity,
-    assignedUserId: opportunity.assignedMembershipId,
-    value: numberValue(opportunity.value),
+    pipelineValue: numberValue(lead.pipelineValue),
+    lostReason: lead.lostReason || null,
+    pipelineClosedAt: lead.pipelineClosedAt || null,
+    customerId: lead.customerId || null,
   }
 }
 
@@ -32,6 +30,7 @@ export function mapActivityFromApi(activity) {
     assignedUserId: activity.assignedMembershipId,
     description: activity.description || '',
     customerName: activity.customerName || '',
+    leadId: activity.leadId || null,
   }
 }
 
@@ -41,7 +40,7 @@ export function mapCrmQuoteFromApi(record) {
   return {
     id: quote.id,
     number: quote.number,
-    opportunityId: record?.opportunityId || quote.opportunityId || null,
+    leadId: record?.leadId || record?.lead_id || quote.leadId || quote.lead_id || null,
     customerId: quote.customer?.id || quote.customerId || null,
     customerName: quote.customer?.name || quote.customerName || 'Cliente sin nombre',
     branchId: quote.branch?.id || quote.branchId || null,
@@ -118,7 +117,6 @@ export function mapCrmCustomerFromApi(customer) {
 export function mapCrmStateFromApi(state) {
   return {
     leads: (state?.leads || []).map(mapLeadFromApi),
-    opportunities: (state?.opportunities || []).map(mapOpportunityFromApi),
     activities: (state?.activities || []).map(mapActivityFromApi),
     quotes: (state?.quotes || []).map(mapCrmQuoteFromApi),
     uiMode: state?.settings?.uiMode || 'standard',
@@ -146,11 +144,15 @@ export function mapLeadsPaginatedFromApi(response) {
   }
 }
 
-export function mapOpportunitiesPageFromApi(response) {
-  return items(response).map(mapOpportunityFromApi)
+export function mapActivitiesPageFromApi(response) {
+  return items(response).map(mapActivityFromApi)
 }
 
-export function mapOpportunitiesPaginatedFromApi(response) {
+export function mapCrmQuotesPageFromApi(response) {
+  return items(response).map(mapCrmQuoteFromApi)
+}
+
+export function mapQuotesPaginatedFromApi(response) {
   const totalItems = Number(response?.totalItems ?? response?.total_items ?? 0)
   const pageSize = Number(response?.pageSize ?? response?.page_size ?? 50)
   const page = Number(response?.page ?? 1)
@@ -158,20 +160,12 @@ export function mapOpportunitiesPaginatedFromApi(response) {
     response?.totalPages ?? response?.total_pages ?? Math.max(1, Math.ceil(totalItems / pageSize))
   )
   return {
-    items: mapOpportunitiesPageFromApi(response),
+    items: mapCrmQuotesPageFromApi(response),
     page,
     pageSize,
     totalItems,
     totalPages,
   }
-}
-
-export function mapActivitiesPageFromApi(response) {
-  return items(response).map(mapActivityFromApi)
-}
-
-export function mapCrmQuotesPageFromApi(response) {
-  return items(response).map(mapCrmQuoteFromApi)
 }
 
 export function mapCrmOverviewFromApi(response) {

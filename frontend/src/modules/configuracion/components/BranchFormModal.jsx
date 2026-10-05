@@ -5,10 +5,12 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
 import { branchErrorTarget } from '@/services/adapters/administration'
+import { DEFAULT_BILLING_DOCUMENTS } from '../lib/billingDocuments'
 import { cn } from '@/lib/utils'
 
 const TABS = [
   { id: 'general', label: 'General' },
+  { id: 'documents', label: 'Cotiz. / Factura' },
   { id: 'fiscal', label: 'Datos Fiscales' },
   { id: 'socios', label: 'Socios' },
 ]
@@ -29,6 +31,7 @@ const empty = (legalEntities = []) => {
     rnc: '',
     fiscalEffectiveFrom: '',
     partners: [],
+    billingDocuments: { ...DEFAULT_BILLING_DOCUMENTS },
     legalEntityMode: defaultLegalEntity ? 'existing' : 'new',
     legalEntityAction: 'current',
     targetLegalEntityId: defaultLegalEntity?.id || '',
@@ -301,6 +304,56 @@ export function BranchFormModal({
               Negocio Independiente
               {online && <span className="text-xs text-slate-400">(se define según sus datos fiscales)</span>}
             </label>
+          </div>
+        )}
+
+        {tab === 'documents' && (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">
+              Opcional: sobrescribe el logo, razón social y pie de página del workspace solo para esta sucursal.
+            </p>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-600">Nombre comercial</label>
+              <Input
+                value={form.billingDocuments?.tradeName || ''}
+                disabled={submitting || branchFieldsDisabled}
+                onChange={(event) => set('billingDocuments', { ...form.billingDocuments, tradeName: event.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-600">RNC</label>
+                <Input
+                  value={form.billingDocuments?.rnc || ''}
+                  disabled={submitting || branchFieldsDisabled}
+                  onChange={(event) => set('billingDocuments', { ...form.billingDocuments, rnc: event.target.value })}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-600">Teléfono en documento</label>
+                <Input
+                  value={form.billingDocuments?.phone || ''}
+                  disabled={submitting || branchFieldsDisabled}
+                  onChange={(event) => set('billingDocuments', { ...form.billingDocuments, phone: event.target.value })}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-600">Dirección en documento</label>
+              <Input
+                value={form.billingDocuments?.address || ''}
+                disabled={submitting || branchFieldsDisabled}
+                onChange={(event) => set('billingDocuments', { ...form.billingDocuments, address: event.target.value })}
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-600">Nota de pie (footer)</label>
+              <Input
+                value={form.billingDocuments?.footerNote || ''}
+                disabled={submitting || branchFieldsDisabled}
+                onChange={(event) => set('billingDocuments', { ...form.billingDocuments, footerNote: event.target.value })}
+              />
+            </div>
           </div>
         )}
 

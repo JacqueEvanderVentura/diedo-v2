@@ -173,34 +173,44 @@ export function ReceivableProofModal({
         {err && <p className="text-xs font-medium text-red-500">{err}</p>}
 
         <div className="space-y-2 border-t border-slate-100 pt-4">
-          <Button
-            className="w-full"
-            onClick={() => guard((next) => onConfirm(receivable, next))}
-            disabled={submitting}
-            data-testid="cxc-proof-confirm"
-          >
-            <CheckCircle2 className="h-4 w-4" />
-            Confirmar pago
-          </Button>
-          <Button
-            variant="secondary"
-            className="w-full"
-            onClick={() => guard((next) => onCash(receivable, next))}
-            disabled={submitting}
-            data-testid="cxc-proof-cash"
-          >
-            <Banknote className="h-4 w-4" />
-            Cobrar en efectivo
-          </Button>
-          {canSaveNewProof && (
+          {onConfirm && (
             <Button
-              variant="ghost"
-              className="w-full text-slate-600"
-              onClick={() => guard((next) => onSaveOnly(receivable, next))}
+              className="w-full"
+              onClick={() => guard((next) => onConfirm(receivable, next))}
+              disabled={submitting}
+              data-testid="cxc-proof-confirm"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Confirmar pago
+            </Button>
+          )}
+          {onCash && (
+            <Button
+              variant="secondary"
+              className="w-full"
+              onClick={() => guard((next) => onCash(receivable, next))}
+              disabled={submitting}
+              data-testid="cxc-proof-cash"
+            >
+              <Banknote className="h-4 w-4" />
+              Cobrar en efectivo
+            </Button>
+          )}
+          {onSaveOnly && (
+            <Button
+              variant={onConfirm ? 'ghost' : 'primary'}
+              className={cn('w-full', onConfirm && 'text-slate-600')}
+              onClick={() => {
+                if (!canSaveNewProof) {
+                  setErr('Sube un comprobante para continuar.')
+                  return
+                }
+                guard((next) => onSaveOnly(receivable, next))
+              }}
               disabled={submitting}
               data-testid="cxc-proof-save-only"
             >
-              Solo guardar comprobante
+              {onConfirm ? 'Solo guardar comprobante' : 'Guardar comprobante'}
             </Button>
           )}
         </div>

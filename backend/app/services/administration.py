@@ -22,6 +22,7 @@ from app.repositories.administration import (
     LegalEntityFiscalRecord,
 )
 from app.schemas.administration import (
+    BranchBillingDocuments,
     BranchDetails,
     FiscalTaxIdentityInput,
     NewLegalEntityFiscalProfile,
@@ -67,6 +68,14 @@ class AdministrationService:
             raise ResourceNotFoundError("El workspace no existe.")
         self._check_version(workspace.version, version)
         for key, value in changes.items():
+            if key == "billing_documents" and value is not None:
+                documents = (
+                    value
+                    if isinstance(value, BranchBillingDocuments)
+                    else BranchBillingDocuments.model_validate(value)
+                )
+                workspace.billing_documents = documents.model_dump(mode="json")
+                continue
             setattr(workspace, key, value)
         workspace.version += 1
         self._session.commit()

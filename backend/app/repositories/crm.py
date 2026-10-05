@@ -14,7 +14,6 @@ from app.db.models import (
     Branch,
     CrmActivity,
     CrmLead,
-    CrmOpportunity,
     CrmSettings,
     Customer,
     CustomerBranchAssignment,
@@ -37,13 +36,6 @@ class EntityPage:
 @dataclass(frozen=True)
 class LeadRecord:
     lead: CrmLead
-    opportunity_id: UUID | None
-
-
-@dataclass(frozen=True)
-class OpportunityRecord:
-    opportunity: CrmOpportunity
-    quote_count: int
 
 
 @dataclass(frozen=True)
@@ -218,13 +210,19 @@ class CrmRepository:
         )
 
     def lead_record(self, lead: CrmLead) -> LeadRecord:
-        opportunity_id = self._session.scalar(
-            select(CrmOpportunity.id).where(
-                CrmOpportunity.workspace_id == lead.workspace_id,
-                CrmOpportunity.lead_id == lead.id,
+        return LeadRecord(lead)
+
+    def quote_count_for_lead(self, workspace_id: UUID, lead_id: UUID) -> int:
+        return int(
+            self._session.scalar(
+                select(func.count(SalesQuote.id)).where(
+                    SalesQuote.workspace_id == workspace_id,
+                    SalesQuote.lead_id == lead_id,
+                    SalesQuote.status != "cancelled",
+                )
             )
+            or 0
         )
-        return LeadRecord(lead, opportunity_id)
 
     def list_leads(
         self,
@@ -235,6 +233,8 @@ class CrmRepository:
         status: str | None,
         source: str | None,
         search: str | None,
+        updated_after: datetime | None = None,
+        updated_before: datetime | None = None,
         sort: str,
         sort_dir: str,
         page: int,
@@ -260,6 +260,10 @@ class CrmRepository:
                     func.lower(func.coalesce(CrmLead.location, "")).like(pattern),
                 )
             )
+        if updated_after is not None:
+            query = query.where(CrmLead.updated_at >= updated_after)
+        if updated_before is not None:
+            query = query.where(CrmLead.updated_at <= updated_before)
         total = int(self._session.scalar(select(func.count()).select_from(query.subquery())) or 0)
         order_clauses: list[Any]
         if sort == "star_rating":
@@ -274,147 +278,7 @@ class CrmRepository:
         rows = self._session.scalars(
             query.order_by(*order_clauses).offset((page - 1) * page_size).limit(page_size)
         ).all()
-        opportunity_rows = (
-            self._session.execute(
-                select(CrmOpportunity.lead_id, CrmOpportunity.id).where(
-                    CrmOpportunity.workspace_id == workspace_id,
-                    CrmOpportunity.lead_id.in_([row.id for row in rows]),
-                )
-            )
-            if rows
-            else ()
-        )
-        opportunity_by_lead = {row[0]: row[1] for row in opportunity_rows}
-        return EntityPage(
-            tuple(LeadRecord(row, opportunity_by_lead.get(row.id)) for row in rows),
-            total,
-        )
-
-    def opportunity_by_key(self, workspace_id: UUID, idempotency_key: str) -> CrmOpportunity | None:
-        return self._session.scalar(
-            select(CrmOpportunity).where(
-                CrmOpportunity.workspace_id == workspace_id,
-                CrmOpportunity.creation_idempotency_key == idempotency_key,
-            )
-        )
-
-    def opportunity(
-        self,
-        workspace_id: UUID,
-        opportunity_id: UUID,
-        allowed_branch_ids: frozenset[UUID] | None,
-        *,
-        lock: bool = False,
-    ) -> CrmOpportunity | None:
-        query = select(CrmOpportunity).where(
-            CrmOpportunity.workspace_id == workspace_id,
-            CrmOpportunity.id == opportunity_id,
-        )
-        if allowed_branch_ids is not None:
-            query = query.where(CrmOpportunity.branch_id.in_(allowed_branch_ids))
-        if lock:
-            query = query.with_for_update()
-        return self._session.scalar(query)
-
-    def opportunity_for_lead(self, workspace_id: UUID, lead_id: UUID) -> CrmOpportunity | None:
-        return self._session.scalar(
-            select(CrmOpportunity).where(
-                CrmOpportunity.workspace_id == workspace_id,
-                CrmOpportunity.lead_id == lead_id,
-            )
-        )
-
-    def add_opportunity(self, opportunity: CrmOpportunity) -> None:
-        self._session.add(opportunity)
-        self._session.flush()
-
-    def opportunity_record(self, opportunity: CrmOpportunity) -> OpportunityRecord:
-        quote_count = int(
-            self._session.scalar(
-                select(func.count(SalesQuote.id)).where(
-                    SalesQuote.workspace_id == opportunity.workspace_id,
-                    SalesQuote.opportunity_id == opportunity.id,
-                )
-            )
-            or 0
-        )
-        return OpportunityRecord(opportunity, quote_count)
-
-    def list_opportunities(
-        self,
-        *,
-        workspace_id: UUID,
-        allowed_branch_ids: frozenset[UUID] | None,
-        branch_id: UUID | None,
-        branch_ids: tuple[UUID, ...] | None,
-        stage: str | None,
-        customer_id: UUID | None,
-        search: str | None,
-        updated_after: datetime | None,
-        updated_before: datetime | None,
-        page: int,
-        page_size: int,
-    ) -> EntityPage:
-        query = select(CrmOpportunity).where(CrmOpportunity.workspace_id == workspace_id)
-        if allowed_branch_ids is not None:
-            query = query.where(CrmOpportunity.branch_id.in_(allowed_branch_ids))
-        if branch_ids:
-            query = query.where(CrmOpportunity.branch_id.in_(branch_ids))
-        elif branch_id is not None:
-            query = query.where(CrmOpportunity.branch_id == branch_id)
-        if stage is not None:
-            query = query.where(CrmOpportunity.stage == stage)
-        if customer_id is not None:
-            query = query.where(CrmOpportunity.customer_id == customer_id)
-        if updated_after is not None:
-            query = query.where(CrmOpportunity.updated_at >= updated_after)
-        if updated_before is not None:
-            query = query.where(CrmOpportunity.updated_at <= updated_before)
-        if search:
-            pattern = f"%{search.casefold()}%"
-            query = (
-                query.outerjoin(
-                    CrmLead,
-                    (CrmLead.workspace_id == CrmOpportunity.workspace_id)
-                    & (CrmLead.id == CrmOpportunity.lead_id),
-                )
-                .outerjoin(
-                    Customer,
-                    (Customer.workspace_id == CrmOpportunity.workspace_id)
-                    & (Customer.id == CrmOpportunity.customer_id),
-                )
-                .where(
-                    or_(
-                        func.lower(CrmOpportunity.title).like(pattern),
-                        func.lower(CrmOpportunity.customer_name).like(pattern),
-                        func.lower(CrmLead.name).like(pattern),
-                        func.lower(CrmLead.company).like(pattern),
-                        func.lower(CrmLead.phone).like(pattern),
-                        func.lower(Customer.phone).like(pattern),
-                    )
-                )
-            )
-        total = int(self._session.scalar(select(func.count()).select_from(query.subquery())) or 0)
-        rows = self._session.scalars(
-            query.order_by(CrmOpportunity.updated_at.desc(), CrmOpportunity.id.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        ).all()
-        counts: dict[UUID, int] = {}
-        if rows:
-            for opportunity_id, count in self._session.execute(
-                select(SalesQuote.opportunity_id, func.count(SalesQuote.id))
-                .where(
-                    SalesQuote.workspace_id == workspace_id,
-                    SalesQuote.opportunity_id.in_([row.id for row in rows]),
-                )
-                .group_by(SalesQuote.opportunity_id)
-            ):
-                if opportunity_id is not None:
-                    counts[opportunity_id] = int(count)
-        return EntityPage(
-            tuple(OpportunityRecord(row, int(counts.get(row.id, 0))) for row in rows), total
-        )
+        return EntityPage(tuple(LeadRecord(row) for row in rows), total)
 
     def activity_by_key(self, workspace_id: UUID, idempotency_key: str) -> CrmActivity | None:
         return self._session.scalar(
@@ -455,7 +319,7 @@ class CrmRepository:
         activity_type: str | None,
         completed: bool | None,
         overdue: bool | None,
-        opportunity_id: UUID | None,
+        lead_id: UUID | None,
         customer_id: UUID | None,
         now: datetime,
         page: int,
@@ -480,8 +344,8 @@ class CrmRepository:
             )
         elif overdue is False:
             query = query.where(or_(CrmActivity.due_at.is_(None), CrmActivity.due_at >= now))
-        if opportunity_id is not None:
-            query = query.where(CrmActivity.opportunity_id == opportunity_id)
+        if lead_id is not None:
+            query = query.where(CrmActivity.lead_id == lead_id)
         if customer_id is not None:
             query = query.where(CrmActivity.customer_id == customer_id)
         total = int(self._session.scalar(select(func.count()).select_from(query.subquery())) or 0)
@@ -722,28 +586,31 @@ class CrmRepository:
             CrmLead.branch_id,
         )
         total_leads = int(self._session.scalar(lead_base) or 0)
-        qualified = int(self._session.scalar(lead_base.where(CrmLead.status == "calificado")) or 0)
+        qualified = int(
+            self._session.scalar(lead_base.where(CrmLead.status.in_(("propuesta", "negociacion"))))
+            or 0
+        )
         converted = int(
             self._session.scalar(
                 lead_base.where(
-                    CrmLead.status == "convertido",
+                    CrmLead.status == "cerrado",
                     CrmLead.converted_at >= month_start,
                     CrmLead.converted_at < month_end,
                 )
             )
             or 0
         )
-        opportunity_base = scope(
+        pipeline_base = scope(
             select(
-                func.count(CrmOpportunity.id),
-                func.coalesce(func.sum(CrmOpportunity.value), 0),
+                func.count(CrmLead.id),
+                func.coalesce(func.sum(CrmLead.pipeline_value), 0),
             ).where(
-                CrmOpportunity.workspace_id == workspace_id,
-                CrmOpportunity.stage.not_in(("cerrado", "perdido")),
+                CrmLead.workspace_id == workspace_id,
+                CrmLead.status.not_in(("cerrado", "perdido")),
             ),
-            CrmOpportunity.branch_id,
+            CrmLead.branch_id,
         )
-        opportunity_row = self._session.execute(opportunity_base).one()
+        pipeline_row = self._session.execute(pipeline_base).one()
         activity_base = scope(
             select(func.count(CrmActivity.id)).where(
                 CrmActivity.workspace_id == workspace_id,
@@ -796,8 +663,8 @@ class CrmRepository:
             total_leads=total_leads,
             qualified_leads=qualified,
             converted_this_month=converted,
-            open_opportunities=int(opportunity_row[0]),
-            pipeline_value=Decimal(opportunity_row[1]),
+            open_opportunities=int(pipeline_row[0]),
+            pipeline_value=Decimal(pipeline_row[1]),
             overdue_activities=overdue,
             pending_activities=pending,
             crm_quotes=quote_count,
@@ -807,28 +674,14 @@ class CrmRepository:
             sales_value_this_month=Decimal(sale_row[1]),
         )
 
-    def delete_activities_for_lead(
-        self,
-        workspace_id: UUID,
-        lead_id: UUID,
-        opportunity_id: UUID | None,
-    ) -> None:
-        query = select(CrmActivity).where(CrmActivity.workspace_id == workspace_id)
-        if opportunity_id is not None:
-            query = query.where(
-                or_(
-                    CrmActivity.lead_id == lead_id,
-                    CrmActivity.opportunity_id == opportunity_id,
-                )
+    def delete_activities_for_lead(self, workspace_id: UUID, lead_id: UUID) -> None:
+        for activity in self._session.scalars(
+            select(CrmActivity).where(
+                CrmActivity.workspace_id == workspace_id,
+                CrmActivity.lead_id == lead_id,
             )
-        else:
-            query = query.where(CrmActivity.lead_id == lead_id)
-        for activity in self._session.scalars(query):
+        ):
             self._session.delete(activity)
-
-    def remove_opportunity(self, opportunity: CrmOpportunity) -> None:
-        self._session.delete(opportunity)
-        self._session.flush()
 
     def remove_lead(self, lead: CrmLead) -> None:
         self._session.delete(lead)

@@ -50,7 +50,7 @@ jobs:
       needs.changes.outputs.frontend == 'true' &&
       needs.frontend.result == 'success' &&
       (
-        (github.event_name == 'push' && github.ref == 'refs/heads/full-stack') ||
+        (github.event_name == 'push' && (github.ref == 'refs/heads/full-stack' || github.ref == 'refs/heads/qa')) ||
         github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
       )

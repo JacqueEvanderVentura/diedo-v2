@@ -2,13 +2,18 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { Users, ChevronRight, Search, Check, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCustomersStore } from '@/stores/customersStore'
+import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { customersAtBranch, customersVisibleToSession } from '@/lib/customerScope'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
 import { DropdownPanel } from '@/components/ui/DropdownPanel'
+import { truncateDisplayText } from '@/lib/format'
 import { cn } from '@/lib/utils'
+
+const CUSTOMER_NAME_DISPLAY_MAX = 40
 
 export function CustomerPicker({
   value,
@@ -22,6 +27,7 @@ export function CustomerPicker({
 }) {
   const customers = useCustomersStore((s) => s.customers)
   const addCustomer = useCustomersStore((s) => s.addCustomer)
+  const branches = useConfigStore((s) => s.branches)
   const user = useSessionStore((s) => s.user)
 
   const [open, setOpen] = useState(false)
@@ -29,13 +35,17 @@ export function CustomerPicker({
   const [modalOpen, setModalOpen] = useState(false)
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
+  const [branchIds, setBranchIds] = useState([])
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
   const btnRef = useRef(null)
   const menuRef = useRef(null)
 
   const selectedId = value?.id
-  const displayName = value?.name?.trim() || placeholder
+  const rawName = value?.name?.trim()
+  const displayName = rawName
+    ? truncateDisplayText(rawName, CUSTOMER_NAME_DISPLAY_MAX)
+    : placeholder
   const displayPhone = value?.phone
 
   useEffect(() => {
@@ -47,6 +57,11 @@ export function CustomerPicker({
     document.addEventListener('mousedown', onClick)
     return () => document.removeEventListener('mousedown', onClick)
   }, [open])
+
+  useEffect(() => {
+    if (!modalOpen) return
+    setBranchIds(branchId ? [branchId] : [])
+  }, [modalOpen, branchId])
 
   const scopedCustomers = useMemo(
     () => customersVisibleToSession(customers, user),
@@ -77,17 +92,19 @@ export function CustomerPicker({
 
   const submitCreate = async () => {
     if (!name.trim()) return setErr('Ingresa el nombre del cliente.')
+    if (!branchIds.length) return setErr('Selecciona al menos una sucursal.')
     setSaving(true)
     try {
       const customer = await addCustomer({
         name: name.trim(),
         phone: phone.trim() || null,
-        branchIds: branchId ? [branchId] : undefined,
+        branchIds,
       })
       onChange?.(customer)
       toast.success(`Cliente "${customer.name}" creado y seleccionado`)
       setName('')
       setPhone('')
+      setBranchIds([])
       setErr('')
       setModalOpen(false)
     } catch (error) {
@@ -110,7 +127,10 @@ export function CustomerPicker({
           <Users className="h-[18px] w-[18px]" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className={cn('truncate text-sm font-semibold', value?.name ? 'text-slate-800' : 'text-slate-400')}>
+          <p
+            className={cn('truncate text-sm font-semibold', value?.name ? 'text-slate-800' : 'text-slate-400')}
+            title={rawName && rawName.length > CUSTOMER_NAME_DISPLAY_MAX ? rawName : undefined}
+          >
             {displayName}
           </p>
           {displayPhone ? <p className="truncate text-xs text-slate-400">{displayPhone}</p> : null}
@@ -184,7 +204,12 @@ export function CustomerPicker({
                 className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-slate-50"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-800">{c.name}</p>
+                  <p
+                    className="text-sm font-medium text-slate-800"
+                    title={c.name.length > CUSTOMER_NAME_DISPLAY_MAX ? c.name : undefined}
+                  >
+                    {truncateDisplayText(c.name, CUSTOMER_NAME_DISPLAY_MAX)}
+                  </p>
                   {c.phone && <p className="text-xs text-slate-400">{c.phone}</p>}
                 </div>
                 {selectedId === c.id && <Check className="h-4 w-4 shrink-0 text-blue-600" />}
@@ -194,7 +219,13 @@ export function CustomerPicker({
         </div>
       </DropdownPanel>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Nuevo cliente" testId={`${testIdPrefix}-modal`}>
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="Nuevo cliente"
+        wide
+        testId={`${testIdPrefix}-modal`}
+      >
         <div className="space-y-4">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Nombre</label>
@@ -215,6 +246,25 @@ export function CustomerPicker({
               onChange={(e) => setPhone(e.target.value)}
               placeholder="809-000-0000"
               data-testid={`${testIdPrefix}-new-phone`}
+            />
+          </div>
+          <div>
+            <div className="mb-2">
+              <p className="text-sm font-medium text-slate-600">Sucursales asignadas</p>
+              <p className="text-xs text-slate-400">
+                El cliente podrá usarse en las sucursales que marques aquí.
+              </p>
+            </div>
+            <BranchMultiSelect
+              branches={branches}
+              branchIds={branchIds}
+              onChange={(ids) => {
+                setBranchIds(ids)
+                setErr('')
+              }}
+              showAllOption={false}
+              className="w-full"
+              testId={`${testIdPrefix}-new-branches`}
             />
           </div>
           {err && (

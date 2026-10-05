@@ -30,7 +30,7 @@ describe('consolidatedReport', () => {
           { id: 'c3', acquisitionSource: 'app' },
         ],
       },
-      { period: 'month' },
+      { period: 'custom', dateFrom: '2026-09-01', dateTo: '2026-09-30' },
     )
 
     expect(report.totalSales).toBe(4)

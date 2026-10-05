@@ -11,11 +11,15 @@ from app.schemas.common import ApiModel, ImportRowModel
 from app.schemas.instagram import validate_instagram_url
 from app.schemas.pos import QuoteDetailResponse
 
-LeadStatus = Literal["nuevo", "contactado", "calificado", "descartado", "convertido"]
-EditableLeadStatus = Literal["nuevo", "contactado", "calificado", "descartado"]
+LeadStatus = Literal["nuevo", "contactado", "propuesta", "negociacion", "cerrado", "perdido"]
+EditableLeadStatus = Literal[
+    "nuevo", "contactado", "propuesta", "negociacion", "perdido", "cerrado"
+]
 LeadSource = Literal["manual", "serp", "serper", "referral", "import"]
 LeadDiscoveryProvider = Literal["serpapi", "serper"]
-AcquisitionSource = Literal["whatsapp", "instagram", "referral", "otros", "pos_walk_in", "app"]
+AcquisitionSource = Literal[
+    "whatsapp", "instagram", "referral", "otros", "pos_walk_in", "app", "ai"
+]
 
 
 class LeadDiscoveryCapabilitiesResponse(ApiModel):
@@ -66,7 +70,6 @@ class LeadDiscoverySearchResponse(ApiModel):
     month_limit: int
 
 
-OpportunityStage = Literal["nuevo", "contactado", "propuesta", "negociacion", "cerrado", "perdido"]
 ActivityType = Literal["llamada", "email", "reunion", "nota", "tarea"]
 CustomerLifecycleStatus = Literal["activo", "prospecto", "inactivo"]
 CrmQuoteStatus = Literal["borrador", "enviada", "aceptada", "rechazada", "vencida"]
@@ -187,6 +190,8 @@ class UpdateLeadRequest(ApiModel):
     acquisition_source: AcquisitionSource | None = None
     status: EditableLeadStatus | None = None
     star_rating: Decimal | None = None
+    pipeline_value: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
+    lost_reason: str | None = Field(default=None, max_length=1000)
     raw_snippet: str | None = Field(default=None, max_length=4000)
 
     @field_validator("instagram_url")
@@ -209,10 +214,17 @@ class UpdateLeadRequest(ApiModel):
     def normalize_optional_fields(cls, value: str | None) -> str | None:
         return _normalize_optional_text(value)
 
+    @field_validator("lost_reason")
+    @classmethod
+    def normalize_lost_reason(cls, value: str | None) -> str | None:
+        return _normalize_optional_text(value)
+
     @model_validator(mode="after")
     def require_change(self) -> Self:
         if not self.model_fields_set - {"version"}:
             raise ValueError("Debes enviar al menos un cambio.")
+        if "status" in self.model_fields_set and self.status == "perdido" and not self.lost_reason:
+            raise ValueError("Un lead perdido requiere motivo.")
         return self
 
 
@@ -275,8 +287,10 @@ class LeadResponse(ApiModel):
     raw_snippet: str | None
     status: LeadStatus
     star_rating: DecimalString | None
+    pipeline_value: DecimalString
+    lost_reason: str | None
+    pipeline_closed_at: datetime | None
     customer_id: UUID | None
-    opportunity_id: UUID | None
     converted_at: datetime | None
     version: int
     created_at: datetime
@@ -305,8 +319,8 @@ class ImportPipelineItem(ImportRowModel):
     instagram_url: HttpUrl | None = Field(default=None, max_length=500)
     location: str | None = Field(default=None, max_length=240)
     acquisition_source: AcquisitionSource | None = None
-    stage: OpportunityStage = "nuevo"
-    value: Decimal = Field(default=Decimal("0"), ge=0, max_digits=14, decimal_places=2)
+    status: LeadStatus = "nuevo"
+    pipeline_value: Decimal = Field(default=Decimal("0"), ge=0, max_digits=14, decimal_places=2)
     notes: str | None = Field(default=None, max_length=2000)
     lost_reason: str | None = Field(default=None, max_length=1000)
     convert: bool = False
@@ -337,8 +351,8 @@ class ImportPipelineItem(ImportRowModel):
     def require_identity(self) -> Self:
         if not self.name and not self.company:
             raise ValueError("Debes indicar el nombre o la empresa del lead.")
-        if self.stage == "perdido" and not self.lost_reason:
-            raise ValueError("Una oportunidad perdida requiere motivo.")
+        if self.status == "perdido" and not self.lost_reason:
+            raise ValueError("Un lead perdido requiere motivo.")
         return self
 
 
@@ -351,7 +365,6 @@ class ImportPipelineRequest(ApiModel):
 class ImportPipelineRowResult(ApiModel):
     external_id: str | None = None
     lead_id: UUID | None = None
-    opportunity_id: UUID | None = None
     customer_id: UUID | None = None
     status: Literal["created", "skipped", "error"]
     message: str | None = None
@@ -395,99 +408,9 @@ class ImportActivitiesResponse(ApiModel):
     items: list[ImportActivityRowResult]
 
 
-class CreateOpportunityRequest(ApiModel):
-    branch_id: UUID
-    lead_id: UUID | None = None
-    customer_id: UUID | None = None
-    assigned_membership_id: UUID | None = None
-    title: str = Field(min_length=2, max_length=240)
-    customer_name: str = Field(min_length=2, max_length=200)
-    stage: OpportunityStage = "nuevo"
-    value: Decimal = Field(default=Decimal("0"), ge=0, max_digits=14, decimal_places=2)
-    notes: str | None = Field(default=None, max_length=2000)
-    lost_reason: str | None = Field(default=None, max_length=1000)
-
-    @field_validator("title", "customer_name")
-    @classmethod
-    def normalize_required_fields(cls, value: str) -> str:
-        return _normalize_required_text(value)
-
-    @field_validator("notes", "lost_reason")
-    @classmethod
-    def normalize_optional_fields(cls, value: str | None) -> str | None:
-        return _normalize_optional_text(value)
-
-    @model_validator(mode="after")
-    def require_lost_reason(self) -> Self:
-        if self.stage == "perdido" and not self.lost_reason:
-            raise ValueError("Una oportunidad perdida requiere motivo.")
-        return self
-
-
-class CreateLeadOpportunityRequest(ApiModel):
-    title: str | None = Field(default=None, max_length=240)
-    stage: OpportunityStage | None = None
-    value: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
-    notes: str | None = Field(default=None, max_length=2000)
-    lost_reason: str | None = Field(default=None, max_length=1000)
-
-
-class UpdateOpportunityRequest(ApiModel):
-    version: int = Field(ge=1)
-    assigned_membership_id: UUID | None = None
-    customer_id: UUID | None = None
-    title: str | None = Field(default=None, min_length=2, max_length=240)
-    customer_name: str | None = Field(default=None, min_length=2, max_length=200)
-    stage: OpportunityStage | None = None
-    value: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
-    notes: str | None = Field(default=None, max_length=2000)
-    lost_reason: str | None = Field(default=None, max_length=1000)
-
-    @model_validator(mode="after")
-    def require_change(self) -> Self:
-        if not self.model_fields_set - {"version"}:
-            raise ValueError("Debes enviar al menos un cambio.")
-        if (
-            self.stage == "perdido"
-            and "lost_reason" in self.model_fields_set
-            and not self.lost_reason
-        ):
-            raise ValueError("Una oportunidad perdida requiere motivo.")
-        return self
-
-
-class OpportunityResponse(ApiModel):
-    id: UUID
-    branch_id: UUID
-    lead_id: UUID | None
-    customer_id: UUID | None
-    assigned_membership_id: UUID
-    title: str
-    customer_name: str
-    stage: OpportunityStage
-    value: DecimalString
-    currency_code: str
-    notes: str | None
-    lost_reason: str | None
-    closed_at: datetime | None
-    quote_count: int
-    version: int
-    created_at: datetime
-    updated_at: datetime
-
-
-class PaginatedOpportunitiesResponse(ApiModel):
-    items: list[OpportunityResponse]
-    page: int
-    page_size: int
-    total_items: int
-    total_pages: int
-
-
 class CreateActivityRequest(ApiModel):
     branch_id: UUID
     lead_id: UUID | None = None
-    opportunity_id: UUID | None = None
     customer_id: UUID | None = None
     assigned_membership_id: UUID | None = None
     type: ActivityType = "tarea"
@@ -531,7 +454,6 @@ class ActivityResponse(ApiModel):
     id: UUID
     branch_id: UUID
     lead_id: UUID | None
-    opportunity_id: UUID | None
     customer_id: UUID | None
     assigned_membership_id: UUID
     type: ActivityType
@@ -655,7 +577,6 @@ class CrmOverviewResponse(ApiModel):
 class CrmStateResponse(ApiModel):
     settings: CrmWorkspaceSettingsResponse
     leads: list[LeadResponse]
-    opportunities: list[OpportunityResponse]
     activities: list[ActivityResponse]
     quotes: list[CrmQuoteListResponse]
 
@@ -667,7 +588,7 @@ class CrmQuoteLineRequest(ApiModel):
 
 
 class CreateCrmQuoteRequest(ApiModel):
-    opportunity_id: UUID | None = None
+    lead_id: UUID | None = None
     customer_id: UUID
     branch_id: UUID
     payment_method_id: UUID | None = None
@@ -690,7 +611,7 @@ class CreateCrmQuoteRequest(ApiModel):
 
 class UpdateCrmQuoteRequest(ApiModel):
     version: int = Field(ge=1)
-    opportunity_id: UUID | None = None
+    lead_id: UUID | None = None
     customer_id: UUID | None = None
     branch_id: UUID | None = None
     payment_method_id: UUID | None = None
@@ -705,7 +626,7 @@ class UpdateCrmQuoteRequest(ApiModel):
 
 class CrmQuoteResponse(ApiModel):
     quote: QuoteDetailResponse
-    opportunity_id: UUID | None
+    lead_id: UUID | None
     crm_status: CrmQuoteStatus
 
 
@@ -719,7 +640,7 @@ class InvoiceCrmQuoteRequest(ApiModel):
 
 class CrmQuoteListResponse(ApiModel):
     quote: QuoteDetailResponse
-    opportunity_id: UUID | None
+    lead_id: UUID | None
     crm_status: CrmQuoteStatus
     converted_sale_id: UUID | None = None
     invoice_number: str | None = None

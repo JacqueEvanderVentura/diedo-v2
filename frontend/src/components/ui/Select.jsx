@@ -1,7 +1,7 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Check, ChevronDown } from 'lucide-react'
+import { Check, ChevronDown, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { computeFloatingPosition } from '@/lib/floatingPosition'
 
@@ -30,16 +30,26 @@ export function Select({
   variant = 'default',
   menuMinWidth,
   placement = 'auto',
+  searchable = false,
+  searchPlaceholder = 'Buscar…',
   'data-testid': testId,
   'aria-label': ariaLabel,
 }) {
   const listId = useId()
   const rootRef = useRef(null)
   const menuRef = useRef(null)
+  const searchInputRef = useRef(null)
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
   const [menuStyle, setMenuStyle] = useState({ top: undefined, bottom: undefined, left: undefined, right: undefined, width: 0, flip: false })
 
   const items = normalizeOptions(options)
+  const visibleItems = useMemo(() => {
+    if (!searchable) return items
+    const q = query.trim().toLowerCase()
+    if (!q) return items
+    return items.filter((opt) => opt.label.toLowerCase().includes(q))
+  }, [items, query, searchable])
   const strValue = value === undefined || value === null ? '' : String(value)
   const selected = items.find((o) => o.value === strValue)
 
@@ -49,7 +59,7 @@ export function Select({
     const rect = el.getBoundingClientRect()
     const width = menuMinWidth ? Math.max(rect.width, menuMinWidth) : rect.width
     const gap = 6
-    const estimatedHeight = Math.min(items.length * 44 + 12, 240)
+    const estimatedHeight = Math.min(visibleItems.length * 44 + 12 + (searchable ? 52 : 0), searchable ? 292 : 240)
     const menuHeight = menuRef.current?.getBoundingClientRect().height || estimatedHeight
     const next = computeFloatingPosition({
       anchorRect: rect,
@@ -66,7 +76,7 @@ export function Select({
     if (!open) return
     updatePosition()
     requestAnimationFrame(updatePosition)
-  }, [open, items.length, placement])
+  }, [open, visibleItems.length, placement, searchable, query])
 
   useEffect(() => {
     if (!open) return
@@ -78,7 +88,17 @@ export function Select({
       window.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('resize', onResize)
     }
-  }, [open, items.length, placement])
+  }, [open, visibleItems.length, placement, searchable, query])
+
+  useEffect(() => {
+    if (!open) setQuery('')
+  }, [open])
+
+  useEffect(() => {
+    if (!open || !searchable) return
+    const id = requestAnimationFrame(() => searchInputRef.current?.focus())
+    return () => cancelAnimationFrame(id)
+  }, [open, searchable])
 
   useEffect(() => {
     if (!open) return
@@ -154,9 +174,36 @@ export function Select({
                   width: menuStyle.width,
                   zIndex: 100,
                 }}
-                className="max-h-60 overflow-y-auto rounded-xl border border-slate-100 bg-white p-1.5 shadow-xl scrollbar-thin"
+                className={cn(
+                  'max-h-60 overflow-y-auto rounded-xl border border-slate-100 bg-white p-1.5 shadow-xl scrollbar-thin',
+                  searchable && 'max-h-[18rem]',
+                )}
               >
-                {items.map((opt) => {
+                {searchable && (
+                  <li className="sticky top-0 z-10 list-none pb-1.5">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <input
+                        ref={searchInputRef}
+                        type="search"
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        placeholder={searchPlaceholder}
+                        className="w-full rounded-lg border-0 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-900 ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-600"
+                        onKeyDown={(event) => {
+                          if (event.key === ' ') event.stopPropagation()
+                        }}
+                        data-testid={testId ? `${testId}-search` : undefined}
+                      />
+                    </div>
+                  </li>
+                )}
+                {visibleItems.length === 0 ? (
+                  <li className="list-none px-3 py-4 text-center text-sm text-slate-500">
+                    Sin resultados
+                  </li>
+                ) : (
+                  visibleItems.map((opt) => {
                   const active = opt.value === strValue
                   return (
                     <li key={opt.value} role="option" aria-selected={active}>
@@ -177,7 +224,8 @@ export function Select({
                       </button>
                     </li>
                   )
-                })}
+                })
+                )}
               </motion.ul>
             )}
           </AnimatePresence>,

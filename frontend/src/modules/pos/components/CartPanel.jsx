@@ -39,9 +39,11 @@ import { SaleInvoiceModal } from './SaleInvoiceModal'
 import { buildInvoiceHtml, printInvoice, downloadInvoicePdf, makeInvoiceId, formatInvoiceDate, invoiceFilename } from '../lib/invoice'
 import { buildInvoiceDataFromSale } from '@/modules/crm/lib/sales'
 import { applyBillingBrandingToInvoiceData } from '@/modules/configuracion/lib/billingDocuments'
+import { ensureWorkspaceBillingSettings } from '@/modules/configuracion/lib/workspaceSettings'
 import { useCustomersStore } from '@/stores/customersStore'
 import { mapSaleFromApi } from '@/services/adapters/pos'
 import { resolveBranchRegisterOpen } from '../lib/registerBranchState'
+import { checkoutTendersFromDraft, sumSplitDraft } from '../lib/splitPayment'
 
 
 
@@ -64,6 +66,7 @@ export function CartPanel({ onCheckoutDone }) {
   const transferProof = usePosStore((s) => s.transferProof)
 
   const paymentReference = usePosStore((s) => s.paymentReference)
+  const checkoutTenders = usePosStore((s) => s.checkoutTenders)
 
   const getSubtotal = usePosStore((s) => s.getSubtotal)
 
@@ -362,17 +365,35 @@ export function CartPanel({ onCheckoutDone }) {
 
     }
 
-    if (
+    const splitEnabled = Array.isArray(checkoutTenders) && checkoutTenders.length > 0
+    if (splitEnabled) {
+      const allocated = sumSplitDraft(
+        checkoutTenders.map((row) => ({ methodId: row.methodId, amount: row.amount }))
+      )
+      const validation = checkoutTendersFromDraft(
+        checkoutTenders.map((row) => ({
+          methodId: row.methodId,
+          amount: row.amount,
+          reference: row.reference,
+        })),
+        total
+      )
+      if (!validation.ok) {
+        toast.error(validation.error)
+        return
+      }
+      if (Math.abs(allocated - total) > 0.009) {
+        toast.error('El pago dividido debe cubrir el total de la venta.')
+        return
+      }
+    } else if (
       paymentMethod === 'transferencia'
       && !isExpense
       && !transferProof
       && !paymentReference.trim()
     ) {
-
       setPayError(true)
-
       return
-
     }
 
     setPayError(false)
@@ -411,8 +432,7 @@ export function CartPanel({ onCheckoutDone }) {
 
     }
 
-
-
+    await ensureWorkspaceBillingSettings()
     const invoiceDraft = buildCurrentInvoice()
 
     try {
@@ -458,13 +478,14 @@ export function CartPanel({ onCheckoutDone }) {
     const kind = resolveDocKind()
 
     const id = makeInvoiceId(issuedAt, kind)
+    const settingsNow = useConfigStore.getState().settings
 
     const base = {
       id,
       kind,
       issuedAt: formatInvoiceDate(issuedAt),
       branchName: branches.find((b) => b.id === branchId)?.name || '',
-      region: settings.region || '',
+      region: settingsNow.region || '',
       customerId: customer?.id || null,
       customerRecord: customer,
       customerName: customer?.name || 'Cliente Mostrador',
@@ -480,7 +501,7 @@ export function CartPanel({ onCheckoutDone }) {
       taxAmt,
       total,
     }
-    const data = applyBillingBrandingToInvoiceData(base, settings, customers)
+    const data = applyBillingBrandingToInvoiceData(base, settingsNow, customers)
 
     return { id, data, html: buildInvoiceHtml(data) }
 
@@ -510,7 +531,7 @@ export function CartPanel({ onCheckoutDone }) {
         createdAt: new Date().toISOString(),
       }
     const data = checkoutResponse?.id
-      ? buildInvoiceDataFromSale(sale, invoiceContext)
+      ? buildInvoiceDataFromSale(sale, { ...invoiceContext, settings: useConfigStore.getState().settings })
       : draftInvoice.data
     setCompletedInvoice({
       data,
@@ -518,10 +539,11 @@ export function CartPanel({ onCheckoutDone }) {
     })
   }
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
 
     if (empty) return toast.error('El carrito está vacío')
 
+    await ensureWorkspaceBillingSettings()
     printInvoice(buildCurrentInvoice().html)
 
   }
@@ -530,6 +552,7 @@ export function CartPanel({ onCheckoutDone }) {
 
   const handleDownload = async () => {
     if (empty) return toast.error('El carrito está vacío')
+    await ensureWorkspaceBillingSettings()
     const { id, data } = buildCurrentInvoice()
     try {
       await downloadInvoicePdf(data, invoiceFilename(id))
@@ -899,7 +922,7 @@ export function CartPanel({ onCheckoutDone }) {
 
 
 
-            {isInvoice && <PaymentSection error={payError} />}
+            {isInvoice && <PaymentSection error={payError} checkoutTotal={total} />}
 
 
 

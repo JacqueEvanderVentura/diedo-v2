@@ -1,9 +1,9 @@
 import { formatDOP } from '@/lib/format'
+import { isActiveCrmQuote } from '@/modules/crm/lib/crmQuoteVisibility'
 
-/** Plain-text offer summary for WhatsApp / clipboard from linked quotes. */
-export function formatOpportunityOfferText(quotes, opportunityId, { customerName = '' } = {}) {
+export function formatLeadOfferText(quotes, leadId, { customerName = '' } = {}) {
   const linked = (quotes || [])
-    .filter((quote) => quote.opportunityId === opportunityId && quote.status !== 'cancelada')
+    .filter((quote) => quote.leadId === leadId && isActiveCrmQuote(quote))
     .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
 
   if (linked.length === 0) return null
@@ -15,9 +15,9 @@ export function formatOpportunityOfferText(quotes, opportunityId, { customerName
     '',
     `Te comparto la oferta ${quote.number || ''}`.trim(),
     '',
-  ];
+  ]
 
-  (quote.items || []).forEach((item) => {
+  ;(quote.items || []).forEach((item) => {
     const qty = item.qty ?? item.quantity ?? 1
     const price = item.price ?? item.unitPrice ?? 0
     lines.push(`• ${item.name || item.itemName || 'Ítem'} × ${qty} — ${formatDOP(price * qty)}`)
@@ -26,6 +26,9 @@ export function formatOpportunityOfferText(quotes, opportunityId, { customerName
   lines.push('', `Total: ${formatDOP(quote.total)}`)
   return lines.join('\n')
 }
+
+/** @deprecated */
+export const formatOpportunityOfferText = (quotes, leadId, opts) => formatLeadOfferText(quotes, leadId, opts)
 
 export function resolveInstagramUrl(record) {
   for (const value of [record?.instagramUrl, record?.website]) {

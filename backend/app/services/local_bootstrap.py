@@ -586,14 +586,34 @@ _PERMISSIONS = (
         "Void posted invoices and record compensating movements.",
         110,
     ),
+    (
+        "sales.invoice.edit",
+        "sales",
+        "invoice.edit",
+        "Editar facturas",
+        "Edit posted invoices and reconcile stock, cash, and receivables.",
+        120,
+    ),
+    (
+        "sales.invoice.delete",
+        "sales",
+        "invoice.delete",
+        "Eliminar facturas",
+        "Permanently remove posted invoices without applied collections or cash history.",
+        130,
+    ),
 )
 
 _TERMINAL_POS_PERMISSION_CODES = tuple(
     permission[0] for permission in _PERMISSIONS if permission[1] in {"sales", "pos"}
 )
+_CARWASH_PERMISSION_CODES = tuple(
+    permission[0] for permission in _PERMISSIONS if permission[1] == "carwash"
+)
 
 _ROLE_PERMISSION_TEMPLATES = {
     "workspace_admin": _TERMINAL_POS_PERMISSION_CODES
+    + _CARWASH_PERMISSION_CODES
     + (
         "dashboard.read",
         "crm.read",
@@ -605,6 +625,7 @@ _ROLE_PERMISSION_TEMPLATES = {
         "report.read",
     ),
     "manager": _TERMINAL_POS_PERMISSION_CODES
+    + _CARWASH_PERMISSION_CODES
     + (
         "dashboard.read",
         "crm.read",

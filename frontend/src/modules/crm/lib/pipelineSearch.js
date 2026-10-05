@@ -1,18 +1,18 @@
+import { leadDisplayTitle } from './pipelineLeads'
+
 function digitsOnly(value) {
   return String(value || '').replace(/\D/g, '')
 }
 
-function collectSearchText(opportunity, lead, customer) {
+function collectSearchText(lead, customer) {
   const parts = [
-    opportunity?.id,
-    opportunity?.title,
-    opportunity?.customerName,
     lead?.id,
     lead?.name,
     lead?.company,
     lead?.phone,
     lead?.email,
     lead?.rawSnippet,
+    leadDisplayTitle(lead),
     customer?.id,
     customer?.name,
     customer?.displayName,
@@ -24,12 +24,11 @@ function collectSearchText(opportunity, lead, customer) {
   return parts.filter(Boolean).join(' ')
 }
 
-/** Filtra oportunidades por texto libre (nombre, teléfono, documento, IDs, kommo:…). */
-export function opportunityMatchesQuery(opportunity, { lead = null, customer = null }, query) {
+export function leadMatchesQuery(lead, { customer = null }, query) {
   const trimmed = String(query || '').trim()
   if (!trimmed) return true
 
-  const haystack = collectSearchText(opportunity, lead, customer)
+  const haystack = collectSearchText(lead, customer)
   const lowerHaystack = haystack.toLowerCase()
   const lowerQuery = trimmed.toLowerCase()
   if (lowerHaystack.includes(lowerQuery)) return true
@@ -41,4 +40,10 @@ export function opportunityMatchesQuery(opportunity, { lead = null, customer = n
   }
 
   return false
+}
+
+/** @deprecated */
+export function opportunityMatchesQuery(opportunity, ctx, query) {
+  const lead = ctx?.lead || opportunity
+  return leadMatchesQuery(lead, { customer: ctx?.customer }, query)
 }

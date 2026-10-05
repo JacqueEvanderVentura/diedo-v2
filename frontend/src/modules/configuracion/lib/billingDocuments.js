@@ -9,15 +9,22 @@ export const DEFAULT_BILLING_DOCUMENTS = {
   footerNote: '',
 }
 
-export function resolveBillingBranding(settings = {}) {
-  const billing = { ...DEFAULT_BILLING_DOCUMENTS, ...(settings.billingDocuments || {}) }
+export function resolveBillingBranding(settings = {}, branch = null) {
+  const workspaceBilling = { ...DEFAULT_BILLING_DOCUMENTS, ...(settings.billingDocuments || {}) }
+  const branchBilling = branch?.billingDocuments
+  const billing = { ...workspaceBilling }
+  if (branchBilling) {
+    Object.entries(branchBilling).forEach(([key, value]) => {
+      if (value != null && String(value).trim() !== '') billing[key] = value
+    })
+  }
   return {
     businessName: billing.tradeName?.trim() || settings.businessName || 'Helios 360',
     legalName: billing.legalName?.trim() || '',
     businessRnc: billing.rnc?.trim() || '',
-    businessAddress: billing.address?.trim() || '',
-    businessPhone: billing.phone?.trim() || '',
-    businessEmail: billing.email?.trim() || '',
+    businessAddress: billing.address?.trim() || branch?.address?.trim() || '',
+    businessPhone: billing.phone?.trim() || branch?.phone?.trim() || '',
+    businessEmail: billing.email?.trim() || branch?.email?.trim() || '',
     logoDataUrl: billing.logoDataUrl || '',
     footerNote: billing.footerNote?.trim() || '',
     region: settings.region || '',
@@ -51,8 +58,8 @@ export function resolveCustomerForDocuments(partial, customers = []) {
   return partial
 }
 
-export function applyBillingBrandingToInvoiceData(data, settings = {}, customers = []) {
-  const brand = resolveBillingBranding(settings)
+export function applyBillingBrandingToInvoiceData(data, settings = {}, customers = [], branch = null) {
+  const brand = resolveBillingBranding(settings, branch)
   const customer = resolveCustomerForDocuments(
     data.customerRecord || { name: data.customerName, phone: data.customerPhone, id: data.customerId },
     customers,

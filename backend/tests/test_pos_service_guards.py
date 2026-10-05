@@ -178,6 +178,7 @@ def test_pos_receivable_state_transitions_and_management_guards() -> None:
         status="pending",
         amount=Decimal("100.00"),
         paid_amount=Decimal("0.00"),
+        approval_pending_amount=Decimal("0.00"),
         due_date=None,
         notes=None,
         paid_at=None,
@@ -230,7 +231,12 @@ def test_pos_receivable_state_transitions_and_management_guards() -> None:
         )
 
     paid = SimpleNamespace(
-        **{**receivable.__dict__, "status": "partial", "paid_amount": Decimal("1")}
+        **{
+            **receivable.__dict__,
+            "status": "partial",
+            "paid_amount": Decimal("1"),
+            "approval_pending_amount": Decimal("0"),
+        }
     )
     service._locked_receivable = lambda _grant, _id: paid  # type: ignore[method-assign]
     with pytest.raises(ConflictError, match="Revierte primero"):
@@ -250,6 +256,7 @@ def test_pos_receivable_state_transitions_and_management_guards() -> None:
         state = SimpleNamespace(
             amount=Decimal("100"),
             paid_amount=paid_amount,
+            approval_pending_amount=Decimal("0"),
             status="",
             paid_at=None,
             cancelled_at=datetime.now(UTC),
@@ -440,6 +447,7 @@ def test_pos_reversal_register_discount_and_appointment_balance_guards() -> None
         appointment_id=uuid7(),
         amount=Decimal("100"),
         paid_amount=Decimal("30"),
+        approval_pending_amount=Decimal("0"),
         status="partial",
         updated_by_platform_user_id=principal.platform_user_id,
     )
@@ -507,6 +515,7 @@ def test_receivable_payment_replay_concurrency_and_business_guards() -> None:
             "currency_code": "BOB",
             "amount": Decimal("100"),
             "paid_amount": Decimal("0"),
+            "approval_pending_amount": Decimal("0"),
             "status": "pending",
             "version": 1,
         }
@@ -778,6 +787,7 @@ def test_receivable_payment_evidence_and_storage_failures() -> None:
             currency_code="BOB",
             amount=Decimal("100"),
             paid_amount=Decimal("0"),
+            approval_pending_amount=Decimal("0"),
             paid_at=None,
             cancelled_at=None,
             cancellation_reason=None,
@@ -1021,7 +1031,10 @@ def test_payment_reversal_and_sale_void_guards() -> None:
         "affects_cash_drawer": False,
         "cash_register_id": None,
     }
-    current_receivable = SimpleNamespace(paid_amount=Decimal("10"))
+    current_receivable = SimpleNamespace(
+        paid_amount=Decimal("10"),
+        approval_pending_amount=Decimal("0"),
+    )
 
     def reverse(repository: PaymentRepository) -> object:
         service = _service(repository)
@@ -1133,7 +1146,7 @@ def test_payment_reversal_and_sale_void_guards() -> None:
             SaleRepository(
                 [None, None],
                 SimpleNamespace(**base_sale),
-                SimpleNamespace(paid_amount=Decimal("1")),
+                SimpleNamespace(paid_amount=Decimal("1"), approval_pending_amount=Decimal("0")),
             )
         )
 

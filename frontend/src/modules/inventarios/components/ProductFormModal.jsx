@@ -9,6 +9,8 @@ import { useCatalogStore } from '@/stores/catalogStore'
 import { useInventarioStore } from '@/stores/inventarioStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
+import { catalogApi } from '@/services/catalogApi'
+import { mapCategoryFromApi } from '@/services/adapters/catalog'
 import { resolveCategoryId } from '@/lib/catalogSync'
 import { cn } from '@/lib/utils'
 
@@ -61,6 +63,8 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
   const saveProduct = useCatalogStore((s) => s.saveProduct)
   const recordAdjustment = useInventarioStore((s) => s.recordAdjustment)
   const FORM_CATEGORIES = useConfigStore((s) => s.categories)
+  const setCategories = useConfigStore((s) => s.setCategories)
+  const canManageCatalog = useSessionStore((s) => s.hasPermission('catalog.manage'))
   const BRANCHES = useConfigStore((s) => s.branches)
   const taxDefault = useConfigStore((s) => s.settings.taxDefault)
   const isOnline = useSessionStore((s) => s.isOnline())
@@ -69,6 +73,8 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
   const [saving, setSaving] = useState(false)
   const [stockBaseline, setStockBaseline] = useState(null)
   const [adjustmentReason, setAdjustmentReason] = useState('')
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [creatingCategory, setCreatingCategory] = useState(false)
   const editing = !!product
   const isSupply = form.type === 'supply'
   const isService = form.type === 'service'
@@ -111,6 +117,33 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
   }, [open, product, defaultType, taxDefault])
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+
+  const createQuickCategory = async () => {
+    const name = newCategoryName.trim()
+    if (!name || !canManageCatalog) return
+    setCreatingCategory(true)
+    try {
+      if (isOnline) {
+        const created = await catalogApi.createCategory({
+          name,
+          categoryKind: isService ? 'service' : 'product',
+        })
+        const mapped = mapCategoryFromApi(created, FORM_CATEGORIES.length)
+        setCategories([...FORM_CATEGORIES.filter((c) => c.id !== mapped.id), mapped])
+        set('category', mapped.id)
+      } else {
+        const id = `cat-${Date.now()}`
+        setCategories([...FORM_CATEGORIES, { id, name, type: isService ? 'servicio' : 'producto', active: true }])
+        set('category', id)
+      }
+      setNewCategoryName('')
+      toast.success('Categoría creada')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo crear la categoría')
+    } finally {
+      setCreatingCategory(false)
+    }
+  }
 
   const setType = (type) => {
     setForm((f) => ({
@@ -315,6 +348,26 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
                 </button>
               ))}
             </div>
+            {canManageCatalog && (
+              <div className="mt-2 flex gap-2">
+                <Input
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  placeholder="Nueva categoría…"
+                  data-testid="inventory-quick-category-name"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={creatingCategory || !newCategoryName.trim()}
+                  onClick={createQuickCategory}
+                  data-testid="inventory-quick-category-add"
+                >
+                  Crear
+                </Button>
+              </div>
+            )}
           </div>
         )}
 

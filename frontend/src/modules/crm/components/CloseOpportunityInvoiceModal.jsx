@@ -24,17 +24,26 @@ import { Select } from '@/components/ui/Select'
 
 import { Input } from '@/components/ui/Input'
 
+import { PaymentMethodPicker } from '@/modules/pos/components/PaymentMethodPicker'
+
+import { PaymentEvidenceFields } from '@/modules/pos/components/PaymentEvidenceFields'
+
+import { validatePaymentEvidence } from '@/modules/pos/lib/paymentMethods'
+
+import {
+  listCheckoutPaymentMethods,
+  resolveQuoteInvoicePaymentMethod,
+} from '../lib/quoteInvoice'
+
 import { formatDOP } from '@/lib/format'
 
 import {
 
-  effectiveOpportunityCustomerId,
-
-  opportunityCompanyLabel,
-
-  resolveCustomerForOpportunity,
-
-} from '../lib/opportunityCustomer'
+  effectiveLeadCustomerId,
+  leadCompanyLabel,
+  resolveCustomerForLead,
+} from '../lib/leadCustomer'
+import { leadDisplayTitle } from '../lib/pipelineLeads'
 
 import {
   findBillableQuote,
@@ -44,27 +53,13 @@ import {
 } from '../lib/pipelineInvoice'
 import { downloadQuotePdf, printQuoteDocument } from '../lib/sales'
 
-
-
-const PAYMENT_OPTIONS = [
-
-  { value: 'efectivo', label: 'Efectivo' },
-
-  { value: 'tarjeta', label: 'Tarjeta' },
-
-  { value: 'transferencia', label: 'Transferencia' },
-
-]
-
-
-
-export function CloseOpportunityInvoiceModal({
+export function CloseLeadInvoiceModal({
 
   open,
 
   onClose,
 
-  opportunity,
+  lead,
 
   quotes,
 
@@ -75,6 +70,8 @@ export function CloseOpportunityInvoiceModal({
   linkableCustomers = [],
 
   products = [],
+
+  paymentMethods = [],
 
   paymentMethod,
 
@@ -112,27 +109,41 @@ export function CloseOpportunityInvoiceModal({
 
   const [draftPrice, setDraftPrice] = useState('')
 
+  const [paymentReference, setPaymentReference] = useState('')
 
+  const [paymentProof, setPaymentProof] = useState(null)
+
+  const [paymentEvidenceError, setPaymentEvidenceError] = useState(false)
+
+  const enabledPaymentMethods = useMemo(
+    () => listCheckoutPaymentMethods(paymentMethods),
+    [paymentMethods]
+  )
+
+  const selectedPaymentMethod = useMemo(
+    () => enabledPaymentMethods.find((method) => method.id === paymentMethod) || null,
+    [enabledPaymentMethods, paymentMethod]
+  )
 
   const resolvedCustomer = useMemo(
 
-    () => (opportunity ? resolveCustomerForOpportunity(opportunity, customers) : null),
+    () => (lead ? resolveCustomerForLead(lead, customers) : null),
 
-    [opportunity, customers],
+    [lead, customers],
 
   )
 
-  const companyLabel = opportunity ? opportunityCompanyLabel(opportunity) : ''
+  const companyLabel = lead ? leadCompanyLabel(lead) : ''
 
-  const effectiveCustomerId = opportunity ? effectiveOpportunityCustomerId(opportunity, customers) : null
+  const effectiveCustomerId = lead ? effectiveLeadCustomerId(lead, customers) : null
 
 
 
   const quote = useMemo(
 
-    () => (opportunity ? findBillableQuote(quotes, opportunity.id) : null),
+    () => (lead ? findBillableQuote(quotes, lead.id) : null),
 
-    [opportunity, quotes],
+    [lead, quotes],
 
   )
 
@@ -150,21 +161,21 @@ export function CloseOpportunityInvoiceModal({
 
     setDraftPrice('')
 
-  }, [open, opportunity?.id])
+  }, [open, lead?.id])
 
 
 
-  const branch = branches.find((item) => item.id === opportunity?.branchId)
+  const branch = branches.find((item) => item.id === lead?.branchId)
 
-  const opportunityForValidation = opportunity
+  const leadForValidation = lead
 
-    ? { ...opportunity, customerId: effectiveCustomerId || null }
+    ? { ...lead, customerId: effectiveCustomerId || null }
 
     : null
 
-  const validationError = opportunityForValidation
+  const validationError = leadForValidation
 
-    ? validatePipelineClose({ opportunity: opportunityForValidation, quotes })
+    ? validatePipelineClose({ lead: leadForValidation, quotes })
 
     : null
 
@@ -188,7 +199,7 @@ export function CloseOpportunityInvoiceModal({
 
   const linkableQuotes = useMemo(() => {
 
-    if (!opportunity) return []
+    if (!lead) return []
 
     return quotes.filter((row) => {
 
@@ -196,9 +207,9 @@ export function CloseOpportunityInvoiceModal({
 
       if (['rechazada', 'vencida'].includes(row.status)) return false
 
-      if (row.opportunityId && row.opportunityId !== opportunity.id) return false
+      if (row.leadId && row.leadId !== lead?.id) return false
 
-      if (row.branchId && opportunity.branchId && row.branchId !== opportunity.branchId) return false
+      if (row.branchId && lead.branchId && row.branchId !== lead.branchId) return false
 
       if (effectiveCustomerId && row.customerId && row.customerId !== effectiveCustomerId) return false
 
@@ -206,7 +217,7 @@ export function CloseOpportunityInvoiceModal({
 
     })
 
-  }, [quotes, opportunity, effectiveCustomerId])
+  }, [quotes, lead, effectiveCustomerId])
 
 
 
@@ -238,7 +249,7 @@ export function CloseOpportunityInvoiceModal({
 
   const buildQuotePayload = () => {
 
-    if (!opportunity) return null
+    if (!lead) return null
 
     const product = products.find((item) => item.id === draftItemId)
 
@@ -256,9 +267,9 @@ export function CloseOpportunityInvoiceModal({
 
       customerName: customer?.name || companyLabel,
 
-      opportunityId: opportunity.id,
+      leadId: lead.id,
 
-      branchId: opportunity.branchId,
+      branchId: lead.branchId,
 
       items: [{
 
@@ -304,9 +315,9 @@ export function CloseOpportunityInvoiceModal({
 
   const handleLinkQuote = async () => {
 
-    if (!linkQuoteId || !opportunity) return
+    if (!linkQuoteId || !lead) return
 
-    await onLinkQuote(linkQuoteId, opportunity.id)
+    await onLinkQuote(linkQuoteId, lead.id)
 
   }
 
@@ -328,6 +339,27 @@ export function CloseOpportunityInvoiceModal({
 
     if (!effectiveCustomerId) return
 
+    if (!quote?.convertedSaleId) {
+      const evidenceValidation = validatePaymentEvidence(selectedPaymentMethod, {
+        reference: paymentReference,
+        proof: paymentProof,
+      })
+      if (evidenceValidation) {
+        setPaymentEvidenceError(true)
+        return
+      }
+      setPaymentEvidenceError(false)
+      const resolved = resolveQuoteInvoicePaymentMethod(paymentMethods, { paymentMethodId: paymentMethod })
+      onConfirm({
+        customerId: effectiveCustomerId,
+        paymentMethod: resolved.semantic,
+        collectionMode: resolved.collectionMode,
+        reference: paymentReference.trim() || null,
+        proof: paymentProof,
+      })
+      return
+    }
+
     onConfirm({ customerId: effectiveCustomerId })
 
   }
@@ -336,7 +368,9 @@ export function CloseOpportunityInvoiceModal({
 
   const handlePrintQuote = () => {
     if (!quote || !documentCtx) return
-    printQuoteDocument(quote, documentCtx)
+    printQuoteDocument(quote, documentCtx).catch((error) => {
+      toast.error(error.message || 'No se pudo imprimir la cotización.')
+    })
     toast.success('Enviando cotización a impresión…')
   }
 
@@ -365,7 +399,7 @@ export function CloseOpportunityInvoiceModal({
       bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
     >
 
-      {opportunity && (
+      {lead && (
         <>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
 
@@ -403,7 +437,7 @@ export function CloseOpportunityInvoiceModal({
 
               <div className="min-w-0 flex-1">
 
-                <p className="font-semibold text-slate-900">{opportunity.title}</p>
+                <p className="font-semibold text-slate-900">{leadDisplayTitle(lead)}</p>
 
                 <p className="text-sm text-slate-500">{companyLabel}</p>
 
@@ -453,7 +487,7 @@ export function CloseOpportunityInvoiceModal({
                   Vincula o crea el cliente para facturar. También puedes cotizar con «{companyLabel}» y crear la ficha al guardar.
                 </p>
 
-                {opportunity.leadId && onConvertLead && (
+                {onConvertLead && (
 
                   <Button
 
@@ -473,7 +507,7 @@ export function CloseOpportunityInvoiceModal({
 
                     <UserCheck className="h-3.5 w-3.5" />
 
-                    {convertLeadBusy ? 'Convirtiendo…' : 'Convertir lead a cliente B2B'}
+                    {convertLeadBusy ? 'Convirtiendo…' : 'Convertir lead a cliente'}
 
                   </Button>
 
@@ -490,6 +524,10 @@ export function CloseOpportunityInvoiceModal({
                       value={linkCustomerId}
 
                       onChange={setLinkCustomerId}
+
+                      searchable
+
+                      searchPlaceholder="Buscar cliente…"
 
                       options={[
 
@@ -662,6 +700,10 @@ export function CloseOpportunityInvoiceModal({
 
                       onChange={setLinkQuoteId}
 
+                      searchable
+
+                      searchPlaceholder="Buscar cotización…"
+
                       options={[
 
                         { value: '', label: 'Elegir cotización…' },
@@ -746,6 +788,10 @@ export function CloseOpportunityInvoiceModal({
 
                       options={productOptions}
 
+                      searchable
+
+                      searchPlaceholder="Buscar producto…"
+
                       data-testid="pipeline-close-quote-product"
 
                     />
@@ -821,16 +867,24 @@ export function CloseOpportunityInvoiceModal({
         </div>
 
         <div className="shrink-0 space-y-3 border-t border-slate-100 bg-white p-5">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-600">Método de pago</label>
-            <Select
-              disabled={Boolean(quote?.convertedSaleId)}
-              value={paymentMethod}
-              onChange={onPaymentMethodChange}
-              options={PAYMENT_OPTIONS}
-              data-testid="pipeline-close-payment-method"
-            />
-          </div>
+          {!quote?.convertedSaleId && (
+            <>
+              <PaymentMethodPicker
+                methods={enabledPaymentMethods}
+                value={paymentMethod}
+                onChange={onPaymentMethodChange}
+                testIdPrefix="pipeline-close-payment"
+              />
+              <PaymentEvidenceFields
+                method={selectedPaymentMethod}
+                reference={paymentReference}
+                onReferenceChange={setPaymentReference}
+                proof={paymentProof}
+                onProofChange={setPaymentProof}
+                showError={paymentEvidenceError}
+              />
+            </>
+          )}
 
           {showValidationError && validationError && (
             <p className="text-sm text-red-600" data-testid="pipeline-close-validation">
@@ -861,4 +915,5 @@ export function CloseOpportunityInvoiceModal({
 
 }
 
+export const CloseOpportunityInvoiceModal = CloseLeadInvoiceModal
 

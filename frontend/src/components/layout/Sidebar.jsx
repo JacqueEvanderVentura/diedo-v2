@@ -3,7 +3,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { NAV_GROUPS, BACKOFFICE_NAV } from '@/data/navigation'
+import { NAV_GROUPS, BACKOFFICE_NAV_ITEMS } from '@/data/navigation'
 import { isCrmSidebarItemActive, resolveCrmNavGroup } from '@/modules/crm/lib/crmNavigation'
 import { useCrmStore } from '@/stores/crmStore'
 import { useUiStore } from '@/stores/uiStore'
@@ -11,7 +11,7 @@ import { usePosStore } from '@/stores/posStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { isModuleAvailable } from '@/services/moduleAvailability'
-import { FEATURES } from '@/config/features'
+import { isChatModuleSurfaceEnabled } from '@/config/features'
 import { HeliosIcon, PRODUCT_NAME } from '@/components/brand/HeliosIcon'
 import { deriveOpenNavGroups, isNavGroupActive } from '@/lib/sidebarNav'
 
@@ -57,11 +57,14 @@ function ActivePill({ box, animate }) {
 function SingleItem({ item, collapsed, onNavigate, crmUiMode }) {
   const Icon = Icons[item.icon] || Icons.Circle
   const { pathname } = useLocation()
-  const active = isCrmSidebarItemActive(item, pathname, crmUiMode)
+  const active = item.end
+    ? pathname === item.to
+    : isCrmSidebarItemActive(item, pathname, crmUiMode)
 
   return (
     <NavLink
       to={item.to}
+      end={Boolean(item.end)}
       onClick={onNavigate}
       data-testid={`nav-${item.id}`}
       data-nav-module=""
@@ -153,7 +156,7 @@ function GroupItem({ group, collapsed, open, onToggle, onNavigate }) {
   )
 
   return (
-    <div>
+    <div data-nav-group-id={group.id}>
       {alwaysExpanded ? (
         <div
           data-testid={`nav-group-${group.id}`}
@@ -238,13 +241,13 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
     const withCrmMode = (groups) => groups.map((group) => resolveCrmNavGroup(group, crmUiMode))
     if (sessionStatus === 'demo') return withCrmMode(NAV_GROUPS)
     if (sessionUser?.isPlatformOperator) {
-      return [BACKOFFICE_NAV]
+      return BACKOFFICE_NAV_ITEMS
     }
     const modules = new Set(enabledModules || [])
     const permissions = new Set(effectivePermissionCodes || [])
     return withCrmMode(
       NAV_GROUPS.filter((group) => {
-        if (group.feature && !FEATURES[group.feature]) return false
+        if (group.id === 'chat' && !isChatModuleSurfaceEnabled(modules)) return false
         if (!isModuleAvailable(group.module, modules)) return false
         if (!group.children && group.permission && !permissions.has(group.permission)) return false
         return true
@@ -269,8 +272,31 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
   }, [ensureWorkspaceSettings, sessionStatus])
   const [open, setOpen] = useState(() => deriveOpenNavGroups(navigation, location.pathname))
   const navRef = useRef(null)
+  const navScrollRef = useRef(null)
   const canAnimate = useRef(false)
   const [pill, setPill] = useState({ box: null, animate: false })
+
+  const scrollNavGroupIntoView = (groupId) => {
+    const scrollEl = navScrollRef.current
+    if (!scrollEl) return
+
+    const nudge = () => {
+      const anchor = scrollEl.querySelector(`[data-nav-group-id="${groupId}"]`)
+      if (!anchor) return
+      anchor.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      const scrollRect = scrollEl.getBoundingClientRect()
+      const anchorRect = anchor.getBoundingClientRect()
+      if (anchorRect.bottom > scrollRect.bottom - 12) {
+        scrollEl.scrollBy({
+          top: anchorRect.bottom - scrollRect.bottom + 20,
+          behavior: 'smooth',
+        })
+      }
+    }
+
+    requestAnimationFrame(() => requestAnimationFrame(nudge))
+    window.setTimeout(nudge, 240)
+  }
 
   useEffect(() => {
     if (collapsed) {
@@ -332,7 +358,9 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
   const toggle = (id) => {
     const group = navigation.find((g) => g.id === id)
     if (group?.alwaysExpanded) return
-    setOpen((p) => ({ ...p, [id]: !p[id] }))
+    const willOpen = !open[id]
+    setOpen((p) => ({ ...p, [id]: willOpen }))
+    if (willOpen && !collapsed) scrollNavGroupIntoView(id)
   }
 
   return (
@@ -368,7 +396,7 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
       </div>
 
       {/* Nav — pill is a sibling overlay so it can translate between modules */}
-      <nav className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto scrollbar-thin">
+      <nav ref={navScrollRef} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto scrollbar-thin">
         <div ref={navRef} className="relative flex flex-col gap-1 overflow-hidden px-3 py-2">
           {!collapsed && <ActivePill box={pill.box} animate={pill.animate} />}
           {navigation.map((g) =>

@@ -1,3 +1,5 @@
+import { DEFAULT_BILLING_DOCUMENTS } from '../../modules/configuracion/lib/billingDocuments'
+
 function optionalText(value) {
   const normalized = String(value || '').trim()
   return normalized || null
@@ -34,6 +36,34 @@ export function mapLegalEntityFromApi(entity) {
   }
 }
 
+
+export function mapBillingDocumentsFromApi(raw) {
+  if (!raw) return { ...DEFAULT_BILLING_DOCUMENTS }
+  return {
+    tradeName: raw.tradeName || raw.trade_name || '',
+    legalName: raw.legalName || raw.legal_name || '',
+    rnc: raw.rnc || '',
+    address: raw.address || '',
+    phone: raw.phone || '',
+    email: raw.email || '',
+    logoDataUrl: raw.logoDataUrl || raw.logo_data_url || '',
+    footerNote: raw.footerNote || raw.footer_note || '',
+  }
+}
+
+export function billingDocumentsToApi(billingDocuments = {}) {
+  return {
+    trade_name: billingDocuments.tradeName?.trim() || '',
+    legal_name: billingDocuments.legalName?.trim() || '',
+    rnc: billingDocuments.rnc?.trim() || '',
+    address: billingDocuments.address?.trim() || '',
+    phone: billingDocuments.phone?.trim() || '',
+    email: optionalText(billingDocuments.email),
+    logo_data_url: billingDocuments.logoDataUrl || '',
+    footer_note: billingDocuments.footerNote?.trim() || '',
+  }
+}
+
 export function mapBranchFromApi(branch, legalEntities = []) {
   const entity = legalEntities.find((item) => item.id === branch.legalEntityId) || null
   const details = branch.details || {}
@@ -60,6 +90,7 @@ export function mapBranchFromApi(branch, legalEntities = []) {
     fiscalEffectiveFrom: entity?.taxIdentity?.validFrom || '',
     legalEntityVersion: entity?.version || null,
     sharing: entity?.sharing || { branchCount: 0, shared: false },
+    billingDocuments: mapBillingDocumentsFromApi(details.billingDocuments || details.billing_documents),
     source: 'api',
   }
 }
@@ -122,6 +153,7 @@ export function branchGeneralPatchToApi(form, branch) {
       email: optionalText(form.email),
       manager: form.manager || '',
       schedule: form.schedule || '',
+      billing_documents: billingDocumentsToApi(form.billingDocuments),
     },
     version: branch.version,
   }

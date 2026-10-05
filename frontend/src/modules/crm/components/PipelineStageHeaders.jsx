@@ -7,7 +7,7 @@ const STAGE_HEADER_CLASS = 'w-72 shrink-0 px-1'
 export function PipelineStageHeaders({ stages, stageMeta, byStage, className }) {
   return (
     <div
-      className={cn('flex shrink-0 gap-4 border-b border-slate-100/90 pb-2 pt-1', className)}
+      className={cn('flex shrink-0 gap-4 border-b border-slate-100/90 pb-3 pt-1', className)}
       data-testid="pipeline-stage-headers"
     >
       {stages.map((stage) => {

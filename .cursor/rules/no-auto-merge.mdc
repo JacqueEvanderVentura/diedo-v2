@@ -1,0 +1,18 @@
+---
+description: Never merge git branches or GitHub PRs unless the user explicitly orders that merge
+alwaysApply: true
+---
+
+# No auto-merge
+
+Never merge anything. Not branches, not pull requests, not "just this one."
+
+- Do **not** run `gh pr merge`, `git merge`, `git pull --merge`, or the GitHub merge API.
+- Do **not** merge because a PR was created, CI went green, the user asked "can I merge?", or a previous message said merge was allowed.
+- Creating a PR is not permission to merge it.
+- Pushing a branch is not permission to merge it.
+- Updating `qa` is not permission to promote `qa` → `full-stack` (or any other pair).
+
+The only exception: the **current** user message names the exact source, the exact target, and the word merge (for example: "merge PR #4 into qa"). If that sentence is missing, stop after the PR exists and give the URL.
+
+Never close this by "helpfully" merging anyway.

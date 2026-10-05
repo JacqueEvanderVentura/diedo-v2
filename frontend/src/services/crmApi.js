@@ -18,7 +18,6 @@ export const crmApi = {
   overview: (params) => apiClient.get(`${CRM_BASE}/overview`, params),
   leads: (params) => apiClient.get(`${CRM_BASE}/leads`, params),
   getLead: (id) => apiClient.get(`${CRM_BASE}/leads/${id}`),
-  opportunities: (params) => apiClient.get(`${CRM_BASE}/opportunities`, params),
   activities: (params) => apiClient.get(`${CRM_BASE}/activities`, params),
   customers: (params) => apiClient.get(`${CRM_BASE}/customers`, params),
   quotes: (params) => apiClient.get(`${CRM_BASE}/quotes`, params),
@@ -56,22 +55,6 @@ export const crmApi = {
     payload,
     idempotencyOptions(key)
   ),
-  createLeadOpportunity: (leadId, payload, key) => apiClient.post(
-    `${CRM_BASE}/leads/${leadId}/opportunity`,
-    payload,
-    idempotencyOptions(key)
-  ),
-
-  createOpportunity: (payload, key) => apiClient.post(
-    `${CRM_BASE}/opportunities`,
-    payload,
-    idempotencyOptions(key)
-  ),
-  updateOpportunity: (opportunityId, payload) => apiClient.patch(
-    `${CRM_BASE}/opportunities/${opportunityId}`,
-    payload
-  ),
-
   createActivity: (payload, key) => apiClient.post(
     `${CRM_BASE}/activities`,
     payload,
@@ -100,6 +83,10 @@ export const crmApi = {
   cancelQuote: (quoteId, version, reason = 'Cancelada desde CRM') => apiClient.post(
     `${CRM_BASE}/quotes/${quoteId}/cancel`,
     { version, reason }
+  ),
+  deleteQuote: (quoteId, version) => apiClient.delete(
+    `${CRM_BASE}/quotes/${quoteId}`,
+    { version },
   ),
   invoiceQuote: (quoteId, payload, key) => apiClient.post(
     `${CRM_BASE}/quotes/${quoteId}/invoice`,

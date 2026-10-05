@@ -871,7 +871,7 @@ def test_terminal_pos_complete_http_flow(client: TestClient, tmp_path: Path) -> 
             "amount": "10.00",
             "methodId": methods["cash"]["id"],
             "registerId": register_id,
-            "version": "1",
+            "version": str(listed_receivable["version"]),
             "reference": f"PARTIAL-{suffix}",
         }
         collector_email = _create_branch_scoped_pos_user(
@@ -892,8 +892,15 @@ def test_terminal_pos_complete_http_flow(client: TestClient, tmp_path: Path) -> 
         assert partial["status"] == "partial"
         assert partial["paidTotal"] == "10.00"
         assert partial["balance"] == "20.00"
-        assert partial["version"] == 2
-        assert set(partial) == {"id", "status", "paidTotal", "balance", "version"}
+        assert partial["version"] == listed_receivable["version"] + 1
+        assert set(partial) == {
+            "id",
+            "status",
+            "paidTotal",
+            "approvalPendingAmount",
+            "balance",
+            "version",
+        }
         collector_detail = client.get(
             f"/api/v1/pos/receivables/{receivable_id}", headers=collector_headers
         )
@@ -906,7 +913,7 @@ def test_terminal_pos_complete_http_flow(client: TestClient, tmp_path: Path) -> 
                 "amount": "20.01",
                 "methodId": methods["cash"]["id"],
                 "registerId": register_id,
-                "version": "2",
+                "version": str(partial["version"]),
             },
         )
         assert overpayment.status_code == 400
@@ -917,7 +924,7 @@ def test_terminal_pos_complete_http_flow(client: TestClient, tmp_path: Path) -> 
             "amount": "20.00",
             "methodId": methods["cash"]["id"],
             "registerId": register_id,
-            "version": "2",
+            "version": str(partial["version"]),
             "reference": f"FINAL-{suffix}",
         }
         final_response = client.post(
@@ -930,7 +937,7 @@ def test_terminal_pos_complete_http_flow(client: TestClient, tmp_path: Path) -> 
         assert final_receivable["status"] == "paid"
         assert final_receivable["paidTotal"] == "30.00"
         assert final_receivable["balance"] == "0.00"
-        assert final_receivable["version"] == 3
+        assert final_receivable["version"] == partial["version"] + 1
         final_detail_response = client.get(
             f"/api/v1/pos/receivables/{receivable_id}", headers=headers
         )
@@ -948,7 +955,7 @@ def test_terminal_pos_complete_http_flow(client: TestClient, tmp_path: Path) -> 
             data=final_payment_data,
         )
         assert replayed_final.status_code == 201, replayed_final.text
-        assert replayed_final.json()["version"] == 3
+        assert replayed_final.json()["version"] == final_receivable["version"]
         replayed_detail_response = client.get(
             f"/api/v1/pos/receivables/{receivable_id}", headers=headers
         )
@@ -1869,3 +1876,381 @@ def test_concurrent_open_register_keeps_one_open_session(client: TestClient) -> 
         json={"countedCash": "0.00", "version": current["version"]},
     )
     assert close_response.status_code == 200, close_response.text
+
+
+@pytest.mark.integration
+def test_receivable_proof_upload_sets_approval_and_approve_clears_pending(
+    client: TestClient,
+) -> None:
+    _, branch_id = _bootstrap_isolated_branch()
+    headers = _login(client)
+    suffix = uuid7().hex[-12:]
+
+    state = client.get(
+        "/api/v1/pos/state",
+        headers=headers,
+        params={"branchId": str(branch_id)},
+    )
+    assert state.status_code == 200, state.text
+    methods = {method["code"]: method for method in state.json()["paymentMethods"]}
+
+    opened = client.post(
+        "/api/v1/pos/registers",
+        headers=_idempotent(headers, f"approve-flow-open-{suffix}"),
+        json={
+            "branchId": str(branch_id),
+            "openingCash": "50.00",
+            "currency": "DOP",
+        },
+    )
+    assert opened.status_code == 201, opened.text
+    register_id = opened.json()["id"]
+
+    product = _create_product(client, headers, branch_id, suffix)
+    product_id = str(product["id"])
+
+    customer_response = client.post(
+        "/api/v1/customers",
+        headers=headers,
+        json={
+            "customerType": "person",
+            "displayName": f"Approve Flow {suffix}",
+            "firstName": "Cliente",
+            "lastName": suffix,
+            "email": f"approve.flow.{suffix}@example.com",
+            "branchIds": [str(branch_id)],
+        },
+    )
+    assert customer_response.status_code == 201, customer_response.text
+    customer_id = customer_response.json()["id"]
+
+    checkout = client.post(
+        "/api/v1/pos/checkout",
+        headers=_idempotent(headers, f"approve-flow-checkout-{suffix}"),
+        json={
+            "branchId": str(branch_id),
+            "registerId": register_id,
+            "customerId": customer_id,
+            "paymentMethodId": methods["transfer"]["id"],
+            "reference": f"TR-{suffix}",
+            "lines": [{"itemId": product_id, "quantity": "1"}],
+        },
+    )
+    assert checkout.status_code == 201, checkout.text
+    receivable_id = checkout.json()["receivableId"]
+    assert receivable_id is not None
+
+    receivable = client.get(
+        f"/api/v1/pos/receivables/{receivable_id}",
+        headers=headers,
+    ).json()
+    assert receivable["approvalPendingAmount"] == receivable["originalAmount"]
+
+    approve = client.post(
+        f"/api/v1/pos/receivables/{receivable_id}/approve",
+        headers=_idempotent(headers, f"approve-flow-approve-{suffix}"),
+        json={"version": receivable["version"]},
+    )
+    assert approve.status_code == 200, approve.text
+    approved = approve.json()
+    assert approved["approvalPendingAmount"] == "0.00"
+    assert approved["status"] == "paid"
+
+    unapprove = client.post(
+        f"/api/v1/pos/receivables/{receivable_id}/unapprove",
+        headers=_idempotent(headers, f"approve-flow-unapprove-{suffix}"),
+        json={"version": approved["version"]},
+    )
+    assert unapprove.status_code == 200, unapprove.text
+    rejected = unapprove.json()
+    assert rejected["approvalPendingAmount"] == "0.00"
+    assert rejected["paidTotal"] == "0.00"
+    assert rejected["status"] == "pending"
+
+    proof_response = client.post(
+        f"/api/v1/pos/receivables/{receivable_id}/proofs",
+        headers=_idempotent(headers, f"approve-flow-proof-{suffix}"),
+        files={"file": ("proof.png", _PNG_PROOF, "image/png")},
+    )
+    assert proof_response.status_code == 201, proof_response.text
+    after_upload = client.get(
+        f"/api/v1/pos/receivables/{receivable_id}",
+        headers=headers,
+    ).json()
+    assert after_upload["approvalPendingAmount"] == after_upload["originalAmount"]
+
+    reject_pending = client.post(
+        f"/api/v1/pos/receivables/{receivable_id}/unapprove",
+        headers=_idempotent(headers, f"approve-flow-reject-{suffix}"),
+        json={"version": after_upload["version"]},
+    )
+    assert reject_pending.status_code == 200, reject_pending.text
+    cxc = reject_pending.json()
+    assert cxc["approvalPendingAmount"] == "0.00"
+    assert cxc["status"] == "pending"
+    after_reject = client.get(
+        f"/api/v1/pos/receivables/{receivable_id}",
+        headers=headers,
+    ).json()
+    assert len(after_reject["proofs"]) >= 1
+
+
+@pytest.mark.integration
+def test_checkout_split_tenders_creates_partial_receivable_with_approval_pending(
+    client: TestClient,
+) -> None:
+    _, branch_id = _bootstrap_isolated_branch()
+    headers = _login(client)
+    suffix = uuid7().hex[-12:]
+
+    state = client.get(
+        "/api/v1/pos/state",
+        headers=headers,
+        params={"branchId": str(branch_id)},
+    )
+    assert state.status_code == 200, state.text
+    methods = {method["code"]: method for method in state.json()["paymentMethods"]}
+
+    opened = client.post(
+        "/api/v1/pos/registers",
+        headers=_idempotent(headers, f"split-tender-open-{suffix}"),
+        json={
+            "branchId": str(branch_id),
+            "openingCash": "50.00",
+            "currency": "DOP",
+        },
+    )
+    assert opened.status_code == 201, opened.text
+    register_id = opened.json()["id"]
+
+    product = _create_product(client, headers, branch_id, suffix)
+    product_id = str(product["id"])
+
+    customer_response = client.post(
+        "/api/v1/customers",
+        headers=headers,
+        json={
+            "customerType": "person",
+            "displayName": f"Split Tender {suffix}",
+            "firstName": "Cliente",
+            "lastName": suffix,
+            "email": f"split.tender.{suffix}@example.com",
+            "branchIds": [str(branch_id)],
+        },
+    )
+    assert customer_response.status_code == 201, customer_response.text
+    customer_id = customer_response.json()["id"]
+
+    checkout = client.post(
+        "/api/v1/pos/checkout",
+        headers=_idempotent(headers, f"split-tender-checkout-{suffix}"),
+        json={
+            "branchId": str(branch_id),
+            "registerId": register_id,
+            "customerId": customer_id,
+            "tenders": [
+                {
+                    "paymentMethodId": methods["cash"]["id"],
+                    "amount": "15.00",
+                },
+                {
+                    "paymentMethodId": methods["transfer"]["id"],
+                    "amount": "15.00",
+                    "reference": f"TR-{suffix}",
+                },
+            ],
+            "lines": [{"itemId": product_id, "quantity": "3"}],
+        },
+    )
+    assert checkout.status_code == 201, checkout.text
+    body = checkout.json()
+    assert body["total"] == "30.00"
+    receivable_id = body["receivableId"]
+    assert receivable_id is not None
+
+    receivable_response = client.get(
+        f"/api/v1/pos/receivables/{receivable_id}",
+        headers=headers,
+    )
+    assert receivable_response.status_code == 200, receivable_response.text
+    receivable = receivable_response.json()
+    assert receivable["status"] == "partial"
+    assert receivable["paidTotal"] == "15.00"
+    assert receivable["approvalPendingAmount"] == "15.00"
+    assert receivable["balance"] == "0.00"
+
+    sale_id = body["id"]
+    sale_response = client.get(f"/api/v1/pos/sales/{sale_id}", headers=headers)
+    assert sale_response.status_code == 200, sale_response.text
+    sale_body = sale_response.json()
+    assert len(sale_body["tenders"]) == 2
+    tender_amounts = sorted(item["amount"] for item in sale_body["tenders"])
+    assert tender_amounts == ["15.00", "15.00"]
+    transfer_tender = next(
+        item for item in sale_body["tenders"] if item["reference"] == f"TR-{suffix}"
+    )
+    assert transfer_tender["status"] == "awaiting_approval"
+
+
+@pytest.mark.integration
+def test_get_sale_without_split_tenders_synthesizes_single_line(client: TestClient) -> None:
+    _, branch_id = _bootstrap_isolated_branch()
+    headers = _login(client)
+    suffix = uuid7().hex[-12:]
+    state = client.get(
+        "/api/v1/pos/state",
+        headers=headers,
+        params={"branchId": str(branch_id)},
+    )
+    assert state.status_code == 200, state.text
+    methods = {method["code"]: method for method in state.json()["paymentMethods"]}
+    opened = client.post(
+        "/api/v1/pos/registers",
+        headers=_idempotent(headers, f"synth-tender-open-{suffix}"),
+        json={"branchId": str(branch_id), "openingCash": "50.00", "currency": "DOP"},
+    )
+    assert opened.status_code == 201, opened.text
+    register_id = opened.json()["id"]
+    product = _create_product(client, headers, branch_id, suffix)
+    checkout = client.post(
+        "/api/v1/pos/checkout",
+        headers=_idempotent(headers, f"synth-tender-checkout-{suffix}"),
+        json={
+            "branchId": str(branch_id),
+            "registerId": register_id,
+            "paymentMethodId": methods["cash"]["id"],
+            "lines": [{"itemId": str(product["id"]), "quantity": "1"}],
+        },
+    )
+    assert checkout.status_code == 201, checkout.text
+    sale_id = checkout.json()["id"]
+    sale_response = client.get(f"/api/v1/pos/sales/{sale_id}", headers=headers)
+    assert sale_response.status_code == 200, sale_response.text
+    sale_body = sale_response.json()
+    assert len(sale_body["tenders"]) == 1
+    assert sale_body["tenders"][0]["amount"] == sale_body["total"]
+    assert sale_body["tenders"][0]["paymentMethod"]["code"] == "cash"
+    assert sale_body["tenders"][0]["status"] == "settled"
+
+
+@pytest.mark.integration
+def test_invoice_edit_delete_require_permissions_and_guardrails(client: TestClient) -> None:
+    summary, branch_id = _bootstrap_isolated_branch()
+    headers = _login(client)
+    suffix = uuid7().hex[-12:]
+    state_response = client.get(
+        "/api/v1/pos/state",
+        headers=headers,
+        params={"branchId": str(branch_id)},
+    )
+    assert state_response.status_code == 200, state_response.text
+    methods = {method["code"]: method for method in state_response.json()["paymentMethods"]}
+    product = _create_product(client, headers, branch_id, suffix)
+    open_response = client.post(
+        "/api/v1/pos/registers",
+        headers=_idempotent(headers, f"pos-invoice-edit-open-{suffix}"),
+        json={"branchId": str(branch_id), "openingCash": "50.00", "currency": "DOP"},
+    )
+    assert open_response.status_code == 201, open_response.text
+    register_id = open_response.json()["id"]
+
+    credit_sale_response = client.post(
+        "/api/v1/pos/checkout",
+        headers=_idempotent(headers, f"pos-credit-delete-{suffix}"),
+        json={
+            "branchId": str(branch_id),
+            "registerId": register_id,
+            "paymentMethodId": methods["credit"]["id"],
+            "customerId": _create_customer(client, headers, branch_id, suffix),
+            "lines": [{"itemId": product["id"], "quantity": "1"}],
+        },
+    )
+    assert credit_sale_response.status_code == 201, credit_sale_response.text
+    credit_sale = credit_sale_response.json()
+
+    reader_email = _create_branch_scoped_pos_user(
+        summary.workspace_id,
+        branch_id,
+        permission_codes={"sales.read", "pos.read", "pos.sell"},
+        password=_POS_READER_PASSWORD,
+        user_prefix="invoice-reader",
+    )
+    reader_headers = _login_as(client, reader_email, _POS_READER_PASSWORD)
+    forbidden_edit = client.patch(
+        f"/api/v1/pos/sales/{credit_sale['id']}",
+        headers=_idempotent(reader_headers, f"pos-sale-edit-forbidden-{suffix}"),
+        json={
+            "registerId": register_id,
+            "paymentMethodId": methods["credit"]["id"],
+            "customerId": credit_sale["customer"]["id"],
+            "lines": [{"itemId": product["id"], "quantity": "1"}],
+            "version": credit_sale["version"],
+        },
+    )
+    assert forbidden_edit.status_code == 403, forbidden_edit.text
+
+    delete_response = client.delete(
+        f"/api/v1/pos/sales/{credit_sale['id']}",
+        headers=_idempotent(headers, f"pos-sale-delete-{suffix}"),
+        params={"version": credit_sale["version"]},
+    )
+    assert delete_response.status_code == 204, delete_response.text
+    missing_sale = client.get(f"/api/v1/pos/sales/{credit_sale['id']}", headers=headers)
+    assert missing_sale.status_code == 404, missing_sale.text
+
+    cash_sale_response = client.post(
+        "/api/v1/pos/checkout",
+        headers=_idempotent(headers, f"pos-cash-edit-{suffix}"),
+        json={
+            "branchId": str(branch_id),
+            "registerId": register_id,
+            "paymentMethodId": methods["cash"]["id"],
+            "lines": [{"itemId": product["id"], "quantity": "1"}],
+        },
+    )
+    assert cash_sale_response.status_code == 201, cash_sale_response.text
+    cash_sale = cash_sale_response.json()
+    edit_response = client.patch(
+        f"/api/v1/pos/sales/{cash_sale['id']}",
+        headers=_idempotent(headers, f"pos-sale-edit-{suffix}"),
+        json={
+            "registerId": register_id,
+            "paymentMethodId": methods["cash"]["id"],
+            "lines": [{"itemId": product["id"], "quantity": "2"}],
+            "version": cash_sale["version"],
+        },
+    )
+    assert edit_response.status_code == 200, edit_response.text
+    edited = edit_response.json()
+    assert edited["total"] == "20.00"
+    assert edited["lines"][0]["quantity"] == "2.000"
+
+    blocked_delete = client.delete(
+        f"/api/v1/pos/sales/{cash_sale['id']}",
+        headers=_idempotent(headers, f"pos-sale-delete-blocked-{suffix}"),
+        params={"version": edited["version"]},
+    )
+    assert blocked_delete.status_code == 409, blocked_delete.text
+    assert blocked_delete.json()["parameter"] == "saleId"
+
+
+def _create_customer(
+    client: TestClient,
+    headers: dict[str, str],
+    branch_id: UUID,
+    suffix: str,
+) -> str:
+    response = client.post(
+        "/api/v1/customers",
+        headers=headers,
+        json={
+            "customerType": "person",
+            "displayName": f"POS Customer {suffix}",
+            "firstName": "Cliente",
+            "lastName": suffix,
+            "email": f"pos.customer.{suffix}@example.com",
+            "branchIds": [str(branch_id)],
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["id"]
