@@ -105,7 +105,7 @@ class CrmLead(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
         ),
         CheckConstraint(
             "acquisition_source IS NULL OR acquisition_source IN "
-            "('whatsapp', 'instagram', 'referral', 'otros', 'pos_walk_in', 'app')",
+            "('whatsapp', 'instagram', 'referral', 'otros', 'pos_walk_in', 'app', 'ai')",
             name="acquisition_source_values",
         ),
         CheckConstraint(

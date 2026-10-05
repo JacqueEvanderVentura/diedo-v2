@@ -663,6 +663,8 @@ class PosService:
         page: int,
         page_size: int,
         include_details: bool = False,
+        updated_after: datetime | None = None,
+        updated_before: datetime | None = None,
     ) -> Page:
         self._require_optional_branch(grant, branch_id)
         expired_quote_ids = self._repository.expire_due_quotes(
@@ -679,6 +681,8 @@ class PosService:
             kind=kind,
             origin=origin,
             crm_status=crm_status,
+            updated_after=updated_after,
+            updated_before=updated_before,
             page=page,
             page_size=page_size,
             include_details=include_details,
@@ -1041,6 +1045,8 @@ class PosService:
         self._require_version(quote.version, expected_version)
         quote.status = "cancelled"
         quote.closed_at = datetime.now(UTC)
+        if quote.origin == "crm" and quote.crm_status is not None:
+            quote.crm_status = "rechazada"
         quote.notes = self._join_note(quote.notes, f"Cancelación: {reason}")
         quote.updated_by_platform_user_id = principal.platform_user_id
         quote.version += 1
@@ -1061,6 +1067,49 @@ class PosService:
         )
         self._session.commit()
         return self._repository.quote_record_with_revisions(quote)
+
+    def delete_quote(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        quote_id: UUID,
+        expected_version: int,
+    ) -> None:
+        quote = self._repository.get_quote(
+            grant.workspace_id,
+            quote_id,
+            grant.allowed_branch_ids,
+            lock=True,
+        )
+        if quote is None:
+            raise ResourceNotFoundError("La cotización no existe.", "quoteId")
+        self._require_version(quote.version, expected_version)
+        if quote.status == "converted":
+            raise ConflictError("No se puede eliminar una cotización facturada.", "quoteId")
+        if self._repository.sale_for_quote(grant.workspace_id, quote.id) is not None:
+            raise ConflictError("No se puede eliminar una cotización facturada.", "quoteId")
+        document_number = quote.document_number
+        lead_id = quote.lead_id
+        try:
+            self._repository.delete_quote_record(quote)
+            self._repository.add_audit(
+                workspace_id=grant.workspace_id,
+                actor_platform_user_id=principal.platform_user_id,
+                action="sales.quote.delete",
+                target_type="sales_quote",
+                target_id=quote_id,
+                request_id=get_request_id(),
+                details={
+                    "documentNumber": document_number,
+                    "leadId": str(lead_id) if lead_id is not None else None,
+                    "version": expected_version,
+                },
+            )
+            self._session.commit()
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise ConflictError("No se pudo eliminar la cotización.") from exc
 
     def list_sales(
         self,

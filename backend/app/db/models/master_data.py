@@ -29,7 +29,7 @@ class Customer(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
         CheckConstraint("status IN ('active', 'inactive', 'archived')", name="status_values"),
         CheckConstraint(
             "acquisition_source IS NULL OR acquisition_source IN "
-            "('whatsapp', 'instagram', 'referral', 'otros', 'pos_walk_in', 'app')",
+            "('whatsapp', 'instagram', 'referral', 'otros', 'pos_walk_in', 'app', 'ai')",
             name="acquisition_source_values",
         ),
         Index("ix_customers_workspace_name", "workspace_id", "normalized_name"),

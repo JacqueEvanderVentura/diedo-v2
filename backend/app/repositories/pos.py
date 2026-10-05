@@ -705,6 +705,8 @@ class PosRepository:
         kind: str | None,
         origin: str | None = None,
         crm_status: str | None = None,
+        updated_after: datetime | None = None,
+        updated_before: datetime | None = None,
         page: int,
         page_size: int,
         include_details: bool = False,
@@ -724,6 +726,10 @@ class PosRepository:
             predicates.append(SalesQuote.origin == origin)
         if crm_status is not None:
             predicates.append(SalesQuote.crm_status == crm_status)
+        if updated_after is not None:
+            predicates.append(SalesQuote.updated_at >= updated_after)
+        if updated_before is not None:
+            predicates.append(SalesQuote.updated_at <= updated_before)
         total = int(self._session.scalar(select(func.count()).where(*predicates)) or 0)
         quotes = self._session.scalars(
             select(SalesQuote)
@@ -889,6 +895,18 @@ class PosRepository:
             self._session.delete(line)
         self._session.flush()
         self._session.delete(sale)
+        self._session.flush()
+
+    def sale_for_quote(self, workspace_id: UUID, quote_id: UUID) -> Sale | None:
+        return self._session.scalar(
+            select(Sale).where(
+                Sale.workspace_id == workspace_id,
+                Sale.quote_id == quote_id,
+            )
+        )
+
+    def delete_quote_record(self, quote: SalesQuote) -> None:
+        self._session.delete(quote)
         self._session.flush()
 
     def carwash_wash_for_sale(self, workspace_id: UUID, sale_id: UUID) -> CarwashWash | None:

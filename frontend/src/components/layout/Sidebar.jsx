@@ -11,7 +11,7 @@ import { usePosStore } from '@/stores/posStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { isModuleAvailable } from '@/services/moduleAvailability'
-import { FEATURES } from '@/config/features'
+import { isChatModuleSurfaceEnabled } from '@/config/features'
 import { HeliosIcon, PRODUCT_NAME } from '@/components/brand/HeliosIcon'
 import { deriveOpenNavGroups, isNavGroupActive } from '@/lib/sidebarNav'
 
@@ -247,7 +247,7 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
     const permissions = new Set(effectivePermissionCodes || [])
     return withCrmMode(
       NAV_GROUPS.filter((group) => {
-        if (group.feature && !FEATURES[group.feature]) return false
+        if (group.id === 'chat' && !isChatModuleSurfaceEnabled(modules)) return false
         if (!isModuleAvailable(group.module, modules)) return false
         if (!group.children && group.permission && !permissions.has(group.permission)) return false
         return true

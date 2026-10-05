@@ -1,8 +1,9 @@
 import { formatDOP } from '@/lib/format'
+import { isActiveCrmQuote } from '@/modules/crm/lib/crmQuoteVisibility'
 
 export function formatLeadOfferText(quotes, leadId, { customerName = '' } = {}) {
   const linked = (quotes || [])
-    .filter((quote) => quote.leadId === leadId && quote.status !== 'cancelada')
+    .filter((quote) => quote.leadId === leadId && isActiveCrmQuote(quote))
     .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
 
   if (linked.length === 0) return null

@@ -12,10 +12,14 @@ from app.schemas.instagram import validate_instagram_url
 from app.schemas.pos import QuoteDetailResponse
 
 LeadStatus = Literal["nuevo", "contactado", "propuesta", "negociacion", "cerrado", "perdido"]
-EditableLeadStatus = Literal["nuevo", "contactado", "propuesta", "negociacion", "perdido"]
+EditableLeadStatus = Literal[
+    "nuevo", "contactado", "propuesta", "negociacion", "perdido", "cerrado"
+]
 LeadSource = Literal["manual", "serp", "serper", "referral", "import"]
 LeadDiscoveryProvider = Literal["serpapi", "serper"]
-AcquisitionSource = Literal["whatsapp", "instagram", "referral", "otros", "pos_walk_in", "app"]
+AcquisitionSource = Literal[
+    "whatsapp", "instagram", "referral", "otros", "pos_walk_in", "app", "ai"
+]
 
 
 class LeadDiscoveryCapabilitiesResponse(ApiModel):

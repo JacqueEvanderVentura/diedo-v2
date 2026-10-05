@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 
 import { Loader2, Plus, Search, Pencil, Trash2, CheckSquare, Square } from 'lucide-react'
 import { toast } from 'sonner'
@@ -27,6 +27,8 @@ import { LeadFormModal } from '@/modules/crm/components/LeadFormModal'
 import { CustomerFormModal } from '@/modules/crm/components/CustomerFormModal'
 
 import { SimplifiedLeadActions } from '@/modules/crm/components/SimplifiedLeadActions'
+import { SimplifiedLeadQuoteTimelineActions } from '@/modules/crm/components/SimplifiedLeadQuoteTimelineActions'
+import { TimelineActivityMeta } from '@/modules/crm/components/TimelineActivityMeta'
 import { SimplifiedCustomersPanel } from '@/modules/crm/components/SimplifiedCustomersPanel'
 import { SimplifiedCrmSectionNav } from '@/modules/crm/components/SimplifiedCrmSectionNav'
 import { resolveSimplifiedCrmSection } from '@/modules/crm/lib/crmNavigation'
@@ -35,7 +37,11 @@ import { BulkSelectionBar } from '@/components/ui/BulkSelectionBar'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { nextSelectAllState } from '@/lib/listSelection'
 
-import { ACTIVITY_TYPE_META } from '@/data/crm'
+import { QUOTE_STATUS_META } from '@/data/crm'
+import { formatDOP } from '@/lib/format'
+import { isDiscardedCrmQuote } from '@/modules/crm/lib/crmQuoteVisibility'
+import { buildSimplifiedLeadTimeline } from '@/modules/crm/lib/simplifiedLeadTimeline'
+import { isLeadStageMoveActivity } from '@/modules/crm/lib/leadStageLabels'
 
 import { cn } from '@/lib/utils'
 
@@ -84,8 +90,19 @@ export default function SimplifiedWorkspacePage() {
   const fetchStageCounts = useCrmStore((state) => state.fetchSimplifiedWorkspaceStageCounts)
 
   const fetchDetailActivities = useCrmStore((state) => state.fetchSimplifiedWorkspaceDetailActivities)
+  const hydrateQuotes = useCrmStore((state) => state.hydrateSection)
+  const syncWorkspaceQuotes = useCrmStore((state) => state.syncWorkspaceQuotes)
+  const quotes = useCrmStore((state) => state.quotes)
 
   const branches = useConfigStore((state) => state.branches)
+  const settings = useConfigStore((state) => state.settings)
+  const paymentMethods = useConfigStore((state) => state.paymentMethods)
+  const customers = useCustomersStore((state) => state.customers)
+
+  const quoteDocumentCtx = useMemo(
+    () => ({ branches, settings, paymentMethods, customers }),
+    [branches, settings, paymentMethods, customers],
+  )
 
 
 
@@ -154,9 +171,11 @@ export default function SimplifiedWorkspacePage() {
   }, [refreshWorkspace])
 
   useEffect(() => {
-    const { quotes, hydrateSection } = useCrmStore.getState()
-    if (!quotes.length) hydrateSection('quotes').catch(() => {})
-  }, [])
+    Promise.all([
+      hydrateQuotes('quotes').catch(() => {}),
+      syncWorkspaceQuotes().catch(() => {}),
+    ])
+  }, [hydrateQuotes])
 
 
 
@@ -173,6 +192,11 @@ export default function SimplifiedWorkspacePage() {
   const selectedLead = useMemo(
     () => resolveLeadFromQueueItem(selected, leads),
     [selected, leads],
+  )
+
+  const leadTimeline = useMemo(
+    () => buildSimplifiedLeadTimeline(detailActivities, quotes, selected?.id),
+    [detailActivities, quotes, selected?.id],
   )
 
   const openSelectedEditor = async () => {
@@ -207,8 +231,12 @@ export default function SimplifiedWorkspacePage() {
     if (!selected?.id) return
 
     fetchDetailActivities(selected.id).catch(() => {})
+    Promise.all([
+      hydrateQuotes('quotes').catch(() => {}),
+      syncWorkspaceQuotes().catch(() => {}),
+    ])
 
-  }, [fetchDetailActivities, selected?.id])
+  }, [fetchDetailActivities, hydrateQuotes, selected?.id])
 
 
 
@@ -783,43 +811,102 @@ export default function SimplifiedWorkspacePage() {
 
                     <Loader2 className="h-4 w-4 animate-spin" />
 
-                    Cargando actividades…
+                    Cargando historial…
 
                   </div>
 
                 ) : (
 
-                  <ul className="mt-3 space-y-2">
+                  <ul className="mt-3 space-y-2" data-testid="crm-simplified-lead-timeline">
 
-                    {detailActivities.length === 0 ? (
+                    {leadTimeline.length === 0 ? (
 
-                      <li className="text-sm text-slate-500">Sin actividades registradas.</li>
+                      <li className="text-sm text-slate-500">Sin actividades ni cotizaciones registradas.</li>
 
                     ) : (
 
-                      detailActivities.slice(0, 8).map((activity) => (
-
-                        <li key={activity.id} className="rounded-lg border border-slate-100 px-3 py-2 text-sm text-slate-700">
-
-                          <p className="font-medium text-slate-900">{activity.title}</p>
-
-                          <p className="text-xs text-slate-500">
-
-                            {ACTIVITY_TYPE_META[activity.type]?.label || activity.type}
-
-                            {activity.dueAt ? ` · ${new Date(activity.dueAt).toLocaleString('es-DO')}` : ''}
-
-                          </p>
-
-                          {activity.description ? (
-
-                            <p className="mt-1 text-xs text-slate-600">{activity.description}</p>
-
-                          ) : null}
-
-                        </li>
-
-                      ))
+                      leadTimeline.map((entry) => {
+                        if (entry.kind === 'quote') {
+                          const quote = entry.quote
+                          const discarded = isDiscardedCrmQuote(quote)
+                          const statusMeta = discarded
+                            ? { label: 'Descartada', tone: 'neutral' }
+                            : (QUOTE_STATUS_META[quote.status] || { label: quote.status, tone: 'neutral' })
+                          const when = (quote.updatedAt || quote.createdAt)
+                            ? new Date(quote.updatedAt || quote.createdAt).toLocaleString('es-DO')
+                            : ''
+                          return (
+                            <li
+                              key={entry.id}
+                              className={cn(
+                                'rounded-lg border px-3 py-2 text-sm',
+                                discarded
+                                  ? 'border-slate-200 bg-slate-50 text-slate-400'
+                                  : 'border-emerald-100 bg-emerald-50/40 text-slate-700',
+                              )}
+                              data-testid={`crm-simplified-timeline-quote-${quote.id}`}
+                              data-discarded={discarded ? 'true' : 'false'}
+                            >
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <p className={cn(
+                                  'font-medium',
+                                  discarded ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-900',
+                                )}
+                                >
+                                  {discarded
+                                    ? `Cotización descartada · ${quote.number || 'sin número'}`
+                                    : `Cotización ${quote.number || 'sin número'}`}
+                                </p>
+                                <Badge tone={statusMeta.tone}>{statusMeta.label}</Badge>
+                              </div>
+                              <p className={cn('text-xs', discarded ? 'text-slate-400 line-through' : 'text-slate-500')}>
+                                Cotización
+                                {when ? ` · ${when}` : ''}
+                                {quote.total ? ` · ${formatDOP(quote.total)}` : ''}
+                              </p>
+                              {!discarded && (quote.items?.length ?? 0) > 0 ? (
+                                <p className="mt-1 text-xs text-slate-600">
+                                  {quote.items.length} ítem{quote.items.length !== 1 ? 's' : ''}
+                                </p>
+                              ) : null}
+                              {!discarded ? (
+                                <>
+                                  <SimplifiedLeadQuoteTimelineActions
+                                    quote={quote}
+                                    documentCtx={quoteDocumentCtx}
+                                  />
+                                  <Link
+                                    to={`/crm/cotizaciones?quoteId=${encodeURIComponent(quote.id)}`}
+                                    className="mt-2 inline-block text-xs font-semibold text-slate-500 hover:text-blue-600 hover:underline"
+                                  >
+                                    Ver en cotizaciones
+                                  </Link>
+                                </>
+                              ) : null}
+                            </li>
+                          )
+                        }
+                        const activity = entry.activity
+                        const stageMove = isLeadStageMoveActivity(activity)
+                        return (
+                          <li
+                            key={entry.id}
+                            className={cn(
+                              'rounded-lg border px-3 py-2 text-sm text-slate-700',
+                              stageMove
+                                ? 'border-violet-100 bg-violet-50/50'
+                                : 'border-slate-100',
+                            )}
+                            data-testid={stageMove ? 'crm-simplified-timeline-stage-move' : undefined}
+                          >
+                            <p className="font-medium text-slate-900">{activity.title}</p>
+                            <TimelineActivityMeta activity={activity} stageMove={stageMove} />
+                            {activity.description ? (
+                              <p className="mt-1 text-xs text-slate-600">{activity.description}</p>
+                            ) : null}
+                          </li>
+                        )
+                      })
 
                     )}
 
@@ -854,6 +941,14 @@ export default function SimplifiedWorkspacePage() {
 
                   if (selected?.id) fetchDetailActivities(selected.id).catch(() => {})
 
+                }}
+
+                onQuoteSaved={() => {
+                  Promise.all([
+      hydrateQuotes('quotes').catch(() => {}),
+      syncWorkspaceQuotes().catch(() => {}),
+    ])
+                  if (selected?.id) fetchDetailActivities(selected.id).catch(() => {})
                 }}
 
               />

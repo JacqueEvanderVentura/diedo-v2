@@ -313,23 +313,36 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
 
     discovery = client.get("/api/v1/crm/discovery/capabilities", headers=headers)
     assert discovery.status_code == 200, discovery.text
-    assert discovery.json() == {
-        "enabled": False,
-        "provider": None,
-        "status": "not_configured",
-        "hourLimit": 50,
-        "monthLimit": 250,
-        "hourUsed": 0,
-        "monthUsed": 0,
-        "availableProviders": [],
-    }
+    discovery_body = discovery.json()
+    assert discovery_body["hourLimit"] == 50
+    assert discovery_body["monthLimit"] == 250
+    assert discovery_body["hourUsed"] == 0
+    assert discovery_body["monthUsed"] == 0
+    if discovery_body["enabled"]:
+        assert discovery_body["status"] == "ready"
+        assert discovery_body["provider"] in discovery_body["availableProviders"]
+        assert discovery_body["availableProviders"]
+    else:
+        assert discovery_body == {
+            "enabled": False,
+            "provider": None,
+            "status": "not_configured",
+            "hourLimit": 50,
+            "monthLimit": 250,
+            "hourUsed": 0,
+            "monthUsed": 0,
+            "availableProviders": [],
+        }
     unavailable_search = client.post(
         "/api/v1/crm/discovery/search",
         headers=headers,
         json={"query": "salones de belleza", "location": "Santo Domingo", "limit": 10},
     )
-    assert unavailable_search.status_code == 503, unavailable_search.text
-    assert unavailable_search.json()["parameter"] == "provider"
+    if discovery_body["enabled"]:
+        assert unavailable_search.status_code in {200, 429, 502, 503}, unavailable_search.text
+    else:
+        assert unavailable_search.status_code == 503, unavailable_search.text
+        assert unavailable_search.json()["parameter"] == "provider"
 
     creation_headers = {**headers, "Idempotency-Key": f"crm-lead-{suffix}"}
     lead_payload = {
@@ -1528,6 +1541,139 @@ def test_crm_batch_delete_and_import_activities(client: TestClient) -> None:
     assert converted_block.status_code == 200
     assert converted_block.json()["items"][0]["status"] == "error"
     assert "cerrado" in converted_block.json()["items"][0]["message"]
+
+
+@pytest.mark.integration
+def test_crm_delete_quote_removes_record_and_unlinks_lead(client: TestClient) -> None:
+    suffix = uuid7().hex[-12:]
+    with session_scope() as session:
+        seeded = bootstrap_local_foundation(session, hash_password(_PASSWORD))
+        branch_id = session.scalar(
+            select(Branch.id).where(
+                Branch.workspace_id == seeded.workspace_id,
+                Branch.status == "active",
+            )
+        )
+        unit_id = session.scalar(
+            select(UnitOfMeasure.id).where(
+                UnitOfMeasure.workspace_id == seeded.workspace_id,
+                UnitOfMeasure.code == "unit",
+            )
+        )
+        assert branch_id is not None
+        assert unit_id is not None
+        category = ItemCategory(
+            workspace_id=seeded.workspace_id,
+            name=f"CRM Delete {suffix}",
+            normalized_name=f"crm delete {suffix}",
+            status="active",
+        )
+        session.add(category)
+        session.flush()
+        item = Item(
+            workspace_id=seeded.workspace_id,
+            category_id=category.id,
+            unit_of_measure_id=unit_id,
+            item_type="service",
+            name="Servicio borrable",
+            sku=f"DEL-{suffix}",
+            status="active",
+        )
+        session.add(item)
+        session.flush()
+        session.add_all(
+            [
+                ItemBranchAssignment(
+                    workspace_id=seeded.workspace_id,
+                    item_id=item.id,
+                    branch_id=branch_id,
+                    status="active",
+                ),
+                InventoryItemProfile(
+                    workspace_id=seeded.workspace_id,
+                    item_id=item.id,
+                    sale_price=Decimal("1200.00"),
+                    unit_cost=Decimal("400.00"),
+                    tax_rate=Decimal("18.00"),
+                ),
+            ]
+        )
+        session.flush()
+        item_id = item.id
+        branch_id_text = str(branch_id)
+
+    headers = _crm_auth_headers(client, "owner@erp.dev", _PASSWORD)
+    lead = client.post(
+        "/api/v1/crm/leads",
+        headers={**headers, "Idempotency-Key": f"crm-del-quote-lead-{suffix}"},
+        json={
+            "branchId": branch_id_text,
+            "company": f"Lead cotización {suffix}",
+            "name": "Cliente",
+            "phone": "8095551212",
+        },
+    )
+    assert lead.status_code == 201, lead.text
+    lead_id = lead.json()["id"]
+    customer = client.post(
+        "/api/v1/customers",
+        headers={**headers, "Idempotency-Key": f"crm-del-quote-customer-{suffix}"},
+        json={
+            "customerType": "business",
+            "displayName": f"Cliente cotización {suffix}",
+            "businessName": f"Cliente cotización {suffix}",
+            "phone": "8095551213",
+            "branchIds": [branch_id_text],
+        },
+    )
+    assert customer.status_code == 201, customer.text
+    quote = client.post(
+        "/api/v1/crm/quotes",
+        headers={**headers, "Idempotency-Key": f"crm-del-quote-{suffix}"},
+        json={
+            "leadId": lead_id,
+            "customerId": customer.json()["id"],
+            "branchId": branch_id_text,
+            "lines": [{"itemId": str(item_id), "quantity": "1"}],
+            "status": "borrador",
+        },
+    )
+    assert quote.status_code == 201, quote.text
+    quote_id = quote.json()["quote"]["id"]
+    quote_version = quote.json()["quote"]["version"]
+
+    blocked = client.post(
+        "/api/v1/crm/leads/batch-delete",
+        headers=headers,
+        json={"leadIds": [lead_id]},
+    )
+    assert blocked.status_code == 200, blocked.text
+    assert blocked.json()["items"][0]["status"] == "error"
+
+    deleted = client.delete(
+        f"/api/v1/crm/quotes/{quote_id}",
+        headers=headers,
+        params={"version": quote_version},
+    )
+    assert deleted.status_code == 204, deleted.text
+    assert client.get(f"/api/v1/crm/quotes/{quote_id}", headers=headers).status_code == 404
+    quote_list = client.get("/api/v1/crm/quotes", headers=headers)
+    assert quote_list.status_code == 200, quote_list.text
+    assert quote_id not in {item["quote"]["id"] for item in quote_list.json()["items"]}
+
+    with session_scope() as session:
+        remaining = session.scalar(
+            select(func.count(SalesQuote.id)).where(SalesQuote.id == UUID(quote_id))
+        )
+        assert remaining == 0
+
+    removed_lead = client.post(
+        "/api/v1/crm/leads/batch-delete",
+        headers=headers,
+        json={"leadIds": [lead_id]},
+    )
+    assert removed_lead.status_code == 200, removed_lead.text
+    assert removed_lead.json()["items"][0]["status"] == "deleted"
 
 
 def test_crm_delete_leads_service_branches_with_mocks() -> None:

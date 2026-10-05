@@ -53,6 +53,7 @@ function toLocalInput(iso) {
 export function SimplifiedLeadActions({
   lead,
   onActionComplete,
+  onQuoteSaved,
   requestPaymentForId = null,
   onPaymentRequestHandled,
   onStageMove,
@@ -317,6 +318,7 @@ export function SimplifiedLeadActions({
       }
       await addQuote({ ...payload, customerId })
       toast.success(payload.status === 'aceptada' ? 'Cotización aceptada' : 'Cotización creada')
+      onQuoteSaved?.()
     } catch (error) {
       toast.error(error.message || 'No se pudo crear la cotización')
       throw error
@@ -330,6 +332,7 @@ export function SimplifiedLeadActions({
     try {
       await updateQuote(quoteId, { leadId })
       toast.success('Cotización vinculada a la oportunidad')
+      onQuoteSaved?.()
     } catch (error) {
       toast.error(error.message || 'No se pudo vincular la cotización')
       throw error
@@ -656,6 +659,7 @@ export function SimplifiedLeadActions({
         onSaved={() => {
           setCloseQuoteFormOpen(false)
           toast.success('Cotización guardada; ya puedes facturar')
+          onQuoteSaved?.()
         }}
       />
 

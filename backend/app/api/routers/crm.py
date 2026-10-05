@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from math import ceil
 from typing import Annotated, Any, cast
 from uuid import UUID
@@ -323,6 +323,8 @@ def list_leads(
     search: Annotated[str | None, Query(max_length=200)] = None,
     sort: Annotated[LeadSortField, Query(alias="sort")] = "updated_at",
     sort_dir: Annotated[LeadSortDirection, Query(alias="sortDir")] = "desc",
+    updated_after: Annotated[datetime | None, Query(alias="updatedAfter")] = None,
+    updated_before: Annotated[datetime | None, Query(alias="updatedBefore")] = None,
     page: Annotated[int, Query(ge=1, le=1_000_000)] = 1,
     page_size: Annotated[int, Query(alias="pageSize", ge=1, le=500)] = 50,
 ) -> PaginatedLeadsResponse:
@@ -333,6 +335,8 @@ def list_leads(
         status=status_filter,
         source=source,
         search=search,
+        updated_after=updated_after,
+        updated_before=updated_before,
         sort=sort,
         sort_dir=sort_dir,
         page=page,
@@ -711,6 +715,8 @@ def list_quotes(
     branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
     customer_id: Annotated[UUID | None, Query(alias="customerId")] = None,
     crm_status: Annotated[CrmQuoteStatus | None, Query(alias="status")] = None,
+    updated_after: Annotated[datetime | None, Query(alias="updatedAfter")] = None,
+    updated_before: Annotated[datetime | None, Query(alias="updatedBefore")] = None,
     page: Annotated[int, Query(ge=1, le=1_000_000)] = 1,
     page_size: Annotated[int, Query(alias="pageSize", ge=1, le=500)] = 50,
 ) -> PaginatedCrmQuotesResponse:
@@ -723,6 +729,8 @@ def list_quotes(
         crm_status=crm_status,
         page=page,
         page_size=page_size,
+        updated_after=updated_after,
+        updated_before=updated_before,
     )
     return PaginatedCrmQuotesResponse(
         items=[_crm_quote_list_response(item) for item in result.items],
@@ -808,6 +816,24 @@ def cancel_quote(
             expected_version=payload.version,
             reason=payload.reason,
         )
+    )
+
+
+@router.delete("/quotes/{quote_id}", status_code=status.HTTP_204_NO_CONTENT, responses=_RESPONSES)
+def delete_quote(
+    quote_id: UUID,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    crm_grant: CrmManageGrant,
+    sales_grant: SalesQuoteManageGrant,
+    version: Annotated[int, Query(ge=1)],
+) -> None:
+    CrmService(database).delete_quote(
+        principal=principal,
+        crm_grant=crm_grant,
+        sales_grant=sales_grant,
+        quote_id=quote_id,
+        expected_version=version,
     )
 
 

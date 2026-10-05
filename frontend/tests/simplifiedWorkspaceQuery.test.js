@@ -24,8 +24,10 @@ describe('simplifiedWorkspaceQuery', () => {
     expect(params.page).toBe(2)
     expect(params.pageSize).toBe(25)
     expect(dateFilter).toEqual(filter)
-    expect(params).not.toHaveProperty('updatedAfter')
-    expect(params).not.toHaveProperty('updatedBefore')
+    expect(params.updatedAfter).toBeTruthy()
+    expect(params.updatedBefore).toBeTruthy()
+    expect(params.sort).toBe('updated_at')
+    expect(params.sortDir).toBe('desc')
   })
 
   it('passes search and branch filters', () => {
@@ -64,7 +66,7 @@ describe('simplifiedWorkspaceQuery', () => {
       { id: '3', status: 'contactado', name: 'DEMO', updatedAt: now, branchId: 'a' },
     ]
     const filters = { search: 'demo', branchIds: [], dateFilter: defaultSimplifiedDateFilter() }
-    expect(needsSimplifiedWorkspaceClientFilter(filters)).toBe(true)
+    expect(needsSimplifiedWorkspaceClientFilter(filters)).toBe(false)
     expect(countSimplifiedWorkspaceStageCounts(leads, filters)).toEqual({
       nuevo: 1,
       contactado: 1,

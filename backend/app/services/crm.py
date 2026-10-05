@@ -46,6 +46,25 @@ from app.services.errors import (
 from app.services.master_data import normalize_email, normalize_name, normalize_phone
 from app.services.pos import CheckoutResult, PosService
 
+_LEAD_STAGE_LABELS: dict[str, str] = {
+    "nuevo": "Nuevo",
+    "contactado": "Contactado",
+    "propuesta": "Interesado",
+    "negociacion": "Seguimiento",
+    "cerrado": "Ganado",
+    "perdido": "Perdido",
+}
+
+_DISCOVERY_LEAD_SOURCES = frozenset({"serp", "serper"})
+
+
+def _default_acquisition_source(source: str, acquisition_source: str | None) -> str | None:
+    if acquisition_source:
+        return acquisition_source
+    if source in _DISCOVERY_LEAD_SOURCES:
+        return "ai"
+    return None
+
 
 @dataclass(frozen=True)
 class PageResult:
@@ -117,6 +136,8 @@ class CrmService:
         status: str | None,
         source: str | None,
         search: str | None,
+        updated_after: datetime | None = None,
+        updated_before: datetime | None = None,
         sort: str,
         sort_dir: str,
         page: int,
@@ -130,6 +151,8 @@ class CrmService:
             status=status,
             source=source,
             search=self._optional_text(search),
+            updated_after=updated_after,
+            updated_before=updated_before,
             sort=sort if sort in {"updated_at", "star_rating"} else "updated_at",
             sort_dir=sort_dir if sort_dir in {"asc", "desc"} else "desc",
             page=page,
@@ -314,6 +337,13 @@ class CrmService:
         }
         if lead.status != previous_status:
             audit_details["previousStatus"] = previous_status
+            self._append_lead_stage_activity(
+                principal=principal,
+                grant=grant,
+                lead=lead,
+                previous_status=previous_status,
+                new_status=lead.status,
+            )
         if lead.status == "perdido":
             audit_details["lostReason"] = lead.lost_reason
         if previous_status == "perdido" and lead.status != "perdido":
@@ -796,6 +826,8 @@ class CrmService:
         crm_status: str | None,
         page: int,
         page_size: int,
+        updated_after: datetime | None = None,
+        updated_before: datetime | None = None,
     ) -> PosPage:
         grant = self._intersect_grants(crm_grant, sales_grant)
         self._require_optional_branch(grant, branch_id)
@@ -807,6 +839,8 @@ class CrmService:
             kind="quote",
             origin="crm",
             crm_status=crm_status,
+            updated_after=updated_after,
+            updated_before=updated_before,
             page=page,
             page_size=page_size,
             include_details=True,
@@ -895,10 +929,19 @@ class CrmService:
             self._require_same_branch(branch_id, lead.branch_id, "leadId")
             if lead.converted_customer_id is not None and lead.converted_customer_id != customer_id:
                 raise InvalidOperationError("El lead está vinculado a otro cliente.", "customerId")
+            previous_status = lead.status
             if lead.status in {"nuevo", "contactado"}:
                 lead.status = "propuesta"
-                lead.updated_by_platform_user_id = principal.platform_user_id
-                lead.version += 1
+            lead.updated_by_platform_user_id = principal.platform_user_id
+            lead.version += 1
+            if lead.status != previous_status:
+                self._append_lead_stage_activity(
+                    principal=principal,
+                    grant=grant,
+                    lead=lead,
+                    previous_status=previous_status,
+                    new_status=lead.status,
+                )
         payload = {
             "kind": "quote",
             "branch_id": branch_id,
@@ -982,6 +1025,26 @@ class CrmService:
             quote_id=quote_id,
             expected_version=expected_version,
             reason=reason,
+        )
+
+    def delete_quote(
+        self,
+        *,
+        principal: AuthPrincipal,
+        crm_grant: PermissionGrant,
+        sales_grant: PermissionGrant,
+        quote_id: UUID,
+        expected_version: int,
+    ) -> None:
+        grant = self._intersect_grants(crm_grant, sales_grant)
+        current = PosService(self._session).get_quote(grant, quote_id)
+        if current.quote.origin != "crm":
+            raise ResourceNotFoundError("La cotización CRM no existe.", "quoteId")
+        PosService(self._session).delete_quote(
+            principal=principal,
+            grant=grant,
+            quote_id=quote_id,
+            expected_version=expected_version,
         )
 
     def invoice_quote(
@@ -1070,11 +1133,7 @@ class CrmService:
                 crm_grant.allowed_branch_ids,
                 lock=True,
             )
-            if (
-                lead is not None
-                and lead.converted_customer_id == record.quote.customer_id
-                and lead.status != "cerrado"
-            ):
+            if lead is not None and lead.status != "cerrado":
                 lead.status = "cerrado"
                 lead.updated_by_platform_user_id = principal.platform_user_id
                 lead.version += 1
@@ -1146,7 +1205,10 @@ class CrmService:
             instagram_url=str(values["instagram_url"]) if values.get("instagram_url") else None,
             location=self._optional_text(cast(str | None, values.get("location"))),
             source=cast(str, values.get("source", "manual")),
-            acquisition_source=cast(str | None, values.get("acquisition_source")),
+            acquisition_source=_default_acquisition_source(
+                cast(str, values.get("source", "manual")),
+                cast(str | None, values.get("acquisition_source")),
+            ),
             source_url=str(values["source_url"]) if values.get("source_url") else None,
             scraped_at=cast(datetime | None, values.get("scraped_at")),
             raw_snippet=self._optional_text(cast(str | None, values.get("raw_snippet"))),
@@ -1426,6 +1488,52 @@ class CrmService:
                     }
                 )
         return results
+
+    def _lead_stage_label(self, status: str) -> str:
+        return _LEAD_STAGE_LABELS.get(status, status)
+
+    def _append_lead_stage_activity(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        lead: CrmLead,
+        previous_status: str,
+        new_status: str,
+    ) -> None:
+        if previous_status == new_status:
+            return
+        from_label = self._lead_stage_label(previous_status)
+        to_label = self._lead_stage_label(new_status)
+        title = f"Movido de {from_label} a {to_label}"
+        now_ts = datetime.now(UTC)
+        idempotency_key = f"lead-stage-{lead.id}-v{lead.version}"
+        fingerprint = self._fingerprint(
+            {
+                "lead_id": str(lead.id),
+                "from": previous_status,
+                "to": new_status,
+                "version": lead.version,
+            }
+        )
+        activity = CrmActivity(
+            workspace_id=grant.workspace_id,
+            branch_id=lead.branch_id,
+            lead_id=lead.id,
+            customer_id=lead.converted_customer_id,
+            assigned_membership_id=lead.assigned_membership_id,
+            activity_type="nota",
+            title=title,
+            description=None,
+            customer_name=lead.company or lead.name,
+            due_at=None,
+            completed_at=now_ts,
+            creation_idempotency_key=idempotency_key,
+            request_fingerprint=fingerprint,
+            created_by_platform_user_id=principal.platform_user_id,
+            updated_by_platform_user_id=principal.platform_user_id,
+        )
+        self._repository.add_activity(activity)
 
     def _audit(
         self,

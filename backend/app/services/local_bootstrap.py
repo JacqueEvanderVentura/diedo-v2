@@ -607,9 +607,13 @@ _PERMISSIONS = (
 _TERMINAL_POS_PERMISSION_CODES = tuple(
     permission[0] for permission in _PERMISSIONS if permission[1] in {"sales", "pos"}
 )
+_CARWASH_PERMISSION_CODES = tuple(
+    permission[0] for permission in _PERMISSIONS if permission[1] == "carwash"
+)
 
 _ROLE_PERMISSION_TEMPLATES = {
     "workspace_admin": _TERMINAL_POS_PERMISSION_CODES
+    + _CARWASH_PERMISSION_CODES
     + (
         "dashboard.read",
         "crm.read",
@@ -621,6 +625,7 @@ _ROLE_PERMISSION_TEMPLATES = {
         "report.read",
     ),
     "manager": _TERMINAL_POS_PERMISSION_CODES
+    + _CARWASH_PERMISSION_CODES
     + (
         "dashboard.read",
         "crm.read",

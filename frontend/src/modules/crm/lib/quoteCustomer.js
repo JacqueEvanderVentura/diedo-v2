@@ -16,9 +16,6 @@ export async function ensureCustomerForLeadQuote({
     ...buildLeadOfflineCustomer(lead),
     branchId,
   })
-  if (updateLead) {
-    await updateLead(lead.id, { customerId: customer.id })
-  }
   return { id: customer.id, leadId: lead.id }
 }
 
@@ -43,10 +40,6 @@ export async function ensureCustomerForQuote({
     branchId,
     customerStatus: 'prospecto',
   })
-
-  if (updateLead && lead.id) {
-    await updateLead(lead.id, { customerId: customer.id })
-  }
 
   return customer
 }

@@ -1,6 +1,5 @@
 import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { CalendarPlus, FileText, GripVertical, Link2, Plus, Search, UserCheck, UserPlus } from 'lucide-react'
 import { useCrmStore } from '@/stores/crmStore'
@@ -20,7 +19,7 @@ import { usePointerKanban } from '@/modules/crm/hooks/usePointerKanban'
 import { CloseLeadInvoiceModal } from '@/modules/crm/components/CloseOpportunityInvoiceModal'
 import { PermissionElevationModal } from '@/components/auth/PermissionElevationModal'
 import { downloadSaleInvoicePdf } from '@/modules/crm/lib/sales'
-import { PIPELINE_INVOICE_PERMISSION } from '@/modules/crm/lib/pipelineInvoice'
+import { findLeadLinkedQuote, PIPELINE_INVOICE_PERMISSION } from '@/modules/crm/lib/pipelineInvoice'
 import {
   effectiveLeadCustomerId,
   leadCompanyLabel,
@@ -33,6 +32,7 @@ import { PipelineStageHeaders, PIPELINE_COLUMN_WIDTH_CLASS } from '../components
 import { ActivityFormModal } from '../components/ActivityFormModal'
 import { CustomerFormModal } from '../components/CustomerFormModal'
 import { QuoteFormModal } from '../components/QuoteFormModal'
+import { QuoteDocumentHandoffModal } from '../components/QuoteDocumentHandoffModal'
 import {
   customersForOpportunityBranch,
   leadCustomerDefaults,
@@ -50,6 +50,7 @@ function belongsToBranch(customer, branchId) {
 
 function DealCard({
   lead,
+  linkedQuote,
   busy,
   dragging,
   onPointerDown,
@@ -100,8 +101,10 @@ function DealCard({
           disabled={busy || !can.quote}
           onClick={() => onQuote(lead)}
           className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-purple-600 hover:bg-purple-50 disabled:opacity-50"
+          data-testid={`pipeline-lead-quote-${lead.id}`}
         >
-          <FileText className="h-3.5 w-3.5" /> Cotizar
+          <FileText className="h-3.5 w-3.5" />
+          {linkedQuote ? 'Ver cotización' : 'Cotizar'}
         </button>
         {!lead.customerId && (
           <button
@@ -132,7 +135,6 @@ function DealCard({
 
 export default function PipelinePage() {
   const can = useCrmCapabilities()
-  const navigate = useNavigate()
   const pipelineLeads = useCrmStore((state) => state.leads)
   const branches = useConfigStore((state) => state.branches)
   const customers = useCustomersStore((state) => state.customers)
@@ -151,6 +153,11 @@ export default function PipelinePage() {
   const sessionBranchId = useSessionStore((state) => state.user?.branchIds?.[0])
   const [newQuoteOpen, setNewQuoteOpen] = useState(false)
   const [newQuoteContext, setNewQuoteContext] = useState(null)
+  const [viewQuoteOpen, setViewQuoteOpen] = useState(false)
+  const [viewingQuoteId, setViewingQuoteId] = useState(null)
+  const [quoteHandoff, setQuoteHandoff] = useState(null)
+  const hydrateQuotesSection = useCrmStore((state) => state.hydrateSection)
+  const isOnline = useSessionStore((state) => state.status === 'online')
   const [linkingLead, setLinkingLead] = useState(null)
   const [linkCustomerId, setLinkCustomerId] = useState('')
   const [branchIds, setBranchIds] = useState([])
@@ -213,6 +220,21 @@ export default function PipelinePage() {
     }),
     [branches, settings, paymentMethods, activeCustomers],
   )
+
+  useEffect(() => {
+    if (!isOnline) return
+    hydrateQuotesSection('quotes').catch(() => {})
+  }, [hydrateQuotesSection, isOnline])
+
+  const viewingQuote = useMemo(() => {
+    if (!viewingQuoteId) return null
+    return quotes.find((item) => item.id === viewingQuoteId) || null
+  }, [quotes, viewingQuoteId])
+
+  const quoteHandoffResolved = useMemo(() => {
+    if (!quoteHandoff?.id) return null
+    return quotes.find((item) => item.id === quoteHandoff.id) || quoteHandoff
+  }, [quotes, quoteHandoff])
 
   useEffect(() => {
     if (!pendingLead || pendingLead.customerId) return
@@ -371,6 +393,22 @@ export default function PipelinePage() {
   const openNewQuote = () => {
     setNewQuoteContext({
       branchId: sessionBranchId || branches.find((branch) => branch.active)?.id || '',
+    })
+    setNewQuoteOpen(true)
+  }
+
+  const openQuoteForLead = (lead) => {
+    if (!lead?.id) return
+    const existing = findLeadLinkedQuote(quotes, lead.id)
+    if (existing?.id) {
+      setViewingQuoteId(existing.id)
+      setViewQuoteOpen(true)
+      return
+    }
+    setNewQuoteContext({
+      leadId: lead.id,
+      customerId: lead.customerId || '',
+      branchId: lead.branchId || sessionBranchId || branches.find((branch) => branch.active)?.id || '',
     })
     setNewQuoteOpen(true)
   }
@@ -566,7 +604,7 @@ export default function PipelinePage() {
               className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain scrollbar-thin"
               data-testid="pipeline-board-vertical-scroll"
             >
-              <div className="flex min-h-full items-stretch gap-4 pb-2" data-testid="pipeline-board-body">
+              <div className="flex min-h-full items-stretch gap-4 pb-2 pt-3" data-testid="pipeline-board-body">
                 {OPPORTUNITY_STAGES.map((stage) => {
                   const deals = byStage[stage] || []
                   return (
@@ -576,7 +614,7 @@ export default function PipelinePage() {
                       className={cn(
                         PIPELINE_COLUMN_WIDTH_CLASS,
                         'flex min-h-full flex-col rounded-xl transition-colors',
-                        hoverStage === stage && 'bg-blue-50/70 ring-2 ring-blue-200',
+                        hoverStage === stage && 'bg-blue-50/70 ring-2 ring-inset ring-blue-200',
                       )}
                     >
                       <div className="min-h-full flex-1 space-y-2 rounded-xl bg-slate-50/80 p-2">
@@ -584,11 +622,12 @@ export default function PipelinePage() {
                           <DealCard
                             key={lead.id}
                             lead={lead}
+                            linkedQuote={findLeadLinkedQuote(quotes, lead.id)}
                             busy={busyLeadId === lead.id}
                             dragging={dragState?.id === lead.id}
                             onPointerDown={startDrag}
                             onFollowUp={openFollowUp}
-                            onQuote={(item) => navigate(`/crm/cotizaciones?leadId=${item.id}`)}
+                            onQuote={openQuoteForLead}
                             onConvert={convertPipelineLead}
                             onLinkCustomer={openLinkCustomer}
                           />
@@ -634,10 +673,34 @@ export default function PipelinePage() {
           setNewQuoteContext(null)
         }}
         initialContext={newQuoteContext}
-        onSaved={() => {
+        onSaved={(saved) => {
           setNewQuoteOpen(false)
+          const hadLead = Boolean(newQuoteContext?.leadId)
           setNewQuoteContext(null)
+          if (hadLead && saved?.id) {
+            setQuoteHandoff(saved)
+          }
         }}
+      />
+
+      <QuoteFormModal
+        open={viewQuoteOpen && Boolean(viewingQuote)}
+        onClose={() => {
+          setViewQuoteOpen(false)
+          setViewingQuoteId(null)
+        }}
+        quote={viewingQuote}
+        onSaved={() => {
+          setViewQuoteOpen(false)
+          setViewingQuoteId(null)
+        }}
+      />
+
+      <QuoteDocumentHandoffModal
+        open={Boolean(quoteHandoffResolved)}
+        quote={quoteHandoffResolved}
+        documentCtx={closeDocumentCtx}
+        onClose={() => setQuoteHandoff(null)}
       />
 
       <CloseLeadInvoiceModal

@@ -84,6 +84,10 @@ export const crmApi = {
     `${CRM_BASE}/quotes/${quoteId}/cancel`,
     { version, reason }
   ),
+  deleteQuote: (quoteId, version) => apiClient.delete(
+    `${CRM_BASE}/quotes/${quoteId}`,
+    { version },
+  ),
   invoiceQuote: (quoteId, payload, key) => apiClient.post(
     `${CRM_BASE}/quotes/${quoteId}/invoice`,
     payload,

@@ -18,7 +18,7 @@ const API_CONNECTED_MODULE_SET = new Set([
 
 const MODULE_DEPENDENCIES = Object.freeze({
   pos: Object.freeze(['sales', 'inventory']),
-  carwash: Object.freeze(['pos', 'hr', 'sales', 'inventory']),
+  carwash: Object.freeze(['pos', 'hr']),
 })
 
 export const API_CONNECTED_MODULES = Object.freeze([...API_CONNECTED_MODULE_SET])

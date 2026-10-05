@@ -1,3 +1,4 @@
+import { isActiveCrmQuote } from '@/modules/crm/lib/crmQuoteVisibility'
 import { isQuoteInvoiced, resolveQuoteBilling } from '@/modules/crm/lib/quoteInvoice'
 import { mergeCrmSalesLists, saleDisplayReference } from '@/modules/crm/lib/crmSales'
 import { findReceivableForSale } from '@/modules/crm/lib/saleProofs'
@@ -27,6 +28,7 @@ export function buildCrmDocumentRows({
 
   const quoteRows = enrichedQuotes
     .filter((quote) => !isQuoteInvoiced(quote))
+    .filter((quote) => isActiveCrmQuote(quote))
     .map((quote) => ({
       kind: 'quote',
       id: `quote-${quote.id}`,

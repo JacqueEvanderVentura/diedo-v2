@@ -24,3 +24,26 @@ export function formatTaskCountdown(dueAt, now = new Date()) {
   }
   return { tone: 'now', text: 'Vence ahora' }
 }
+
+const MS_PER_HOUR = 60 * 60 * 1000
+
+/** Urgencia visual para vencimiento de tareas (48 h → amarillo, 10 h → rojo). */
+export function activityDueUrgencyTone(dueAt, now = new Date()) {
+  if (!dueAt) return 'none'
+  const diffMs = new Date(dueAt) - now
+  if (diffMs <= 0) return 'overdue'
+  const hoursLeft = diffMs / MS_PER_HOUR
+  if (hoursLeft < 10) return 'critical'
+  if (hoursLeft < 48) return 'warning'
+  return 'normal'
+}
+
+export function activityDueUrgencyClass(tone) {
+  if (tone === 'critical' || tone === 'overdue') {
+    return 'font-semibold text-red-600'
+  }
+  if (tone === 'warning') {
+    return 'font-semibold text-amber-600'
+  }
+  return 'text-slate-500'
+}

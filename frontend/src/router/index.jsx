@@ -4,7 +4,8 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { AppFrame, PageShell } from '@/components/layout/PageShell'
 import { AuthGate } from '@/components/auth/AuthGate'
 import { FeatureUnavailablePage } from '@/components/layout/FeatureUnavailablePage'
-import { FEATURES } from '@/config/features'
+import { FEATURES, isChatModuleSurfaceEnabled } from '@/config/features'
+import { useSessionStore } from '@/stores/sessionStore'
 import LoginPage from '@/modules/auth/pages/LoginPage'
 
 import DashboardPage from '@/modules/dashboard/pages/DashboardPage'
@@ -99,6 +100,14 @@ import PerformancePage from '@/modules/rrhh/pages/PerformancePage'
 
 
 
+function ChatRoute() {
+  const enabledModules = useSessionStore((state) => state.user?.enabledModules)
+  if (!isChatModuleSurfaceEnabled(enabledModules)) {
+    return <FeatureUnavailablePage title="Chat próximamente" />
+  }
+  return <ChatPage />
+}
+
 export function AppRoutes() {
 
   return (
@@ -156,16 +165,7 @@ export function AppRoutes() {
             }
           />
 
-          <Route
-            path="/chat"
-            element={
-              FEATURES.chat ? (
-                <ChatPage />
-              ) : (
-                <FeatureUnavailablePage title="Chat próximamente" />
-              )
-            }
-          />
+          <Route path="/chat" element={<ChatRoute />} />
 
           <Route path="/activos" element={<Navigate to="/inventarios?tab=activos" replace />} />
 
