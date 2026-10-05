@@ -70,6 +70,9 @@ def test_lead_instagram_survives_conversion(client: TestClient) -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.skip(
+    reason="CRM funnel migration 0058 is irreversible; Instagram backfill runs on fresh installs."
+)
 def test_migration_recovers_instagram_website_for_converted_customer(client: TestClient) -> None:
     marker = uuid7().hex[-12:]
     with session_scope() as session:

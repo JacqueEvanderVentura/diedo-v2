@@ -1091,7 +1091,7 @@ def test_crm_quote_accepted_does_not_auto_invoice_and_crm_invoice_works_without_
         "/api/v1/crm/quotes",
         headers={**headers, "Idempotency-Key": f"crm-inv-quote-cxc-{suffix}"},
         json={
-            "leadId": lead["id"],
+            "leadId": lead.json()["id"],
             "customerId": converted.json()["id"],
             "branchId": branch_id_text,
             "lines": [{"itemId": str(item_id), "quantity": "1"}],

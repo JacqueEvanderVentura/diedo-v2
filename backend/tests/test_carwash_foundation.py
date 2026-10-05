@@ -146,7 +146,7 @@ def test_carwash_migration_round_trip_keeps_activation_opt_in() -> None:
         session.execute(delete(CarwashWash))
     dispose_engine()
     try:
-        command.downgrade(config, "20260924_0048")
+        command.downgrade(config, "20261004_0057")
     finally:
         command.upgrade(config, "head")
         dispose_engine()
