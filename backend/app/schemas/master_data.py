@@ -12,7 +12,9 @@ CreateMasterDataStatus = Literal["active", "inactive"]
 CustomerType = Literal["person", "business"]
 SortDirection = Literal["asc", "desc"]
 CustomerSortField = Literal["name", "status", "createdAt", "updatedAt"]
-AcquisitionSource = Literal["whatsapp", "instagram", "referral", "otros", "pos_walk_in", "app"]
+AcquisitionSource = Literal[
+    "whatsapp", "instagram", "referral", "otros", "pos_walk_in", "app", "ai"
+]
 CustomerDocumentType = Literal["cedula", "pasaporte"]
 EmployeeSortField = Literal["name", "employeeNumber", "status", "createdAt", "updatedAt"]
 AttachmentClassification = Literal["internal", "customer_document", "employee_document"]

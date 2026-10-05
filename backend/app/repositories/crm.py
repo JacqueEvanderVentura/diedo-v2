@@ -218,6 +218,7 @@ class CrmRepository:
                 select(func.count(SalesQuote.id)).where(
                     SalesQuote.workspace_id == workspace_id,
                     SalesQuote.lead_id == lead_id,
+                    SalesQuote.status != "cancelled",
                 )
             )
             or 0
@@ -232,6 +233,8 @@ class CrmRepository:
         status: str | None,
         source: str | None,
         search: str | None,
+        updated_after: datetime | None = None,
+        updated_before: datetime | None = None,
         sort: str,
         sort_dir: str,
         page: int,
@@ -257,6 +260,10 @@ class CrmRepository:
                     func.lower(func.coalesce(CrmLead.location, "")).like(pattern),
                 )
             )
+        if updated_after is not None:
+            query = query.where(CrmLead.updated_at >= updated_after)
+        if updated_before is not None:
+            query = query.where(CrmLead.updated_at <= updated_before)
         total = int(self._session.scalar(select(func.count()).select_from(query.subquery())) or 0)
         order_clauses: list[Any]
         if sort == "star_rating":
