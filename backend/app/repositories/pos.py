@@ -834,22 +834,46 @@ class PosRepository:
         self._session.flush()
 
     def delete_receivable_graph(self, receivable: CustomerReceivable) -> None:
+        workspace_id = receivable.workspace_id
+        receivable_id = receivable.id
         proofs = self._session.scalars(
             select(PaymentProof).where(
-                PaymentProof.workspace_id == receivable.workspace_id,
-                PaymentProof.receivable_id == receivable.id,
+                PaymentProof.workspace_id == workspace_id,
+                or_(
+                    PaymentProof.receivable_id == receivable_id,
+                    PaymentProof.customer_payment_id.in_(
+                        select(CustomerPayment.id).where(
+                            CustomerPayment.workspace_id == workspace_id,
+                            CustomerPayment.receivable_id == receivable_id,
+                        )
+                    ),
+                ),
             )
         ).all()
         for proof in proofs:
             self._session.delete(proof)
+        self._session.flush()
+        payments = self._session.scalars(
+            select(CustomerPayment).where(
+                CustomerPayment.workspace_id == workspace_id,
+                CustomerPayment.receivable_id == receivable_id,
+            )
+        ).all()
+        for payment in payments:
+            movement = self.movement_for_payment(workspace_id, payment.id)
+            if movement is not None:
+                self._session.delete(movement)
+            self._session.delete(payment)
+        self._session.flush()
         lines = self._session.scalars(
             select(CustomerReceivableLine).where(
-                CustomerReceivableLine.workspace_id == receivable.workspace_id,
-                CustomerReceivableLine.receivable_id == receivable.id,
+                CustomerReceivableLine.workspace_id == workspace_id,
+                CustomerReceivableLine.receivable_id == receivable_id,
             )
         ).all()
         for line in lines:
             self._session.delete(line)
+        self._session.flush()
         self._session.delete(receivable)
         self._session.flush()
 
@@ -863,6 +887,7 @@ class PosRepository:
         ).all()
         for line in lines:
             self._session.delete(line)
+        self._session.flush()
         self._session.delete(sale)
         self._session.flush()
 

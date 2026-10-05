@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal, Self
 from uuid import UUID
 
@@ -13,11 +13,18 @@ def _serialize_decimal(value: Decimal) -> str:
     return format(value, "f")
 
 
+def _serialize_money(value: Decimal) -> str:
+    return format(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP), "f")
+
+
 DecimalString = Annotated[
     Decimal,
     PlainSerializer(_serialize_decimal, return_type=str, when_used="json"),
 ]
-Money = DecimalString
+Money = Annotated[
+    Decimal,
+    PlainSerializer(_serialize_money, return_type=str, when_used="json"),
+]
 Quantity = DecimalString
 
 DiscountType = Literal["percent", "fixed"]

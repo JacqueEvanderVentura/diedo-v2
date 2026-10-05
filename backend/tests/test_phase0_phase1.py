@@ -74,7 +74,7 @@ def test_phase1_administration_crud_and_optimistic_concurrency(client: TestClien
                 "legalName": "Helios Spa SRL",
                 "rnc": "1-3290890-2",
                 "phone": "8095550000",
-                "email": "facturacion@helios.test",
+                "email": "facturacion@example.com",
                 "address": "Av. Principal 1",
                 "footerNote": "Gracias por su compra",
             },
