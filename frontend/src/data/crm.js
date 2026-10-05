@@ -10,14 +10,15 @@ export const MODULE_LABELS = {
   config: 'Configuración',
 }
 
-export const LEAD_STATUSES = ['nuevo', 'contactado', 'calificado', 'descartado', 'convertido']
+export const LEAD_STATUSES = ['nuevo', 'contactado', 'propuesta', 'negociacion', 'cerrado', 'perdido']
 
 export const LEAD_STATUS_META = {
   nuevo: { label: 'Nuevo', tone: 'brand' },
   contactado: { label: 'Contactado', tone: 'warning' },
-  calificado: { label: 'Calificado', tone: 'success' },
-  descartado: { label: 'Descartado', tone: 'neutral' },
-  convertido: { label: 'Convertido', tone: 'success' },
+  propuesta: { label: 'Propuesta', tone: 'neutral' },
+  negociacion: { label: 'Negociación', tone: 'warning' },
+  cerrado: { label: 'Cerrado', tone: 'success' },
+  perdido: { label: 'Perdido', tone: 'danger' },
 }
 
 export const LEAD_SOURCES = ['manual', 'serp', 'serper', 'referral', 'import']
@@ -41,7 +42,8 @@ export const ACQUISITION_SOURCE_LABELS = {
   app: 'App Helios 360',
 }
 
-export const OPPORTUNITY_STAGES = ['nuevo', 'contactado', 'propuesta', 'negociacion', 'cerrado', 'perdido']
+export const OPPORTUNITY_STAGES = LEAD_STATUSES
+export const PIPELINE_STAGES = LEAD_STATUSES
 
 export const STAGE_META = {
   nuevo: { label: 'Nuevo', tone: 'brand', color: 'bg-blue-500' },

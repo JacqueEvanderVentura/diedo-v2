@@ -216,6 +216,27 @@ export function mapPosLineFromApi(line) {
   }
 }
 
+export function mapTenderFromApi(tender) {
+  const method = first(
+    tender.paymentMethod?.code,
+    tender.paymentMethodCode,
+    tender.method,
+    'cash'
+  )
+  return {
+    id: tender.id,
+    position: numberValue(tender.position, 1),
+    amount: numberValue(tender.amount),
+    method: paymentMethodSemanticCode(method),
+    methodId: first(tender.paymentMethodId, tender.paymentMethod?.id, null),
+    reference: tender.reference || null,
+    status: tender.status || 'settled',
+    paymentChannel: first(tender.paymentChannel, tender.payment_channel, null),
+    settlementPolicy: first(tender.settlementPolicy, tender.settlement_policy, null),
+    createdAt: first(tender.createdAt, tender.created_at, null),
+  }
+}
+
 export function mapPaymentFromApi(payment) {
   const method = first(
     payment.methodCode,
@@ -224,6 +245,8 @@ export function mapPaymentFromApi(payment) {
     payment.method?.code,
     payment.method
   )
+  const proofs = collection(payment.proofs).map(mapProof).filter((proof) => proof?.id || proof?.name)
+  const primaryProof = mapProof(payment.proof || payment.attachment || proofs[0])
   return {
     id: payment.id,
     amount: numberValue(payment.amount),
@@ -231,7 +254,8 @@ export function mapPaymentFromApi(payment) {
     methodId: first(payment.methodId, payment.paymentMethodId, payment.paymentMethod?.id, null),
     reference: payment.reference || null,
     note: payment.note || payment.notes || null,
-    proof: mapProof(payment.proof || payment.attachment || collection(payment.proofs)[0]),
+    proofs,
+    proof: primaryProof,
     status: payment.status || 'confirmed',
     reversed: Boolean(payment.reversedAt || payment.status === 'reversed'),
     version: payment.version ?? null,
@@ -249,10 +273,19 @@ export function mapReceivableFromApi(receivable) {
     first(receivable.paidAmount, receivable.paidTotal, receivable.amountPaid),
     paidFromPayments
   )
-  const balance = numberValue(first(receivable.balance, receivable.pendingAmount), Math.max(0, amount - paidAmount))
+  const approvalPendingAmount = numberValue(
+    first(receivable.approvalPendingAmount, receivable.approval_pending_amount),
+    0
+  )
+  const balance = numberValue(
+    first(receivable.balance, receivable.pendingAmount),
+    Math.max(0, amount - paidAmount - approvalPendingAmount),
+  )
   const rawStatus = normalizedCode(receivable.status)
   const mappedStatus = RECEIVABLE_STATUS[rawStatus]
-    || (balance <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'pending')
+    || (approvalPendingAmount > 0
+      ? 'approval_pending'
+      : (balance <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'pending'))
   const status = receivable.overdue === true && !['paid', 'voided'].includes(mappedStatus)
     ? 'overdue'
     : mappedStatus
@@ -271,6 +304,7 @@ export function mapReceivableFromApi(receivable) {
     amount,
     paidAmount,
     balance,
+    approvalPendingAmount,
     method: paymentMethodSemanticCode(first(receivable.methodCode, receivable.method, receivable.paymentMethod?.code, 'cxc')),
     reference: receivable.reference || null,
     status,
@@ -372,6 +406,7 @@ export function mapSaleFromApi(sale) {
       null
     ),
     reference: first(sale.reference, payment.reference, null),
+    tenders: collection(sale.tenders).map(mapTenderFromApi),
     payment: paymentRecord?.paymentMethod || paymentRecord?.amount != null || paymentProofs.length
       ? {
           amount: numberValue(paymentRecord.amount),
@@ -382,8 +417,12 @@ export function mapSaleFromApi(sale) {
       : null,
     status: sale.status || 'posted',
     quoteId: sale.quoteId || null,
-    origin: first(sale.origin, sale.quoteOrigin, null),
-    channel: first(sale.channel, sale.origin === 'crm' ? 'crm' : null),
+    origin: first(sale.origin, sale.channelOrigin, sale.channel_origin, sale.quoteOrigin, null),
+    channel: first(
+      sale.channel,
+      sale.channelOrigin === 'pipeline' || sale.channel_origin === 'pipeline' ? 'crm' : null,
+      sale.origin === 'crm' || sale.origin === 'pipeline' ? 'crm' : null,
+    ),
     voidedAt: first(sale.voidedAt, sale.cancelledAt, null),
     voidReason: first(sale.voidReason, sale.cancellationReason, null),
     soldBy: first(
@@ -559,10 +598,12 @@ export function mapRegisterHistoryEntry(register, branchId) {
 
 export function mapPosCatalogItemFromApi(item, branchId = null) {
   const stock = first(item.stockQuantity, item.stock)
+  const categoryId = first(item.categoryId, item.category_id)
   return {
     id: item.id,
     name: item.name,
     sku: item.sku || null,
+    category: categoryId || null,
     type: item.itemType || item.type || 'other',
     price: numberValue(first(item.salePrice, item.price)),
     taxPct: numberValue(first(item.taxRate, item.taxPct)),
@@ -680,11 +721,24 @@ export function mapReceivableStateMutationResponse(response) {
   const state = entity(response, ['receivable'])
   if (!state?.id) return null
   const rawStatus = normalizedCode(state.status)
+  const approvalPendingAmount = numberValue(
+    first(state.approvalPendingAmount, state.approval_pending_amount),
+    0,
+  )
+  const paidAmount = numberValue(first(state.paidTotal, state.paidAmount))
+  const balance = numberValue(
+    first(state.balance),
+    Math.max(0, (Number(state.originalAmount) || 0) - paidAmount - approvalPendingAmount),
+  )
+  const mappedStatus = approvalPendingAmount > 0
+    ? 'approval_pending'
+    : (RECEIVABLE_STATUS[rawStatus] || rawStatus)
   return {
     id: state.id,
-    status: RECEIVABLE_STATUS[rawStatus] || rawStatus,
-    paidAmount: numberValue(first(state.paidTotal, state.paidAmount)),
-    balance: numberValue(state.balance),
+    status: mappedStatus,
+    paidAmount,
+    approvalPendingAmount,
+    balance,
     version: state.version ?? null,
   }
 }
@@ -796,6 +850,36 @@ export function quotePatchToApiPayload(quote, patch) {
 
 export function checkoutToApiPayload(data, state) {
   const payment = paymentMethodApiReference(state.paymentMethods, data.method)
+  const tenders = Array.isArray(state.checkoutTenders) ? state.checkoutTenders : null
+  if (tenders?.length) {
+    const mappedTenders = tenders.map((row) => {
+      const rowPayment = paymentMethodApiReference(state.paymentMethods, row.methodId)
+      if (!rowPayment.methodId) {
+        throw new Error('Selecciona métodos de pago sincronizados con la API.')
+      }
+      return {
+        paymentMethodId: rowPayment.methodId,
+        amount: numberValue(row.amount),
+        reference: row.reference?.trim() || null,
+      }
+    })
+    const quoteId = state.activeQuoteId || null
+    const activeQuote = quoteId
+      ? [...collection(state.heldCarts), ...collection(state.openQuotes)]
+        .find((quote) => quote.id === quoteId)
+      : null
+    const quoteVersion = activeQuote?.version
+    return {
+      branchId: state.branchId,
+      registerId: state.register?.id,
+      quoteId,
+      ...(quoteId && quoteVersion != null ? { quoteVersion } : {}),
+      customerId: customerId(data.customer),
+      tenders: mappedTenders,
+      lines: (data.items || []).map(lineToApiPayload),
+      ...discountToApiPayload(state.discountMode, state.discountValue),
+    }
+  }
   if (!payment.methodId) {
     throw new Error('Selecciona un método de pago sincronizado con la API.')
   }
@@ -888,5 +972,25 @@ export function voidToApiPayload(entityToVoid, reason = 'Anulado desde Terminal 
   return {
     reason,
     version: entityToVoid?.version ?? null,
+  }
+}
+
+export function updateSaleToApiPayload(sale, form, { paymentMethods, registerId }) {
+  const payment = paymentMethodApiReference(paymentMethods, form.method)
+  if (!payment.methodId) {
+    throw new Error('Selecciona un método de pago sincronizado con la API.')
+  }
+  if (!registerId) {
+    throw new Error('Abre la caja de la sucursal para editar la factura.')
+  }
+  return {
+    registerId,
+    customerId: customerId(form.customer),
+    paymentMethodId: payment.methodId,
+    reference: form.reference?.trim() || null,
+    lines: (form.items || []).map(lineToApiPayload),
+    ...discountToApiPayload(form.discountMode, form.discountValue, { includeZero: true }),
+    notes: form.notes?.trim() || null,
+    version: sale.version,
   }
 }

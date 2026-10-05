@@ -18,11 +18,13 @@ function mapSessionBranch(branch, current) {
     legalDisplayName: '',
     rnc: '',
     sharing: { branchCount: 0, shared: false },
-    ...current,
     ...branch,
+    ...current,
     active: current?.active ?? true,
     status: current?.status || 'active',
     source: 'api',
+    name: current?.name || branch.name,
+    code: current?.code || branch.code,
   }
   return {
     ...merged,
@@ -73,6 +75,7 @@ export const configFacade = {
 
   clearApiBranches({ workspaceId } = {}) {
     useConfigStore.getState().setBranches([])
+    useConfigStore.getState().markWorkspaceBillingHydrated(false)
     activeWorkspaceId = workspaceId || null
     apiOwned = true
     return true

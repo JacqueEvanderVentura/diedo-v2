@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
-  applySimplifiedOpportunityStageMove,
+  applySimplifiedLeadStageMove,
   canDirectMoveSimplifiedStage,
   simplifiedStageMoveResult,
   simplifiedStageSelectOptions,
@@ -28,51 +28,43 @@ describe('simplifiedStageMove', () => {
     expect(canDirectMoveSimplifiedStage('cerrado')).toBe(false)
   })
 
-  it('updates opportunity and syncs lead status on direct move', async () => {
-    const updateOpportunity = vi.fn().mockResolvedValue({})
+  it('updates lead status on direct move', async () => {
     const updateLead = vi.fn().mockResolvedValue({})
 
-    const result = await applySimplifiedOpportunityStageMove({
-      opportunityId: 'opp-1',
+    const result = await applySimplifiedLeadStageMove({
       leadId: 'lead-1',
       fromStage: 'nuevo',
       toStage: 'contactado',
-      updateOpportunity,
       updateLead,
     })
 
     expect(result).toEqual({ type: 'moved', stage: 'contactado' })
-    expect(updateOpportunity).toHaveBeenCalledWith('opp-1', { stage: 'contactado' })
     expect(updateLead).toHaveBeenCalledWith('lead-1', { status: 'contactado' })
   })
 
-  it('mueve una oportunidad con lead convertido sin intentar cambiar su estado', async () => {
-    const updateOpportunity = vi.fn().mockResolvedValue({})
-    const updateLead = vi.fn()
-    const result = await applySimplifiedOpportunityStageMove({
-      opportunityId: 'opp-1', leadId: 'lead-1', leadStatus: 'convertido',
-      fromStage: 'propuesta', toStage: 'negociacion', updateOpportunity, updateLead,
+  it('mueve el lead actualizando solo su etapa en el embudo', async () => {
+    const updateLead = vi.fn().mockResolvedValue({})
+    const result = await applySimplifiedLeadStageMove({
+      leadId: 'lead-1',
+      fromStage: 'propuesta',
+      toStage: 'negociacion',
+      updateLead,
     })
     expect(result).toEqual({ type: 'moved', stage: 'negociacion' })
-    expect(updateOpportunity).toHaveBeenCalledWith('opp-1', { stage: 'negociacion' })
-    expect(updateLead).not.toHaveBeenCalled()
+    expect(updateLead).toHaveBeenCalledWith('lead-1', { status: 'negociacion' })
   })
 
   it('does not patch when moving to ganados', async () => {
-    const updateOpportunity = vi.fn()
     const updateLead = vi.fn()
 
-    const result = await applySimplifiedOpportunityStageMove({
-      opportunityId: 'opp-1',
+    const result = await applySimplifiedLeadStageMove({
       leadId: 'lead-1',
       fromStage: 'propuesta',
       toStage: 'cerrado',
-      updateOpportunity,
       updateLead,
     })
 
     expect(result).toEqual({ type: 'requires_payment' })
-    expect(updateOpportunity).not.toHaveBeenCalled()
     expect(updateLead).not.toHaveBeenCalled()
   })
 })

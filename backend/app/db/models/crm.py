@@ -69,7 +69,7 @@ class CustomerCrmProfile(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base
 
 
 class CrmLead(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
-    """Branch-scoped prospect with optional star rating and conversion trace."""
+    """Branch-scoped prospect with funnel stage, value, and optional conversion."""
 
     __tablename__ = "crm_leads"
     __table_args__ = (
@@ -96,7 +96,7 @@ class CrmLead(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             name="fk_crm_leads_workspace_converted_customer",
         ),
         CheckConstraint(
-            "status IN ('nuevo', 'contactado', 'calificado', 'descartado', 'convertido')",
+            "status IN ('nuevo', 'contactado', 'propuesta', 'negociacion', 'cerrado', 'perdido')",
             name="status_values",
         ),
         CheckConstraint(
@@ -119,13 +119,22 @@ class CrmLead(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             "star_rating IS NULL OR (star_rating * 2) = trunc(star_rating * 2)",
             name="star_rating_half_step",
         ),
+        CheckConstraint("pipeline_value >= 0", name="pipeline_value_non_negative"),
         CheckConstraint(
-            "(status = 'convertido' AND converted_customer_id IS NOT NULL AND "
+            "(status = 'cerrado' AND converted_customer_id IS NOT NULL AND "
             "converted_at IS NOT NULL AND conversion_idempotency_key IS NOT NULL AND "
             "conversion_request_fingerprint IS NOT NULL) OR "
-            "(status <> 'convertido' AND converted_customer_id IS NULL AND converted_at IS NULL "
+            "(status <> 'cerrado' AND converted_customer_id IS NULL AND converted_at IS NULL "
             "AND conversion_idempotency_key IS NULL AND conversion_request_fingerprint IS NULL)",
             name="conversion_state_consistent",
+        ),
+        CheckConstraint(
+            "status <> 'perdido' OR lost_reason IS NOT NULL", name="lost_reason_required"
+        ),
+        CheckConstraint(
+            "(status = 'perdido' AND pipeline_closed_at IS NOT NULL) OR "
+            "(status <> 'perdido' AND pipeline_closed_at IS NULL)",
+            name="pipeline_closed_consistent",
         ),
         CheckConstraint(
             "char_length(creation_idempotency_key) >= 8", name="idempotency_key_length"
@@ -196,117 +205,17 @@ class CrmLead(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
         String(16), nullable=False, default="nuevo", server_default=text("'nuevo'")
     )
     star_rating: Mapped[Decimal | None] = mapped_column(Numeric(2, 1), nullable=True)
+    pipeline_value: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), nullable=False, default=Decimal("0"), server_default=text("0")
+    )
+    lost_reason: Mapped[str | None] = mapped_column(String(1000))
+    pipeline_closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     converted_customer_id: Mapped[UUID | None] = mapped_column(nullable=True)
     converted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     creation_idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     conversion_idempotency_key: Mapped[str | None] = mapped_column(String(128))
     conversion_request_fingerprint: Mapped[str | None] = mapped_column(String(64))
-    created_by_platform_user_id: Mapped[UUID] = mapped_column(
-        ForeignKey("platform_users.id", ondelete="RESTRICT"), nullable=False
-    )
-    updated_by_platform_user_id: Mapped[UUID] = mapped_column(
-        ForeignKey("platform_users.id", ondelete="RESTRICT"), nullable=False
-    )
-
-
-class CrmOpportunity(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
-    """Pipeline deal linked to a lead and optionally to the converted customer."""
-
-    __tablename__ = "crm_opportunities"
-    __table_args__ = (
-        UniqueConstraint("workspace_id", "id", name="uq_crm_opportunities_workspace_id"),
-        UniqueConstraint(
-            "workspace_id",
-            "creation_idempotency_key",
-            name="uq_crm_opportunities_workspace_idempotency",
-        ),
-        ForeignKeyConstraint(
-            ["workspace_id", "branch_id"],
-            ["branches.workspace_id", "branches.id"],
-            ondelete="RESTRICT",
-            name="fk_crm_opportunities_workspace_branch",
-        ),
-        ForeignKeyConstraint(
-            ["workspace_id", "lead_id"],
-            ["crm_leads.workspace_id", "crm_leads.id"],
-            ondelete="RESTRICT",
-            name="fk_crm_opportunities_workspace_lead",
-        ),
-        ForeignKeyConstraint(
-            ["workspace_id", "customer_id"],
-            ["customers.workspace_id", "customers.id"],
-            ondelete="RESTRICT",
-            name="fk_crm_opportunities_workspace_customer",
-        ),
-        ForeignKeyConstraint(
-            ["workspace_id", "assigned_membership_id"],
-            ["workspace_memberships.workspace_id", "workspace_memberships.id"],
-            ondelete="RESTRICT",
-            name="fk_crm_opportunities_workspace_assignee",
-        ),
-        CheckConstraint(
-            "stage IN ('nuevo', 'contactado', 'propuesta', 'negociacion', 'cerrado', 'perdido')",
-            name="stage_values",
-        ),
-        CheckConstraint("value >= 0", name="value_non_negative"),
-        CheckConstraint("char_length(currency_code) = 3", name="currency_code_length"),
-        CheckConstraint("currency_code = upper(currency_code)", name="currency_code_uppercase"),
-        CheckConstraint(
-            "(stage IN ('cerrado', 'perdido') AND closed_at IS NOT NULL) OR "
-            "(stage NOT IN ('cerrado', 'perdido') AND closed_at IS NULL)",
-            name="closed_state_consistent",
-        ),
-        CheckConstraint(
-            "stage <> 'perdido' OR lost_reason IS NOT NULL", name="lost_reason_required"
-        ),
-        CheckConstraint(
-            "char_length(creation_idempotency_key) >= 8", name="idempotency_key_length"
-        ),
-        CheckConstraint("char_length(request_fingerprint) = 64", name="fingerprint_length"),
-        Index(
-            "uq_crm_opportunities_workspace_lead",
-            "workspace_id",
-            "lead_id",
-            unique=True,
-            postgresql_where=text("lead_id IS NOT NULL"),
-        ),
-        Index(
-            "ix_crm_opportunities_workspace_branch_stage_updated",
-            "workspace_id",
-            "branch_id",
-            "stage",
-            "updated_at",
-        ),
-        Index(
-            "ix_crm_opportunities_workspace_customer",
-            "workspace_id",
-            "customer_id",
-            "updated_at",
-        ),
-    )
-
-    workspace_id: Mapped[UUID] = mapped_column(
-        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
-    )
-    branch_id: Mapped[UUID] = mapped_column(nullable=False)
-    lead_id: Mapped[UUID | None] = mapped_column(nullable=True)
-    customer_id: Mapped[UUID | None] = mapped_column(nullable=True)
-    assigned_membership_id: Mapped[UUID] = mapped_column(nullable=False)
-    title: Mapped[str] = mapped_column(String(240), nullable=False)
-    customer_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    stage: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="nuevo", server_default=text("'nuevo'")
-    )
-    value: Mapped[Decimal] = mapped_column(
-        Numeric(14, 2), nullable=False, default=Decimal("0"), server_default=text("0")
-    )
-    currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
-    notes: Mapped[str | None] = mapped_column(String(2000))
-    lost_reason: Mapped[str | None] = mapped_column(String(1000))
-    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    creation_idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
-    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     created_by_platform_user_id: Mapped[UUID] = mapped_column(
         ForeignKey("platform_users.id", ondelete="RESTRICT"), nullable=False
     )
@@ -339,12 +248,6 @@ class CrmActivity(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             name="fk_crm_activities_workspace_lead",
         ),
         ForeignKeyConstraint(
-            ["workspace_id", "opportunity_id"],
-            ["crm_opportunities.workspace_id", "crm_opportunities.id"],
-            ondelete="RESTRICT",
-            name="fk_crm_activities_workspace_opportunity",
-        ),
-        ForeignKeyConstraint(
             ["workspace_id", "customer_id"],
             ["customers.workspace_id", "customers.id"],
             ondelete="RESTRICT",
@@ -372,9 +275,9 @@ class CrmActivity(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             "due_at",
         ),
         Index(
-            "ix_crm_activities_workspace_opportunity_created",
+            "ix_crm_activities_workspace_lead_created",
             "workspace_id",
-            "opportunity_id",
+            "lead_id",
             "created_at",
         ),
         Index(
@@ -390,7 +293,6 @@ class CrmActivity(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     )
     branch_id: Mapped[UUID] = mapped_column(nullable=False)
     lead_id: Mapped[UUID | None] = mapped_column(nullable=True)
-    opportunity_id: Mapped[UUID | None] = mapped_column(nullable=True)
     customer_id: Mapped[UUID | None] = mapped_column(nullable=True)
     assigned_membership_id: Mapped[UUID] = mapped_column(nullable=False)
     activity_type: Mapped[str] = mapped_column(String(16), nullable=False)

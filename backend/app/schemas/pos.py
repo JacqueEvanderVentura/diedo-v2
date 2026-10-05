@@ -127,11 +127,24 @@ class CheckoutLineRequest(ApiModel):
     unit_price: Money | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
 
 
+class CheckoutTenderRequest(ApiModel):
+    payment_method_id: UUID
+    amount: Money = Field(gt=0, max_digits=14, decimal_places=2)
+    reference: str | None = Field(default=None, max_length=160)
+
+    @field_validator("reference")
+    @classmethod
+    def normalize_reference(cls, value: str | None) -> str | None:
+        return _normalize_optional_text(value)
+
+
 class CheckoutRequest(ApiModel):
     branch_id: UUID
     register_id: UUID
     customer_id: UUID | None = None
-    payment_method_id: UUID
+    payment_method_id: UUID | None = None
+    tenders: list[CheckoutTenderRequest] | None = Field(default=None, min_length=1, max_length=20)
+    channel_origin: str | None = Field(default=None, max_length=32)
     reference: str | None = Field(default=None, max_length=160)
     quote_id: UUID | None = None
     quote_version: int | None = Field(default=None, ge=1)
@@ -158,6 +171,11 @@ class CheckoutRequest(ApiModel):
         _validate_discount(self.discount_type, self.discount_value)
         if (self.quote_id is None) != (self.quote_version is None):
             raise ValueError("quoteId y quoteVersion deben enviarse juntos.")
+        if self.tenders is not None:
+            if self.payment_method_id is not None:
+                raise ValueError("Envía paymentMethodId o tenders, no ambos.")
+        elif self.payment_method_id is None:
+            raise ValueError("Debes indicar paymentMethodId o tenders.")
         return self
 
 
@@ -278,6 +296,46 @@ class CreateReceivablePaymentRequest(ApiModel):
         return _normalize_optional_text(value)
 
 
+class UpdateSaleRequest(ApiModel):
+    register_id: UUID
+    customer_id: UUID | None = None
+    payment_method_id: UUID | None = None
+    tenders: list[CheckoutTenderRequest] | None = Field(default=None, min_length=1, max_length=20)
+    reference: str | None = Field(default=None, max_length=160)
+    discount_type: DiscountType | None = None
+    discount_value: Money | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
+    lines: list[CheckoutLineRequest] = Field(min_length=1, max_length=100)
+    notes: str | None = Field(default=None, max_length=1000)
+    version: int = Field(ge=1)
+
+    @field_validator("reference", "notes")
+    @classmethod
+    def normalize_optional_fields(cls, value: str | None) -> str | None:
+        return _normalize_optional_text(value)
+
+    @field_validator("lines")
+    @classmethod
+    def reject_duplicate_items(cls, value: list[CheckoutLineRequest]) -> list[CheckoutLineRequest]:
+        item_ids = [line.item_id for line in value]
+        if len(item_ids) != len(set(item_ids)):
+            raise ValueError("No repitas ítems en la venta.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_discount(self) -> Self:
+        _validate_discount(self.discount_type, self.discount_value)
+        if self.tenders is not None:
+            if self.payment_method_id is not None:
+                raise ValueError("Envía paymentMethodId o tenders, no ambos.")
+        elif self.payment_method_id is None:
+            raise ValueError("Debes indicar paymentMethodId o tenders.")
+        return self
+
+
+class DeleteSaleRequest(ApiModel):
+    version: int = Field(ge=1)
+
+
 class VoidRequest(ApiModel):
     reason: str = Field(min_length=2, max_length=1000)
     version: int = Field(ge=1)
@@ -323,6 +381,7 @@ class PosCatalogItemResponse(ApiModel):
     id: UUID
     name: str
     sku: str | None
+    category_id: UUID | None = None
     item_type: PosCatalogItemType
     unit_symbol: str
     sale_price: Money
@@ -461,6 +520,21 @@ class SalePaymentResponse(ApiModel):
     proofs: list[PaymentProofResponse]
 
 
+SaleTenderStatus = Literal["settled", "awaiting_approval"]
+
+
+class SaleTenderLineResponse(ApiModel):
+    id: UUID
+    position: int
+    payment_method: PosPaymentMethodReferenceResponse
+    amount: Money
+    payment_channel: PaymentChannel
+    settlement_policy: PaymentSettlementPolicy
+    reference: str | None
+    status: SaleTenderStatus
+    created_at: datetime
+
+
 class SaleListItemResponse(ApiModel):
     id: UUID
     number: str
@@ -478,12 +552,14 @@ class SaleListItemResponse(ApiModel):
     sold_by_name: str
     created_at: datetime
     version: int
+    channel_origin: str | None = None
 
 
 class SaleDetailResponse(SaleListItemResponse):
     quote_id: UUID | None
     lines: list[SaleLineResponse]
     payment: SalePaymentResponse | None
+    tenders: list[SaleTenderLineResponse] = Field(default_factory=list)
     notes: str | None
     void_reason: str | None
     voided_by_platform_user_id: UUID | None
@@ -635,6 +711,7 @@ class ReceivableListItemResponse(ApiModel):
     currency: str
     original_amount: Money
     paid_total: Money
+    approval_pending_amount: Money = Field(default=Decimal("0"))
     balance: Money
     reference: str | None
     proofs: list[PaymentProofResponse]
@@ -668,10 +745,15 @@ class ReceivablesSummaryResponse(ApiModel):
     overdue_count: int
 
 
+class ReceivableVersionRequest(ApiModel):
+    version: int = Field(ge=1)
+
+
 class ReceivableStateResponse(ApiModel):
     id: UUID
     status: ReceivableStatus
     paid_total: Money
+    approval_pending_amount: Money = Field(default=Decimal("0"))
     balance: Money
     version: int
 

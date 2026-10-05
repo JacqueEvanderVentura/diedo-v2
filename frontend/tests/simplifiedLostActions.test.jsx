@@ -5,63 +5,66 @@ import { SimplifiedLeadActions } from '@/modules/crm/components/SimplifiedLeadAc
 import { useCrmStore } from '@/stores/crmStore'
 import { useSessionStore } from '@/stores/sessionStore'
 
-describe('ficha de oportunidad perdida en CRM Simplificado', () => {
-  const originalUpdateOpportunity = useCrmStore.getState().updateOpportunity
+describe('ficha de lead perdido en CRM Simplificado', () => {
+  const originalUpdateLead = useCrmStore.getState().updateLead
   afterEach(() => {
     cleanup()
-    useCrmStore.setState({ updateOpportunity: originalUpdateOpportunity })
+    useCrmStore.setState({ updateLead: originalUpdateLead })
   })
 
-  const lostOpportunity = () => ({
-    id: 'lost-1', branchId: 'branch-1', leadId: null, customerId: null,
-    customerName: 'Cliente de prueba', title: 'Consulta', stage: 'perdido',
-    lostReason: 'Precio alto', closedAt: '2026-09-21T16:00:00Z',
+  const lostLead = () => ({
+    id: 'lost-1',
+    branchId: 'branch-1',
+    customerId: null,
+    company: 'Cliente de prueba',
+    name: 'Consulta',
+    status: 'perdido',
+    lostReason: 'Precio alto',
+    updatedAt: '2026-09-21T16:00:00Z',
   })
 
   it('muestra el motivo y permite iniciar la reapertura', () => {
-    const opportunity = lostOpportunity()
+    const lead = lostLead()
     useSessionStore.setState({ status: 'demo', user: { branchIds: ['branch-1'] } })
-    useCrmStore.setState({ opportunities: [opportunity], quotes: [] })
-    render(<SimplifiedLeadActions opportunity={opportunity} lead={null} />)
+    useCrmStore.setState({ leads: [lead], quotes: [] })
+    render(<SimplifiedLeadActions lead={lead} />)
     expect(screen.getByText('Precio alto')).toBeTruthy()
     expect(screen.getByRole('button', { name: /Reabrir/i })).toBeTruthy()
   })
 
   it('mantiene la ficha en consulta para quien no tiene crm.manage', () => {
-    const opportunity = lostOpportunity()
+    const lead = lostLead()
     useSessionStore.setState({
       status: 'online',
       user: { branchIds: ['branch-1'], effectivePermissionCodes: ['crm.read'] },
     })
-    useCrmStore.setState({ opportunities: [opportunity], quotes: [] })
-    render(<SimplifiedLeadActions opportunity={opportunity} lead={null} />)
+    useCrmStore.setState({ leads: [lead], quotes: [] })
+    render(<SimplifiedLeadActions lead={lead} />)
     expect(screen.getByText('Precio alto')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /Reabrir/i })).toBeNull()
   })
 
   it('reabre en Interesados por defecto y notifica el cambio de etapa', async () => {
-    const opportunity = lostOpportunity()
-    const updateOpportunity = vi.fn().mockResolvedValue({ ...opportunity, stage: 'propuesta' })
+    const lead = lostLead()
+    const updateLead = vi.fn().mockResolvedValue({ ...lead, status: 'propuesta' })
     const onActionComplete = vi.fn()
     useSessionStore.setState({ status: 'demo', user: { branchIds: ['branch-1'] } })
-    useCrmStore.setState({ opportunities: [opportunity], quotes: [], updateOpportunity })
-    render(<SimplifiedLeadActions
-      opportunity={opportunity} lead={null} onActionComplete={onActionComplete}
-    />)
+    useCrmStore.setState({ leads: [lead], quotes: [], updateLead })
+    render(<SimplifiedLeadActions lead={lead} onActionComplete={onActionComplete} />)
     fireEvent.click(screen.getByRole('button', { name: 'Reabrir oportunidad' }))
     expect(screen.getByTestId('crm-simplified-reopen-stage').textContent).toContain('Interesados')
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar reapertura' }))
     await waitFor(() => {
-      expect(updateOpportunity).toHaveBeenCalledWith('lost-1', { stage: 'propuesta' })
+      expect(updateLead).toHaveBeenCalledWith('lost-1', { status: 'propuesta' })
       expect(onActionComplete).toHaveBeenCalledWith('propuesta')
     })
   })
 
   it('preselecciona Interesados cada vez que se abre el formulario', () => {
-    const opportunity = lostOpportunity()
+    const lead = lostLead()
     useSessionStore.setState({ status: 'demo', user: { branchIds: ['branch-1'] } })
-    useCrmStore.setState({ opportunities: [opportunity], quotes: [] })
-    render(<SimplifiedLeadActions opportunity={opportunity} lead={null} />)
+    useCrmStore.setState({ leads: [lead], quotes: [] })
+    render(<SimplifiedLeadActions lead={lead} />)
     fireEvent.click(screen.getByRole('button', { name: 'Reabrir oportunidad' }))
     fireEvent.click(screen.getByTestId('crm-simplified-reopen-stage'))
     fireEvent.click(screen.getByRole('button', { name: 'Seguimiento' }))
@@ -72,17 +75,15 @@ describe('ficha de oportunidad perdida en CRM Simplificado', () => {
   })
 
   it('mantiene el formulario abierto si falla la API', async () => {
-    const opportunity = lostOpportunity()
-    const updateOpportunity = vi.fn().mockRejectedValue(new Error('API no disponible'))
+    const lead = lostLead()
+    const updateLead = vi.fn().mockRejectedValue(new Error('API no disponible'))
     const onActionComplete = vi.fn()
     useSessionStore.setState({ status: 'demo', user: { branchIds: ['branch-1'] } })
-    useCrmStore.setState({ opportunities: [opportunity], quotes: [], updateOpportunity })
-    render(<SimplifiedLeadActions
-      opportunity={opportunity} lead={null} onActionComplete={onActionComplete}
-    />)
+    useCrmStore.setState({ leads: [lead], quotes: [], updateLead })
+    render(<SimplifiedLeadActions lead={lead} onActionComplete={onActionComplete} />)
     fireEvent.click(screen.getByRole('button', { name: 'Reabrir oportunidad' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar reapertura' }))
-    await waitFor(() => expect(updateOpportunity).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(updateLead).toHaveBeenCalledTimes(1))
     expect(onActionComplete).not.toHaveBeenCalled()
     expect(screen.getByTestId('crm-simplified-reopen-modal')).toBeTruthy()
   })

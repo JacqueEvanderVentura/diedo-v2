@@ -26,11 +26,11 @@ import { useConfigStore } from '@/stores/configStore'
 import { formatDOP } from '@/lib/format'
 import { ACQUISITION_SOURCE_LABELS, QUOTE_STATUS_META, STAGE_META } from '@/data/crm'
 import { buildCustomerWhatsAppVariables } from '@/lib/whatsappVariables'
-import { fmtDate, fmtDateTime, METHOD_LABELS } from '../lib/crm'
+import { fmtDate, fmtDateTime, METHOD_LABELS, saleStatusBadge } from '../lib/crm'
 import { resolveInstagramUrl } from '../lib/simplifiedOffer'
 import {
   filterCustomerQuotes,
-  filterOpenOpportunities,
+  filterOpenPipelineLeads,
   filterPendingActivities,
   mergeSalesForCustomer,
 } from '../lib/customerContext'
@@ -56,7 +56,7 @@ export function CustomerDetailPanel({
   const can = useCrmCapabilities()
   const posSales = usePosStore((s) => s.sales)
   const crmSales = useCrmStore((s) => s.sales)
-  const opportunities = useCrmStore((s) => s.opportunities)
+  const leads = useCrmStore((s) => s.leads)
   const quotes = useCrmStore((s) => s.quotes)
   const activities = useCrmStore((s) => s.activities)
   const appointments = useAgendaStore((s) => s.appointments)
@@ -72,15 +72,16 @@ export function CustomerDetailPanel({
     .map((branchId) => branches.find((branch) => branch.id === branchId))
     .filter(Boolean)
 
+  const receivables = usePosStore((s) => s.receivables)
   const purchases = useMemo(
     () => (customer ? mergeSalesForCustomer(posSales, crmSales, customer.id) : []),
     [posSales, crmSales, customer],
   )
   const activePurchases = purchases.filter((sale) => sale.status !== 'voided')
   const totalSpent = activePurchases.reduce((sum, sale) => sum + (sale.total || 0), 0)
-  const openOpportunities = useMemo(
-    () => (customer ? filterOpenOpportunities(opportunities, customer.id) : []),
-    [opportunities, customer],
+  const openPipelineLeads = useMemo(
+    () => (customer ? filterOpenPipelineLeads(leads, customer.id) : []),
+    [leads, customer],
   )
   const customerQuotes = useMemo(
     () => (customer ? filterCustomerQuotes(quotes, customer.id) : []),
@@ -175,7 +176,7 @@ export function CustomerDetailPanel({
             </div>
             <div className="rounded-xl border border-slate-100 p-3">
               <p className="text-xs font-medium text-slate-400">Pipeline</p>
-              <p className="font-heading text-xl font-bold text-emerald-600">{openOpportunities.length}</p>
+              <p className="font-heading text-xl font-bold text-emerald-600">{openPipelineLeads.length}</p>
             </div>
             <div className="rounded-xl border border-slate-100 p-3">
               <p className="text-xs font-medium text-slate-400">Tareas pendientes</p>
@@ -215,20 +216,20 @@ export function CustomerDetailPanel({
             </Section>
           )}
 
-          <Section title="Oportunidades abiertas">
-            {openOpportunities.length === 0 ? (
-              <p className="text-sm text-slate-400">Sin deals activos en el pipeline.</p>
+          <Section title="Leads en pipeline">
+            {openPipelineLeads.length === 0 ? (
+              <p className="text-sm text-slate-400">Sin leads activos en el pipeline.</p>
             ) : (
-              <ul className="space-y-2" data-testid="customer-detail-opportunities">
-                {openOpportunities.map((opp) => (
-                  <li key={opp.id} className="flex items-center justify-between rounded-xl border border-slate-100 p-3 text-sm">
+              <ul className="space-y-2" data-testid="customer-detail-pipeline-leads">
+                {openPipelineLeads.map((pipelineLead) => (
+                  <li key={pipelineLead.id} className="flex items-center justify-between rounded-xl border border-slate-100 p-3 text-sm">
                     <div>
-                      <p className="font-medium text-slate-800">{opp.title}</p>
-                      <p className="text-xs text-slate-500">{formatDOP(opp.value || 0)}</p>
+                      <p className="font-medium text-slate-800">{pipelineLead.company || pipelineLead.name}</p>
+                      <p className="text-xs text-slate-500">{formatDOP(pipelineLead.pipelineValue || 0)}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge tone={STAGE_META[opp.stage]?.tone || 'neutral'}>
-                        {STAGE_META[opp.stage]?.label || opp.stage}
+                      <Badge tone={STAGE_META[pipelineLead.status]?.tone || 'neutral'}>
+                        {STAGE_META[pipelineLead.status]?.label || pipelineLead.status}
                       </Badge>
                       <Link to="/crm/pipeline" className="text-xs font-semibold text-blue-600 hover:underline">
                         Pipeline
@@ -316,7 +317,10 @@ export function CustomerDetailPanel({
               <p className="flex items-center gap-2 text-sm text-slate-400"><ShoppingBag className="h-4 w-4" /> Aún sin compras registradas</p>
             ) : (
               <ul className="max-h-56 space-y-2 overflow-y-auto scrollbar-thin" data-testid="customer-detail-purchases">
-                {purchases.map((s) => (
+                {purchases.map((s) => {
+                  const receivable = receivables.find((row) => row.saleId === s.id)
+                  const badge = saleStatusBadge(s, receivable)
+                  return (
                   <li key={s.id}>
                     <button
                       type="button"
@@ -331,14 +335,17 @@ export function CustomerDetailPanel({
                       <p className="mt-1 truncate text-sm text-slate-600">
                         {s.items?.map((i) => `${i.qty}× ${i.name}`).join(', ') || s.number || 'Venta'}
                       </p>
-                      <span className="mt-1 inline-block text-[11px] font-medium text-slate-400">
-                        {METHOD_LABELS[s.method] || s.method}
-                        {s.origin === 'pipeline' ? ' · Pipeline' : ''}
-                        {s.status === 'voided' && ' · Anulada'}
-                      </span>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Badge tone={badge.tone}>{badge.label}</Badge>
+                        <span className="text-[11px] font-medium text-slate-400">
+                          {METHOD_LABELS[s.method] || s.method}
+                          {s.origin === 'pipeline' ? ' · Pipeline' : ''}
+                        </span>
+                      </div>
                     </button>
                   </li>
-                ))}
+                  )
+                })}
               </ul>
             )}
           </Section>

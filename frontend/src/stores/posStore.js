@@ -27,6 +27,7 @@ import {
   mapRegisterHistoryMutationResponse,
   mapRegisterMutationResponse,
   mapSalesPageFromApi,
+  mapSaleFromApi,
   mapSaleMutationResponse,
   movementToApiPayload,
   quotePatchToApiPayload,
@@ -36,6 +37,7 @@ import {
   registerCloseToApiPayload,
   registerOpenToApiPayload,
   voidToApiPayload,
+  updateSaleToApiPayload,
 } from '@/services/adapters/pos'
 import { buildShiftMovements } from '@/modules/pos/lib/caja'
 import {
@@ -506,6 +508,7 @@ export const usePosStore = create(
       discountValue: 0,
       taxPct: 18,
       paymentMethod: 'efectivo',
+      checkoutTenders: null,
       transferProof: null,
       paymentReference: '',
       cartDrawerOpen: false,
@@ -658,12 +661,16 @@ export const usePosStore = create(
             const catalogById = new Map(
               useCatalogStore.getState().products.map((product) => [product.id, product])
             )
-            mapped.posCatalog = mapped.posCatalog.map((item) => ({
-              ...catalogById.get(item.id),
-              ...item,
-              branchId,
-              branchIds: [branchId],
-            }))
+            mapped.posCatalog = mapped.posCatalog.map((item) => {
+              const catalogItem = catalogById.get(item.id)
+              return {
+                ...catalogItem,
+                ...item,
+                category: item.category || catalogItem?.categoryId || catalogItem?.category || null,
+                branchId,
+                branchIds: [branchId],
+              }
+            })
             if (methods.length) useConfigStore.getState().setPaymentMethods(methods)
             const availableMethods = methods.length
               ? methods
@@ -788,10 +795,12 @@ export const usePosStore = create(
         },
       }),
 
-      ensureReceivableDetail: (receivableId) => {
+      ensureReceivableDetail: (receivableId, { force = false } = {}) => {
         const current = get().receivables.find((item) => item.id === receivableId)
-        if (!isOnlineMode() || current?.detailLoaded) return Promise.resolve(current || null)
+        if (!isOnlineMode()) return Promise.resolve(current || null)
+        if (!force && current?.detailLoaded) return Promise.resolve(current || null)
         const key = `receivable:${receivableId}`
+        if (force) detailRequests.delete(key)
         if (detailRequests.has(key)) return detailRequests.get(key)
         const requestGeneration = posGeneration
         const branchId = get().branchId
@@ -1158,6 +1167,11 @@ export const usePosStore = create(
       setDiscountMode: (discountMode) => set({ discountMode }),
       setDiscountValue: (v) => set({ discountValue: Math.max(0, Number(v) || 0) }),
       setPaymentMethod: (paymentMethod) => set({ paymentMethod, transferProof: paymentMethod === 'transferencia' ? get().transferProof : null }),
+      setCheckoutTenders: (checkoutTenders) => set({
+        checkoutTenders: typeof checkoutTenders === 'function'
+          ? checkoutTenders(get().checkoutTenders)
+          : checkoutTenders,
+      }),
       setTransferProof: (transferProof) => set({ transferProof }),
       setPaymentReference: (paymentReference) => set({ paymentReference }),
       setIsExpense: (isExpense) => set({ isExpense: !!isExpense }),
@@ -1666,7 +1680,7 @@ export const usePosStore = create(
             get,
             operation: `register:open:${branchId}`,
             payload,
-            refreshScope: 'none',
+            refreshScope: 'caja',
             request: (idempotencyKey) => posApi.openRegister(payload, { idempotencyKey }),
             apply: (response) => {
               const register = mapRegisterMutationResponse(response, branchId)
@@ -2011,6 +2025,57 @@ export const usePosStore = create(
         })
       },
 
+      updateSale: (id, form) => {
+        const sale = get().sales.find((item) => item.id === id)
+          || get().shiftSales.find((item) => item.id === id)
+        if (!sale?.apiSynced || !isOnlineMode()) {
+          throw new Error('Solo puedes editar facturas sincronizadas en línea.')
+        }
+        const state = get()
+        const registerId = state.register?.open ? state.register.id : null
+        const payload = updateSaleToApiPayload(sale, form, {
+          paymentMethods: useConfigStore.getState().paymentMethods,
+          registerId,
+        })
+        return runOnlineMutation({
+          set,
+          get,
+          operation: `sale:update:${id}`,
+          payload,
+          request: (idempotencyKey) => posApi.updateSale(id, payload, { idempotencyKey }),
+          apply: (response) => {
+            const updated = mapSaleFromApi(response)
+            if (!updated?.id) return
+            set((prev) => ({
+              sales: prev.sales.map((item) => (item.id === id ? { ...item, ...updated } : item)),
+              shiftSales: prev.shiftSales.map((item) => (item.id === id ? { ...item, ...updated } : item)),
+            }))
+          },
+        })
+      },
+
+      deleteSale: (id) => {
+        const sale = get().sales.find((item) => item.id === id)
+          || get().shiftSales.find((item) => item.id === id)
+        if (!sale?.apiSynced || !isOnlineMode()) {
+          throw new Error('Solo puedes eliminar facturas sincronizadas en línea.')
+        }
+        return runOnlineMutation({
+          set,
+          get,
+          operation: `sale:delete:${id}`,
+          payload: { version: sale.version },
+          request: (idempotencyKey) => posApi.deleteSale(id, {
+            version: sale.version,
+            idempotencyKey,
+          }),
+          apply: () => set((prev) => ({
+            sales: prev.sales.filter((item) => item.id !== id),
+            shiftSales: prev.shiftSales.filter((item) => item.id !== id),
+          })),
+        })
+      },
+
       updateReceivable: (id, data) => {
         const current = get().receivables.find((receivable) => receivable.id === id)
         if (!current) return false
@@ -2170,7 +2235,7 @@ export const usePosStore = create(
       markReceivablePaid: (id, method = 'efectivo', extra = {}) => {
         const r = get().receivables.find((x) => x.id === id)
         if (!r || getReceivableStatus(r) === 'paid') return
-        const balance = Math.max(0, r.amount - (r.payments || []).reduce((sum, p) => sum + p.amount, 0))
+        const balance = getBalance(r)
         const note = method === 'efectivo' ? 'Cobro completo (efectivo)' : 'Pago confirmado'
         const result = get().addReceivablePayment(id, {
           amount: balance,
@@ -2187,6 +2252,128 @@ export const usePosStore = create(
           }))
         }
         return result
+      },
+
+      approveReceivablePayment: (id) => {
+        const receivable = get().receivables.find((item) => item.id === id)
+        if (!receivable) return Promise.reject(new Error('Cuenta no encontrada.'))
+        if (isOnlineMode() && receivable.apiSynced) {
+          return runOnlineMutation({
+            set,
+            get,
+            operation: `receivable:approve:${id}`,
+            payload: { version: receivable.version },
+            request: (idempotencyKey) => posApi.approveReceivablePayment(
+              id,
+              { version: receivable.version },
+              { idempotencyKey },
+            ),
+            apply: (response) => set((state) => ({
+              receivables: updateReceivableState(state.receivables, response),
+            })),
+          }).then(async (result) => {
+            await refreshOnlineState(get, receivable.branchId)
+            return result
+          })
+        }
+        set((state) => ({
+          receivables: state.receivables.map((item) => {
+            if (item.id !== id) return item
+            const shift = Number(item.approvalPendingAmount) || getBalance(item)
+            const paidAmount = (Number(item.paidAmount) || 0) + shift
+            return normalizeReceivable({
+              ...item,
+              paidAmount,
+              approvalPendingAmount: 0,
+            })
+          }),
+        }))
+        return Promise.resolve(true)
+      },
+
+      unapproveReceivablePayment: (id) => {
+        const receivable = get().receivables.find((item) => item.id === id)
+        if (!receivable) return Promise.reject(new Error('Cuenta no encontrada.'))
+        if (isOnlineMode() && receivable.apiSynced) {
+          return runOnlineMutation({
+            set,
+            get,
+            operation: `receivable:unapprove:${id}`,
+            payload: { version: receivable.version },
+            request: (idempotencyKey) => posApi.unapproveReceivablePayment(
+              id,
+              { version: receivable.version },
+              { idempotencyKey },
+            ),
+            apply: (response) => set((state) => ({
+              receivables: updateReceivableState(state.receivables, response),
+            })),
+          }).then(async (result) => {
+            await refreshOnlineState(get, receivable.branchId)
+            return result
+          })
+        }
+        const paymentsSum = (receivable.payments || [])
+          .filter((payment) => !payment.reversed)
+          .reduce((sum, payment) => sum + payment.amount, 0)
+        set((state) => ({
+          receivables: state.receivables.map((item) => (
+            item.id === id
+              ? normalizeReceivable({
+                ...item,
+                paidAmount: paymentsSum,
+                approvalPendingAmount: 0,
+              })
+              : item
+          )),
+        }))
+        return Promise.resolve(true)
+      },
+
+      deleteReceivableProof: (receivableId, proofId) => {
+        const receivable = get().receivables.find((item) => item.id === receivableId)
+        if (!receivable) return Promise.reject(new Error('Cuenta no encontrada.'))
+        if (isOnlineMode() && receivable.apiSynced) {
+          return runOnlineMutation({
+            set,
+            get,
+            operation: `receivable:proof-delete:${receivableId}:${proofId}`,
+            payload: { version: receivable.version },
+            request: () => posApi.deleteReceivableProof(receivableId, proofId, {
+              version: receivable.version,
+            }),
+            apply: (response) => set((state) => ({
+              receivables: updateReceivableState(state.receivables, response).map((item) => {
+                if (item.id !== receivableId) return item
+                const proofs = (item.proofs || []).filter((proof) => proof.id !== proofId)
+                const proof = item.proof?.id === proofId ? null : item.proof
+                return { ...item, proofs, proof }
+              }),
+            })),
+          }).then(async (result) => {
+            await refreshOnlineState(get, receivable.branchId)
+            return result
+          })
+        }
+        set((state) => ({
+          receivables: state.receivables.map((item) => {
+            if (item.id !== receivableId) return item
+            const proofs = (item.proofs || []).filter((proof) => proof.id !== proofId)
+            const proof = item.proof?.id === proofId ? null : item.proof
+            const paymentsSum = (item.payments || [])
+              .filter((payment) => !payment.reversed)
+              .reduce((sum, payment) => sum + payment.amount, 0)
+            const paidAmount = Math.min(Number(item.paidAmount) || 0, paymentsSum)
+            return normalizeReceivable({
+              ...item,
+              proofs,
+              proof,
+              paidAmount,
+              approvalPendingAmount: 0,
+            })
+          }),
+        }))
+        return Promise.resolve(true)
       },
 
       attachReceivableProof: (id, payload) => {
@@ -2216,24 +2403,51 @@ export const usePosStore = create(
               const proof = mapPaymentProofMutationResponse(response)
               if (proof) {
                 set((state) => ({
-                  receivables: state.receivables.map((item) => (
-                    item.id === id ? { ...item, proof } : item
-                  )),
+                  receivables: state.receivables.map((item) => {
+                    if (item.id !== id) return item
+                    const next = normalizeReceivable({
+                      ...item,
+                      proof,
+                      proofs: [...(item.proofs || []), proof],
+                    })
+                    if (['transferencia', 'link'].includes(next.method)) {
+                      const outstanding = Math.max(0, next.amount - (next.paidAmount || 0))
+                      return { ...next, approvalPendingAmount: outstanding, status: 'approval_pending' }
+                    }
+                    return next
+                  }),
                 }))
               }
             },
+          }).then(async () => {
+            detailRequests.delete(`receivable:${id}`)
+            try {
+              const detail = await posApi.getReceivable(id)
+              const mapped = mapReceivableFromApi(detail)
+              set((state) => ({
+                receivables: state.receivables.map((item) => (
+                  item.id === id ? { ...item, ...mapped } : item
+                )),
+              }))
+            } catch {
+              /* keep local patch */
+            }
           })
         }
         set((s) => ({
-          receivables: s.receivables.map((x) =>
-            x.id === id
-              ? {
-                  ...x,
-                  proof: payload?.proof ?? x.proof,
-                  reference: payload?.reference || x.reference,
-                }
-              : x
-          ),
+          receivables: s.receivables.map((x) => {
+            if (x.id !== id) return x
+            const next = normalizeReceivable({
+              ...x,
+              proof: payload?.proof ?? x.proof,
+              reference: payload?.reference || x.reference,
+            })
+            if (['transferencia', 'link'].includes(next.method)) {
+              const outstanding = Math.max(0, next.amount - (next.paidAmount || 0))
+              return { ...next, approvalPendingAmount: outstanding, status: 'approval_pending' }
+            }
+            return next
+          }),
         }))
         return true
       },

@@ -79,6 +79,9 @@ describe('reglas financieras de Terminal POS', () => {
 
   it('conserva facturas anuladas en el historial, pero las excluye de los totales', () => {
     expect(getAccountRowMeta({ kind: 'receivable', source: 'appointment' }).label).toBe('Agenda')
+    expect(getAccountRowMeta({ kind: 'receivable', method: 'transferencia' }).label).toBe('CXA')
+    expect(getAccountRowMeta({ kind: 'receivable', method: 'link' }).label).toBe('CXA')
+    expect(getAccountRowMeta({ kind: 'receivable', method: 'efectivo' }).label).toBe('CxC')
 
     const sales = [
       { id: 'active', status: 'completed', method: 'efectivo', total: 100, createdAt: '2026-09-01T10:00:00Z' },

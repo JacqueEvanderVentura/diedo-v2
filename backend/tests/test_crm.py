@@ -9,7 +9,6 @@ from app.db.models import (
     CrmActivity,
     CrmDiscoveryUsage,
     CrmLead,
-    CrmOpportunity,
     InventoryItemProfile,
     Item,
     ItemBranchAssignment,
@@ -149,7 +148,7 @@ def test_seeded_crm_has_complete_commercial_trace_and_overview() -> None:
             assert summary.workspace_id is not None
             assert summary.crm_profile_count == 5
             assert summary.crm_lead_count == 8
-            assert summary.crm_opportunity_count == 6
+            assert summary.crm_opportunity_count == 0
             assert summary.crm_activity_count == 8
 
             membership_id = session.scalar(
@@ -195,7 +194,7 @@ def test_seeded_crm_has_complete_commercial_trace_and_overview() -> None:
                 activity_type=None,
                 completed=None,
                 overdue=None,
-                opportunity_id=None,
+                lead_id=None,
                 customer_id=None,
                 page=1,
                 page_size=100,
@@ -218,7 +217,7 @@ def test_seeded_crm_has_complete_commercial_trace_and_overview() -> None:
                 )
             )
             assert converted_quote is not None
-            assert converted_quote.opportunity_id is not None
+            assert converted_quote.lead_id is not None
             sale = session.scalar(
                 select(Sale).where(
                     Sale.workspace_id == summary.workspace_id,
@@ -351,7 +350,7 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
         "phone": "809-555-0999",
         "source": "manual",
         "rawSnippet": "Spa con agenda, clientes, inventario y punto de venta.",
-        "status": "calificado",
+        "status": "propuesta",
     }
     created = client.post(
         "/api/v1/crm/leads",
@@ -432,19 +431,17 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
     )
     assert filtered_leads.status_code == 200, filtered_leads.text
     assert filtered_leads.json()["totalItems"] == 1
-    opportunity = client.post(
-        f"/api/v1/crm/leads/{lead['id']}/opportunity",
-        headers={**headers, "Idempotency-Key": f"crm-opp-{suffix}"},
-        json={"stage": "propuesta", "value": "25000.00"},
+    lead_snapshot = client.get(f"/api/v1/crm/leads/{lead['id']}", headers=headers).json()
+    pipeline_lead = client.patch(
+        f"/api/v1/crm/leads/{lead['id']}",
+        headers=headers,
+        json={
+            "version": lead_snapshot["version"],
+            "status": "propuesta",
+            "pipelineValue": "25000.00",
+        },
     )
-    assert opportunity.status_code == 201, opportunity.text
-    opportunity_replay = client.post(
-        f"/api/v1/crm/leads/{lead['id']}/opportunity",
-        headers={**headers, "Idempotency-Key": f"crm-opp-{suffix}"},
-        json={"stage": "propuesta", "value": "25000.00"},
-    )
-    assert opportunity_replay.status_code == 201, opportunity_replay.text
-    assert opportunity_replay.json()["id"] == opportunity.json()["id"]
+    assert pipeline_lead.status_code == 200, pipeline_lead.text
 
     activity = client.post(
         "/api/v1/crm/activities",
@@ -452,7 +449,6 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
         json={
             "branchId": branch_id_text,
             "leadId": lead["id"],
-            "opportunityId": opportunity.json()["id"],
             "type": "reunion",
             "title": "Demo integral del ERP",
             "dueAt": "2026-09-03T15:00:00Z",
@@ -465,7 +461,6 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
         json={
             "branchId": branch_id_text,
             "leadId": lead["id"],
-            "opportunityId": opportunity.json()["id"],
             "type": "reunion",
             "title": "Demo integral del ERP",
             "dueAt": "2026-09-03T15:00:00Z",
@@ -511,7 +506,7 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
             "branchId": branch_id_text,
             "type": "tarea",
             "completed": "false",
-            "opportunityId": opportunity.json()["id"],
+            "leadId": lead["id"],
         },
     )
     assert filtered_activities.status_code == 200, filtered_activities.text
@@ -552,76 +547,35 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
     assert converted_replay.status_code == 200, converted_replay.text
     assert converted_replay.json()["id"] == converted.json()["id"]
 
-    current_opportunity = client.get(
-        f"/api/v1/crm/opportunities/{opportunity.json()['id']}", headers=headers
-    )
-    assert current_opportunity.status_code == 200, current_opportunity.text
-    moved_opportunity = client.patch(
-        f"/api/v1/crm/opportunities/{opportunity.json()['id']}",
-        headers=headers,
-        json={
-            "version": current_opportunity.json()["version"],
-            "stage": "negociacion",
-            "notes": "Condiciones comerciales en revisión",
-        },
-    )
-    assert moved_opportunity.status_code == 200, moved_opportunity.text
-    detached_opportunity = client.patch(
-        f"/api/v1/crm/opportunities/{opportunity.json()['id']}",
-        headers=headers,
-        json={
-            "version": moved_opportunity.json()["version"],
-            "assignedMembershipId": membership_id_text,
-            "customerId": None,
-            "title": "Implementación CRM cerrada",
-            "customerName": f"Empresa API {suffix}",
-            "stage": "cerrado",
-            "value": "26000.00",
-            "notes": "Acuerdo confirmado",
-        },
-    )
-    assert detached_opportunity.status_code == 200, detached_opportunity.text
-    standalone_opportunity = client.post(
-        "/api/v1/crm/opportunities",
-        headers={**headers, "Idempotency-Key": f"crm-standalone-{suffix}"},
+    lost_lead = client.post(
+        "/api/v1/crm/leads",
+        headers={**headers, "Idempotency-Key": f"crm-lost-{suffix}"},
         json={
             "branchId": branch_id_text,
-            "customerId": converted.json()["id"],
-            "title": f"Renovación anual {suffix}",
-            "customerName": converted.json()["displayName"],
-            "stage": "perdido",
-            "value": "5000.00",
+            "company": f"Renovación anual {suffix}",
+            "status": "nuevo",
+        },
+    )
+    assert lost_lead.status_code == 201, lost_lead.text
+    lost_marked = client.patch(
+        f"/api/v1/crm/leads/{lost_lead.json()['id']}",
+        headers=headers,
+        json={
+            "version": lost_lead.json()["version"],
+            "status": "perdido",
             "lostReason": "Presupuesto pospuesto",
+            "pipelineValue": "5000.00",
         },
     )
-    assert standalone_opportunity.status_code == 201, standalone_opportunity.text
-    standalone_replay = client.post(
-        "/api/v1/crm/opportunities",
-        headers={**headers, "Idempotency-Key": f"crm-standalone-{suffix}"},
-        json={
-            "branchId": branch_id_text,
-            "customerId": converted.json()["id"],
-            "title": f"Renovación anual {suffix}",
-            "customerName": converted.json()["displayName"],
-            "stage": "perdido",
-            "value": "5000.00",
-            "lostReason": "Presupuesto pospuesto",
-        },
-    )
-    assert standalone_replay.status_code == 201, standalone_replay.text
-    assert standalone_replay.json()["id"] == standalone_opportunity.json()["id"]
-    filtered_opportunities = client.get(
-        "/api/v1/crm/opportunities",
+    assert lost_marked.status_code == 200, lost_marked.text
+    filtered_lost_leads = client.get(
+        "/api/v1/crm/leads",
         headers=headers,
-        params={
-            "branchId": branch_id_text,
-            "stage": "perdido",
-            "customerId": converted.json()["id"],
-        },
+        params={"branchId": branch_id_text, "status": "perdido", "search": suffix},
     )
-    assert filtered_opportunities.status_code == 200, filtered_opportunities.text
-    opportunity_ids = {item["id"] for item in filtered_opportunities.json()["items"]}
-    assert standalone_opportunity.json()["id"] in opportunity_ids
+    assert filtered_lost_leads.status_code == 200, filtered_lost_leads.text
+    lost_ids = {item["id"] for item in filtered_lost_leads.json()["items"]}
+    assert lost_lead.json()["id"] in lost_ids
 
     customer = client.get(f"/api/v1/crm/customers/{converted.json()['id']}", headers=headers)
     assert customer.status_code == 200, customer.text
@@ -667,7 +621,7 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
         "/api/v1/crm/quotes",
         headers={**headers, "Idempotency-Key": f"crm-quote-{suffix}"},
         json={
-            "opportunityId": opportunity.json()["id"],
+            "leadId": lead["id"],
             "customerId": converted.json()["id"],
             "branchId": branch_id_text,
             "lines": [{"itemId": str(item_id), "quantity": "1"}],
@@ -677,7 +631,7 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
     )
     assert quote.status_code == 201, quote.text
     assert quote.json()["crmStatus"] == "enviada"
-    assert quote.json()["opportunityId"] == opportunity.json()["id"]
+    assert quote.json()["leadId"] == lead["id"]
     quote_id = quote.json()["quote"]["id"]
     assert client.get(f"/api/v1/crm/quotes/{quote_id}", headers=headers).status_code == 200
     quote_list = client.get(
@@ -715,7 +669,7 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
         "/api/v1/crm/quotes",
         headers={**headers, "Idempotency-Key": f"crm-sale-quote-{suffix}"},
         json={
-            "opportunityId": opportunity.json()["id"],
+            "leadId": lead["id"],
             "customerId": converted.json()["id"],
             "branchId": branch_id_text,
             "lines": [{"itemId": str(item_id), "quantity": "1"}],
@@ -844,23 +798,10 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
         == 400
     )
     assert (
-        client.post(
-            "/api/v1/crm/opportunities",
-            headers={**headers, "Idempotency-Key": f"crm-lost-invalid-{suffix}"},
-            json={
-                "branchId": branch_id_text,
-                "title": "Oportunidad inválida",
-                "customerName": "Sin motivo",
-                "stage": "perdido",
-            },
-        ).status_code
-        == 400
-    )
-    assert (
         client.patch(
-            f"/api/v1/crm/opportunities/{standalone_opportunity.json()['id']}",
+            f"/api/v1/crm/leads/{lost_lead.json()['id']}",
             headers=headers,
-            json={"version": standalone_opportunity.json()["version"]},
+            json={"version": lost_marked.json()["version"], "status": "perdido"},
         ).status_code
         == 400
     )
@@ -887,31 +828,8 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
         ).status_code
         == 400
     )
-    missing_lead_opportunity = client.post(
-        "/api/v1/crm/opportunities",
-        headers={**headers, "Idempotency-Key": f"crm-missing-lead-{suffix}"},
-        json={
-            "branchId": branch_id_text,
-            "leadId": unknown_id,
-            "title": "Lead inexistente",
-            "customerName": "Nadie",
-        },
-    )
-    assert missing_lead_opportunity.status_code == 404
-    missing_customer_opportunity = client.post(
-        "/api/v1/crm/opportunities",
-        headers={**headers, "Idempotency-Key": f"crm-missing-customer-{suffix}"},
-        json={
-            "branchId": branch_id_text,
-            "customerId": unknown_id,
-            "title": "Cliente inexistente",
-            "customerName": "Nadie",
-        },
-    )
-    assert missing_customer_opportunity.status_code == 404
     for relation, key in (
         ("leadId", "lead"),
-        ("opportunityId", "opportunity"),
         ("customerId", "customer"),
     ):
         missing_activity = client.post(
@@ -926,26 +844,10 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
         )
         assert missing_activity.status_code == 404
     assert (
-        client.post(
-            f"/api/v1/crm/leads/{lead['id']}/opportunity",
-            headers={**headers, "Idempotency-Key": f"crm-second-opp-{suffix}"},
-            json={"title": "Oportunidad duplicada"},
-        ).status_code
-        == 409
-    )
-    assert (
-        client.post(
-            f"/api/v1/crm/leads/{unknown_id}/opportunity",
-            headers={**headers, "Idempotency-Key": f"crm-unknown-opp-{suffix}"},
-            json={},
-        ).status_code
-        == 404
-    )
-    assert (
         client.patch(
-            f"/api/v1/crm/opportunities/{unknown_id}",
+            f"/api/v1/crm/leads/{unknown_id}",
             headers=headers,
-            json={"version": 1, "stage": "contactado"},
+            json={"version": 1, "status": "contactado"},
         ).status_code
         == 404
     )
@@ -983,7 +885,6 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
     )
     assert client.get("/api/v1/crm/leads").status_code == 401
     assert session_scalar_count(CrmLead) >= 1
-    assert session_scalar_count(CrmOpportunity) >= 1
     assert session_scalar_count(CrmActivity) >= 1
 
 
@@ -1076,21 +977,11 @@ def test_crm_quote_accepted_does_not_auto_invoice_and_crm_invoice_works_without_
         json={"version": lead.json()["version"]},
     )
     assert converted.status_code == 200, converted.text
-    opportunity = client.post(
-        f"/api/v1/crm/leads/{lead.json()['id']}/opportunity",
-        headers={**headers, "Idempotency-Key": f"crm-inv-opp-{suffix}"},
-        json={
-            "title": "Oportunidad factura",
-            "value": "1500.00",
-        },
-    )
-    assert opportunity.status_code == 201, opportunity.text
-
     quote = client.post(
         "/api/v1/crm/quotes",
         headers={**headers, "Idempotency-Key": f"crm-inv-quote-{suffix}"},
         json={
-            "opportunityId": opportunity.json()["id"],
+            "leadId": lead.json()["id"],
             "customerId": converted.json()["id"],
             "branchId": branch_id_text,
             "lines": [{"itemId": str(item_id), "quantity": "1"}],
@@ -1150,6 +1041,7 @@ def test_crm_quote_accepted_does_not_auto_invoice_and_crm_invoice_works_without_
     )
     assert paid_invoice.status_code == 201, paid_invoice.text
     assert paid_invoice.json()["status"] == "completed"
+    assert paid_invoice.json()["channelOrigin"] == "pipeline"
     assert Decimal(accepted.json()["quote"]["discountAmount"]) > 0
     assert paid_invoice.json()["total"] == accepted.json()["quote"]["total"]
     assert paid_invoice.json()["discountAmount"] == accepted.json()["quote"]["discountAmount"]
@@ -1199,7 +1091,7 @@ def test_crm_quote_accepted_does_not_auto_invoice_and_crm_invoice_works_without_
         "/api/v1/crm/quotes",
         headers={**headers, "Idempotency-Key": f"crm-inv-quote-cxc-{suffix}"},
         json={
-            "opportunityId": opportunity.json()["id"],
+            "leadId": lead["id"],
             "customerId": converted.json()["id"],
             "branchId": branch_id_text,
             "lines": [{"itemId": str(item_id), "quantity": "1"}],
@@ -1340,7 +1232,7 @@ def test_crm_ui_mode_is_per_membership(client: TestClient) -> None:
     assert stale.status_code == 409
 
 
-def test_import_pipeline_creates_lead_and_opportunity(client: TestClient) -> None:
+def test_import_pipeline_creates_lead_with_pipeline_status(client: TestClient) -> None:
     suffix = uuid7().hex[-12:]
     with session_scope() as session:
         seeded = bootstrap_local_foundation(session, hash_password(_PASSWORD))
@@ -1367,8 +1259,8 @@ def test_import_pipeline_creates_lead_and_opportunity(client: TestClient) -> Non
                     "externalId": f"kommo-{suffix}",
                     "name": f"Importado {suffix}",
                     "phone": "8095554321",
-                    "stage": "propuesta",
-                    "value": "1500",
+                    "status": "propuesta",
+                    "pipelineValue": "1500",
                 }
             ],
         },
@@ -1377,15 +1269,13 @@ def test_import_pipeline_creates_lead_and_opportunity(client: TestClient) -> Non
     body = imported.json()["items"][0]
     assert body["status"] == "created"
     assert body["leadId"]
-    assert body["opportunityId"]
-
-    opportunities = client.get(
-        "/api/v1/crm/opportunities",
+    leads = client.get(
+        "/api/v1/crm/leads",
         headers=headers,
-        params={"stage": "propuesta", "search": str(suffix)},
+        params={"status": "propuesta", "search": str(suffix)},
     )
-    assert opportunities.status_code == 200, opportunities.text
-    assert opportunities.json()["totalItems"] >= 1
+    assert leads.status_code == 200, leads.text
+    assert leads.json()["totalItems"] >= 1
 
     invalid_email = client.post(
         "/api/v1/crm/import/pipeline",
@@ -1398,7 +1288,7 @@ def test_import_pipeline_creates_lead_and_opportunity(client: TestClient) -> Non
                     "name": f"Sin email valido {suffix}",
                     "email": "levantamiento 18/10/25",
                     "phone": "8095551111",
-                    "stage": "contactado",
+                    "status": "contactado",
                 }
             ],
         },
@@ -1416,8 +1306,8 @@ def test_import_pipeline_creates_lead_and_opportunity(client: TestClient) -> Non
                     "externalId": f"kommo-{suffix}",
                     "name": f"Importado {suffix}",
                     "phone": "8095554321",
-                    "stage": "propuesta",
-                    "value": "1500",
+                    "status": "propuesta",
+                    "pipelineValue": "1500",
                 }
             ],
         },
@@ -1431,11 +1321,11 @@ def test_import_pipeline_creates_lead_and_opportunity(client: TestClient) -> Non
         json={
             "branchId": str(branch_id),
             "items": [
-                {"name": "", "company": "", "stage": "contactado"},
+                {"name": "", "company": "", "status": "contactado"},
                 {
                     "externalId": f"kommo-mixed-{suffix}",
                     "name": f"Fila valida {suffix}",
-                    "stage": "contactado",
+                    "status": "contactado",
                 },
             ],
         },
@@ -1565,7 +1455,7 @@ def test_crm_batch_delete_and_import_activities(client: TestClient) -> None:
                     "externalId": external_id,
                     "name": f"Lead actividades {suffix}",
                     "phone": "8095551212",
-                    "stage": "contactado",
+                    "status": "contactado",
                 }
             ],
         },
@@ -1647,7 +1537,7 @@ def test_crm_batch_delete_and_import_activities(client: TestClient) -> None:
     )
     assert converted_block.status_code == 200
     assert converted_block.json()["items"][0]["status"] == "error"
-    assert "convertido" in converted_block.json()["items"][0]["message"]
+    assert "cerrado" in converted_block.json()["items"][0]["message"]
 
 
 def test_crm_delete_leads_service_branches_with_mocks() -> None:
@@ -1684,19 +1574,16 @@ def test_crm_delete_leads_service_branches_with_mocks() -> None:
         branch_id=branch_id,
         status="nuevo",
     )
-    opportunity = SimpleNamespace(id=uuid7())
     repository.lead.return_value = lead
-    repository.opportunity_for_lead.return_value = opportunity
-    repository.opportunity_record.return_value = SimpleNamespace(quote_count=2)
+    repository.quote_count_for_lead.return_value = 2
 
     results = service.delete_leads(principal=principal, grant=grant, lead_ids=[lead_id])
     assert results[0]["status"] == "error"
     assert "cotizaciones" in results[0]["message"]
 
-    repository.opportunity_record.return_value = SimpleNamespace(quote_count=0)
+    repository.quote_count_for_lead.return_value = 0
     results = service.delete_leads(principal=principal, grant=grant, lead_ids=[lead_id])
     assert results[0]["status"] == "deleted"
-    repository.remove_opportunity.assert_called_once()
     repository.remove_lead.assert_called_once()
 
 

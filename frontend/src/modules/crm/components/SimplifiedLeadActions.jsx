@@ -20,7 +20,7 @@ import { useCatalogStore, isPosSellable } from '@/stores/catalogStore'
 import { buildLeadWhatsAppVariables } from '@/lib/whatsapp'
 import { customersVisibleToSession } from '@/lib/customerScope'
 import { isProductAvailableAtBranch } from '@/lib/catalogSync'
-import { CloseOpportunityInvoiceModal } from '@/modules/crm/components/CloseOpportunityInvoiceModal'
+import { CloseLeadInvoiceModal } from '@/modules/crm/components/CloseOpportunityInvoiceModal'
 import { PermissionElevationModal } from '@/components/auth/PermissionElevationModal'
 import { CustomerFormModal } from '@/modules/crm/components/CustomerFormModal'
 import { QuoteFormModal } from '@/modules/crm/components/QuoteFormModal'
@@ -28,14 +28,14 @@ import { AppointmentFormModal } from '@/modules/agenda/components/AppointmentFor
 import { downloadSaleInvoicePdf } from '@/modules/crm/lib/sales'
 import { PIPELINE_INVOICE_PERMISSION } from '@/modules/crm/lib/pipelineInvoice'
 import {
-  effectiveOpportunityCustomerId,
-  resolveCustomerForOpportunity,
-} from '@/modules/crm/lib/opportunityCustomer'
-import { customersForOpportunityBranch, opportunityCustomerDefaults } from '@/modules/crm/lib/pipelineForm'
+  effectiveLeadCustomerId,
+  resolveCustomerForLead,
+} from '@/modules/crm/lib/leadCustomer'
+import { customersForOpportunityBranch, leadCustomerDefaults } from '@/modules/crm/lib/pipelineForm'
 import { ensureCustomerForQuote } from '@/modules/crm/lib/quoteCustomer'
 import { SIMPLIFIED_LOST_REASONS } from '@/modules/crm/lib/lostReasons'
 import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
-import { formatOpportunityOfferText, resolveInstagramUrl } from '@/modules/crm/lib/simplifiedOffer'
+import { formatLeadOfferText, resolveInstagramUrl } from '@/modules/crm/lib/simplifiedOffer'
 import {
   SIMPLIFIED_STAGE_LOST_OPTION_VALUE,
   SIMPLIFIED_DIRECT_MOVE_STAGES,
@@ -51,7 +51,6 @@ function toLocalInput(iso) {
 }
 
 export function SimplifiedLeadActions({
-  opportunity,
   lead,
   onActionComplete,
   requestPaymentForId = null,
@@ -65,13 +64,13 @@ export function SimplifiedLeadActions({
   const sessionUser = useSessionStore((state) => state.user)
   const products = useCatalogStore((state) => state.products)
   const quotes = useCrmStore((state) => state.quotes)
-  const opportunities = useCrmStore((state) => state.opportunities)
+  const storeLeads = useCrmStore((state) => state.leads)
   const applySimplifiedFollowUp = useCrmStore((state) => state.applySimplifiedFollowUp)
   const applySimplifiedLost = useCrmStore((state) => state.applySimplifiedLost)
-  const closeOpportunityWithInvoice = useCrmStore((state) => state.closeOpportunityWithInvoice)
+  const closeLeadWithInvoice = useCrmStore((state) => state.closeLeadWithInvoice)
   const addQuote = useCrmStore((state) => state.addQuote)
   const updateQuote = useCrmStore((state) => state.updateQuote)
-  const updateOpportunity = useCrmStore((state) => state.updateOpportunity)
+  const updateLead = useCrmStore((state) => state.updateLead)
   const convertToCustomer = useCrmStore((state) => state.convertToCustomer)
   const canInvoice = useSessionStore((state) => state.hasPermission(PIPELINE_INVOICE_PERMISSION))
   const can = useCrmCapabilities()
@@ -101,9 +100,9 @@ export function SimplifiedLeadActions({
   const [customerFormOpen, setCustomerFormOpen] = useState(false)
   const [customerFormDefaults, setCustomerFormDefaults] = useState(null)
 
-  const liveOpportunity = useMemo(
-    () => opportunities.find((item) => item.id === opportunity?.id) || opportunity,
-    [opportunities, opportunity],
+  const liveLead = useMemo(
+    () => storeLeads.find((item) => item.id === lead?.id) || lead,
+    [storeLeads, lead],
   )
 
   const visibleCustomers = useMemo(
@@ -117,19 +116,19 @@ export function SimplifiedLeadActions({
   )
 
   const closeLinkableCustomers = useMemo(
-    () => customersForOpportunityBranch(activeCustomers, liveOpportunity?.branchId),
-    [activeCustomers, liveOpportunity?.branchId],
+    () => customersForOpportunityBranch(activeCustomers, liveLead?.branchId),
+    [activeCustomers, liveLead?.branchId],
   )
 
   const closeCatalogProducts = useMemo(() => {
-    if (!liveOpportunity?.branchId) {
+    if (!liveLead?.branchId) {
       return products.filter((product) => isPosSellable(product))
     }
     return products.filter((product) => (
       isPosSellable(product)
-      && isProductAvailableAtBranch(product, liveOpportunity.branchId)
+      && isProductAvailableAtBranch(product, liveLead.branchId)
     ))
-  }, [products, liveOpportunity?.branchId])
+  }, [products, liveLead?.branchId])
 
   const closeDocumentCtx = useMemo(
     () => ({
@@ -141,17 +140,22 @@ export function SimplifiedLeadActions({
     [branches, settings, paymentMethods, activeCustomers],
   )
 
+  const linkedCustomer = useMemo(
+    () => resolveCustomerForLead(liveLead, activeCustomers),
+    [liveLead, activeCustomers],
+  )
+
   const offerText = useMemo(
-    () => formatOpportunityOfferText(
+    () => formatLeadOfferText(
       quotes,
-      liveOpportunity?.id,
-      { customerName: liveOpportunity?.customerName || lead?.name || '' },
+      liveLead?.id,
+      { customerName: linkedCustomer?.name || liveLead?.company || liveLead?.name || lead?.name || '' },
     ),
-    [quotes, liveOpportunity?.id, liveOpportunity?.customerName, lead?.name],
+    [quotes, liveLead?.id, liveLead?.company, liveLead?.name, linkedCustomer?.name, lead?.name],
   )
 
   const instagramUrl = resolveInstagramUrl(lead)
-    || resolveInstagramUrl(activeCustomers.find((item) => item.id === liveOpportunity?.customerId))
+    || resolveInstagramUrl(activeCustomers.find((item) => item.id === liveLead?.customerId))
 
   useEffect(() => {
     if (!elevationOpen && pendingClose && !canInvoice) {
@@ -160,7 +164,7 @@ export function SimplifiedLeadActions({
   }, [elevationOpen, pendingClose, canInvoice])
 
   useEffect(() => {
-    if (!requestPaymentForId || requestPaymentForId !== liveOpportunity?.id) return
+    if (!requestPaymentForId || requestPaymentForId !== liveLead?.id) return
     if (!canInvoice) {
       setPendingClose(true)
       setElevationOpen(true)
@@ -169,48 +173,21 @@ export function SimplifiedLeadActions({
       setClosePaymentMethod('efectivo')
     }
     onPaymentRequestHandled?.()
-  }, [requestPaymentForId, liveOpportunity?.id, canInvoice, onPaymentRequestHandled])
+  }, [requestPaymentForId, liveLead?.id, canInvoice, onPaymentRequestHandled])
 
-  useEffect(() => {
-    if (!liveOpportunity?.customerId) return
-    const match = resolveCustomerForOpportunity(liveOpportunity, activeCustomers)
-    if (!match) return
-    const nextName = match.name || match.displayName || ''
-    const currentName = liveOpportunity.customerName || ''
-    if (liveOpportunity.customerId === match.id && currentName === nextName) return
-    if (
-      liveOpportunity.customerId === match.id
-      && currentName
-      && currentName !== lead?.company
-      && currentName !== lead?.name
-    ) return
-    updateOpportunity(liveOpportunity.id, {
-      customerId: match.id,
-      customerName: nextName,
-    }).catch(() => {})
-  }, [
-    liveOpportunity?.id,
-    liveOpportunity?.customerId,
-    liveOpportunity?.customerName,
-    lead?.company,
-    lead?.name,
-    activeCustomers,
-    updateOpportunity,
-  ])
+  if (!liveLead) return null
 
-  if (!liveOpportunity) return null
-
-  if (['cerrado', 'perdido'].includes(liveOpportunity.stage)) {
+  if (['cerrado', 'perdido'].includes(liveLead.status)) {
     return (
       <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600" data-testid="crm-simplified-actions-closed">
-        {liveOpportunity.stage === 'perdido' ? (
+        {liveLead.status === 'perdido' ? (
           <div className="space-y-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Motivo de pérdida</p>
-              <p className="mt-1 font-medium text-slate-800">{liveOpportunity.lostReason || 'Sin motivo registrado'}</p>
-              {liveOpportunity.closedAt && (
+              <p className="mt-1 font-medium text-slate-800">{liveLead.lostReason || 'Sin motivo registrado'}</p>
+              {liveLead.pipelineClosedAt && (
                 <p className="mt-1 text-xs text-slate-500">
-                  Fecha de pérdida: {new Date(liveOpportunity.closedAt).toLocaleString('es-DO')}
+                  Fecha de pérdida: {new Date(liveLead.pipelineClosedAt).toLocaleString('es-DO')}
                 </p>
               )}
             </div>
@@ -254,7 +231,7 @@ export function SimplifiedLeadActions({
                 onClick={async () => {
                   setReopenBusy(true)
                   try {
-                    await updateOpportunity(liveOpportunity.id, { stage: reopenStage })
+                    await updateLead(liveLead.id, { status: reopenStage })
                     toast.success('Oportunidad reabierta')
                     setReopenOpen(false)
                     onActionComplete?.(reopenStage)
@@ -274,16 +251,12 @@ export function SimplifiedLeadActions({
     )
   }
 
-  const displayName = liveOpportunity.customerName || lead?.name || lead?.company || ''
+  const displayName = linkedCustomer?.name || liveLead?.company || liveLead?.name || lead?.name || lead?.company || ''
 
-  const ensureCloseCustomerLinked = async (opp) => {
-    const customerId = effectiveOpportunityCustomerId(opp, activeCustomers)
-    if (!customerId || opp.customerId) return customerId
-    const match = resolveCustomerForOpportunity(opp, activeCustomers)
-    await updateOpportunity(opp.id, {
-      customerId,
-      customerName: match?.name || opp.customerName,
-    })
+  const ensureCloseCustomerLinked = async (pipelineLead) => {
+    const customerId = effectiveLeadCustomerId(pipelineLead, activeCustomers)
+    if (!customerId || pipelineLead.customerId) return customerId
+    await updateLead(pipelineLead.id, { customerId })
     return customerId
   }
 
@@ -292,19 +265,16 @@ export function SimplifiedLeadActions({
     if (linked) return linked
     const ensured = await ensureCustomerForQuote({
       customerId: null,
-      opportunity: opp,
+      lead: opp,
       addCustomer: useCustomersStore.getState().addCustomer,
-      updateOpportunity,
+      updateLead,
     })
     return ensured?.id || null
   }
 
   const attachCustomer = async (customer) => {
     if (!customer?.id) return
-    await updateOpportunity(liveOpportunity.id, {
-      customerId: customer.id,
-      customerName: customer.name,
-    })
+    await updateLead(liveLead.id, { customerId: customer.id })
   }
 
   const openPayment = () => {
@@ -318,8 +288,8 @@ export function SimplifiedLeadActions({
   }
 
   const handleStageSelect = async (nextStage) => {
-    if (!liveOpportunity || stageBusy) return
-    if (nextStage === liveOpportunity.stage) return
+    if (!liveLead || stageBusy) return
+    if (nextStage === liveLead.status) return
     if (nextStage === SIMPLIFIED_STAGE_LOST_OPTION_VALUE) {
       setLostOpen(true)
       return
@@ -331,7 +301,7 @@ export function SimplifiedLeadActions({
     if (!onStageMove) return
     setStageBusy(true)
     try {
-      await onStageMove(liveOpportunity.id, nextStage)
+      await onStageMove(liveLead.id, nextStage)
     } finally {
       setStageBusy(false)
     }
@@ -340,7 +310,7 @@ export function SimplifiedLeadActions({
   const handleCloseCreateQuote = async (payload) => {
     setCloseQuoteBusy(true)
     try {
-      const customerId = payload.customerId || await resolveCloseQuoteCustomerId(liveOpportunity)
+      const customerId = payload.customerId || await resolveCloseQuoteCustomerId(liveLead)
       if (!customerId) {
         toast.error('La oportunidad necesita nombre y sucursal para crear el cliente al cotizar.')
         return
@@ -355,10 +325,10 @@ export function SimplifiedLeadActions({
     }
   }
 
-  const handleCloseLinkQuote = async (quoteId, opportunityId) => {
+  const handleCloseLinkQuote = async (quoteId, leadId) => {
     setCloseQuoteBusy(true)
     try {
-      await updateQuote(quoteId, { opportunityId })
+      await updateQuote(quoteId, { leadId })
       toast.success('Cotización vinculada a la oportunidad')
     } catch (error) {
       toast.error(error.message || 'No se pudo vincular la cotización')
@@ -368,12 +338,21 @@ export function SimplifiedLeadActions({
     }
   }
 
-  const confirmCloseWithInvoice = async ({ customerId } = {}) => {
+  const confirmCloseWithInvoice = async ({
+    customerId,
+    paymentMethod: methodOverride,
+    collectionMode,
+    reference,
+    proof,
+  } = {}) => {
     setBusyClose(true)
     try {
-      const resolvedCustomerId = customerId || await resolveCloseQuoteCustomerId(liveOpportunity)
-      const sale = await closeOpportunityWithInvoice(liveOpportunity.id, {
-        paymentMethod: closePaymentMethod,
+      const resolvedCustomerId = customerId || await resolveCloseQuoteCustomerId(liveLead)
+      const sale = await closeLeadWithInvoice(liveLead.id, {
+        paymentMethod: methodOverride || closePaymentMethod,
+        collectionMode,
+        reference,
+        proof,
         customerId: resolvedCustomerId,
       })
       if (sale) {
@@ -390,10 +369,10 @@ export function SimplifiedLeadActions({
   }
 
   const convertLeadForClose = async () => {
-    if (!liveOpportunity.leadId) return
+    if (!liveLead?.id) return
     setCloseConvertBusy(true)
     try {
-      const customer = await convertToCustomer(liveOpportunity.leadId)
+      const customer = await convertToCustomer(liveLead.id)
       if (customer?.id) await attachCustomer(customer)
       toast.success('Lead convertido a cliente')
     } catch (error) {
@@ -404,7 +383,7 @@ export function SimplifiedLeadActions({
   }
 
   const openCreateCustomerForClose = () => {
-    setCustomerFormDefaults(opportunityCustomerDefaults(liveOpportunity))
+    setCustomerFormDefaults(leadCustomerDefaults(liveLead))
     setCustomerFormOpen(true)
   }
 
@@ -421,7 +400,7 @@ export function SimplifiedLeadActions({
     if (!followUpForm.dueAt) return toast.error('Selecciona fecha y hora del seguimiento')
     setFollowUpBusy(true)
     try {
-      await applySimplifiedFollowUp(liveOpportunity.id, {
+      await applySimplifiedFollowUp(liveLead.id, {
         dueAt: followUpForm.dueAt,
         title: followUpForm.title.trim() || 'Seguimiento programado',
         description: followUpForm.description.trim(),
@@ -439,7 +418,7 @@ export function SimplifiedLeadActions({
   const submitLost = async () => {
     setLostBusy(true)
     try {
-      await applySimplifiedLost(liveOpportunity.id, lostReason)
+      await applySimplifiedLost(liveLead.id, lostReason)
       toast.success('Oportunidad marcada como perdida')
       setLostOpen(false)
       onActionComplete?.('perdido')
@@ -451,10 +430,10 @@ export function SimplifiedLeadActions({
   }
 
   const openAppointment = async () => {
-    let customerId = effectiveOpportunityCustomerId(liveOpportunity, activeCustomers)
-    if (!customerId && liveOpportunity.leadId) {
+    let customerId = effectiveLeadCustomerId(liveLead, activeCustomers)
+    if (!customerId && liveLead?.id) {
       try {
-        const customer = await convertToCustomer(liveOpportunity.leadId)
+        const customer = await convertToCustomer(liveLead.id)
         customerId = customer?.id
         if (customerId) await attachCustomer(customer)
       } catch (error) {
@@ -573,7 +552,7 @@ export function SimplifiedLeadActions({
         </Button>
         <div className="flex min-h-[4.25rem] flex-col justify-center rounded-xl border border-slate-200 bg-white px-2 py-2 shadow-sm">
           <Select
-            value={liveOpportunity.stage}
+            value={liveLead.status}
             onChange={handleStageSelect}
             disabled={stageBusy}
             options={simplifiedStageSelectOptions()}
@@ -642,18 +621,19 @@ export function SimplifiedLeadActions({
         </div>
       </Modal>
 
-      <CloseOpportunityInvoiceModal
+      <CloseLeadInvoiceModal
         open={pendingClose && canInvoice}
         onClose={() => {
           setPendingClose(false)
           setCloseQuoteFormOpen(false)
         }}
-        opportunity={liveOpportunity}
+        lead={liveLead}
         quotes={quotes}
         branches={branches}
         customers={activeCustomers}
         linkableCustomers={closeLinkableCustomers}
         products={closeCatalogProducts}
+        paymentMethods={paymentMethods}
         paymentMethod={closePaymentMethod}
         onPaymentMethodChange={setClosePaymentMethod}
         onCreateQuote={handleCloseCreateQuote}
@@ -661,7 +641,7 @@ export function SimplifiedLeadActions({
         onConfirm={confirmCloseWithInvoice}
         onCreateCustomer={openCreateCustomerForClose}
         onLinkCustomer={linkCustomerOnClose}
-        onConvertLead={liveOpportunity.leadId ? convertLeadForClose : undefined}
+        onConvertLead={liveLead?.id ? convertLeadForClose : undefined}
         onOpenQuoteBuilder={() => setCloseQuoteFormOpen(true)}
         documentCtx={closeDocumentCtx}
         loading={busyClose}
@@ -672,7 +652,7 @@ export function SimplifiedLeadActions({
       <QuoteFormModal
         open={closeQuoteFormOpen}
         onClose={() => setCloseQuoteFormOpen(false)}
-        initialContext={{ opportunityId: liveOpportunity.id }}
+        initialContext={{ leadId: liveLead.id }}
         onSaved={() => {
           setCloseQuoteFormOpen(false)
           toast.success('Cotización guardada; ya puedes facturar')
@@ -708,7 +688,7 @@ export function SimplifiedLeadActions({
         open={appointmentOpen}
         onClose={() => setAppointmentOpen(false)}
         defaultCustomerId={appointmentCustomerId}
-        defaultSlot={{ branchId: liveOpportunity.branchId }}
+        defaultSlot={{ branchId: liveLead.branchId }}
       />
     </div>
   )

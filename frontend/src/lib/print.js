@@ -117,6 +117,18 @@ export function printHtml(html) {
   win.addEventListener('afterprint', cleanup, { once: true })
   setTimeout(cleanup, 120000)
 
-  win.focus()
-  win.print()
+  const applyPrintClearance = () => {
+    const footer = doc.querySelector('.invoice-footer')
+    const header = doc.querySelector('.invoice-print-header') || doc.querySelector('header')
+    const headerH = Math.ceil(header?.getBoundingClientRect().height || 0)
+    const footerH = Math.ceil(footer?.getBoundingClientRect().height || 0)
+    doc.documentElement.style.setProperty('--invoice-header-clearance', `${Math.max(headerH + 20, 188)}px`)
+    doc.documentElement.style.setProperty('--invoice-footer-clearance', `${Math.max(footerH + 16, 150)}px`)
+  }
+
+  win.requestAnimationFrame(() => {
+    applyPrintClearance()
+    win.focus()
+    win.print()
+  })
 }

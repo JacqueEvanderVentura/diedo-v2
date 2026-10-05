@@ -1,4 +1,4 @@
-import { getBalance } from '@/modules/pos/lib/receivables'
+import { getBalance, getPaidAmount, requiresPaymentApproval } from '@/modules/pos/lib/receivables'
 import { invoiceCollectionFromSalePolicy } from '@/modules/crm/lib/quoteInvoice'
 
 export const METHOD_LABELS = {
@@ -19,6 +19,12 @@ export const METHOD_ICON = {
 
 export function saleReceivablePending(sale, receivable = null) {
   if (!sale || sale.status === 'voided') return false
+  if (receivable && requiresPaymentApproval(receivable)) return true
+  if (receivable && !requiresPaymentApproval(receivable)) {
+    const paid = getPaidAmount(receivable)
+    const amount = Number(receivable.amount) || 0
+    if (paid >= amount && getBalance(receivable) <= 0) return false
+  }
   if (receivable && getBalance(receivable) > 0) return true
   const collection = invoiceCollectionFromSalePolicy(sale)
   if (collection === 'pending_validation') return true
@@ -35,6 +41,9 @@ export function saleReceivablePending(sale, receivable = null) {
 export function saleStatusBadge(sale, receivable = null) {
   if (!sale || sale.status === 'voided') {
     return { label: 'Anulada', tone: 'danger' }
+  }
+  if (receivable && requiresPaymentApproval(receivable)) {
+    return { label: 'APROBAR', tone: 'warning' }
   }
   if (saleReceivablePending(sale, receivable)) {
     return { label: 'Cta. por cobrar', tone: 'brand' }

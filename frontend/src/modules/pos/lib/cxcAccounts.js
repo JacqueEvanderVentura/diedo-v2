@@ -4,16 +4,23 @@ import { getBalance, getPaidAmount, getReceivableStatus } from './receivables'
 
 export const ACCOUNT_KIND_META = {
   receivable: { label: 'CxC', tone: 'warning' },
+  receivableTransfer: { label: 'CXA', tone: 'warning' },
   agenda: { label: 'Agenda', tone: 'brand' },
-  'open-quote': { label: 'Cuenta abierta', tone: 'brand' },
-  'held-park': { label: 'Venta retenida', tone: 'neutral' },
+  'open-quote': { label: 'Cta. abierta', tone: 'brand' },
+  'held-park': { label: 'Retenida', tone: 'neutral' },
 }
 
 export function getAccountRowMeta(row) {
   if (row.kind === 'receivable' && ['agenda', 'appointment'].includes(row.source)) {
     return ACCOUNT_KIND_META.agenda
   }
-  if (row.kind === 'receivable') return ACCOUNT_KIND_META.receivable
+  if (row.kind === 'receivable') {
+    const method = row.method || row.paidMethod
+    if (method === 'transferencia' || method === 'link') {
+      return ACCOUNT_KIND_META.receivableTransfer
+    }
+    return ACCOUNT_KIND_META.receivable
+  }
   return ACCOUNT_KIND_META[row.kind] || { label: row.kind, tone: 'neutral' }
 }
 

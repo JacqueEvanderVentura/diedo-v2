@@ -33,9 +33,9 @@ describe('regresiones de auditoría CRM', () => {
   })
 
   it('prioriza la factura existente para cerrar y excluye cotizaciones rechazadas/vencidas', () => {
-    const base = { opportunityId: 'opp', items: [{ name: 'Servicio' }] }
+    const base = { leadId: 'lead-1', items: [{ name: 'Servicio' }] }
     const invoiced = { ...base, id: 'invoiced', convertedSaleId: 'sale', status: 'aceptada' }
-    expect(findBillableQuote([{ ...base, id: 'draft', status: 'borrador' }, invoiced], 'opp')).toBe(invoiced)
-    expect(findBillableQuote([{ ...base, status: 'rechazada' }, { ...base, status: 'vencida' }], 'opp')).toBeNull()
+    expect(findBillableQuote([{ ...base, id: 'draft', status: 'borrador' }, invoiced], 'lead-1')).toBe(invoiced)
+    expect(findBillableQuote([{ ...base, status: 'rechazada' }, { ...base, status: 'vencida' }], 'lead-1')).toBeNull()
   })
 })

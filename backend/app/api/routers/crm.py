@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from math import ceil
 from typing import Annotated, Any, cast
 from uuid import UUID
@@ -24,7 +24,7 @@ from app.api.routers.pos import (
     _sale_list_response,
 )
 from app.db.models.identity import WorkspaceMembership
-from app.repositories.crm import CustomerCrmRecord, LeadRecord, OpportunityRecord
+from app.repositories.crm import CustomerCrmRecord, LeadRecord
 from app.repositories.pos import QuoteRecord
 from app.schemas.common import ErrorResponse
 from app.schemas.crm import (
@@ -34,9 +34,7 @@ from app.schemas.crm import (
     ConvertLeadRequest,
     CreateActivityRequest,
     CreateCrmQuoteRequest,
-    CreateLeadOpportunityRequest,
     CreateLeadRequest,
-    CreateOpportunityRequest,
     CrmBranchReference,
     CrmOverviewResponse,
     CrmQuoteListResponse,
@@ -69,19 +67,15 @@ from app.schemas.crm import (
     LeadSortField,
     LeadSource,
     LeadStatus,
-    OpportunityResponse,
-    OpportunityStage,
     PaginatedActivitiesResponse,
     PaginatedCrmCustomersResponse,
     PaginatedCrmQuotesResponse,
     PaginatedLeadsResponse,
-    PaginatedOpportunitiesResponse,
     UpdateActivityRequest,
     UpdateCrmQuoteRequest,
     UpdateCrmWorkspaceSettingsRequest,
     UpdateCustomerCrmProfileRequest,
     UpdateLeadRequest,
-    UpdateOpportunityRequest,
 )
 from app.schemas.pos import (
     CheckoutResponse,
@@ -93,6 +87,7 @@ from app.schemas.pos import (
 from app.services.authorization import AuthorizationService
 from app.services.crm import CrmService
 from app.services.crm_discovery import CrmDiscoveryService, LeadDiscoveryQuery
+from app.services.pos import PosService
 
 router = APIRouter(prefix="/api/v1/crm", tags=["CRM"])
 
@@ -188,35 +183,14 @@ def _lead_response(record: LeadRecord) -> LeadResponse:
         raw_snippet=lead.raw_snippet,
         status=cast(Any, lead.status),
         star_rating=lead.star_rating,
+        pipeline_value=lead.pipeline_value,
+        lost_reason=lead.lost_reason,
+        pipeline_closed_at=lead.pipeline_closed_at,
         customer_id=lead.converted_customer_id,
-        opportunity_id=record.opportunity_id,
         converted_at=lead.converted_at,
         version=lead.version,
         created_at=lead.created_at,
         updated_at=lead.updated_at,
-    )
-
-
-def _opportunity_response(record: OpportunityRecord) -> OpportunityResponse:
-    opportunity = record.opportunity
-    return OpportunityResponse(
-        id=opportunity.id,
-        branch_id=opportunity.branch_id,
-        lead_id=opportunity.lead_id,
-        customer_id=opportunity.customer_id,
-        assigned_membership_id=opportunity.assigned_membership_id,
-        title=opportunity.title,
-        customer_name=opportunity.customer_name,
-        stage=cast(Any, opportunity.stage),
-        value=opportunity.value,
-        currency_code=opportunity.currency_code,
-        notes=opportunity.notes,
-        lost_reason=opportunity.lost_reason,
-        closed_at=opportunity.closed_at,
-        quote_count=record.quote_count,
-        version=opportunity.version,
-        created_at=opportunity.created_at,
-        updated_at=opportunity.updated_at,
     )
 
 
@@ -225,7 +199,6 @@ def _activity_response(activity: Any) -> ActivityResponse:
         id=activity.id,
         branch_id=activity.branch_id,
         lead_id=activity.lead_id,
-        opportunity_id=activity.opportunity_id,
         customer_id=activity.customer_id,
         assigned_membership_id=activity.assigned_membership_id,
         type=activity.activity_type,
@@ -292,7 +265,7 @@ def _invoice_collection_from_settlement(settlement_policy: str | None) -> str | 
 def _crm_quote_list_response(record: QuoteRecord) -> CrmQuoteListResponse:
     return CrmQuoteListResponse(
         quote=_quote_detail_response(record),
-        opportunity_id=record.quote.opportunity_id,
+        lead_id=record.quote.lead_id,
         crm_status=cast(Any, record.quote.crm_status),
         converted_sale_id=record.converted_sale_id,
         invoice_number=record.converted_sale_number,
@@ -307,7 +280,7 @@ def _crm_quote_list_response(record: QuoteRecord) -> CrmQuoteListResponse:
 def _crm_quote_response(record: QuoteRecord) -> CrmQuoteResponse:
     return CrmQuoteResponse(
         quote=_quote_detail_response(record),
-        opportunity_id=record.quote.opportunity_id,
+        lead_id=record.quote.lead_id,
         crm_status=cast(Any, record.quote.crm_status),
     )
 
@@ -525,113 +498,6 @@ def convert_lead(
     )
 
 
-@router.post(
-    "/leads/{lead_id}/opportunity",
-    status_code=status.HTTP_201_CREATED,
-    responses=_RESPONSES,
-)
-def create_lead_opportunity(
-    lead_id: UUID,
-    payload: CreateLeadOpportunityRequest,
-    database: DatabaseSession,
-    principal: CurrentPrincipal,
-    grant: CrmManageGrant,
-    idempotency_key: IdempotencyKey,
-) -> OpportunityResponse:
-    return _opportunity_response(
-        CrmService(database).create_opportunity_for_lead(
-            principal=principal,
-            grant=grant,
-            lead_id=lead_id,
-            values=payload.model_dump(exclude_unset=True, by_alias=False),
-            idempotency_key=idempotency_key,
-        )
-    )
-
-
-@router.get("/opportunities", responses=_RESPONSES)
-def list_opportunities(
-    response: Response,
-    database: DatabaseSession,
-    grant: CrmReadGrant,
-    branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
-    branch_ids: Annotated[list[UUID] | None, Query(alias="branchIds")] = None,
-    stage_filter: Annotated[OpportunityStage | None, Query(alias="stage")] = None,
-    customer_id: Annotated[UUID | None, Query(alias="customerId")] = None,
-    search: Annotated[str | None, Query(max_length=200)] = None,
-    updated_after: Annotated[datetime | None, Query(alias="updatedAfter")] = None,
-    updated_before: Annotated[datetime | None, Query(alias="updatedBefore")] = None,
-    page: Annotated[int, Query(ge=1, le=1_000_000)] = 1,
-    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=500)] = 50,
-) -> PaginatedOpportunitiesResponse:
-    response.headers["Cache-Control"] = "no-store"
-    result = CrmService(database).list_opportunities(
-        grant,
-        branch_id=branch_id,
-        branch_ids=branch_ids,
-        stage=stage_filter,
-        customer_id=customer_id,
-        search=search,
-        updated_after=updated_after,
-        updated_before=updated_before,
-        page=page,
-        page_size=page_size,
-    )
-    return PaginatedOpportunitiesResponse(
-        items=[_opportunity_response(item) for item in result.items],
-        page=page,
-        page_size=page_size,
-        total_items=result.total_items,
-        total_pages=result.total_pages,
-    )
-
-
-@router.post("/opportunities", status_code=status.HTTP_201_CREATED, responses=_RESPONSES)
-def create_opportunity(
-    payload: CreateOpportunityRequest,
-    database: DatabaseSession,
-    principal: CurrentPrincipal,
-    grant: CrmManageGrant,
-    idempotency_key: IdempotencyKey,
-) -> OpportunityResponse:
-    return _opportunity_response(
-        CrmService(database).create_opportunity(
-            principal=principal,
-            grant=grant,
-            values=payload.model_dump(by_alias=False),
-            idempotency_key=idempotency_key,
-        )
-    )
-
-
-@router.get("/opportunities/{opportunity_id}", responses=_RESPONSES)
-def get_opportunity(
-    opportunity_id: UUID,
-    database: DatabaseSession,
-    grant: CrmReadGrant,
-) -> OpportunityResponse:
-    return _opportunity_response(CrmService(database).get_opportunity(grant, opportunity_id))
-
-
-@router.patch("/opportunities/{opportunity_id}", responses=_RESPONSES)
-def update_opportunity(
-    opportunity_id: UUID,
-    payload: UpdateOpportunityRequest,
-    database: DatabaseSession,
-    principal: CurrentPrincipal,
-    grant: CrmManageGrant,
-) -> OpportunityResponse:
-    return _opportunity_response(
-        CrmService(database).update_opportunity(
-            principal=principal,
-            grant=grant,
-            opportunity_id=opportunity_id,
-            expected_version=payload.version,
-            changes=payload.model_dump(exclude_unset=True, exclude={"version"}, by_alias=False),
-        )
-    )
-
-
 @router.get("/activities", responses=_RESPONSES)
 def list_activities(
     response: Response,
@@ -641,7 +507,7 @@ def list_activities(
     activity_type: Annotated[ActivityType | None, Query(alias="type")] = None,
     completed: bool | None = None,
     overdue: bool | None = None,
-    opportunity_id: Annotated[UUID | None, Query(alias="opportunityId")] = None,
+    lead_id: Annotated[UUID | None, Query(alias="leadId")] = None,
     customer_id: Annotated[UUID | None, Query(alias="customerId")] = None,
     page: Annotated[int, Query(ge=1, le=1_000_000)] = 1,
     page_size: Annotated[int, Query(alias="pageSize", ge=1, le=500)] = 50,
@@ -653,7 +519,7 @@ def list_activities(
         activity_type=activity_type,
         completed=completed,
         overdue=overdue,
-        opportunity_id=opportunity_id,
+        lead_id=lead_id,
         customer_id=customer_id,
         page=page,
         page_size=page_size,
@@ -973,7 +839,9 @@ def invoice_quote(
             register_id=payload.register_id,
             payment_reference=payload.reference,
             idempotency_key=idempotency_key,
-        )
+        ),
+        database=database,
+        workspace_id=sales_grant.workspace_id,
     )
 
 
@@ -1019,13 +887,15 @@ def get_sale(
     crm_grant: CrmReadGrant,
     sales_grant: SalesReadGrant,
 ) -> SaleDetailResponse:
-    return _sale_detail_response(
-        CrmService(database).get_sale(
-            crm_grant=crm_grant,
-            sales_grant=sales_grant,
-            sale_id=sale_id,
-        )
+    service = PosService(database)
+    record = CrmService(database).get_sale(
+        crm_grant=crm_grant,
+        sales_grant=sales_grant,
+        sale_id=sale_id,
     )
+    proofs = service.payment_proofs_for_sale(sales_grant, sale_id)
+    tender_records = service.list_sale_tender_line_records(sales_grant.workspace_id, sale_id)
+    return _sale_detail_response(record, proofs, tender_records)
 
 
 @router.get("/state", responses=_RESPONSES)
@@ -1049,25 +919,13 @@ def get_crm_state(
         page=1,
         page_size=200,
     )
-    opportunities = service.list_opportunities(
-        crm_grant,
-        branch_id=branch_id,
-        branch_ids=None,
-        stage=None,
-        customer_id=None,
-        search=None,
-        updated_after=None,
-        updated_before=None,
-        page=1,
-        page_size=200,
-    )
     activities = service.list_activities(
         crm_grant,
         branch_id=branch_id,
         activity_type=None,
         completed=None,
         overdue=None,
-        opportunity_id=None,
+        lead_id=None,
         customer_id=None,
         page=1,
         page_size=200,
@@ -1087,7 +945,6 @@ def get_crm_state(
     return CrmStateResponse(
         settings=_workspace_settings_response(service.workspace_settings(crm_grant)),
         leads=[_lead_response(item) for item in leads.items],
-        opportunities=[_opportunity_response(item) for item in opportunities.items],
         activities=[_activity_response(item) for item in activities.items],
         quotes=[_crm_quote_list_response(item) for item in quotes_items],
     )

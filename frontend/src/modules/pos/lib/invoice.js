@@ -51,6 +51,79 @@ export function invoiceFilename(id) {
   return `${id}.pdf`
 }
 
+function splitAddressLines(address) {
+  if (!address) return []
+  return String(address)
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+}
+
+function buildInvoiceFooterHtml(data) {
+  const {
+    businessName,
+    legalName = '',
+    businessRnc = '',
+    businessAddress = '',
+    businessPhone = '',
+    businessEmail = '',
+    footerNote = '',
+    branchName = '',
+    kind = 'sale',
+  } = data
+
+  const isExpense = kind === 'expense'
+  const isQuote = kind === 'quote'
+  const defaultNote = isExpense
+    ? `Comprobante de gasto · ${businessName}`
+    : isQuote
+      ? `Cotización sujeta a disponibilidad · ${businessName}`
+      : `Gracias por su compra · ${businessName}`
+  const note = footerNote || defaultNote
+  const legalTitle = (legalName && legalName !== businessName ? legalName : businessName) || businessName
+  const addressLines = splitAddressLines(businessAddress)
+  const rncLine = businessRnc ? `RNC: ${businessRnc}` : ''
+
+  const contacts = []
+  if (businessPhone) {
+    contacts.push(
+      `<div class="invoice-footer-contact">`
+      + `<span class="invoice-footer-icon" aria-hidden="true">☎</span>`
+      + `<span>${escapeHtml(businessPhone)}</span>`
+      + `</div>`
+    )
+  }
+  if (businessEmail) {
+    contacts.push(
+      `<div class="invoice-footer-contact invoice-footer-contact-end">`
+      + `<span class="invoice-footer-icon" aria-hidden="true">✉</span>`
+      + `<span>${escapeHtml(businessEmail)}</span>`
+      + `</div>`
+    )
+  }
+
+  const legalLines = [
+    legalTitle,
+    rncLine,
+    ...addressLines,
+    note,
+  ].filter(Boolean)
+
+  return `
+    <footer class="invoice-footer">
+      ${contacts.length ? `<div class="invoice-footer-contacts">${contacts.join('')}</div>` : ''}
+      <div class="invoice-footer-divider" role="presentation"></div>
+      <div class="invoice-footer-legal">
+        ${legalLines.map((line, index) => (
+          `<div class="${index === 0 ? 'invoice-footer-legal-name' : 'invoice-footer-legal-line'}">${escapeHtml(line)}</div>`
+        )).join('')}
+      </div>
+      ${branchName ? `<div class="invoice-footer-branch">${escapeHtml([branchName, data.region].filter(Boolean).join(' · '))}</div>` : ''}
+      <div class="invoice-page-number" aria-hidden="true"></div>
+    </footer>
+  `
+}
+
 export function buildInvoiceHtml(data) {
   const {
     id,
@@ -78,6 +151,8 @@ export function buildInvoiceHtml(data) {
     taxLabel,
     taxAmt,
     total,
+    paidAmount = 0,
+    balanceDue = null,
     kind = 'sale',
     validUntil = '',
   } = data
@@ -86,12 +161,9 @@ export function buildInvoiceHtml(data) {
   const isQuote = kind === 'quote'
   const docTitle = isExpense ? 'Gasto' : isQuote ? 'Cotización' : 'Factura'
   const totalColor = isExpense ? '#dc2626' : isQuote ? '#d97706' : '#2563eb'
-  const footerText = footerNote
-    || (isExpense
-      ? `Comprobante de gasto · ${escapeHtml(businessName)}`
-      : isQuote
-        ? `Cotización sujeta a disponibilidad · ${escapeHtml(businessName)}`
-        : `Gracias por su compra · ${escapeHtml(businessName)}`)
+
+  const balance = balanceDue != null ? Number(balanceDue) : Math.max(0, Number(total) - Number(paidAmount))
+  const paid = Number(paidAmount) || 0
 
   const logoHtml = logoDataUrl
     ? `<img src="${logoDataUrl.replace(/"/g, '&quot;')}" alt="" class="brand-logo" />`
@@ -127,23 +199,47 @@ export function buildInvoiceHtml(data) {
       background: #fff;
     }
     .sheet {
-      max-width: 720px;
+      max-width: 100%;
       margin: 0 auto;
-      padding: 32px 28px;
-    }
-    header {
+      min-height: 100vh;
       display: flex;
-      align-items: center;
+      flex-direction: column;
+      padding: 12px 10px;
+      box-sizing: border-box;
+    }
+    .invoice-content {
+      flex: 1 0 auto;
+    }
+    .invoice-print-header {
+      display: flex;
+      align-items: flex-start;
       justify-content: space-between;
       gap: 16px;
       border-bottom: 1px solid #e2e8f0;
-      padding-bottom: 20px;
-      margin-bottom: 24px;
+      padding-bottom: 16px;
+      margin-bottom: 20px;
+      flex-shrink: 0;
     }
-    .brand { display: flex; align-items: center; gap: 12px; }
-    .brand-logo { width: 36px; height: 36px; flex-shrink: 0; border-radius: 8px; object-fit: contain; }
-    .brand h1 { margin: 0; font-size: 22px; letter-spacing: -0.02em; }
-    .brand p { margin: 0 2px 0 0; font-size: 12px; color: #64748b; }
+    .header-left { flex: 1; min-width: 0; }
+    .header-left h1 { margin: 0; font-size: 22px; letter-spacing: -0.02em; }
+    .header-left p { margin: 0 2px 0 0; font-size: 12px; color: #64748b; }
+    .header-right {
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 10px;
+      max-width: 42%;
+    }
+    .brand-logo {
+      flex-shrink: 0;
+      max-height: 72px;
+      max-width: min(240px, 100%);
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      object-position: right top;
+    }
     .meta { text-align: right; font-size: 13px; color: #475569; }
     .meta strong { display: block; color: #0f172a; font-size: 15px; margin-bottom: 4px; }
     .grid {
@@ -178,37 +274,132 @@ export function buildInvoiceHtml(data) {
     .totals .discount { color: #059669; }
     .totals .grand { border-top: 1px solid #e2e8f0; margin-top: 8px; padding-top: 10px; font-size: 16px; font-weight: 700; color: #0f172a; }
     .totals .grand span:last-child { color: ${totalColor}; }
-    footer { margin-top: 36px; padding-top: 16px; border-top: 1px dashed #e2e8f0; text-align: center; font-size: 12px; color: #64748b; }
+    .invoice-footer {
+      margin-top: auto;
+      padding-top: 24px;
+      font-size: 12px;
+      color: #475569;
+      flex-shrink: 0;
+    }
+    .invoice-page-number {
+      display: none;
+    }
+    .invoice-footer-contacts {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px 16px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: #334155;
+    }
+    .invoice-footer-contact {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .invoice-footer-contact-end { margin-left: auto; }
+    .invoice-footer-icon {
+      display: inline-flex;
+      width: 16px;
+      justify-content: center;
+      color: #64748b;
+      font-size: 13px;
+      line-height: 1;
+    }
+    .invoice-footer-divider {
+      height: 0;
+      border-top: 1px solid #cbd5e1;
+      margin: 0 0 14px;
+    }
+    .invoice-footer-legal {
+      text-align: left;
+      line-height: 1.45;
+    }
+    .invoice-footer-legal-name {
+      font-weight: 700;
+      color: #0f172a;
+      font-size: 13px;
+      margin-bottom: 2px;
+    }
+    .invoice-footer-legal-line {
+      color: #64748b;
+      font-size: 12px;
+    }
+    .invoice-footer-branch {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid #e2e8f0;
+      font-weight: 600;
+      font-size: 12px;
+      color: #334155;
+      text-align: left;
+    }
     @media print {
-      @page { size: A4; margin: 14mm; }
+      @page {
+        size: A4;
+        margin: 8mm 8mm 10mm 8mm;
+        @bottom-right {
+          content: counter(page) ' / ' counter(pages);
+          font-size: 9pt;
+          color: #64748b;
+        }
+      }
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .sheet { max-width: none; padding: 0; }
+      .sheet {
+        max-width: none;
+        min-height: auto;
+        display: block;
+        padding: 0;
+      }
+      .invoice-print-header {
+        position: fixed;
+        top: 0;
+        left: 8mm;
+        right: 8mm;
+        margin: 0;
+        padding: 0 0 10px 0;
+        background: #fff;
+        z-index: 20;
+      }
+      .invoice-footer {
+        position: fixed;
+        bottom: 0;
+        left: 8mm;
+        right: 8mm;
+        margin: 0;
+        padding: 6px 0 0 0;
+        background: #fff;
+        z-index: 20;
+      }
+      .invoice-content {
+        padding-top: var(--invoice-header-clearance, 52mm);
+        padding-bottom: var(--invoice-footer-clearance, 42mm);
+      }
     }
   </style>
 </head>
 <body>
   <div class="sheet">
-    <header>
-      <div class="brand">
-        ${logoHtml}
-        <div>
-          <h1>${escapeHtml(businessName)}</h1>
-          ${legalName && legalName !== businessName ? `<p>${escapeHtml(legalName)}</p>` : ''}
-          ${businessRnc ? `<p class="muted">RNC ${escapeHtml(businessRnc)}</p>` : ''}
-          ${businessAddress ? `<p class="muted">${escapeHtml(businessAddress)}</p>` : ''}
-          ${[businessPhone, businessEmail].filter(Boolean).length
-    ? `<p class="muted">${escapeHtml([businessPhone, businessEmail].filter(Boolean).join(' · '))}</p>`
-    : ''}
-          <p>${escapeHtml([branchName, region].filter(Boolean).join(' · '))}</p>
-        </div>
+    <header class="invoice-print-header">
+      <div class="header-left">
+        <h1>${escapeHtml(businessName)}</h1>
+        ${businessRnc ? `<p class="muted">RNC: ${escapeHtml(businessRnc)}</p>` : ''}
+        ${businessAddress ? `<p class="muted">${escapeHtml(businessAddress.split('\n')[0])}</p>` : ''}
+        ${region ? `<p class="muted">${escapeHtml(region)}</p>` : ''}
       </div>
-      <div class="meta">
-        <strong>${escapeHtml(docTitle)}</strong>
-        ${escapeHtml(id)}<br />
-        ${escapeHtml(issuedAt)}
+      <div class="header-right">
+        ${logoHtml}
+        <div class="meta">
+          <strong>${escapeHtml(docTitle)}</strong>
+          ${escapeHtml(id)}<br />
+          ${escapeHtml(issuedAt)}
+        </div>
       </div>
     </header>
 
+    <main class="invoice-content">
     <div class="grid">
       <div>
         <div class="label">Cliente</div>
@@ -245,9 +436,20 @@ export function buildInvoiceHtml(data) {
       }
       <div><span>${escapeHtml(taxLabel || `ITBIS (${taxPct}%)`)}</span><span>${escapeHtml(formatDOP(taxAmt))}</span></div>
       <div class="grand"><span>Total</span><span>${escapeHtml(formatDOP(total))}</span></div>
+      ${
+        !isQuote && paid > 0
+          ? `<div><span>Cobrado</span><span>${escapeHtml(formatDOP(paid))}</span></div>`
+          : ''
+      }
+      ${
+        !isQuote && balance > 0.009
+          ? `<div class="grand"><span>Saldo pendiente</span><span>${escapeHtml(formatDOP(balance))}</span></div>`
+          : ''
+      }
     </div>
+    </main>
 
-    <footer>${footerText}</footer>
+    ${buildInvoiceFooterHtml(data)}
   </div>
 </body>
 </html>`

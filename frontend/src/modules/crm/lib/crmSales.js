@@ -6,7 +6,15 @@ export const SALE_ORIGIN_FILTERS = [
 
 export function saleOriginKey(sale) {
   if (!sale) return 'pos'
-  if (sale.origin === 'pipeline' || sale.channel === 'crm') return 'pipeline'
+  const channelOrigin = sale.channelOrigin || sale.channel_origin
+  if (
+    sale.origin === 'pipeline'
+    || sale.origin === 'crm'
+    || sale.channel === 'crm'
+    || channelOrigin === 'pipeline'
+  ) {
+    return 'pipeline'
+  }
   return 'pos'
 }
 

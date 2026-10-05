@@ -6,6 +6,8 @@ import {
   printInvoice,
 } from '@/modules/pos/lib/invoice'
 import { applyBillingBrandingToInvoiceData } from '@/modules/configuracion/lib/billingDocuments'
+import { ensureWorkspaceBillingSettings } from '@/modules/configuracion/lib/workspaceSettings'
+import { getBalance, getPaidAmount } from '@/modules/pos/lib/receivables'
 
 function normalizeLineItems(items = []) {
   return items.map((item) => ({
@@ -30,9 +32,11 @@ function resolveTax(subtotal, discountAmt, taxPct, taxAmt, total) {
   return Math.max(0, ((subtotal - discountAmt) * taxPct) / 100)
 }
 
-export function buildInvoiceDataFromSale(sale, { branches = [], settings = {}, paymentMethods = [], customers = [] } = {}) {
+export function buildInvoiceDataFromSale(sale, { branches = [], settings = {}, paymentMethods = [], customers = [], receivable = null } = {}) {
   const branch = branches.find((b) => b.id === sale.branchId)
   const pmName = paymentMethods.find((m) => m.id === sale.method)?.name || sale.method
+  const paidAmount = receivable ? getPaidAmount(receivable) : Number(sale.paidAmount) || 0
+  const balanceDue = receivable ? getBalance(receivable) : null
 
   const items = normalizeLineItems(sale.items)
   const subtotal = sale.subtotal ?? sumLines(items)
@@ -60,8 +64,10 @@ export function buildInvoiceDataFromSale(sale, { branches = [], settings = {}, p
     taxPct,
     taxAmt,
     total: sale.total ?? subtotal - discountAmt + taxAmt,
+    paidAmount,
+    balanceDue,
   }
-  return applyBillingBrandingToInvoiceData(base, settings, customers)
+  return applyBillingBrandingToInvoiceData(base, settings, customers, branch)
 }
 
 export function buildInvoiceDataFromQuote(quote, { branches = [], settings = {}, customers = [] } = {}) {
@@ -95,25 +101,29 @@ export function buildInvoiceDataFromQuote(quote, { branches = [], settings = {},
     taxAmt,
     total: quote.total ?? subtotal - discountAmt + taxAmt,
   }
-  return applyBillingBrandingToInvoiceData(base, settings, customers)
+  return applyBillingBrandingToInvoiceData(base, settings, customers, branch)
 }
 
-export function printSaleInvoice(sale, ctx) {
-  const data = buildInvoiceDataFromSale(sale, ctx)
+export async function printSaleInvoice(sale, ctx) {
+  const settings = await ensureWorkspaceBillingSettings(ctx?.settings)
+  const data = buildInvoiceDataFromSale(sale, { ...ctx, settings })
   printInvoice(buildInvoiceHtml(data))
 }
 
 export async function downloadSaleInvoicePdf(sale, ctx) {
-  const data = buildInvoiceDataFromSale(sale, ctx)
+  const settings = await ensureWorkspaceBillingSettings(ctx?.settings)
+  const data = buildInvoiceDataFromSale(sale, { ...ctx, settings })
   await downloadInvoicePdf(data, invoiceFilename(data.id))
 }
 
-export function printQuoteDocument(quote, ctx) {
-  const data = buildInvoiceDataFromQuote(quote, ctx)
+export async function printQuoteDocument(quote, ctx) {
+  const settings = await ensureWorkspaceBillingSettings(ctx?.settings)
+  const data = buildInvoiceDataFromQuote(quote, { ...ctx, settings })
   printInvoice(buildInvoiceHtml(data))
 }
 
 export async function downloadQuotePdf(quote, ctx) {
-  const data = buildInvoiceDataFromQuote(quote, ctx)
+  const settings = await ensureWorkspaceBillingSettings(ctx?.settings)
+  const data = buildInvoiceDataFromQuote(quote, { ...ctx, settings })
   await downloadInvoicePdf(data, invoiceFilename(data.id))
 }

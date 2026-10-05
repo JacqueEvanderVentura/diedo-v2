@@ -49,6 +49,12 @@ class Workspace(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     tax_default_rate: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, default=Decimal("0"), server_default=text("0")
     )
+    billing_documents: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
 
 
 class LegalEntity(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):

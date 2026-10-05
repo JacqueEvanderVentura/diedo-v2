@@ -231,7 +231,7 @@ export function isQuoteInvoicePaid(quote, receivables) {
     && !quote.invoicePaymentMethod
     && !receivable
   ) {
-    return true
+    return false
   }
   return false
 }

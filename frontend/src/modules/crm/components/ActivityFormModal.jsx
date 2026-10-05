@@ -12,16 +12,16 @@ import { useCustomersStore } from '@/stores/customersStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { ACTIVITY_TYPES, ACTIVITY_TYPE_META } from '@/data/crm'
 import { currentSessionActor } from '@/lib/sessionActor'
+import { leadDisplayTitle } from '@/modules/crm/lib/pipelineLeads'
 
-const empty = (opportunity = null) => ({
+const empty = (lead = null) => ({
   type: 'tarea',
   title: '',
   description: '',
-  opportunityId: opportunity?.id || '',
-  leadId: opportunity?.leadId || null,
-  customerId: opportunity?.customerId || '',
-  customerName: opportunity?.customerName || '',
-  branchId: opportunity?.branchId || '',
+  leadId: lead?.id || null,
+  customerId: lead?.customerId || '',
+  customerName: lead ? leadDisplayTitle(lead) : '',
+  branchId: lead?.branchId || '',
   assignedUserId: useSessionStore.getState().user?.membershipId || currentSessionActor().id,
   dueAt: '',
 })
@@ -33,10 +33,10 @@ function toLocalInput(iso) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-export function ActivityFormModal({ open, onClose, activity, defaultOpportunityId = '', defaultCustomerId = '' }) {
+export function ActivityFormModal({ open, onClose, activity, defaultLeadId = '', defaultCustomerId = '' }) {
   const addActivity = useCrmStore((s) => s.addActivity)
   const updateActivity = useCrmStore((s) => s.updateActivity)
-  const opportunities = useCrmStore((s) => s.opportunities)
+  const leads = useCrmStore((s) => s.leads)
   const users = useConfigStore((s) => s.users)
   const customers = useCustomersStore((s) => s.customers)
   const sessionStatus = useSessionStore((s) => s.status)
@@ -49,7 +49,7 @@ export function ActivityFormModal({ open, onClose, activity, defaultOpportunityI
 
   useEffect(() => {
     if (open) {
-      const defaultOpportunity = opportunities.find((item) => item.id === defaultOpportunityId)
+      const defaultLead = leads.find((item) => item.id === defaultLeadId)
       const defaultCustomer = customers.find((item) => item.id === defaultCustomerId)
       setForm(
         activity
@@ -57,7 +57,6 @@ export function ActivityFormModal({ open, onClose, activity, defaultOpportunityI
               type: activity.type || 'tarea',
               title: activity.title || '',
               description: activity.description || '',
-              opportunityId: activity.opportunityId || '',
               leadId: activity.leadId || null,
               customerId: activity.customerId || '',
               customerName: activity.customerName || '',
@@ -67,8 +66,8 @@ export function ActivityFormModal({ open, onClose, activity, defaultOpportunityI
                 || currentSessionActor().id,
               dueAt: toLocalInput(activity.dueAt),
             }
-          : defaultOpportunity
-            ? empty(defaultOpportunity)
+          : defaultLead
+            ? empty(defaultLead)
             : defaultCustomer
               ? {
                   ...empty(),
@@ -79,7 +78,7 @@ export function ActivityFormModal({ open, onClose, activity, defaultOpportunityI
               : empty()
       )
     }
-  }, [open, activity, defaultOpportunityId, defaultCustomerId, opportunities, customers])
+  }, [open, activity, defaultLeadId, defaultCustomerId, leads, customers])
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -102,7 +101,6 @@ export function ActivityFormModal({ open, onClose, activity, defaultOpportunityI
       title: form.title.trim(),
       description: form.description.trim(),
       customerName: form.customerName.trim(),
-      opportunityId: form.opportunityId || null,
       leadId: form.leadId || null,
       customerId: form.customerId || null,
       branchId: form.branchId || null,

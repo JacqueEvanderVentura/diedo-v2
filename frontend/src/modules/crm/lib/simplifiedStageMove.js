@@ -1,5 +1,3 @@
-import { opportunityStageToLeadStatus } from '@/modules/crm/lib/pipelineLeads'
-
 export const SIMPLIFIED_STAGE_TABS = [
   { id: 'nuevo', label: 'Nuevos' },
   { id: 'contactado', label: 'Contactados' },
@@ -11,7 +9,6 @@ export const SIMPLIFIED_STAGE_TABS = [
 
 export const SIMPLIFIED_STAGE_LOST_OPTION_VALUE = 'perdido'
 
-/** Options for the detail-panel stage select (includes «Marcar como perdido»). */
 export function simplifiedStageSelectOptions() {
   return [
     ...SIMPLIFIED_STAGE_TABS.filter((tab) => tab.id !== 'perdido').map((tab) => ({ value: tab.id, label: tab.label })),
@@ -19,7 +16,6 @@ export function simplifiedStageSelectOptions() {
   ]
 }
 
-/** Stages that can be set with a direct PATCH (no invoice / lost reason). */
 export const SIMPLIFIED_DIRECT_MOVE_STAGES = ['nuevo', 'contactado', 'propuesta', 'negociacion']
 
 export function canDirectMoveSimplifiedStage(stage) {
@@ -34,28 +30,21 @@ export function simplifiedStageMoveResult(fromStage, toStage) {
   return { type: 'moved', stage: toStage }
 }
 
-/**
- * Move opportunity stage from simplified CRM (tabs drag or edit).
- * Returns result type; does not throw for cerrado/perdido (caller shows UI).
- */
-export async function applySimplifiedOpportunityStageMove({
-  opportunityId,
+export async function applySimplifiedLeadStageMove({
   leadId,
-  leadStatus,
   fromStage,
   toStage,
-  updateOpportunity,
   updateLead,
 }) {
   const result = simplifiedStageMoveResult(fromStage, toStage)
   if (result.type !== 'moved') return result
 
-  await updateOpportunity(opportunityId, { stage: result.stage })
-  if (leadId && leadStatus !== 'convertido') {
-    await updateLead(leadId, { status: opportunityStageToLeadStatus(result.stage) })
-  }
+  await updateLead(leadId, { status: result.stage })
   return result
 }
+
+/** @deprecated */
+export const applySimplifiedOpportunityStageMove = applySimplifiedLeadStageMove
 
 export function resolveSimplifiedStageDrop(clientX, clientY) {
   const element = document.elementFromPoint(clientX, clientY)

@@ -22,6 +22,8 @@ from app.api.deps import (
     PosRegisterManageGrant,
     PosSellGrant,
     PosVoidGrant,
+    SalesInvoiceDeleteGrant,
+    SalesInvoiceEditGrant,
     SalesQuoteManageGrant,
     SalesReadGrant,
 )
@@ -36,6 +38,7 @@ from app.repositories.pos import (
     QuoteRecord,
     ReceivableRecord,
     SaleRecord,
+    SaleTenderLineRecord,
 )
 from app.schemas.common import ErrorResponse
 from app.schemas.pos import (
@@ -77,6 +80,7 @@ from app.schemas.pos import (
     ReceivablesSummaryResponse,
     ReceivableStateResponse,
     ReceivableStatus,
+    ReceivableVersionRequest,
     RegisterDetailResponse,
     RegisterListItemResponse,
     RegisterOverviewResponse,
@@ -91,8 +95,10 @@ from app.schemas.pos import (
     SalesSummaryResponse,
     SaleStateResponse,
     SaleStatus,
+    SaleTenderLineResponse,
     UpdateQuoteRequest,
     UpdateReceivableRequest,
+    UpdateSaleRequest,
     VoidRequest,
 )
 from app.services.pos import PosService
@@ -206,6 +212,7 @@ def _catalog_response(record: PosCatalogRecord) -> PosCatalogItemResponse:
         id=record.item.id,
         name=record.item.name,
         sku=record.item.sku,
+        category_id=record.item.category_id,
         item_type=cast(Any, record.item.item_type),
         unit_symbol=record.unit.symbol,
         sale_price=record.profile.sale_price,
@@ -474,6 +481,74 @@ def _sale_payment_response(
     )
 
 
+def _resolved_sale_channel_origin(record: SaleRecord) -> str | None:
+    sale = record.sale
+    if sale.channel_origin:
+        return sale.channel_origin
+    if record.quote_origin == "crm":
+        return "pipeline"
+    return None
+
+
+def _sale_tender_line_response(item: SaleTenderLineRecord) -> SaleTenderLineResponse:
+    line = item.line
+    method = item.payment_method
+    return SaleTenderLineResponse(
+        id=line.id,
+        position=line.position,
+        payment_method=_payment_snapshot_response(
+            method=method,
+            method_id=line.payment_method_id,
+            code=method.code,
+            name=method.name,
+            channel=line.payment_channel,
+            settlement_policy=line.settlement_policy,
+            affects_cash_drawer=method.affects_cash_drawer,
+            requires_evidence=method.requires_evidence,
+        ),
+        amount=line.amount,
+        payment_channel=cast(Any, line.payment_channel),
+        settlement_policy=cast(Any, line.settlement_policy),
+        reference=line.reference,
+        status=cast(Any, line.status),
+        created_at=line.created_at,
+    )
+
+
+def _synthetic_sale_tender_response(record: SaleRecord) -> SaleTenderLineResponse:
+    sale = record.sale
+    method = record.payment_method
+    return SaleTenderLineResponse(
+        id=sale.id,
+        position=1,
+        payment_method=_payment_snapshot_response(
+            method=method,
+            method_id=sale.payment_method_id,
+            code=sale.payment_method_code,
+            name=sale.payment_method_name,
+            channel=sale.payment_channel,
+            settlement_policy=sale.settlement_policy,
+            affects_cash_drawer=sale.affects_cash_drawer,
+            requires_evidence=sale.requires_evidence,
+        ),
+        amount=sale.total,
+        payment_channel=cast(Any, sale.payment_channel),
+        settlement_policy=cast(Any, sale.settlement_policy),
+        reference=sale.payment_reference,
+        status="settled",
+        created_at=sale.completed_at,
+    )
+
+
+def _sale_tenders_response(
+    record: SaleRecord,
+    tender_records: Sequence[SaleTenderLineRecord],
+) -> list[SaleTenderLineResponse]:
+    if tender_records:
+        return [_sale_tender_line_response(item) for item in tender_records]
+    return [_synthetic_sale_tender_response(record)]
+
+
 def _sale_list_response(record: SaleRecord) -> SaleListItemResponse:
     sale = record.sale
     return SaleListItemResponse(
@@ -506,12 +581,14 @@ def _sale_list_response(record: SaleRecord) -> SaleListItemResponse:
         sold_by_name=sale.sold_by_name,
         created_at=sale.completed_at,
         version=sale.version,
+        channel_origin=_resolved_sale_channel_origin(record),
     )
 
 
 def _sale_detail_response(
     record: SaleRecord,
     proofs: Sequence[PaymentProof] = (),
+    tender_records: Sequence[SaleTenderLineRecord] = (),
 ) -> SaleDetailResponse:
     sale = record.sale
     values = _sale_list_response(record).model_dump(by_alias=False)
@@ -519,6 +596,7 @@ def _sale_detail_response(
         quote_id=sale.quote_id,
         lines=[_sale_line_response(line) for line in record.lines],
         payment=_sale_payment_response(record, proofs),
+        tenders=_sale_tenders_response(record, tender_records),
         notes=sale.notes,
         void_reason=sale.void_reason,
         voided_by_platform_user_id=sale.voided_by_platform_user_id,
@@ -528,9 +606,21 @@ def _sale_detail_response(
     return SaleDetailResponse.model_validate(values)
 
 
-def _checkout_response(result: Any) -> CheckoutResponse:
+def _checkout_response(
+    result: Any,
+    *,
+    database: DatabaseSession | None = None,
+    workspace_id: UUID | None = None,
+) -> CheckoutResponse:
     record = cast(SaleRecord, result.sale)
-    values = _sale_detail_response(record).model_dump(by_alias=False)
+    proofs: Sequence[PaymentProof] = ()
+    tender_records: Sequence[SaleTenderLineRecord] = ()
+    if database is not None and workspace_id is not None:
+        service = PosService(database)
+        sale_id = record.sale.id
+        proofs = service._repository.payment_proofs_for_sale(workspace_id, sale_id)
+        tender_records = service.list_sale_tender_line_records(workspace_id, sale_id)
+    values = _sale_detail_response(record, proofs, tender_records).model_dump(by_alias=False)
     values.update(
         receivable_id=result.receivable_id,
         inventory_movement_id=record.sale.inventory_movement_id,
@@ -638,7 +728,12 @@ def _receivable_list_response(record: ReceivableRecord) -> ReceivableListItemRes
         currency=receivable.currency_code,
         original_amount=receivable.amount,
         paid_total=receivable.paid_amount,
-        balance=receivable.amount - receivable.paid_amount,
+        approval_pending_amount=receivable.approval_pending_amount,
+        balance=money(
+            receivable.amount
+            - receivable.paid_amount
+            - receivable.approval_pending_amount
+        ),
         reference=receivable.reference,
         proofs=[_proof_response(proof) for proof in record.proofs],
         due_date=receivable.due_date,
@@ -665,7 +760,12 @@ def _receivable_state_response(record: ReceivableRecord) -> ReceivableStateRespo
         id=receivable.id,
         status=cast(Any, receivable.status),
         paid_total=receivable.paid_amount,
-        balance=receivable.amount - receivable.paid_amount,
+        approval_pending_amount=receivable.approval_pending_amount,
+        balance=money(
+            receivable.amount
+            - receivable.paid_amount
+            - receivable.approval_pending_amount
+        ),
         version=receivable.version,
     )
 
@@ -1000,7 +1100,9 @@ def checkout(
             grant=grant,
             values=payload.model_dump(by_alias=False),
             idempotency_key=idempotency_key,
-        )
+        ),
+        database=database,
+        workspace_id=grant.workspace_id,
     )
 
 
@@ -1068,7 +1170,8 @@ def get_sale(
     service = PosService(database)
     record = service.get_sale(grant, sale_id)
     proofs = service.payment_proofs_for_sale(grant, sale_id)
-    return _sale_detail_response(record, proofs)
+    tender_records = service.list_sale_tender_line_records(grant.workspace_id, sale_id)
+    return _sale_detail_response(record, proofs, tender_records)
 
 
 @router.get("/sales/{sale_id}/receivable", responses=_RESPONSES)
@@ -1106,6 +1209,46 @@ def void_sale(
         void_reason=record.sale.void_reason,
         voided_at=record.sale.voided_at,
         version=record.sale.version,
+    )
+
+
+@router.patch("/sales/{sale_id}", responses=_RESPONSES)
+def update_sale(
+    sale_id: UUID,
+    payload: UpdateSaleRequest,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: SalesInvoiceEditGrant,
+    idempotency_key: IdempotencyKey,
+) -> SaleDetailResponse:
+    service = PosService(database)
+    record = service.update_sale(
+        principal=principal,
+        grant=grant,
+        sale_id=sale_id,
+        values=payload.model_dump(by_alias=False),
+        idempotency_key=idempotency_key,
+    )
+    proofs = service.payment_proofs_for_sale(grant, sale_id)
+    tender_records = service.list_sale_tender_line_records(grant.workspace_id, sale_id)
+    return _sale_detail_response(record, proofs, tender_records)
+
+
+@router.delete("/sales/{sale_id}", status_code=status.HTTP_204_NO_CONTENT, responses=_RESPONSES)
+def delete_sale(
+    sale_id: UUID,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: SalesInvoiceDeleteGrant,
+    idempotency_key: IdempotencyKey,
+    version: Annotated[int, Query(ge=1)],
+) -> None:
+    PosService(database).delete_sale(
+        principal=principal,
+        grant=grant,
+        sale_id=sale_id,
+        expected_version=version,
+        idempotency_key=idempotency_key,
     )
 
 
@@ -1267,6 +1410,68 @@ def upload_receivable_proof(
         return _proof_response(proof)
     finally:
         file.file.close()
+
+
+@router.post("/receivables/{receivable_id}/approve", responses=_RESPONSES)
+def approve_receivable_payment(
+    receivable_id: UUID,
+    payload: ReceivableVersionRequest,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: PosReceivablesCollectGrant,
+    idempotency_key: IdempotencyKey,
+) -> ReceivableStateResponse:
+    return _receivable_state_response(
+        PosService(database).approve_receivable_payment(
+            principal=principal,
+            grant=grant,
+            receivable_id=receivable_id,
+            expected_version=payload.version,
+            idempotency_key=idempotency_key,
+        )
+    )
+
+
+@router.post("/receivables/{receivable_id}/unapprove", responses=_RESPONSES)
+def unapprove_receivable_payment(
+    receivable_id: UUID,
+    payload: ReceivableVersionRequest,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: PosReceivablesCollectGrant,
+    idempotency_key: IdempotencyKey,
+) -> ReceivableStateResponse:
+    return _receivable_state_response(
+        PosService(database).unapprove_receivable_payment(
+            principal=principal,
+            grant=grant,
+            receivable_id=receivable_id,
+            expected_version=payload.version,
+            idempotency_key=idempotency_key,
+        )
+    )
+
+
+@router.delete("/receivables/{receivable_id}/proofs/{proof_id}", responses=_RESPONSES)
+def delete_receivable_proof(
+    receivable_id: UUID,
+    proof_id: UUID,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: PosReceivablesCollectGrant,
+    storage: AttachmentStorageDep,
+    version: Annotated[int, Query(ge=1)],
+) -> ReceivableStateResponse:
+    return _receivable_state_response(
+        PosService(database).delete_receivable_proof(
+            principal=principal,
+            grant=grant,
+            receivable_id=receivable_id,
+            proof_id=proof_id,
+            expected_version=version,
+            storage=storage,
+        )
+    )
 
 
 @router.post("/receivables/{receivable_id}/cancel", responses=_RESPONSES)
