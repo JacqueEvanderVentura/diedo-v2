@@ -11,6 +11,7 @@ from app.api.deps import (
     FinanceManageGrant,
     FinanceReadGrant,
 )
+from app.api.routers.pos import _sale_detail_response
 from app.db.models import (
     FinanceAccount,
     FinanceExpense,
@@ -73,8 +74,10 @@ from app.schemas.finance import (
     UpdateFinanceLiabilityRequest,
     UpdateFinanceManualIncomeRequest,
 )
+from app.schemas.pos import SaleDetailResponse
 from app.services.document_attachments import DocumentAttachmentService
 from app.services.finance import FinanceService, page_count
+from app.services.pos import PosService
 
 router = APIRouter(prefix="/api/v1/finance", tags=["finance"])
 
@@ -306,6 +309,9 @@ def _income_view_response(
         adjusted=record.adjusted,
         editable=record.editable,
         version=record.version,
+        item_kind=record.item_kind,
+        catalog_item_id=record.catalog_item_id,
+        concept=record.concept,
         attachments=attachments,
         created_at=record.created_at,
         updated_at=record.updated_at,
@@ -327,6 +333,9 @@ def _manual_income_response(income: FinanceManualIncome) -> FinanceIncomeRespons
         adjusted=False,
         editable=True,
         version=income.version,
+        item_kind=income.item_kind,
+        catalog_item_id=income.catalog_item_id,
+        concept=income.concept or None,
         created_at=income.created_at,
         updated_at=income.updated_at,
     )
@@ -968,6 +977,24 @@ def list_incomes(
         total_items=result.total_items,
         total_pages=page_count(result.total_items, page_size),
     )
+
+
+@router.get(
+    "/incomes/{income_id}/sale",
+    responses={**_SECURITY_RESPONSES, 404: {"model": ErrorResponse}},
+)
+def get_income_sale(
+    income_id: UUID,
+    database: DatabaseSession,
+    grant: FinanceReadGrant,
+) -> SaleDetailResponse:
+    finance_service = FinanceService(database)
+    record = finance_service.get_pos_income_sale_record(grant, income_id)
+    sale_id = record.sale.id
+    pos_service = PosService(database)
+    proofs = pos_service._repository.payment_proofs_for_sale(grant.workspace_id, sale_id)
+    tender_records = pos_service.list_sale_tender_line_records(grant.workspace_id, sale_id)
+    return _sale_detail_response(record, proofs, tender_records)
 
 
 @router.patch("/incomes/{income_id}", responses=_MUTATION_RESPONSES)
