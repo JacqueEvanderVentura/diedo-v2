@@ -58,6 +58,22 @@ const health = await fetch(`${base}/health`)
 assert.equal(health.status, 200)
 assert.equal((await health.text()).trim(), 'ok')
 assert.match(health.headers.get('cache-control'), /no-store/)
+
+const distVersionPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'version.json')
+let expectedBuildId = null
+try {
+  expectedBuildId = JSON.parse(readFileSync(distVersionPath, 'utf8')).buildId
+} catch {
+  // local smoke without a fresh build
+}
+const version = await fetch(`${base}/version.json`, { cache: 'no-store' })
+assert.equal(version.status, 200)
+assert.match(version.headers.get('cache-control'), /no-store/)
+const liveBuildId = JSON.parse(await version.text()).buildId
+assert.ok(typeof liveBuildId === 'string' && liveBuildId.length > 0)
+if (expectedBuildId) {
+  assert.equal(liveBuildId, expectedBuildId, 'Live version.json must match the frontend dist just deployed')
+}
 const page = await fetch(`${base}/`)
 assert.equal(page.status, 200)
 assert.equal(page.headers.get('x-content-type-options'), 'nosniff')
@@ -161,4 +177,4 @@ assert.match(apiHealth.headers.get('cache-control'), /no-store/)
 const anonymous = await fetch(`${base}/api-backend/api/v1/auth/me`)
 assert.equal(anonymous.status, 401)
 assert.match(anonymous.headers.get('content-type'), /application\/json/)
-console.log('PASS: health, SPA, security headers, cache, JS/CSS, missing asset and Railway API')
+console.log('PASS: health, version.json, SPA, security headers, cache, JS/CSS, missing asset and Railway API')

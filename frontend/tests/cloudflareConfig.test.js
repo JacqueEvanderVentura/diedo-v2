@@ -49,6 +49,8 @@ describe('Cloudflare static deployment configuration', () => {
     expect(lines).toContain('  X-Frame-Options: DENY')
     expect(lines).toContain('  Permissions-Policy: camera=(), microphone=(), geolocation=()')
     expect(lines).toContain('/health')
+    expect(lines).toContain('/version.json')
+    expect(lines).toContain('  Cache-Control: no-store')
     expect(lines).toContain('/privacidad')
     expect(lines).toContain('/condiciones')
     expect(lines).toContain('  Cache-Control: no-store')
