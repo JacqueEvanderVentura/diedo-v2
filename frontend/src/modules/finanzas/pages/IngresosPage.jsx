@@ -11,10 +11,19 @@ import { formatDOP } from '@/lib/format'
 import { fmtWhen, FINANCE_PERIODS, isRecognizedPosIncome, parseWhen } from '../lib/finanzas'
 import { DatePeriodFilter } from '@/components/ui/DatePeriodFilter'
 import { createPeriodFilterState, inDateRange, periodFilterLabel } from '@/lib/datePeriod'
-import { downloadIncomeInvoice, isPosIncome, printIncomeInvoice } from '../lib/incomeInvoice'
+import {
+  canIncomeInvoice,
+  downloadIncomeInvoice,
+  isPosIncome,
+  printIncomeInvoice,
+} from '../lib/incomeInvoice'
 import { incomeHasProofs, incomeProofItems, resolvePosIncomeProofs } from '../lib/incomeProofs'
 import { collectSalePaymentProofs, findReceivableForSale } from '@/modules/crm/lib/saleProofs'
-import { METHOD_LABELS, METHOD_ICON } from '@/modules/crm/lib/crm'
+import {
+  incomeCategoryIconName,
+  incomeCategoryLabel,
+  incomeCategorySemanticKey,
+} from '../lib/incomeCategory'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -99,6 +108,11 @@ export default function IngresosPage() {
     [period, periodFilter]
   )
 
+  const categoryLabel = useCallback(
+    (category) => incomeCategoryLabel(category, paymentMethods),
+    [paymentMethods]
+  )
+
   const setPeriodFilter = useCallback(({ period: nextPeriod, dateFrom: nextFrom, dateTo: nextTo }) => {
     setPeriod(nextPeriod)
     setDateFrom(nextFrom ?? null)
@@ -131,10 +145,10 @@ export default function IngresosPage() {
       status: i.status,
       amount: i.amount,
       source: i.source || 'Formulario',
-      origin: i.origin || (i.source === 'POS' ? 'pos' : 'manual'),
+      origin: i.origin || 'manual',
       reference: i.reference || null,
       editable: i.editable !== false,
-      paymentProofs: (i.origin === 'pos' || i.source === 'POS')
+      paymentProofs: i.origin === 'pos'
         ? resolvePosIncomeProofs(i.id, { sales, receivables })
         : [],
     }))
@@ -146,8 +160,8 @@ export default function IngresosPage() {
     return allIncomes
       .filter((i) => matchesDate(i.date))
       .filter((i) => branchFilter === 'all' || i.branchId === branchFilter)
-      .filter((i) => !q || i.customer.toLowerCase().includes(q) || String(i.id).toLowerCase().includes(q) || (METHOD_LABELS[i.category] || i.category).toLowerCase().includes(q))
-  }, [allIncomes, matchesDate, query, branchFilter])
+      .filter((i) => !q || i.customer.toLowerCase().includes(q) || String(i.id).toLowerCase().includes(q) || (i.concept || '').toLowerCase().includes(q) || categoryLabel(i.category).toLowerCase().includes(q))
+  }, [allIncomes, matchesDate, query, branchFilter, categoryLabel])
 
   const branchNameFor = (branchId, source) => branches.find((b) => b.id === branchId)?.name || (source === 'POS' ? 'POS' : '—')
 
@@ -156,7 +170,7 @@ export default function IngresosPage() {
     accessors: {
       date: (i) => new Date(i.date),
       customer: (i) => i.customer || '',
-      category: (i) => METHOD_LABELS[i.category] || i.category || '',
+      category: (i) => categoryLabel(i.category),
       branch: (i) => branchNameFor(i.branchId, i.source),
       status: (i) => i.status || '',
       amount: (i) => i.amount || 0,
@@ -199,7 +213,10 @@ export default function IngresosPage() {
 
   const byMethod = useMemo(() => {
     const map = {}
-    filtered.forEach((i) => { const k = i.category; map[k] = (map[k] || 0) + i.amount })
+    filtered.forEach((i) => {
+      const k = incomeCategorySemanticKey(i.category)
+      map[k] = (map[k] || 0) + i.amount
+    })
     return Object.entries(map).sort((a, b) => b[1] - a[1])
   }, [filtered])
 
@@ -214,7 +231,7 @@ export default function IngresosPage() {
   const exportRows = filtered.map((i) => ({
     fecha: fmtWhen(i.date),
     cliente: i.customer,
-    categoria: METHOD_LABELS[i.category] || i.category,
+    categoria: categoryLabel(i.category),
     sucursal: branches.find((b) => b.id === i.branchId)?.name || '—',
     estado: i.status,
     monto: formatDOP(i.amount),
@@ -334,11 +351,11 @@ export default function IngresosPage() {
           <h3 className="mb-3 font-heading text-lg font-bold text-slate-800">Desglose por método</h3>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5" data-testid="ingresos-breakdown">
             {byMethod.map(([method, amount]) => {
-              const Icon = Icons[METHOD_ICON[method]] || Icons.Circle
+              const Icon = Icons[incomeCategoryIconName(method)] || Icons.Circle
               const pct = total > 0 ? Math.round((amount / total) * 100) : 0
               return (
                 <Card key={method} className="p-4" data-testid={`ingresos-method-${method}`}>
-                  <div className="flex items-center gap-2 text-slate-500"><Icon className="h-4 w-4" /><span className="text-xs font-semibold">{METHOD_LABELS[method] || method}</span></div>
+                  <div className="flex items-center gap-2 text-slate-500"><Icon className="h-4 w-4" /><span className="text-xs font-semibold">{categoryLabel(method)}</span></div>
                   <p className="mt-2 font-heading text-lg font-bold text-slate-900">{formatDOP(amount)}</p>
                   <p className="text-xs text-slate-400">{pct}% del total</p>
                 </Card>
@@ -379,12 +396,12 @@ export default function IngresosPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {displayRows.map((i) => {
-                    const Icon = Icons[METHOD_ICON[i.category]] || Icons.Circle
+                    const Icon = Icons[incomeCategoryIconName(i.category)] || Icons.Circle
                     return (
                       <tr key={i.id} className="hover:bg-slate-50/60" data-testid={`ingresos-row-${i.id}`}>
                         <td className="whitespace-nowrap px-6 py-4 text-slate-500">{fmtWhen(i.date)}</td>
                         <td className="whitespace-nowrap px-6 py-4 font-semibold text-slate-800">{i.customer}</td>
-                        <td className="px-6 py-4"><span className="inline-flex items-center gap-1.5 text-slate-600"><Icon className="h-4 w-4 text-slate-400" />{METHOD_LABELS[i.category] || i.category}</span></td>
+                        <td className="px-6 py-4"><span className="inline-flex items-center gap-1.5 text-slate-600"><Icon className="h-4 w-4 text-slate-400" />{categoryLabel(i.category)}</span></td>
                         <td className="whitespace-nowrap px-6 py-4 text-slate-500">{branchNameFor(i.branchId, i.source)}</td>
                         <td className="px-6 py-4"><Badge tone={i.status === 'pagado' ? 'success' : 'warning'}>{i.status === 'pagado' ? 'Pagado' : 'Pendiente'}</Badge></td>
                         <td className="whitespace-nowrap px-6 py-4 text-right font-heading font-bold text-emerald-600">+ {formatDOP(i.amount)}</td>
@@ -401,7 +418,7 @@ export default function IngresosPage() {
                                 <FileImage className="h-4 w-4" />
                               </button>
                             )}
-                            {isPosIncome(i) && (
+                            {canIncomeInvoice(i) && (
                               <>
                                 <button
                                   type="button"
@@ -462,7 +479,7 @@ export default function IngresosPage() {
             </ResponsiveTable>
             <ResponsiveCards testId="ingresos-cards" className="p-4">
               {displayRows.map((i) => {
-                const Icon = Icons[METHOD_ICON[i.category]] || Icons.Circle
+                const Icon = Icons[incomeCategoryIconName(i.category)] || Icons.Circle
                 return (
                   <MobileCard key={i.id} testId={`ingresos-card-${i.id}`}>
                     <MobileCardHeader
@@ -472,7 +489,7 @@ export default function IngresosPage() {
                     />
                     <MobileCardGrid>
                       <MobileField label="Categoría">
-                        <span className="inline-flex items-center gap-1.5"><Icon className="h-4 w-4 text-slate-400" />{METHOD_LABELS[i.category] || i.category}</span>
+                        <span className="inline-flex items-center gap-1.5"><Icon className="h-4 w-4 text-slate-400" />{categoryLabel(i.category)}</span>
                       </MobileField>
                       <MobileField label="Sucursal">{branchNameFor(i.branchId, i.source)}</MobileField>
                       <MobileField label="Monto" fullWidth>
@@ -482,7 +499,7 @@ export default function IngresosPage() {
                     <MobileCardFooter>
                       <span className="text-xs text-slate-400">Acciones</span>
                       <div className="flex gap-1">
-                        {isPosIncome(i) && (
+                        {canIncomeInvoice(i) && (
                           <>
                             <button
                               type="button"

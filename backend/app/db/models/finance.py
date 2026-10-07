@@ -470,6 +470,9 @@ class FinanceManualIncome(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Bas
     customer: Mapped[str] = mapped_column(
         String(200), nullable=False, default="", server_default=""
     )
+    item_kind: Mapped[str | None] = mapped_column(String(16))
+    catalog_item_id: Mapped[UUID | None] = mapped_column(nullable=True)
+    concept: Mapped[str] = mapped_column(String(200), nullable=False, default="", server_default="")
     source: Mapped[str] = mapped_column(String(48), nullable=False)
     payment_status: Mapped[str] = mapped_column(String(16), nullable=False)
     record_status: Mapped[str] = mapped_column(
