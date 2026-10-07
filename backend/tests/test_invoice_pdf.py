@@ -10,8 +10,6 @@ from app.services.invoice_html import build_invoice_document_html
 from app.services.local_bootstrap import bootstrap_local_foundation
 from app.services.pdf_renderer import StubPdfRenderer, set_pdf_renderer
 from fastapi.testclient import TestClient
-from sqlalchemy import select
-
 _OWNER_EMAIL = "owner@erp.dev"
 _PASSWORD = "invoice-pdf-test-password-not-a-secret"
 
@@ -19,13 +17,20 @@ _PASSWORD = "invoice-pdf-test-password-not-a-secret"
 def _auth(client: TestClient) -> tuple[dict[str, str], str]:
     with session_scope() as session:
         summary = bootstrap_local_foundation(session, hash_password(_PASSWORD))
-        branch_id = session.scalar(
-            select(Branch.id).where(
-                Branch.workspace_id == summary.workspace_id,
-                Branch.status == "active",
-            )
+        suffix = uuid7().hex[-12:]
+        branch = Branch(
+            workspace_id=summary.workspace_id,
+            legal_entity_id=summary.legal_entity_id,
+            code=f"inv-pdf-{suffix}",
+            name=f"Invoice PDF {suffix}",
+            status="active",
+            timezone="America/Santo_Domingo",
         )
-        assert branch_id is not None
+        session.add(branch)
+        session.flush()
+        branch_id = branch.id
+    with session_scope() as session:
+        bootstrap_local_foundation(session, hash_password(_PASSWORD))
     login = client.post(
         "/api/v1/auth/login",
         json={"email": _OWNER_EMAIL, "password": _PASSWORD},
@@ -70,18 +75,24 @@ def _checkout_sale(client: TestClient, headers: dict[str, str], branch_id: str) 
         },
     )
     assert product.status_code == 201, product.text
-    register = client.post(
-        "/api/v1/pos/registers",
-        headers={**headers, "Idempotency-Key": f"invoice-pdf-register-{suffix}"},
-        json={"branchId": branch_id, "openingCash": "0.00", "currency": "DOP"},
-    )
-    assert register.status_code == 201, register.text
+    state_body = state.json()
+    open_register = state_body.get("register")
+    if open_register and open_register.get("status") == "open":
+        register_id = open_register["id"]
+    else:
+        register = client.post(
+            "/api/v1/pos/registers",
+            headers={**headers, "Idempotency-Key": f"invoice-pdf-register-{suffix}"},
+            json={"branchId": branch_id, "openingCash": "0.00", "currency": "DOP"},
+        )
+        assert register.status_code == 201, register.text
+        register_id = register.json()["id"]
     checkout = client.post(
         "/api/v1/pos/checkout",
         headers={**headers, "Idempotency-Key": f"invoice-pdf-checkout-{suffix}"},
         json={
             "branchId": branch_id,
-            "registerId": register.json()["id"],
+            "registerId": register_id,
             "paymentMethodId": cash_method["id"],
             "lines": [{"itemId": product.json()["id"], "quantity": "1"}],
         },
