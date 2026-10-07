@@ -95,6 +95,53 @@ export async function downloadHtmlAsPdf(html, filename) {
   }
 }
 
+function revokeObjectUrlLater(url) {
+  setTimeout(() => URL.revokeObjectURL(url), 120_000)
+}
+
+/** Print a PDF blob (Safari-friendly; avoids HTML print pagination bugs). */
+export async function printPdfBlob(blob) {
+  const url = URL.createObjectURL(blob)
+  const iframe = document.createElement('iframe')
+  iframe.setAttribute('aria-hidden', 'true')
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden'
+  iframe.src = url
+  document.body.appendChild(iframe)
+
+  const cleanup = () => {
+    if (iframe.parentNode) iframe.remove()
+    revokeObjectUrlLater(url)
+  }
+
+  const triggerPrint = () => {
+    try {
+      iframe.contentWindow?.focus()
+      iframe.contentWindow?.print()
+    } catch {
+      const popup = window.open(url, '_blank', 'noopener,noreferrer')
+      popup?.focus()
+      popup?.print()
+    }
+    setTimeout(cleanup, 120_000)
+  }
+
+  iframe.addEventListener('load', () => {
+    requestAnimationFrame(triggerPrint)
+  }, { once: true })
+}
+
+export function savePdfBlob(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.rel = 'noopener'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  revokeObjectUrlLater(url)
+}
+
 /** Silent print via hidden iframe (no new browser tab). */
 export function printHtml(html) {
   const iframe = document.createElement('iframe')

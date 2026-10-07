@@ -93,6 +93,7 @@ export const crmApi = {
     payload,
     idempotencyOptions(key)
   ),
+  downloadQuoteDocumentPdf: (quoteId) => apiClient.blob(`${CRM_BASE}/quotes/${quoteId}/document.pdf`),
 }
 
 export default crmApi

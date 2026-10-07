@@ -27,6 +27,7 @@ from app.api.deps import (
     SalesQuoteManageGrant,
     SalesReadGrant,
 )
+from app.api.pdf_response import pdf_inline_response
 from app.config import settings
 from app.db.models.administration import PaymentMethod
 from app.db.models.sales import PaymentProof
@@ -101,6 +102,7 @@ from app.schemas.pos import (
     UpdateSaleRequest,
     VoidRequest,
 )
+from app.services.invoice_pdf import InvoicePdfService
 from app.services.pos import PosService
 from app.services.pos_money import money
 
@@ -1168,6 +1170,18 @@ def get_sale(
     proofs = service.payment_proofs_for_sale(grant, sale_id)
     tender_records = service.list_sale_tender_line_records(grant.workspace_id, sale_id)
     return _sale_detail_response(record, proofs, tender_records)
+
+
+@router.get("/sales/{sale_id}/invoice.pdf", responses=_RESPONSES)
+def download_sale_invoice_pdf(
+    sale_id: UUID,
+    database: DatabaseSession,
+    grant: SalesReadGrant,
+) -> Response:
+    service = PosService(database)
+    record = service.get_sale(grant, sale_id)
+    pdf_bytes = InvoicePdfService(database).render_sale_pdf(grant.workspace_id, record)
+    return pdf_inline_response(pdf_bytes, f"{record.sale.sale_number}.pdf")
 
 
 @router.get("/sales/{sale_id}/receivable", responses=_RESPONSES)

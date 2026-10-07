@@ -15,6 +15,7 @@ from app.api.routers import (
     crm,
     dashboard,
     document_attachments,
+    documents,
     finance,
     health,
     hr,
@@ -51,6 +52,7 @@ api_router.include_router(chat_channel_accounts.oauth_router)
 api_router.include_router(dashboard.router)
 api_router.include_router(finance.router)
 api_router.include_router(document_attachments.router)
+api_router.include_router(documents.router)
 api_router.include_router(master_data.customers_router)
 api_router.include_router(master_data.employees_router)
 api_router.include_router(hr.router)

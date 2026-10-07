@@ -1,5 +1,4 @@
 import {
-  buildInvoiceHtml,
   downloadInvoicePdf,
   formatInvoiceDate,
   invoiceFilename,
@@ -107,23 +106,23 @@ export function buildInvoiceDataFromQuote(quote, { branches = [], settings = {},
 export async function printSaleInvoice(sale, ctx) {
   const settings = await ensureWorkspaceBillingSettings(ctx?.settings)
   const data = buildInvoiceDataFromSale(sale, { ...ctx, settings })
-  printInvoice(buildInvoiceHtml(data))
+  await printInvoice(data, { saleId: sale.id })
 }
 
 export async function downloadSaleInvoicePdf(sale, ctx) {
   const settings = await ensureWorkspaceBillingSettings(ctx?.settings)
   const data = buildInvoiceDataFromSale(sale, { ...ctx, settings })
-  await downloadInvoicePdf(data, invoiceFilename(data.id))
+  await downloadInvoicePdf(data, invoiceFilename(data.id), { saleId: sale.id })
 }
 
 export async function printQuoteDocument(quote, ctx) {
   const settings = await ensureWorkspaceBillingSettings(ctx?.settings)
   const data = buildInvoiceDataFromQuote(quote, { ...ctx, settings })
-  printInvoice(buildInvoiceHtml(data))
+  await printInvoice(data, { quoteId: quote.id })
 }
 
 export async function downloadQuotePdf(quote, ctx) {
   const settings = await ensureWorkspaceBillingSettings(ctx?.settings)
   const data = buildInvoiceDataFromQuote(quote, { ...ctx, settings })
-  await downloadInvoicePdf(data, invoiceFilename(data.id))
+  await downloadInvoicePdf(data, invoiceFilename(data.id), { quoteId: quote.id })
 }

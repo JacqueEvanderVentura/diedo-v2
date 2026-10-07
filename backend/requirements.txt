@@ -26,3 +26,7 @@ resend==2.45.0
 
 # Meta Graph (Instagram Login + WhatsApp Cloud) from OAuth callbacks.
 httpx==0.28.1
+
+# Invoice PDF rendering (Chromium via Playwright in production Docker image).
+playwright==1.58.0
+Jinja2==3.1.6
