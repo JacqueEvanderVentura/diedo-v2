@@ -852,6 +852,38 @@ def test_finance_pos_income_correction_and_exclusion_preserve_original_sale(
     assert audit_actions == {"finance.pos_income.correct", "finance.pos_income.exclude"}
 
 
+@pytest.mark.integration
+def test_finance_income_sale_endpoint(finance_context: tuple[TestClient, Session]) -> None:
+    client, _database = finance_context
+    headers, _ = _login(client)
+    projection = client.get(
+        "/api/v1/finance/incomes",
+        headers=headers,
+        params={"pageSize": 200},
+    )
+    assert projection.status_code == 200, projection.text
+    items = projection.json()["items"]
+    pos_income = next(item for item in items if item["origin"] == "pos")
+    manual_income = next(item for item in items if item["origin"] == "manual")
+
+    sale = client.get(f"/api/v1/finance/incomes/{pos_income['id']}/sale", headers=headers)
+    assert sale.status_code == 200, sale.text
+    body = sale.json()
+    assert body["id"] == pos_income["id"]
+    assert body["lines"]
+
+    manual_sale = client.get(
+        f"/api/v1/finance/incomes/{manual_income['id']}/sale",
+        headers=headers,
+    )
+    assert manual_sale.status_code == 404, manual_sale.text
+    assert manual_sale.json()["parameter"] == "incomeId"
+
+    missing = client.get(f"/api/v1/finance/incomes/{uuid7()}/sale", headers=headers)
+    assert missing.status_code == 404
+    assert missing.json()["parameter"] == "incomeId"
+
+
 _PNG_DOC_ATTACH = b"\x89PNG\r\n\x1a\ndoc-attach-test"
 
 

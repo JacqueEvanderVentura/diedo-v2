@@ -44,6 +44,9 @@ export const mapFinanceAccountFromApi = (item) => ({
 export const mapFinanceIncomeFromApi = (item) => ({
   ...item,
   amount: amount(item.amount),
+  itemKind: item.itemKind || null,
+  catalogItemId: item.catalogItemId || null,
+  concept: item.concept || '',
   attachments: mapDocumentAttachmentsFromApi(item.attachments),
 })
 
@@ -119,4 +122,7 @@ export const manualIncomeToApiPayload = (item) => ({
   customer: item.customer || '',
   source: item.source || 'Formulario',
   status: item.status || 'pagado',
+  itemKind: item.itemKind || null,
+  catalogItemId: item.catalogItemId || null,
+  concept: item.concept || '',
 })
