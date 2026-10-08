@@ -1,6 +1,6 @@
 import { buildHeliosLogoHtml, PRODUCT_NAME } from '@/components/brand/HeliosIcon'
 import { formatDOP } from '@/lib/format'
-import { downloadHtmlAsPdf, printHtml } from '@/lib/print'
+import { downloadInvoiceDocument, printInvoiceDocument } from './invoicePdf'
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -455,10 +455,10 @@ export function buildInvoiceHtml(data) {
 </html>`
 }
 
-export function printInvoice(html) {
-  printHtml(html)
+export async function printInvoice(data, options = {}) {
+  await printInvoiceDocument(data, options)
 }
 
-export async function downloadInvoicePdf(data, filename) {
-  await downloadHtmlAsPdf(buildInvoiceHtml(data), filename)
+export async function downloadInvoicePdf(data, filename, options = {}) {
+  await downloadInvoiceDocument(data, filename, options)
 }

@@ -9,7 +9,10 @@ WORKDIR /app/backend
 RUN groupadd --system app && useradd --system --gid app --home-dir /nonexistent app
 
 COPY backend/requirements.txt ./requirements.txt
-RUN python -m pip install --upgrade pip && python -m pip install --requirement requirements.txt
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN python -m pip install --upgrade pip \
+    && python -m pip install --requirement requirements.txt \
+    && python -m playwright install --with-deps chromium
 
 COPY backend/ ./
 COPY demo-data/ /app/demo-data/

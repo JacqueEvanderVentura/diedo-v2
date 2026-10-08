@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>{{ doc_title }} {{ id }}</title>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+      color: #0f172a;
+      background: #fff;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .sheet {
+      max-width: 100%;
+      margin: 0 auto;
+      min-height: 277mm;
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    .invoice-content { flex: 1 0 auto; }
+    .invoice-print-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 16px;
+      margin-bottom: 20px;
+      flex-shrink: 0;
+    }
+    .header-left { flex: 1; min-width: 0; }
+    .header-left h1 { margin: 0; font-size: 22px; letter-spacing: -0.02em; }
+    .header-left p { margin: 0 2px 0 0; font-size: 12px; color: #64748b; }
+    .header-right {
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 10px;
+      max-width: 42%;
+    }
+    .brand-logo {
+      flex-shrink: 0;
+      max-height: 72px;
+      max-width: min(240px, 100%);
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      object-position: right top;
+    }
+    .meta { text-align: right; font-size: 13px; color: #475569; }
+    .meta strong { display: block; color: #0f172a; font-size: 15px; margin-bottom: 4px; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+      font-size: 13px;
+    }
+    .label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #94a3b8; margin-bottom: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #94a3b8; padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
+    th.num, td.num { text-align: right; white-space: nowrap; }
+    td { padding: 10px 0; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+    .item-name { font-weight: 600; }
+    .muted { color: #94a3b8; font-size: 11px; margin-top: 2px; }
+    .strike, s.strike {
+      display: inline-block;
+      line-height: 1.25;
+      text-decoration: line-through;
+      color: #94a3b8;
+      margin-right: 4px;
+    }
+    .totals { margin-top: 20px; margin-left: auto; width: 280px; font-size: 13px; }
+    .totals div { display: flex; justify-content: space-between; padding: 5px 0; color: #475569; }
+    .totals .discount { color: #059669; }
+    .totals .grand { border-top: 1px solid #e2e8f0; margin-top: 8px; padding-top: 10px; font-size: 16px; font-weight: 700; color: #0f172a; }
+    .totals .grand span:last-child { color: {{ total_color }}; }
+    .invoice-footer {
+      margin-top: auto;
+      padding-top: 24px;
+      font-size: 12px;
+      color: #475569;
+      flex-shrink: 0;
+    }
+    .invoice-footer-contacts {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px 16px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: #334155;
+    }
+    .invoice-footer-contact { display: inline-flex; align-items: center; gap: 6px; }
+    .invoice-footer-contact-end { margin-left: auto; }
+    .invoice-footer-icon { display: inline-flex; width: 16px; justify-content: center; color: #64748b; font-size: 13px; }
+    .invoice-footer-divider { height: 0; border-top: 1px solid #cbd5e1; margin: 0 0 14px; }
+    .invoice-footer-legal { text-align: left; line-height: 1.45; }
+    .invoice-footer-legal-name { font-weight: 700; color: #0f172a; font-size: 13px; margin-bottom: 2px; }
+    .invoice-footer-legal-line { color: #64748b; font-size: 12px; }
+    .invoice-footer-branch {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid #e2e8f0;
+      font-weight: 600;
+      font-size: 12px;
+      color: #334155;
+    }
+  </style>
+</head>
+<body>
+  <div class="sheet">
+    <header class="invoice-print-header">
+      <div class="header-left">
+        <h1>{{ business_name }}</h1>
+        {% if business_rnc %}<p class="muted">RNC: {{ business_rnc }}</p>{% endif %}
+        {% if business_address_line %}<p class="muted">{{ business_address_line }}</p>{% endif %}
+        {% if region %}<p class="muted">{{ region }}</p>{% endif %}
+      </div>
+      <div class="header-right">
+        {{ logo_html }}
+        <div class="meta">
+          <strong>{{ doc_title }}</strong>
+          {{ id }}<br />
+          {{ issued_at }}
+        </div>
+      </div>
+    </header>
+
+    <main class="invoice-content">
+      <div class="grid">
+        <div>
+          <div class="label">Cliente</div>
+          <div><strong>{{ customer_name }}</strong></div>
+          {% if customer_tax_line %}<div class="muted">{{ customer_tax_line }}</div>{% endif %}
+          {% if customer_phone %}<div class="muted">{{ customer_phone }}</div>{% endif %}
+        </div>
+        <div>
+          <div class="label">{{ payment_label }}</div>
+          <div><strong>{{ payment_method }}</strong></div>
+          {% if payment_reference %}<div class="muted">Ref: {{ payment_reference }}</div>{% endif %}
+          {% if valid_until %}<div class="muted">Válida hasta {{ valid_until }}</div>{% endif %}
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Descripción</th>
+            <th class="num">Cant.</th>
+            <th class="num">Precio</th>
+            <th class="num">Importe</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in line_rows %}
+          <tr>
+            <td>
+              <div class="item-name">{{ row.name }}</div>
+              {% if row.sku %}<div class="muted">SKU: {{ row.sku }}</div>{% endif %}
+            </td>
+            <td class="num">{{ row.qty }}</td>
+            <td class="num">{{ row.price_html | safe }}</td>
+            <td class="num">{{ row.line_total }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div class="totals">
+        <div><span>Subtotal</span><span>{{ subtotal_fmt }}</span></div>
+        {% if show_discount %}
+        <div class="discount"><span>Descuento ({{ discount_pct_fmt }}%)</span><span>−{{ discount_amt_fmt }}</span></div>
+        {% endif %}
+        <div><span>{{ tax_label }}</span><span>{{ tax_amt_fmt }}</span></div>
+        <div class="grand"><span>Total</span><span>{{ total_fmt }}</span></div>
+        {% if show_paid %}
+        <div><span>Cobrado</span><span>{{ paid_amount_fmt }}</span></div>
+        {% endif %}
+        {% if show_balance %}
+        <div class="grand"><span>Saldo pendiente</span><span>{{ balance_fmt }}</span></div>
+        {% endif %}
+      </div>
+    </main>
+
+    <footer class="invoice-footer">
+      {% if business_phone or business_email %}
+      <div class="invoice-footer-contacts">
+        {% if business_phone %}
+        <div class="invoice-footer-contact">
+          <span class="invoice-footer-icon" aria-hidden="true">☎</span>
+          <span>{{ business_phone }}</span>
+        </div>
+        {% endif %}
+        {% if business_email %}
+        <div class="invoice-footer-contact invoice-footer-contact-end">
+          <span class="invoice-footer-icon" aria-hidden="true">✉</span>
+          <span>{{ business_email }}</span>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+      <div class="invoice-footer-divider" role="presentation"></div>
+      <div class="invoice-footer-legal">
+        {% for line in legal_lines %}
+        <div class="{{ line.class_name }}">{{ line.text }}</div>
+        {% endfor %}
+      </div>
+      {% if branch_footer %}
+      <div class="invoice-footer-branch">{{ branch_footer }}</div>
+      {% endif %}
+    </footer>
+  </div>
+</body>
+</html>

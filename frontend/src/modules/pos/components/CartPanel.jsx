@@ -536,6 +536,7 @@ export function CartPanel({ onCheckoutDone }) {
     setCompletedInvoice({
       data,
       html: buildInvoiceHtml(data),
+      saleId: checkoutResponse?.id || null,
     })
   }
 
@@ -544,7 +545,8 @@ export function CartPanel({ onCheckoutDone }) {
     if (empty) return toast.error('El carrito está vacío')
 
     await ensureWorkspaceBillingSettings()
-    printInvoice(buildCurrentInvoice().html)
+    const { data } = buildCurrentInvoice()
+    await printInvoice(data)
 
   }
 

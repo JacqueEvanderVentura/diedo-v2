@@ -134,6 +134,14 @@ async function request(path, {
   }
 
   if (response.ok && responseType === 'blob') return response.blob()
+  if (!response.ok && responseType === 'blob') {
+    const data = await parseBody(response)
+    const error = new Error(data?.message || `Error ${response.status}`)
+    error.status = response.status
+    error.parameter = data?.parameter
+    error.data = data
+    throw error
+  }
   const data = await parseBody(response)
 
   if (!response.ok) {
@@ -159,6 +167,7 @@ export const apiClient = {
   delete: (path, params, options) => request(path, { method: 'DELETE', params, ...options }),
   upload: (path, formData, options) => request(path, { method: 'POST', body: formData, ...options }),
   blob: (path, options) => request(path, { method: 'GET', responseType: 'blob', ...options }),
+  postBlob: (path, body, options) => request(path, { method: 'POST', body, responseType: 'blob', ...options }),
   refreshSession: refreshAccessToken,
 }
 

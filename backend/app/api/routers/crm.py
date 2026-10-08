@@ -17,6 +17,7 @@ from app.api.deps import (
     SalesQuoteManageGrant,
     SalesReadGrant,
 )
+from app.api.pdf_response import pdf_inline_response
 from app.api.routers.pos import (
     _checkout_response,
     _quote_detail_response,
@@ -87,6 +88,7 @@ from app.schemas.pos import (
 from app.services.authorization import AuthorizationService
 from app.services.crm import CrmService
 from app.services.crm_discovery import CrmDiscoveryService, LeadDiscoveryQuery
+from app.services.invoice_pdf import InvoicePdfService
 from app.services.pos import PosService
 
 router = APIRouter(prefix="/api/v1/crm", tags=["CRM"])
@@ -775,6 +777,22 @@ def get_quote(
             quote_id=quote_id,
         )
     )
+
+
+@router.get("/quotes/{quote_id}/document.pdf", responses=_RESPONSES)
+def download_quote_document_pdf(
+    quote_id: UUID,
+    database: DatabaseSession,
+    crm_grant: CrmReadGrant,
+    sales_grant: SalesReadGrant,
+) -> Response:
+    record = CrmService(database).get_quote(
+        crm_grant=crm_grant,
+        sales_grant=sales_grant,
+        quote_id=quote_id,
+    )
+    pdf_bytes = InvoicePdfService(database).render_quote_pdf(crm_grant.workspace_id, record)
+    return pdf_inline_response(pdf_bytes, f"{record.quote.document_number}.pdf")
 
 
 @router.patch("/quotes/{quote_id}", responses=_RESPONSES)

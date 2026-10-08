@@ -25,6 +25,7 @@ from app.core.middleware import (
 )
 from app.db.session import dispose_engine
 from app.services.errors import ApplicationError
+from app.services.pdf_renderer import shutdown_pdf_renderer
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -35,6 +36,7 @@ logging.basicConfig(
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     yield
+    shutdown_pdf_renderer()
     dispose_engine()
 
 

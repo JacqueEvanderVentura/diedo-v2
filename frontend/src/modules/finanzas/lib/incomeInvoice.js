@@ -1,5 +1,4 @@
 import {
-  buildInvoiceHtml,
   downloadInvoicePdf,
   formatInvoiceDate,
   invoiceFilename,
@@ -93,7 +92,7 @@ export async function printIncomeInvoice(income, ctx) {
   }
   const settings = await ensureWorkspaceBillingSettings(ctx?.settings)
   const data = buildInvoiceDataFromManualIncome(income, { ...ctx, settings })
-  printInvoice(buildInvoiceHtml(data))
+  await printInvoice(data)
 }
 
 export async function downloadIncomeInvoice(income, ctx) {
