@@ -10,6 +10,7 @@ from app.services.invoice_html import build_invoice_document_html
 from app.services.local_bootstrap import bootstrap_local_foundation
 from app.services.pdf_renderer import StubPdfRenderer, set_pdf_renderer
 from fastapi.testclient import TestClient
+
 _OWNER_EMAIL = "owner@erp.dev"
 _PASSWORD = "invoice-pdf-test-password-not-a-secret"
 
