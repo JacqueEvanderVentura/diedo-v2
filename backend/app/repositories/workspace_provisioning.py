@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from app.db.models import ModuleDefinition, Permission, PlatformUser, Workspace, WorkspaceMembership
@@ -31,6 +31,17 @@ class WorkspaceProvisioningRepository:
                 )
             )
             is not None
+        )
+
+    def has_active_membership(self, platform_user_id: UUID) -> bool:
+        return (
+            self._session.scalar(
+                select(exists().where(
+                    WorkspaceMembership.platform_user_id == platform_user_id,
+                    WorkspaceMembership.status == "active",
+                ))
+            )
+            is True
         )
 
     def available_modules(self) -> tuple[ModuleDefinition, ...]:

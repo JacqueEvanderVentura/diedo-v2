@@ -121,6 +121,12 @@ class InventoryItemProfile(UuidPrimaryKeyMixin, TimestampMixin, Base):
     tax_rate: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, default=Decimal("0"), server_default=text("0")
     )
+    available_in_agenda: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    available_in_pos: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
     creation_idempotency_key: Mapped[str | None] = mapped_column(String(128))
     request_fingerprint: Mapped[str | None] = mapped_column(String(64))
 

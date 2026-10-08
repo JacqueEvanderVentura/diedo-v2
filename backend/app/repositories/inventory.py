@@ -568,6 +568,8 @@ class InventoryRepository:
         idempotency_key: str,
         request_fingerprint: str,
         request_id: str,
+        available_in_agenda: bool = True,
+        available_in_pos: bool = True,
     ) -> UUID:
         item = Item(
             workspace_id=workspace_id,
@@ -596,6 +598,8 @@ class InventoryRepository:
             sale_price=sale_price,
             unit_cost=unit_cost,
             tax_rate=tax_rate,
+            available_in_agenda=available_in_agenda,
+            available_in_pos=available_in_pos,
             creation_idempotency_key=idempotency_key,
             request_fingerprint=request_fingerprint,
         )
@@ -767,7 +771,14 @@ class InventoryRepository:
         for field in ("name", "description", "sku", "category_id", "unit_of_measure_id", "status"):
             if field in changes:
                 setattr(item, field, changes[field])
-        for field in ("sale_price", "unit_cost", "tax_rate"):
+        profile_fields = (
+            "sale_price",
+            "unit_cost",
+            "tax_rate",
+            "available_in_agenda",
+            "available_in_pos",
+        )
+        for field in profile_fields:
             if field in changes:
                 setattr(profile, field, changes[field])
         if "minimum_stock" in changes and balance is not None:

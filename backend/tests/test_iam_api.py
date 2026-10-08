@@ -107,14 +107,6 @@ def test_auth_login_refresh_logout_and_protected_contract(client: TestClient) ->
             select(PlatformUser).where(PlatformUser.normalized_email == _OWNER_EMAIL)
         )
         assert owner is not None
-        primary_membership = session.scalar(
-            select(WorkspaceMembership).where(
-                WorkspaceMembership.platform_user_id == owner.id,
-                WorkspaceMembership.is_default.is_(True),
-            )
-        )
-        assert primary_membership is not None
-        primary_membership_id = primary_membership.id
         extra_workspace = Workspace(
             slug=f"extra-{str(uuid7()).replace('-', '')[:16]}",
             name="Extra workspace",
@@ -130,7 +122,7 @@ def test_auth_login_refresh_logout_and_protected_contract(client: TestClient) ->
             WorkspaceMembership(
                 workspace_id=extra_workspace.id,
                 platform_user_id=owner.id,
-                status="active",
+                status="suspended",
                 is_default=False,
             )
         )
@@ -151,26 +143,15 @@ def test_auth_login_refresh_logout_and_protected_contract(client: TestClient) ->
         headers=_authorization(automatic_workspace.json()),
     )
     assert workspaces.status_code == 200
-    assert {UUID(item["workspaceId"]) for item in workspaces.json()} >= {
-        UUID(automatic_me.json()["workspaceId"]),
-        extra_workspace_id,
-    }
+    workspace_ids = {UUID(item["workspaceId"]) for item in workspaces.json()}
+    assert extra_workspace_id not in workspace_ids
+    assert UUID(automatic_me.json()["workspaceId"]) in workspace_ids
     switched = client.post(
         "/api/v1/auth/switch-workspace",
         headers=_authorization(automatic_workspace.json()),
         json={"workspaceId": str(extra_workspace_id)},
     )
-    assert switched.status_code == 200
-    switched_me = client.get("/api/v1/auth/me", headers=_authorization(switched.json()))
-    assert switched_me.status_code == 200
-    assert UUID(switched_me.json()["workspaceId"]) == extra_workspace_id
-    assert (
-        client.get(
-            "/api/v1/auth/me",
-            headers=_authorization(automatic_workspace.json()),
-        ).status_code
-        == 401
-    )
+    assert switched.status_code == 404
 
     obsolete_workspace_field = client.post(
         "/api/v1/auth/login",
@@ -182,23 +163,6 @@ def test_auth_login_refresh_logout_and_protected_contract(client: TestClient) ->
     )
     assert obsolete_workspace_field.status_code == 400
     assert obsolete_workspace_field.json()["parameter"] == "workspaceSlug"
-
-    with session_scope() as session:
-        primary_membership = session.get(WorkspaceMembership, primary_membership_id)
-        assert primary_membership is not None
-        primary_membership.is_default = False
-
-    ambiguous_workspace = client.post(
-        "/api/v1/auth/login",
-        json={"email": _OWNER_EMAIL, "password": _OWNER_PASSWORD},
-    )
-    assert ambiguous_workspace.status_code == 409
-    assert ambiguous_workspace.json()["parameter"] is None
-
-    with session_scope() as session:
-        primary_membership = session.get(WorkspaceMembership, primary_membership_id)
-        assert primary_membership is not None
-        primary_membership.is_default = True
 
     tokens = _login(client, _OWNER_EMAIL, _OWNER_PASSWORD)
     assert "refreshToken" not in tokens

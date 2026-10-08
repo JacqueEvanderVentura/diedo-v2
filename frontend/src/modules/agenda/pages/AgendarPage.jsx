@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { DatePicker } from '@/components/ui/DatePicker'
 import { useConfigStore } from '@/stores/configStore'
-import { useCatalogStore } from '@/stores/catalogStore'
+import { isAgendaBookable, useCatalogStore } from '@/stores/catalogStore'
 import { useAvailabilityAppointments } from '../hooks/useAvailabilityAppointments'
 import { useRrhhStore } from '@/stores/rrhhStore'
 import { useSelfBookingStore, rememberDocument } from '@/stores/selfBookingStore'
@@ -88,7 +88,7 @@ export default function AgendarPage() {
   const localBookableStaff = useBranchBookableStaff(branch?.id || branchId)
   const services = useMemo(() => {
     if (remoteServices) return remoteServices
-    return products.filter((p) => p.type === 'service').slice(0, 8)
+    return products.filter((p) => isAgendaBookable(p)).slice(0, 8)
   }, [products, remoteServices])
   const bookableStaff = useMemo(() => {
     if (!isDemo) {

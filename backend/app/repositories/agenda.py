@@ -23,6 +23,7 @@ from app.db.models import (
     EmployeeBranchAssignment,
     EmployeeSchedule,
     HrLeaveRequest,
+    InventoryItemProfile,
     Item,
     ItemBranchAssignment,
     PlatformUser,
@@ -456,6 +457,11 @@ class AgendaRepository:
                     (ItemBranchAssignment.workspace_id == Item.workspace_id)
                     & (ItemBranchAssignment.item_id == Item.id),
                 )
+                .join(
+                    InventoryItemProfile,
+                    (InventoryItemProfile.workspace_id == Item.workspace_id)
+                    & (InventoryItemProfile.item_id == Item.id),
+                )
                 .where(
                     Item.workspace_id == workspace_id,
                     Item.id == service_id,
@@ -463,6 +469,7 @@ class AgendaRepository:
                     Item.status == "active",
                     ItemBranchAssignment.branch_id == branch_id,
                     ItemBranchAssignment.status == "active",
+                    InventoryItemProfile.available_in_agenda.is_(True),
                 )
             )
             is not None

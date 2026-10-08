@@ -74,7 +74,7 @@ export default function IncidenciasPage() {
     ]
     if (canReadMemberships) {
       requests.push(
-        usersApi.list({ status: 'active', pageSize: 100, sortBy: 'displayName' })
+        usersApi.list({ pageSize: 100, sortBy: 'displayName' })
           .then((response) => {
             if (cancelled) return
             setApiUsers((response.items || []).map((user) => ({

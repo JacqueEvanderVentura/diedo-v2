@@ -98,6 +98,8 @@ class InventoryItemResponse(ApiModel):
     sale_price: Decimal | None
     unit_cost: Decimal | None
     tax_rate: Decimal
+    available_in_agenda: bool = True
+    available_in_pos: bool = True
     stock_quantity: Decimal | None
     minimum_stock: Decimal | None
     stock_status: InventoryStockStatus
@@ -164,6 +166,8 @@ class CreateInventoryServiceRequest(_CreateInventoryItemBase):
     branch_ids: list[UUID] = Field(min_length=1, max_length=100)
     sale_price: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
     tax_rate: Decimal = Field(default=Decimal("18"), ge=0, le=100, decimal_places=2)
+    available_in_agenda: bool = True
+    available_in_pos: bool = True
 
     @field_validator("branch_ids")
     @classmethod
@@ -171,6 +175,12 @@ class CreateInventoryServiceRequest(_CreateInventoryItemBase):
         if len(value) != len(set(value)):
             raise ValueError("No repitas sucursales.")
         return value
+
+    @model_validator(mode="after")
+    def validate_service_channels(self) -> Self:
+        if not self.available_in_agenda and not self.available_in_pos:
+            raise ValueError("El servicio debe estar disponible en agenda o en venta.")
+        return self
 
 
 class UpdateInventoryItemRequest(ApiModel):
@@ -188,6 +198,8 @@ class UpdateInventoryItemRequest(ApiModel):
     warehouse_id: UUID | None = None
     minimum_stock: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=3)
     status: InventoryItemStatus | None = None
+    available_in_agenda: bool | None = None
+    available_in_pos: bool | None = None
 
     @field_validator("name")
     @classmethod

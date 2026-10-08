@@ -70,6 +70,8 @@ const service = {
   status: 'active',
   version: 1,
   apiSynced: true,
+  availableInAgenda: true,
+  availableInPos: true,
 }
 
 describe('asignación de servicios por empresa y sucursal', () => {
@@ -97,6 +99,21 @@ describe('asignación de servicios por empresa y sucursal', () => {
       branchId: 'branch-main',
       branchIds: ['branch-main', 'branch-east'],
     })
+  })
+
+  it('exige al menos un canal de agenda o venta', () => {
+    render(React.createElement(ProductFormModal, {
+      open: true,
+      onClose: vi.fn(),
+      product: service,
+    }))
+
+    fireEvent.click(screen.getByTestId('inventory-channel-agenda'))
+    fireEvent.click(screen.getByTestId('inventory-channel-pos'))
+    fireEvent.click(screen.getByTestId('inventory-form-save'))
+
+    expect(screen.getByTestId('inventory-form-error').textContent).toContain('Agenda o Punto de venta')
+    expect(mocks.saveProduct).not.toHaveBeenCalled()
   })
 
   it('exige que el servicio conserve al menos una sucursal', () => {

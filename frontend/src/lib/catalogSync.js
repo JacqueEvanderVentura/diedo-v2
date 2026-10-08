@@ -52,6 +52,12 @@ export function mergeApiProduct(apiProduct, localProduct, categoryIdToLocal) {
     taxPct: isSupply ? 0 : apiProduct.taxRate != null ? Number(apiProduct.taxRate) : localProduct?.taxPct ?? 18,
     allowNegativeStock: localProduct?.allowNegativeStock ?? false,
     apiSynced: true,
+    availableInAgenda: isService
+      ? apiProduct.availableInAgenda !== false
+      : localProduct?.availableInAgenda,
+    availableInPos: isService
+      ? apiProduct.availableInPos !== false
+      : localProduct?.availableInPos,
   }
 }
 

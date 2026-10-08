@@ -205,11 +205,15 @@ class WorkspaceProvisioningService:
                 self._session.flush()
 
             is_default_workspace = not self._repository.has_default_membership(owner.id)
+            owner_membership_status = "active"
+            if owner is not None and self._repository.has_active_membership(owner.id):
+                owner_membership_status = "suspended"
             membership = WorkspaceMembership(
                 workspace_id=workspace.id,
                 platform_user_id=owner.id,
-                status="active",
-                activated_at=now,
+                status=owner_membership_status,
+                activated_at=now if owner_membership_status == "active" else None,
+                revoked_at=now if owner_membership_status == "suspended" else None,
                 is_default=is_default_workspace,
             )
             self._session.add(membership)
