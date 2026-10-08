@@ -20,11 +20,15 @@ from app.repositories.purchasing import (
 )
 from app.schemas.common import ErrorResponse
 from app.schemas.purchasing import (
+    CatalogCompareRowResponse,
+    CatalogCompareSupplierPrice,
     CreatePurchaseRequestRequest,
+    CreateSupplierCatalogItemRequest,
     CreateSupplierRequest,
     DeliverPurchaseRequestRequest,
     PaginatedPurchaseRequestsResponse,
     PaginatedSuppliersResponse,
+    PayPurchaseRequestRequest,
     PurchaseQuoteFile,
     PurchaseRequestItemResponse,
     PurchaseRequestPriority,
@@ -36,10 +40,12 @@ from app.schemas.purchasing import (
     PurchasingSettingsResponse,
     ReviewPurchaseRequestRequest,
     SortDirection,
+    SupplierCatalogItemResponse,
     SupplierResponse,
     SupplierSortField,
     UpdatePurchaseRequestRequest,
     UpdatePurchasingSettingsRequest,
+    UpdateSupplierCatalogItemRequest,
     UpdateSupplierRequest,
 )
 from app.services.purchasing import PurchasingService, page_count
@@ -81,6 +87,9 @@ def _purchase_request_response(record: PurchaseRequestRecord) -> PurchaseRequest
             unit=item.unit,
             price=item.unit_price,
             subtotal=item.quantity * item.unit_price,
+            catalog_item_id=item.supplier_catalog_item_id,
+            category_id=item.category_id,
+            inventory_item_id=item.inventory_item_id,
         )
         for item in record.items
     ]
@@ -103,7 +112,9 @@ def _purchase_request_response(record: PurchaseRequestRecord) -> PurchaseRequest
         created_at=request.created_at,
         reviewed_at=request.reviewed_at,
         reviewed_by=request.reviewer_membership_id,
+        paid_at=request.paid_at,
         delivered_at=request.delivered_at,
+        finance_expense_id=request.finance_expense_id,
         version=request.version,
         updated_at=request.updated_at,
     )
@@ -217,6 +228,109 @@ def update_supplier(
     )
 
 
+@router.get(
+    "/catalog/compare",
+    responses=_SECURITY_RESPONSES,
+)
+def compare_supplier_catalog(
+    response: Response,
+    database: DatabaseSession,
+    grant: PurchasingReadGrant,
+    category_id: Annotated[UUID | None, Query(alias="categoryId")] = None,
+    search: Annotated[str | None, Query(max_length=100)] = None,
+) -> list[CatalogCompareRowResponse]:
+    response.headers["Cache-Control"] = "no-store"
+    rows = PurchasingService(database).compare_supplier_catalog(
+        grant,
+        category_id=category_id,
+        search=search,
+    )
+    return [_compare_row_response(row) for row in rows]
+
+
+@router.get(
+    "/suppliers/{supplier_id}/catalog",
+    responses={**_SECURITY_RESPONSES, 404: {"model": ErrorResponse}},
+)
+def list_supplier_catalog(
+    supplier_id: UUID,
+    database: DatabaseSession,
+    grant: PurchasingReadGrant,
+    active_only: Annotated[bool, Query(alias="activeOnly")] = True,
+) -> list[SupplierCatalogItemResponse]:
+    rows = PurchasingService(database).list_supplier_catalog(
+        grant, supplier_id, active_only=active_only
+    )
+    return [_catalog_item_response(row) for row in rows]
+
+
+@router.post(
+    "/suppliers/{supplier_id}/catalog",
+    status_code=status.HTTP_201_CREATED,
+    responses={**_SECURITY_RESPONSES, 404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+)
+def create_supplier_catalog_item(
+    supplier_id: UUID,
+    payload: CreateSupplierCatalogItemRequest,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: PurchasingSupplierManageGrant,
+) -> SupplierCatalogItemResponse:
+    return _catalog_item_response(
+        PurchasingService(database).create_supplier_catalog_item(
+            principal=principal,
+            grant=grant,
+            supplier_id=supplier_id,
+            values=payload.model_dump(by_alias=False),
+        )
+    )
+
+
+@router.patch(
+    "/suppliers/{supplier_id}/catalog/{item_id}",
+    responses={**_SECURITY_RESPONSES, 404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+)
+def update_supplier_catalog_item(
+    supplier_id: UUID,
+    item_id: UUID,
+    payload: UpdateSupplierCatalogItemRequest,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: PurchasingSupplierManageGrant,
+) -> SupplierCatalogItemResponse:
+    return _catalog_item_response(
+        PurchasingService(database).update_supplier_catalog_item(
+            principal=principal,
+            grant=grant,
+            supplier_id=supplier_id,
+            item_id=item_id,
+            expected_version=payload.version,
+            changes=payload.model_dump(exclude_unset=True, exclude={"version"}, by_alias=False),
+        )
+    )
+
+
+@router.delete(
+    "/suppliers/{supplier_id}/catalog/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={**_SECURITY_RESPONSES, 404: {"model": ErrorResponse}},
+)
+def archive_supplier_catalog_item(
+    supplier_id: UUID,
+    item_id: UUID,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: PurchasingSupplierManageGrant,
+) -> Response:
+    PurchasingService(database).archive_supplier_catalog_item(
+        principal=principal,
+        grant=grant,
+        supplier_id=supplier_id,
+        item_id=item_id,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.delete(
     "/suppliers/{supplier_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -247,8 +361,53 @@ def purchase_request_stats(
         total=result.total,
         pendiente=result.pendiente,
         aprobada=result.aprobada,
+        pagada=result.pagada,
         rechazada=result.rechazada,
         entregada=result.entregada,
+    )
+
+
+def _catalog_item_response(record) -> SupplierCatalogItemResponse:
+    item = record.item
+    return SupplierCatalogItemResponse(
+        id=item.id,
+        supplier_id=item.supplier_id,
+        name=item.name,
+        unit=item.unit,
+        unit_price=item.unit_price,
+        category_id=item.category_id,
+        category_name=record.category_name,
+        active=item.active,
+        version=item.version,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
+
+
+def _compare_row_response(row) -> CatalogCompareRowResponse:
+    prices = [offer[3] for offer in row.offers]
+    min_price = min(prices)
+    max_price = max(prices)
+    cheapest = min(row.offers, key=lambda offer: offer[3])
+    return CatalogCompareRowResponse(
+        product_key=row.product_key,
+        name=row.name,
+        category_id=row.category_id,
+        category_name=row.category_name,
+        min_price=min_price,
+        max_price=max_price,
+        spread=max_price - min_price,
+        cheapest_supplier_id=cheapest[0],
+        suppliers=[
+            CatalogCompareSupplierPrice(
+                supplier_id=offer[0],
+                supplier_name=offer[1],
+                catalog_item_id=offer[2],
+                unit_price=offer[3],
+                unit=offer[4],
+            )
+            for offer in row.offers
+        ],
     )
 
 
@@ -380,6 +539,34 @@ def review_purchase_request(
 
 
 @router.post(
+    "/requests/{request_id}/pay",
+    responses={
+        **_SECURITY_RESPONSES,
+        400: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
+)
+def pay_purchase_request(
+    request_id: UUID,
+    payload: PayPurchaseRequestRequest,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: PurchasingRequestReviewGrant,
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=128)],
+) -> PurchaseRequestResponse:
+    return _purchase_request_response(
+        PurchasingService(database).pay_purchase_request(
+            principal=principal,
+            grant=grant,
+            request_id=request_id,
+            expected_version=payload.version,
+            idempotency_key=idempotency_key,
+        )
+    )
+
+
+@router.post(
     "/requests/{request_id}/deliver",
     responses={
         **_SECURITY_RESPONSES,
@@ -394,6 +581,7 @@ def deliver_purchase_request(
     database: DatabaseSession,
     principal: CurrentPrincipal,
     grant: PurchasingRequestReviewGrant,
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=128)],
 ) -> PurchaseRequestResponse:
     return _purchase_request_response(
         PurchasingService(database).deliver_purchase_request(
@@ -401,6 +589,8 @@ def deliver_purchase_request(
             grant=grant,
             request_id=request_id,
             expected_version=payload.version,
+            lines=[line.model_dump(by_alias=False) for line in payload.lines],
+            idempotency_key=idempotency_key,
         )
     )
 

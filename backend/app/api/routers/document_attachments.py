@@ -1,7 +1,7 @@
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, File, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 
 from app.api.attachment_response import authorized_attachment_response
@@ -15,6 +15,7 @@ from app.api.deps import (
     PosRegisterManageGrant,
     PurchasingReadGrant,
     PurchasingRequestCreateGrant,
+    PurchasingRequestReviewGrant,
 )
 from app.config import settings
 from app.repositories.document_attachments import DocumentAttachmentRecord
@@ -270,6 +271,44 @@ def upload_purchase_request_quote(
             content_type=file.content_type,
             storage=storage,
             max_bytes=settings.attachment_max_bytes,
+            purpose="quote",
+        )
+        return _attachment_response(stored.record)
+    finally:
+        file.file.close()
+
+
+@router.post(
+    "/purchasing/requests/{request_id}/receipt",
+    status_code=status.HTTP_201_CREATED,
+    responses=_SECURITY_RESPONSES,
+)
+def upload_purchase_request_receipt(
+    request_id: UUID,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: PurchasingRequestReviewGrant,
+    storage: AttachmentStorageDep,
+    file: Annotated[UploadFile, File()],
+) -> DocumentAttachmentResponse:
+    content_type = (file.content_type or "").casefold()
+    if not content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La recepción requiere una foto (imagen).",
+        )
+    try:
+        stored = DocumentAttachmentService(database).upload(
+            principal=principal,
+            grant=grant,
+            owner_kind="purchase_request",
+            owner_id=request_id,
+            source=file.file,
+            filename=file.filename,
+            content_type=file.content_type,
+            storage=storage,
+            max_bytes=settings.attachment_max_bytes,
+            purpose="receipt",
         )
         return _attachment_response(stored.record)
     finally:
@@ -286,4 +325,8 @@ def list_purchase_request_quote(
     grant: PurchasingReadGrant,
 ) -> list[DocumentAttachmentResponse]:
     rows = DocumentAttachmentService(database).list_for_owner(grant, "purchase_request", request_id)
-    return [_attachment_response(row) for row in rows]
+    return [
+        _attachment_response(row)
+        for row in rows
+        if row.attachment.purpose == "quote"
+    ]

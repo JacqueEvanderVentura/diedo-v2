@@ -31,6 +31,7 @@ import { cn } from '@/lib/utils'
 import { currentSessionActor } from '@/lib/sessionActor'
 import { useSessionStore } from '@/stores/sessionStore'
 import { PurchaseQuoteModal } from '@/modules/compras/components/PurchaseQuoteModal'
+import { PurchaseReceiveModal } from '@/modules/compras/components/PurchaseReceiveModal'
 import { mergePurchaseRequestExtras } from '@/modules/compras/lib/purchaseRequestExtras'
 import { AttachmentField } from '@/components/ui/AttachmentField'
 import { useCatalogStore } from '@/stores/catalogStore'
@@ -61,12 +62,17 @@ export function SolicitudesTab() {
   const purchaseRequests = useComprasStore((s) => s.purchaseRequests)
   const addPurchaseRequest = useComprasStore((s) => s.addPurchaseRequest)
   const reviewPurchaseRequest = useComprasStore((s) => s.reviewPurchaseRequest)
+  const payPurchaseRequest = useComprasStore((s) => s.payPurchaseRequest)
   const markRequestDelivered = useComprasStore((s) => s.markRequestDelivered)
   const attachPurchaseQuote = useComprasStore((s) => s.attachPurchaseQuote)
   const getRequestStats = useComprasStore((s) => s.getRequestStats)
   const branches = useConfigStore((s) => s.branches)
   const categories = useConfigStore((s) => s.categories)
-  const supplies = useCatalogStore((s) => s.getSupplies())
+  const catalogProducts = useCatalogStore((s) => s.products)
+  const supplies = useMemo(
+    () => catalogProducts.filter((product) => product.type === 'supply'),
+    [catalogProducts]
+  )
   const isOnline = useSessionStore((s) => s.isOnline())
 
   const [search, setSearch] = useState('')
@@ -76,6 +82,7 @@ export function SolicitudesTab() {
   const [busyAction, setBusyAction] = useState(null)
   const [quoteModalRequest, setQuoteModalRequest] = useState(null)
   const [quoteUpload, setQuoteUpload] = useState([])
+  const [receiveModalOpen, setReceiveModalOpen] = useState(false)
 
   const stats = getRequestStats()
 
@@ -138,17 +145,35 @@ export function SolicitudesTab() {
     }
   }
 
-  const handleDeliver = async (id) => {
-    setBusyAction(`deliver:${id}`)
+  const handlePay = async (id) => {
+    setBusyAction(`pay:${id}`)
     try {
-      const { inventoryResult } = await markRequestDelivered(id, { isOnline })
+      await payPurchaseRequest(id, { isOnline })
+      toast.success('Solicitud marcada como pagada · gasto registrado en Finanzas')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo marcar la solicitud como pagada')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  const handleReceiveConfirm = async ({ lines, receiptAttachments }) => {
+    if (!selected) return
+    setBusyAction(`deliver:${selected.id}`)
+    try {
+      const { inventoryResult } = await markRequestDelivered(selected.id, {
+        isOnline,
+        lines,
+        receiptAttachments,
+      })
+      setReceiveModalOpen(false)
       if (inventoryResult?.received > 0) {
-        toast.success(`Entregada · ${inventoryResult.received} insumo(s) ingresados al inventario`)
+        toast.success(`Recibida · ${inventoryResult.received} insumo(s) en inventario`)
       } else {
-        toast.success('Marcada como entregada')
+        toast.success('Marcada como recibida')
       }
     } catch (error) {
-      toast.error(error.message || 'No se pudo marcar la solicitud como entregada')
+      toast.error(error.message || 'No se pudo marcar la solicitud como recibida')
     } finally {
       setBusyAction(null)
     }
@@ -156,11 +181,12 @@ export function SolicitudesTab() {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <KpiCard label="Total" value={stats.total} icon={FileText} tone="bg-slate-100 text-slate-600" />
         <KpiCard label="Pendientes" value={stats.pendiente} icon={Clock} tone="bg-amber-100 text-amber-600" />
         <KpiCard label="Aprobadas" value={stats.aprobada} icon={CheckCircle} tone="bg-blue-100 text-blue-600" />
-        <KpiCard label="Entregadas" value={stats.entregada} icon={Package} tone="bg-emerald-100 text-emerald-600" />
+        <KpiCard label="Pagadas" value={stats.pagada ?? 0} icon={CheckCircle} tone="bg-indigo-100 text-indigo-600" />
+        <KpiCard label="Recibidas" value={stats.entregada} icon={Package} tone="bg-emerald-100 text-emerald-600" />
       </div>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -372,8 +398,13 @@ export function SolicitudesTab() {
                   </>
                 )}
                 {selected.status === 'aprobada' && (
-                  <Button size="sm" disabled={Boolean(busyAction)} onClick={() => handleDeliver(selected.id)}>
-                    {busyAction === `deliver:${selected.id}` ? 'Guardando…' : 'Marcar entregada'}
+                  <Button size="sm" disabled={Boolean(busyAction)} onClick={() => handlePay(selected.id)}>
+                    {busyAction === `pay:${selected.id}` ? 'Registrando…' : 'Marcar pagada'}
+                  </Button>
+                )}
+                {selected.status === 'pagada' && (
+                  <Button size="sm" disabled={Boolean(busyAction)} onClick={() => setReceiveModalOpen(true)}>
+                    Marcar recibida
                   </Button>
                 )}
               </div>
@@ -394,6 +425,14 @@ export function SolicitudesTab() {
         open={Boolean(quoteModalRequest)}
         onClose={() => setQuoteModalRequest(null)}
         request={quoteModalRequest}
+      />
+
+      <PurchaseReceiveModal
+        open={receiveModalOpen}
+        onClose={() => setReceiveModalOpen(false)}
+        request={selected}
+        onConfirm={handleReceiveConfirm}
+        busy={Boolean(busyAction)}
       />
     </div>
   )

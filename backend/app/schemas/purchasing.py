@@ -12,7 +12,7 @@ PurchaseRequestSortField = Literal[
     "createdAt", "number", "supplier", "requester", "total", "status", "priority"
 ]
 SortDirection = Literal["asc", "desc"]
-PurchaseRequestStatus = Literal["pendiente", "aprobada", "rechazada", "entregada"]
+PurchaseRequestStatus = Literal["pendiente", "aprobada", "rechazada", "pagada", "entregada"]
 PurchaseRequestPriority = Literal["normal", "alta"]
 
 RequiredText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -108,6 +108,8 @@ class PurchaseRequestItemInput(ApiModel):
     qty: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
     unit: RequiredText = Field(max_length=40)
     price: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
+    catalog_item_id: UUID | None = None
+    category_id: UUID | None = None
 
 
 class PurchaseRequestItemResponse(ApiModel):
@@ -117,6 +119,9 @@ class PurchaseRequestItemResponse(ApiModel):
     unit: str
     price: Decimal
     subtotal: Decimal
+    catalog_item_id: UUID | None
+    category_id: UUID | None
+    inventory_item_id: UUID | None
 
 
 class PurchaseRequestResponse(ApiModel):
@@ -136,7 +141,9 @@ class PurchaseRequestResponse(ApiModel):
     created_at: datetime
     reviewed_at: datetime | None
     reviewed_by: UUID | None
+    paid_at: datetime | None
     delivered_at: datetime | None
+    finance_expense_id: UUID | None
     version: int
     updated_at: datetime
 
@@ -153,6 +160,7 @@ class PurchaseRequestStatsResponse(ApiModel):
     total: int
     pendiente: int
     aprobada: int
+    pagada: int
     rechazada: int
     entregada: int
 
@@ -191,8 +199,84 @@ class ReviewPurchaseRequestRequest(ApiModel):
     status: Literal["aprobada", "rechazada"]
 
 
+class PayPurchaseRequestRequest(ApiModel):
+    version: int = Field(ge=1)
+
+
+class DeliverPurchaseRequestLineInput(ApiModel):
+    item_id: UUID
+    inventory_item_id: UUID
+
+
 class DeliverPurchaseRequestRequest(ApiModel):
     version: int = Field(ge=1)
+    lines: list[DeliverPurchaseRequestLineInput] = Field(min_length=1, max_length=100)
+
+    @field_validator("lines")
+    @classmethod
+    def unique_line_ids(
+        cls, value: list[DeliverPurchaseRequestLineInput]
+    ) -> list[DeliverPurchaseRequestLineInput]:
+        ids = [line.item_id for line in value]
+        if len(ids) != len(set(ids)):
+            raise ValueError("No repitas líneas en la recepción.")
+        return value
+
+
+class SupplierCatalogItemResponse(ApiModel):
+    id: UUID
+    supplier_id: UUID
+    name: str
+    unit: str
+    unit_price: Decimal
+    category_id: UUID
+    category_name: str | None
+    active: bool
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class CreateSupplierCatalogItemRequest(ApiModel):
+    name: RequiredText = Field(max_length=240)
+    unit: RequiredText = Field(max_length=40)
+    unit_price: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
+    category_id: UUID
+
+
+class UpdateSupplierCatalogItemRequest(ApiModel):
+    version: int = Field(ge=1)
+    name: RequiredText | None = Field(default=None, max_length=240)
+    unit: RequiredText | None = Field(default=None, max_length=40)
+    unit_price: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
+    category_id: UUID | None = None
+    active: bool | None = None
+
+    @model_validator(mode="after")
+    def require_change(self) -> UpdateSupplierCatalogItemRequest:
+        if not (set(self.model_fields_set) - {"version"}):
+            raise ValueError("Indica al menos un campo para actualizar.")
+        return self
+
+
+class CatalogCompareSupplierPrice(ApiModel):
+    supplier_id: UUID
+    supplier_name: str
+    catalog_item_id: UUID
+    unit_price: Decimal
+    unit: str
+
+
+class CatalogCompareRowResponse(ApiModel):
+    product_key: str
+    name: str
+    category_id: UUID
+    category_name: str | None
+    min_price: Decimal
+    max_price: Decimal
+    spread: Decimal
+    cheapest_supplier_id: UUID | None
+    suppliers: list[CatalogCompareSupplierPrice]
 
 
 class PurchasingApproverResponse(ApiModel):

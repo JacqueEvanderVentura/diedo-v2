@@ -67,6 +67,10 @@ class DocumentAttachment(UuidPrimaryKeyMixin, Base):
             "'application/pdf')",
             name="content_type_values",
         ),
+        CheckConstraint(
+            "purpose IN ('quote', 'receipt')",
+            name="purpose_values",
+        ),
         Index("ix_document_attachments_finance_expense", "workspace_id", "finance_expense_id"),
         Index("ix_document_attachments_finance_fixed", "workspace_id", "finance_fixed_expense_id"),
         Index("ix_document_attachments_finance_income", "workspace_id", "finance_manual_income_id"),
@@ -82,6 +86,7 @@ class DocumentAttachment(UuidPrimaryKeyMixin, Base):
     finance_manual_income_id: Mapped[UUID | None] = mapped_column(nullable=True)
     cash_movement_id: Mapped[UUID | None] = mapped_column(nullable=True)
     purchase_request_id: Mapped[UUID | None] = mapped_column(nullable=True)
+    purpose: Mapped[str] = mapped_column(String(16), nullable=False, server_default="quote")
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     storage_key: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)

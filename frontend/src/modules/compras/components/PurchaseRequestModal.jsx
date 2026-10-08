@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
@@ -9,6 +9,7 @@ import { useComprasStore } from '@/stores/comprasStore'
 import { useConfigStore } from '@/stores/configStore'
 import { usePosStore } from '@/stores/posStore'
 import { useCatalogStore } from '@/stores/catalogStore'
+import { useSessionStore } from '@/stores/sessionStore'
 import { REQUEST_PRIORITIES } from '@/data/compras'
 import { buildBranchFilterOptions } from '@/lib/branches'
 import { AttachmentField } from '@/components/ui/AttachmentField'
@@ -27,7 +28,11 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
   const suppliers = useComprasStore((s) => s.suppliers)
   const branches = useConfigStore((s) => s.branches)
   const posBranchId = usePosStore((s) => s.branchId)
-  const supplies = useCatalogStore((s) => s.getSupplies())
+  const catalogProducts = useCatalogStore((s) => s.products)
+  const supplies = useMemo(
+    () => catalogProducts.filter((product) => product.type === 'supply'),
+    [catalogProducts]
+  )
   const categories = useConfigStore((s) => s.categories)
   const supplyCategories = filterCategoriesForSection(categories, 'catalog', 'insumo')
   const branchOptions = buildBranchFilterOptions(branches, { includeAll: false })
@@ -39,6 +44,36 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
   const [quoteAttachments, setQuoteAttachments] = useState([])
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
+  const [supplierCatalog, setSupplierCatalog] = useState([])
+  const fetchSupplierCatalog = useComprasStore((s) => s.fetchSupplierCatalog)
+  const isOnline = useSessionStore((s) => s.isOnline())
+
+  useEffect(() => {
+    if (!open || !supplierId || !isOnline) {
+      setSupplierCatalog([])
+      return
+    }
+    fetchSupplierCatalog(supplierId, { isOnline })
+      .then((rows) => setSupplierCatalog(rows))
+      .catch(() => setSupplierCatalog([]))
+  }, [open, supplierId, isOnline, fetchSupplierCatalog])
+
+  const linkCatalogItem = useCallback((idx, catalogItemId) => {
+    const catalogRow = supplierCatalog.find((row) => row.id === catalogItemId)
+    if (!catalogRow) return
+    setItems((list) => list.map((it, i) => (
+      i === idx
+        ? {
+            ...it,
+            catalogItemId,
+            name: catalogRow.name,
+            unit: catalogRow.unit,
+            price: Number(catalogRow.unitPrice) || 0,
+            categoryId: catalogRow.categoryId,
+          }
+        : it
+    )))
+  }, [supplierCatalog])
 
   useEffect(() => {
     if (!open) return
@@ -90,7 +125,9 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
           qty: Number(i.qty) || 1,
           price: Number(i.price) || 0,
           supplyProductId: i.supplyProductId || null,
-          supplyCategoryId: i.supplyCategoryId || null,
+          supplyCategoryId: i.supplyCategoryId || i.categoryId || null,
+          catalogItemId: i.catalogItemId || null,
+          categoryId: i.categoryId || i.supplyCategoryId || null,
         })),
         priority,
         notes: notes.trim(),
@@ -160,6 +197,23 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
                   )}
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
+                  {supplierCatalog.length > 0 && (
+                    <div className="min-w-0 sm:col-span-2">
+                      <label className="mb-1.5 block text-xs font-semibold text-slate-500">Del catálogo del proveedor</label>
+                      <Select
+                        value={item.catalogItemId || ''}
+                        onChange={(value) => linkCatalogItem(idx, value)}
+                        placeholder="Seleccionar producto del catálogo"
+                        options={[
+                          { value: '', label: 'Otro / manual' },
+                          ...supplierCatalog.map((row) => ({
+                            value: row.id,
+                            label: `${row.name} · ${row.unit} · RD$${row.unitPrice}`,
+                          })),
+                        ]}
+                      />
+                    </div>
+                  )}
                   <div className="min-w-0 sm:col-span-2">
                     <label className="mb-1.5 block text-xs font-semibold text-slate-500">Insumo de inventario</label>
                     <Select

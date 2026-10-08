@@ -71,6 +71,54 @@ class Supplier(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     )
 
 
+class SupplierCatalogItem(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
+    __tablename__ = "supplier_catalog_items"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "id", name="uq_supplier_catalog_items_workspace_id"),
+        UniqueConstraint(
+            "workspace_id",
+            "supplier_id",
+            "normalized_name",
+            name="uq_supplier_catalog_items_supplier_name",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "supplier_id"],
+            ["suppliers.workspace_id", "suppliers.id"],
+            ondelete="CASCADE",
+            name="fk_supplier_catalog_items_workspace_supplier",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "category_id"],
+            ["item_categories.workspace_id", "item_categories.id"],
+            ondelete="RESTRICT",
+            name="fk_supplier_catalog_items_workspace_category",
+        ),
+        CheckConstraint("unit_price >= 0", name="unit_price_nonneg"),
+        Index(
+            "ix_supplier_catalog_items_workspace_supplier",
+            "workspace_id",
+            "supplier_id",
+            "active",
+        ),
+        Index("ix_supplier_catalog_items_workspace_category", "workspace_id", "category_id"),
+    )
+
+    workspace_id: Mapped[UUID] = mapped_column(nullable=False)
+    supplier_id: Mapped[UUID] = mapped_column(nullable=False)
+    category_id: Mapped[UUID] = mapped_column(nullable=False)
+    name: Mapped[str] = mapped_column(String(240), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(280), nullable=False)
+    unit: Mapped[str] = mapped_column(String(40), nullable=False)
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    created_by_platform_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("platform_users.id", ondelete="RESTRICT"), nullable=False
+    )
+    updated_by_platform_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("platform_users.id", ondelete="RESTRICT"), nullable=False
+    )
+
+
 class SupplierBranchAssignment(UuidPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "supplier_branch_assignments"
     __table_args__ = (
@@ -137,17 +185,27 @@ class PurchaseRequest(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             name="fk_purchase_requests_workspace_reviewer",
         ),
         CheckConstraint(
-            "status IN ('pendiente', 'aprobada', 'rechazada', 'entregada')",
+            "status IN ('pendiente', 'aprobada', 'rechazada', 'pagada', 'entregada')",
             name="status_values",
         ),
         CheckConstraint("priority IN ('normal', 'alta')", name="priority_values"),
+        ForeignKeyConstraint(
+            ["workspace_id", "finance_expense_id"],
+            ["finance_expenses.workspace_id", "finance_expenses.id"],
+            ondelete="RESTRICT",
+            name="fk_purchase_requests_workspace_finance_expense",
+        ),
         CheckConstraint(
             "(status = 'pendiente' AND reviewer_membership_id IS NULL AND reviewed_at IS NULL "
+            "AND paid_at IS NULL AND delivered_at IS NULL) OR "
+            "(status = 'rechazada' AND reviewer_membership_id IS NOT NULL AND reviewed_at IS NOT NULL "
             "AND delivered_at IS NULL) OR "
-            "(status IN ('aprobada', 'rechazada') AND reviewer_membership_id IS NOT NULL "
-            "AND reviewed_at IS NOT NULL AND delivered_at IS NULL) OR "
-            "(status = 'entregada' AND reviewer_membership_id IS NOT NULL "
-            "AND reviewed_at IS NOT NULL AND delivered_at IS NOT NULL)",
+            "(status = 'aprobada' AND reviewer_membership_id IS NOT NULL AND reviewed_at IS NOT NULL "
+            "AND paid_at IS NULL AND delivered_at IS NULL) OR "
+            "(status = 'pagada' AND reviewer_membership_id IS NOT NULL AND reviewed_at IS NOT NULL "
+            "AND paid_at IS NOT NULL AND delivered_at IS NULL) OR "
+            "(status = 'entregada' AND reviewer_membership_id IS NOT NULL AND reviewed_at IS NOT NULL "
+            "AND delivered_at IS NOT NULL)",
             name="status_timestamps_consistent",
         ),
         Index(
@@ -187,7 +245,9 @@ class PurchaseRequest(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     quote_file_name: Mapped[str | None] = mapped_column(String(255))
     reviewer_membership_id: Mapped[UUID | None] = mapped_column()
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finance_expense_id: Mapped[UUID | None] = mapped_column()
     creation_idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     created_by_platform_user_id: Mapped[UUID] = mapped_column(
@@ -221,6 +281,24 @@ class PurchaseRequestItem(UuidPrimaryKeyMixin, Base):
             "workspace_id",
             "purchase_request_id",
         ),
+        ForeignKeyConstraint(
+            ["workspace_id", "supplier_catalog_item_id"],
+            ["supplier_catalog_items.workspace_id", "supplier_catalog_items.id"],
+            ondelete="SET NULL",
+            name="fk_purchase_request_items_workspace_catalog_item",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "category_id"],
+            ["item_categories.workspace_id", "item_categories.id"],
+            ondelete="SET NULL",
+            name="fk_purchase_request_items_workspace_category",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "inventory_item_id"],
+            ["items.workspace_id", "items.id"],
+            ondelete="SET NULL",
+            name="fk_purchase_request_items_workspace_inventory_item",
+        ),
     )
 
     workspace_id: Mapped[UUID] = mapped_column(nullable=False)
@@ -230,6 +308,9 @@ class PurchaseRequestItem(UuidPrimaryKeyMixin, Base):
     quantity: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
     unit: Mapped[str] = mapped_column(String(40), nullable=False)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    supplier_catalog_item_id: Mapped[UUID | None] = mapped_column()
+    category_id: Mapped[UUID | None] = mapped_column()
+    inventory_item_id: Mapped[UUID | None] = mapped_column()
 
 
 class PurchasingSettings(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):

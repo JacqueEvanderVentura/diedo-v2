@@ -19,6 +19,7 @@ import { useConfigStore } from '@/stores/configStore'
 import { buildBranchFilterOptions, matchesBranch } from '@/lib/branches'
 import { Select } from '@/components/ui/Select'
 import { SupplierFormModal } from './SupplierFormModal'
+import { SupplierCatalogPanel } from './SupplierCatalogPanel'
 import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
 import { useSortedRows } from '@/hooks/useTableControls'
 import { cn } from '@/lib/utils'
@@ -222,6 +223,7 @@ export function ProveedoresTab() {
                 <p className="mb-1 text-xs font-semibold uppercase text-slate-400">Sucursales autorizadas</p>
                 <p className="text-sm text-slate-700">{branchNames(selected.branchIds) || 'Ninguna'}</p>
               </div>
+              <SupplierCatalogPanel supplierId={selected.id} />
             </div>
           ) : (
             <p className="py-8 text-center text-sm text-slate-400">Selecciona un proveedor para ver el detalle.</p>

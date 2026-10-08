@@ -32,6 +32,14 @@ export async function uploadCashMovementAttachments(registerId, movementId, atta
   )
 }
 
+export async function uploadPurchaseReceipt(requestId, attachment) {
+  if (!attachment?.pendingFile) return null
+  const formData = new FormData()
+  formData.append('file', attachment.pendingFile, attachment.name || attachment.pendingFile.name)
+  const response = await apiClient.upload(`/api/v1/purchasing/requests/${requestId}/receipt`, formData)
+  return mapDocumentAttachmentFromApi(response)
+}
+
 export async function uploadPurchaseQuote(requestId, quoteFile) {
   if (!quoteFile?.pendingFile) return null
   const formData = new FormData()

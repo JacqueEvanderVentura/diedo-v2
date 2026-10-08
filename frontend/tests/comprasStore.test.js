@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   createRequest: vi.fn(),
   updateRequest: vi.fn(),
   reviewRequest: vi.fn(),
+  payRequest: vi.fn(),
   deliverRequest: vi.fn(),
   updateSettings: vi.fn(),
 }))
@@ -19,6 +20,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/services/purchasingApi', () => ({ purchasingApi: mocks }))
 vi.mock('@/modules/compras/lib/receivePurchaseInventory', () => ({
   receivePurchaseRequestInventory: vi.fn().mockResolvedValue({ received: 0, skipped: true }),
+}))
+vi.mock('@/lib/documentAttachments', () => ({
+  uploadPurchaseReceipt: vi.fn().mockResolvedValue({ id: 'receipt-id' }),
 }))
 
 import { useComprasStore } from '@/stores/comprasStore'
@@ -67,14 +71,21 @@ describe('store de Compras conectado a la API', () => {
       purchaseRequests: [],
       settings: { approverUserId: '', notifyOnRequest: true },
       approvers: [],
-      stats: { total: 0, pendiente: 0, aprobada: 0, rechazada: 0, entregada: 0 },
+      stats: { total: 0, pendiente: 0, aprobada: 0, pagada: 0, rechazada: 0, entregada: 0 },
       apiContext: { hydrated: false },
       hydrating: false,
       error: null,
     })
     mocks.listAllSuppliers.mockResolvedValue({ items: [supplierResponse] })
     mocks.listAllRequests.mockResolvedValue({ items: [requestResponse()] })
-    mocks.getRequestStats.mockResolvedValue({ total: 1, pendiente: 1, aprobada: 0, rechazada: 0, entregada: 0 })
+    mocks.getRequestStats.mockResolvedValue({
+      total: 1,
+      pendiente: 1,
+      aprobada: 0,
+      pagada: 0,
+      rechazada: 0,
+      entregada: 0,
+    })
     mocks.getSettings.mockResolvedValue({
       approverUserId: 'membership-id',
       approverUser: { id: 'membership-id', name: 'Alex' },
@@ -101,10 +112,11 @@ describe('store de Compras conectado a la API', () => {
     })
   })
 
-  it('aprueba y entrega usando la versión devuelta por cada respuesta', async () => {
+  it('aprueba, paga y recibe usando la versión devuelta por cada respuesta', async () => {
     await useComprasStore.getState().hydrateFromApi()
     mocks.reviewRequest.mockResolvedValue(requestResponse({ status: 'aprobada', version: 2 }))
-    mocks.deliverRequest.mockResolvedValue(requestResponse({ status: 'entregada', version: 3 }))
+    mocks.payRequest.mockResolvedValue(requestResponse({ status: 'pagada', version: 3, paidAt: '2026-08-31T12:00:00Z' }))
+    mocks.deliverRequest.mockResolvedValue(requestResponse({ status: 'entregada', version: 4 }))
 
     await useComprasStore.getState().reviewPurchaseRequest(
       'request-id',
@@ -112,16 +124,25 @@ describe('store de Compras conectado a la API', () => {
       'membership-id',
       { isOnline: true }
     )
-    const delivered = await useComprasStore.getState().markRequestDelivered('request-id', { isOnline: true })
+    await useComprasStore.getState().payPurchaseRequest('request-id', { isOnline: true })
+    const delivered = await useComprasStore.getState().markRequestDelivered('request-id', {
+      isOnline: true,
+      lines: [{ itemId: 'line-id', inventoryItemId: 'supply-id' }],
+      receiptAttachments: [{ pendingFile: new File(['x'], 'receipt.png', { type: 'image/png' }) }],
+    })
 
     expect(mocks.reviewRequest).toHaveBeenCalledWith('request-id', {
       version: 1,
       status: 'aprobada',
     })
-    expect(mocks.deliverRequest).toHaveBeenCalledWith('request-id', { version: 2 })
+    expect(mocks.payRequest).toHaveBeenCalledWith('request-id', { version: 2 })
+    expect(mocks.deliverRequest).toHaveBeenCalledWith('request-id', {
+      version: 3,
+      lines: [{ itemId: 'line-id', inventoryItemId: 'supply-id' }],
+    })
     expect(delivered.request).toMatchObject({
       status: 'entregada',
-      version: 3,
+      version: 4,
     })
   })
 

@@ -103,6 +103,7 @@ from app.db.models.purchasing import (
     PurchasingSettings,
     Supplier,
     SupplierBranchAssignment,
+    SupplierCatalogItem,
 )
 from app.db.models.sales import (
     CustomerPayment,
@@ -218,6 +219,7 @@ __all__ = [
     "SubscriptionPlan",
     "Supplier",
     "SupplierBranchAssignment",
+    "SupplierCatalogItem",
     "Task",
     "Workspace",
     "WorkspaceMembership",

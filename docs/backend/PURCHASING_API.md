@@ -9,8 +9,10 @@ camelCase and expected failures use `{message, parameter}`.
 - `purchasing.read`: lists visible suppliers, requests, statistics, and settings.
 - `purchasing.suppliers.manage`: creates, updates, deactivates, and archives suppliers.
 - `purchasing.requests.create`: creates requests and edits pending requests.
-- `purchasing.requests.review`: approves/rejects pending requests and marks approved requests as
-  delivered.
+- `purchasing.requests.review`: approves/rejects pending requests, marks approved requests as paid,
+  and marks paid requests as received.
+- `finance.manage`: required when marking a request as paid (creates a finance expense).
+- `inventory.move`: required when marking a paid request as received (stock adjustment).
 - `purchasing.settings.manage`: changes global purchasing settings and therefore requires a
   workspace-wide grant.
 
@@ -33,7 +35,13 @@ return 404. Supplying an out-of-scope branch returns 403.
 | GET | `/api/v1/purchasing/requests/{requestId}` | Read request header, lines, total, quote name, and lifecycle timestamps. |
 | PATCH | `/api/v1/purchasing/requests/{requestId}` | Edit a pending request with optimistic versioning. |
 | POST | `/api/v1/purchasing/requests/{requestId}/review` | Set `aprobada` or `rechazada`. |
-| POST | `/api/v1/purchasing/requests/{requestId}/deliver` | Move `aprobada` to `entregada`. |
+| POST | `/api/v1/purchasing/requests/{requestId}/pay` | Move `aprobada` to `pagada` and create an `insumos` finance expense; requires `Idempotency-Key`. |
+| POST | `/api/v1/purchasing/requests/{requestId}/deliver` | Move `pagada` to `entregada` after receipt photo and inventory line mapping; requires `Idempotency-Key`. |
+| GET | `/api/v1/purchasing/suppliers/{supplierId}/catalog` | List supplier price-list items. |
+| POST | `/api/v1/purchasing/suppliers/{supplierId}/catalog` | Add a catalog item (supply category). |
+| PATCH | `/api/v1/purchasing/suppliers/{supplierId}/catalog/{itemId}` | Update/archive catalog item. |
+| GET | `/api/v1/purchasing/catalog/compare` | Compare prices across suppliers (`categoryId`, `search`). |
+| POST | `/api/v1/purchasing/requests/{requestId}/receipt` | Upload receipt photo (`purpose=receipt`). |
 | GET | `/api/v1/purchasing/settings` | Read designated approver and notification preference. |
 | GET | `/api/v1/purchasing/settings/approvers` | List active members allowed to review purchase requests. |
 | PUT | `/api/v1/purchasing/settings` | Replace settings with optimistic versioning. |

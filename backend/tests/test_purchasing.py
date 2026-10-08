@@ -270,13 +270,13 @@ def test_purchasing_complete_http_contract(client: TestClient) -> None:
     assert invalid_supplier_request.status_code == 404
     assert invalid_supplier_request.json()["parameter"] == "supplierId"
 
-    pending_delivery = client.post(
-        f"/api/v1/purchasing/requests/{purchase_request['id']}/deliver",
-        headers=headers,
+    pending_pay = client.post(
+        f"/api/v1/purchasing/requests/{purchase_request['id']}/pay",
+        headers={**headers, "Idempotency-Key": f"pay-pending-{suffix}"},
         json={"version": purchase_request["version"]},
     )
-    assert pending_delivery.status_code == 400
-    assert pending_delivery.json()["parameter"] == "status"
+    assert pending_pay.status_code == 400
+    assert pending_pay.json()["parameter"] == "status"
 
     update_request = client.patch(
         f"/api/v1/purchasing/requests/{purchase_request['id']}",
@@ -335,10 +335,104 @@ def test_purchasing_complete_http_contract(client: TestClient) -> None:
     )
     assert edit_reviewed.status_code == 400
 
+    paid = client.post(
+        f"/api/v1/purchasing/requests/{purchase_request['id']}/pay",
+        headers={**headers, "Idempotency-Key": f"pay-{suffix}"},
+        json={"version": purchase_request["version"]},
+    )
+    assert paid.status_code == 200, paid.text
+    purchase_request = paid.json()
+    assert purchase_request["status"] == "pagada"
+    assert purchase_request["paidAt"] is not None
+    assert purchase_request["financeExpenseId"] is not None
+
+    deliver_without_receipt = client.post(
+        f"/api/v1/purchasing/requests/{purchase_request['id']}/deliver",
+        headers={**headers, "Idempotency-Key": f"deliver-no-receipt-{suffix}"},
+        json={
+            "version": purchase_request["version"],
+            "lines": [
+                {"itemId": purchase_request["items"][0]["id"], "inventoryItemId": str(uuid7())}
+            ],
+        },
+    )
+    assert deliver_without_receipt.status_code == 400
+    assert deliver_without_receipt.json()["parameter"] == "receipt"
+
+    categories = client.get(
+        "/api/v1/catalog/categories",
+        headers=headers,
+        params={"categoryKind": "supply"},
+    )
+    assert categories.status_code == 200, categories.text
+    category_id = categories.json()[0]["id"]
+
+    catalog_item = client.post(
+        f"/api/v1/purchasing/suppliers/{supplier['id']}/catalog",
+        headers=headers,
+        json={
+            "name": f"Insumo catálogo {suffix}",
+            "unit": "caja",
+            "unitPrice": "325.00",
+            "categoryId": category_id,
+        },
+    )
+    assert catalog_item.status_code == 201, catalog_item.text
+    assert supplier["productCount"] + 1 == client.get(
+        f"/api/v1/purchasing/suppliers/{supplier['id']}", headers=headers
+    ).json()["productCount"]
+
+    compare = client.get(
+        "/api/v1/purchasing/catalog/compare",
+        headers=headers,
+        params={"search": suffix},
+    )
+    assert compare.status_code == 200, compare.text
+    assert len(compare.json()) >= 1
+
+    supply = client.post(
+        "/api/v1/inventory/supplies",
+        headers={**headers, "Idempotency-Key": f"supply-{suffix}"},
+        json={
+            "name": f"Insumo inventario {suffix}",
+            "sku": f"SKU-{suffix}",
+            "branchIds": [branch_id],
+            "trackStock": True,
+            "minimumStock": 0,
+            "cost": "100.00",
+            "categoryId": category_id,
+        },
+    )
+    assert supply.status_code == 201, supply.text
+    supply_id = supply.json()["id"]
+
+    receipt = client.post(
+        f"/api/v1/purchasing/requests/{purchase_request['id']}/receipt",
+        headers=headers,
+        files={
+            "file": (
+                "receipt.png",
+                b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+                b"\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc"
+                b"\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82",
+                "image/png",
+            )
+        },
+    )
+    assert receipt.status_code == 201, receipt.text
+
     delivered = client.post(
         f"/api/v1/purchasing/requests/{purchase_request['id']}/deliver",
-        headers=headers,
-        json={"version": purchase_request["version"]},
+        headers={**headers, "Idempotency-Key": f"deliver-{suffix}"},
+        json={
+            "version": purchase_request["version"],
+            "lines": [
+                {
+                    "itemId": purchase_request["items"][0]["id"],
+                    "inventoryItemId": supply_id,
+                }
+            ],
+        },
     )
     assert delivered.status_code == 200, delivered.text
     assert delivered.json()["status"] == "entregada"
