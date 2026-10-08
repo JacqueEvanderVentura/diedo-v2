@@ -143,7 +143,12 @@ def operation(client, carwash_setup):
     customer = client.post(
         "/api/v1/customers",
         headers=setup["headers"],
-        json={"displayName": "Cliente operativo", "branchIds": [setup["branchId"]]},
+        json={
+            "displayName": "Cliente operativo",
+            "documentType": "cedula",
+            "documentId": "001-1234567-8",
+            "branchIds": [setup["branchId"]],
+        },
     )
     assert customer.status_code == 201, customer.text
     employee = client.post(

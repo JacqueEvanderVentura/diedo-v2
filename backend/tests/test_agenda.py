@@ -814,6 +814,8 @@ def test_agenda_financial_changes_require_receivables_permission_and_cancel_debt
             "firstName": "Agenda",
             "lastName": suffix,
             "email": f"agenda.protected.{suffix}@example.com",
+            "documentType": "cedula",
+            "documentId": f"001-1234567-{suffix[-1]}",
             "branchIds": [str(branch_id)],
         },
     )

@@ -22,6 +22,8 @@ export function buildLeadConvertRequest(lead) {
     branchIds: lead.branchId ? [lead.branchId] : undefined,
     lifecycleStatus: 'prospecto',
     notes: lead.scoreNotes || null,
+    documentType: lead.docType || lead.documentType || undefined,
+    documentId: lead.documentId || undefined,
   }
 }
 
@@ -40,5 +42,7 @@ export function buildLeadOfflineCustomer(lead) {
     branchId: lead.branchId,
     branchIds: lead.branchId ? [lead.branchId] : undefined,
     leadId: lead.id,
+    docType: lead.docType || lead.documentType || 'cedula',
+    documentId: lead.documentId || '',
   }
 }

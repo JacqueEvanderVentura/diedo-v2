@@ -9,6 +9,7 @@ from pydantic import EmailStr, Field, HttpUrl, PlainSerializer, field_validator,
 
 from app.schemas.common import ApiModel, ImportRowModel
 from app.schemas.instagram import validate_instagram_url
+from app.schemas.master_data import CustomerDocumentType
 from app.schemas.pos import QuoteDetailResponse
 
 LeadStatus = Literal["nuevo", "contactado", "propuesta", "negociacion", "cerrado", "perdido"]
@@ -138,6 +139,8 @@ class LeadInput(ApiModel):
     raw_snippet: str | None = Field(default=None, max_length=4000)
     status: EditableLeadStatus = "nuevo"
     star_rating: Decimal | None = None
+    document_type: CustomerDocumentType | None = None
+    document_id: str | None = Field(default=None, max_length=64)
 
     @field_validator("instagram_url")
     @classmethod
@@ -163,6 +166,10 @@ class LeadInput(ApiModel):
     def require_identity(self) -> Self:
         if not self.name and not self.company:
             raise ValueError("Debes indicar el nombre o la empresa del lead.")
+        if (self.document_type is None) ^ (self.document_id is None):
+            raise ValueError("documentType y documentId deben enviarse juntos.")
+        if self.source == "manual" and (not self.document_type or not self.document_id):
+            raise ValueError("El documento es obligatorio para leads manuales.")
         return self
 
 
@@ -193,6 +200,8 @@ class UpdateLeadRequest(ApiModel):
     pipeline_value: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
     lost_reason: str | None = Field(default=None, max_length=1000)
     raw_snippet: str | None = Field(default=None, max_length=4000)
+    document_type: CustomerDocumentType | None = None
+    document_id: str | None = Field(default=None, max_length=64)
 
     @field_validator("instagram_url")
     @classmethod
@@ -219,12 +228,22 @@ class UpdateLeadRequest(ApiModel):
     def normalize_lost_reason(cls, value: str | None) -> str | None:
         return _normalize_optional_text(value)
 
+    @field_validator("document_id")
+    @classmethod
+    def strip_document_id(cls, value: str | None) -> str | None:
+        return value.strip() if value is not None else None
+
     @model_validator(mode="after")
     def require_change(self) -> Self:
         if not self.model_fields_set - {"version"}:
             raise ValueError("Debes enviar al menos un cambio.")
         if "status" in self.model_fields_set and self.status == "perdido" and not self.lost_reason:
             raise ValueError("Un lead perdido requiere motivo.")
+        if "document_type" in self.model_fields_set or "document_id" in self.model_fields_set:
+            if (self.document_type is None) ^ (self.document_id is None):
+                raise ValueError("documentType y documentId deben enviarse juntos.")
+            if self.document_type is None and self.document_id is None:
+                raise ValueError("No puedes eliminar el documento del lead.")
         return self
 
 
@@ -255,6 +274,8 @@ class ConvertLeadRequest(ApiModel):
     acquisition_source: AcquisitionSource | None = None
     lifecycle_status: CustomerLifecycleStatus = "prospecto"
     notes: str | None = Field(default=None, max_length=2000)
+    document_type: CustomerDocumentType | None = None
+    document_id: str | None = Field(default=None, max_length=64)
 
     @field_validator("display_name", "first_name", "last_name", "business_name", "phone", "notes")
     @classmethod
@@ -292,6 +313,8 @@ class LeadResponse(ApiModel):
     pipeline_closed_at: datetime | None
     customer_id: UUID | None
     converted_at: datetime | None
+    document_type: CustomerDocumentType | None = None
+    document_id: str | None = None
     version: int
     created_at: datetime
     updated_at: datetime
@@ -324,6 +347,8 @@ class ImportPipelineItem(ImportRowModel):
     notes: str | None = Field(default=None, max_length=2000)
     lost_reason: str | None = Field(default=None, max_length=1000)
     convert: bool = False
+    document_type: CustomerDocumentType | None = None
+    document_id: str | None = Field(default=None, max_length=64)
 
     @field_validator("instagram_url")
     @classmethod
@@ -353,6 +378,8 @@ class ImportPipelineItem(ImportRowModel):
             raise ValueError("Debes indicar el nombre o la empresa del lead.")
         if self.status == "perdido" and not self.lost_reason:
             raise ValueError("Un lead perdido requiere motivo.")
+        if (self.document_type is None) ^ (self.document_id is None):
+            raise ValueError("documentType y documentId deben enviarse juntos.")
         return self
 
 

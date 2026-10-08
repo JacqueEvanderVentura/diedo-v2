@@ -71,14 +71,21 @@ class PublicBookingService:
 
     def identify(self, branch_id: UUID, document_type: str, document_id: str) -> dict[str, Any]:
         branch, _workspace = self._resolve_branch(branch_id)
-        normalized = self._normalized_document(document_type, document_id)
+        try:
+            doc_type, display_id, normalized = prepare_customer_document_fields(
+                document_type, document_id
+            )
+        except ValueError as exc:
+            raise InvalidOperationError(str(exc), "documentId") from exc
+        if normalized is None:
+            raise InvalidOperationError("documentId inválido.", "documentId")
         customer = self._master_data.customer_by_document(branch.workspace_id, normalized)
         if customer is None:
             return {
                 "customer_id": None,
                 "is_new": True,
-                "document_type": document_type,
-                "document_id": document_id,
+                "document_type": doc_type or document_type,
+                "document_id": display_id or document_id,
                 "display_name": None,
                 "email": None,
                 "phone": None,
@@ -90,8 +97,8 @@ class PublicBookingService:
         return {
             "customer_id": customer.id,
             "is_new": False,
-            "document_type": customer.document_type or document_type,
-            "document_id": customer.document_id or document_id,
+            "document_type": customer.document_type or doc_type or document_type,
+            "document_id": customer.document_id or display_id or document_id,
             "display_name": customer.display_name,
             "email": customer.email,
             "phone": customer.phone,
@@ -693,6 +700,7 @@ class PublicBookingService:
                 ItemBranchAssignment.branch_id == branch_id,
                 ItemBranchAssignment.status == "active",
                 InventoryItemProfile.sale_price.is_not(None),
+                InventoryItemProfile.available_in_agenda.is_(True),
             )
             .order_by(Item.name, Item.id)
         ).all()

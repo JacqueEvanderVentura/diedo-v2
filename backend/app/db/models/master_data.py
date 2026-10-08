@@ -47,7 +47,7 @@ class Customer(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             postgresql_where=text("normalized_document_id IS NOT NULL AND status <> 'archived'"),
         ),
         CheckConstraint(
-            "document_type IS NULL OR document_type IN ('cedula', 'pasaporte')",
+            "document_type IS NULL OR document_type IN ('cedula', 'pasaporte', 'rnc')",
             name="document_type_values",
         ),
     )

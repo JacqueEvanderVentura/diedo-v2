@@ -49,6 +49,7 @@ export function getEmployeeAppointmentsOnDate(appointments, { employeeId, date, 
 export const DOC_TYPES = [
   { id: 'cedula', label: 'Cédula' },
   { id: 'pasaporte', label: 'Pasaporte' },
+  { id: 'rnc', label: 'RNC' },
 ]
 
 export function normalizeDocumentId(value, docType = 'cedula') {
@@ -63,8 +64,13 @@ export function formatCedulaInput(value) {
   return `${digits.slice(0, 3)}-${digits.slice(3, 10)}-${digits.slice(10)}`
 }
 
+function formatRncInput(value) {
+  return normalizeDocumentId(value, 'rnc').slice(0, 9)
+}
+
 export function formatDocumentInput(value, docType = 'cedula') {
   if (docType === 'cedula') return formatCedulaInput(value)
+  if (docType === 'rnc') return formatRncInput(value)
   return String(value || '').trim()
 }
 

@@ -47,7 +47,13 @@ def test_instagram_url_is_independent_and_validated_on_leads_and_customers() -> 
         == url
     )
     customer = CreateCustomerRequest.model_validate(
-        {"displayName": "Helios", "branchIds": [branch_id], "instagramUrl": url}
+        {
+            "displayName": "Helios",
+            "branchIds": [branch_id],
+            "instagramUrl": url,
+            "documentType": "cedula",
+            "documentId": "001-1234567-8",
+        }
     )
     assert str(customer.instagram_url) == url
     assert (

@@ -17,6 +17,7 @@ import {
 } from '@/services/adapters/masterData'
 
 import { registerSensitiveStateCleaner } from '@/services/storagePolicy'
+import { findCustomerByDocument, validateCustomerDocument } from '@/lib/customerDocuments'
 
 import { DEFAULT_CRM_PAGE_SIZE, normalizeCrmPageSize } from '@/modules/crm/constants/paging'
 
@@ -388,7 +389,10 @@ export const useCustomersStore = create((set, get) => ({
   addCustomer: async (data) => {
 
     if (useSessionStore.getState().status === 'demo') {
-
+      const docErr = validateCustomerDocument(data.docType || 'cedula', data.documentId)
+      if (docErr) throw new Error(docErr)
+      const duplicate = findCustomerByDocument(get().customers, data.docType || 'cedula', data.documentId)
+      if (duplicate) throw new Error('Ya existe un cliente con ese documento.')
       const customer = { id: data.id || genId(), status: 'active', active: true, ...data, source: 'demo' }
 
       set((state) => ({ customers: [customer, ...state.customers] }))

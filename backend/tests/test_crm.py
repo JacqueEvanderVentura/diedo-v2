@@ -36,6 +36,7 @@ from app.services.errors import (
 )
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
+from tests.customer_payloads import customer_create_payload, lead_document_fields
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -354,6 +355,7 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
         "source": "manual",
         "rawSnippet": "Spa con agenda, clientes, inventario y punto de venta.",
         "status": "propuesta",
+        **lead_document_fields(suffix[-1]),
     }
     created = client.post(
         "/api/v1/crm/leads",
@@ -557,6 +559,7 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
             "branchId": branch_id_text,
             "company": f"Renovación anual {suffix}",
             "status": "nuevo",
+            **lead_document_fields("3"),
         },
     )
     assert lost_lead.status_code == 201, lost_lead.text
@@ -971,6 +974,7 @@ def test_crm_quote_accepted_does_not_auto_invoice_and_crm_invoice_works_without_
             "name": "Cliente Factura",
             "phone": "8095551212",
             "source": "manual",
+            **lead_document_fields(suffix[-1]),
         },
     )
     assert lead.status_code == 201, lead.text
@@ -1357,11 +1361,13 @@ def test_lead_star_rating_sort_nulls_last(client: TestClient) -> None:
     )
     headers = {"Authorization": f"Bearer {login.json()['accessToken']}"}
 
+    doc_suffix_by_label = {"cinco": "5", "sin": "6", "dos": "7"}
     for rating, label in (("5", "cinco"), (None, "sin"), ("2.5", "dos")):
         payload = {
             "branchId": str(branch_id),
             "name": f"Lead {label} {suffix}",
             "phone": "8095550000",
+            **lead_document_fields(doc_suffix_by_label[label]),
         }
         if rating is not None:
             payload["starRating"] = rating
@@ -1498,6 +1504,7 @@ def test_crm_batch_delete_and_import_activities(client: TestClient) -> None:
             "branchId": str(branch_id),
             "name": f"Lead eliminable {suffix}",
             "phone": "8095553434",
+            **lead_document_fields("8"),
         },
     )
     assert disposable.status_code == 201, disposable.text
@@ -1529,6 +1536,7 @@ def test_crm_batch_delete_and_import_activities(client: TestClient) -> None:
             "displayName": f"Cliente {suffix}",
             "branchIds": [str(branch_id)],
             "lifecycleStatus": "prospecto",
+            **lead_document_fields("4"),
         },
     )
     assert convert.status_code == 200, convert.text
@@ -1611,20 +1619,27 @@ def test_crm_delete_quote_removes_record_and_unlinks_lead(client: TestClient) ->
             "company": f"Lead cotización {suffix}",
             "name": "Cliente",
             "phone": "8095551212",
+            **lead_document_fields(suffix[-1]),
         },
     )
     assert lead.status_code == 201, lead.text
     lead_id = lead.json()["id"]
+    customer_body = customer_create_payload(
+        display_name=f"Cliente cotización {suffix}",
+        branch_id=branch_id,
+        document_suffix="9",
+    )
+    customer_body.update(
+        {
+            "customerType": "business",
+            "businessName": f"Cliente cotización {suffix}",
+            "phone": "8095551213",
+        }
+    )
     customer = client.post(
         "/api/v1/customers",
         headers={**headers, "Idempotency-Key": f"crm-del-quote-customer-{suffix}"},
-        json={
-            "customerType": "business",
-            "displayName": f"Cliente cotización {suffix}",
-            "businessName": f"Cliente cotización {suffix}",
-            "phone": "8095551213",
-            "branchIds": [branch_id_text],
-        },
+        json=customer_body,
     )
     assert customer.status_code == 201, customer.text
     quote = client.post(
