@@ -83,9 +83,8 @@ def test_same_email_in_second_company_is_inactive_via_backoffice(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from pydantic import SecretStr
-
     from app.config import settings
+    from pydantic import SecretStr
 
     backoffice_key = "membership-cross-workspace-key"
     monkeypatch.setattr(settings, "backoffice_api_key", SecretStr(backoffice_key))

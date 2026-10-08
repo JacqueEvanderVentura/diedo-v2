@@ -615,9 +615,7 @@ class PurchasingService:
         self.get_supplier(grant, supplier_id)
         category_id = cast(UUID, values["category_id"])
         if not self._repository.category_is_supply(grant.workspace_id, category_id):
-            raise ResourceNotFoundError(
-                "La categoría no existe o no es de insumos.", "categoryId"
-            )
+            raise ResourceNotFoundError("La categoría no existe o no es de insumos.", "categoryId")
         normalized = self._normalize_name(cast(str, values["name"]))
         persistent = {
             "name": cast(str, values["name"]).strip(),

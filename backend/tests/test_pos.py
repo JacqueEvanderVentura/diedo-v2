@@ -37,11 +37,12 @@ from app.services.auth import AuthPrincipal
 from app.services.authorization import PermissionGrant
 from app.services.errors import ConflictError
 from app.services.local_bootstrap import BootstrapSummary, bootstrap_local_foundation
-from tests.customer_payloads import customer_create_payload
 from app.services.pos import PosService
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import func, select
+
+from tests.customer_payloads import customer_create_payload
 
 _OWNER_EMAIL = "owner@erp.dev"
 _OWNER_PASSWORD = "pos-owner-password-not-a-secret"

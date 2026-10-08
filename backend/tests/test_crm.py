@@ -36,9 +36,10 @@ from app.services.errors import (
 )
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
-from tests.customer_payloads import customer_create_payload, lead_document_fields
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+
+from tests.customer_payloads import customer_create_payload, lead_document_fields
 
 _PASSWORD = "crm-test-password-not-a-secret"
 _NOW = datetime(2026, 9, 1, 16, 0, tzinfo=UTC)

@@ -14,8 +14,10 @@ from app.api.deps import (
     PurchasingSupplierManageGrant,
 )
 from app.repositories.purchasing import (
+    CatalogCompareRow,
     PurchaseRequestRecord,
     PurchasingSettingsRecord,
+    SupplierCatalogItemRecord,
     SupplierRecord,
 )
 from app.schemas.common import ErrorResponse
@@ -367,7 +369,7 @@ def purchase_request_stats(
     )
 
 
-def _catalog_item_response(record) -> SupplierCatalogItemResponse:
+def _catalog_item_response(record: SupplierCatalogItemRecord) -> SupplierCatalogItemResponse:
     item = record.item
     return SupplierCatalogItemResponse(
         id=item.id,
@@ -384,7 +386,7 @@ def _catalog_item_response(record) -> SupplierCatalogItemResponse:
     )
 
 
-def _compare_row_response(row) -> CatalogCompareRowResponse:
+def _compare_row_response(row: CatalogCompareRow) -> CatalogCompareRowResponse:
     prices = [offer[3] for offer in row.offers]
     min_price = min(prices)
     max_price = max(prices)

@@ -36,10 +36,12 @@ class WorkspaceProvisioningRepository:
     def has_active_membership(self, platform_user_id: UUID) -> bool:
         return (
             self._session.scalar(
-                select(exists().where(
-                    WorkspaceMembership.platform_user_id == platform_user_id,
-                    WorkspaceMembership.status == "active",
-                ))
+                select(
+                    exists().where(
+                        WorkspaceMembership.platform_user_id == platform_user_id,
+                        WorkspaceMembership.status == "active",
+                    )
+                )
             )
             is True
         )

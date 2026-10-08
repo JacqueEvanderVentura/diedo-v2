@@ -325,9 +325,7 @@ class InventoryService:
                     "Los canales de servicio solo aplican a servicios.",
                     "availableInAgenda",
                 )
-            agenda = bool(
-                changes.get("available_in_agenda", profile.available_in_agenda)
-            )
+            agenda = bool(changes.get("available_in_agenda", profile.available_in_agenda))
             pos = bool(changes.get("available_in_pos", profile.available_in_pos))
             self._validate_service_channel_flags(
                 available_in_agenda=agenda,

@@ -26,6 +26,7 @@ from app.services.attachment_storage import (
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+
 from tests.customer_payloads import customer_create_payload
 
 _OWNER_EMAIL = "owner@erp.dev"

@@ -82,8 +82,11 @@ def test_phase1_administration_crud_and_optimistic_concurrency(client: TestClien
     )
     assert billing_patch.status_code == 200, billing_patch.text
     billing_body = billing_patch.json()
-    assert billing_body["billingDocuments"]["tradeName"] == "Helios Spa"
-    assert billing_body["billingDocuments"]["rnc"] == "1-3290890-2"
+    templates = billing_body["billingDocuments"]["templates"]
+    assert len(templates) == 1
+    assert templates[0]["tradeName"] == "Helios Spa"
+    assert templates[0]["rnc"] == "1-3290890-2"
+    assert templates[0]["name"] == "Principal"
     stale_settings = client.patch(
         "/api/v1/workspace/settings",
         headers=headers,

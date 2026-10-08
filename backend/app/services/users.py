@@ -5,6 +5,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from math import ceil
+from typing import Literal
 from uuid import UUID, uuid7
 
 from sqlalchemy.exc import IntegrityError
@@ -175,7 +176,7 @@ class UsersService:
                         "El correo ya pertenece a otro usuario.",
                         "email",
                     )
-                membership_status = "active"
+                membership_status: Literal["active", "suspended", "invited"] = "active"
                 if self._repository.has_active_membership(existing.id):
                     membership_status = "suspended"
                     notice = other_company_message(normalized_email)

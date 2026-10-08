@@ -103,14 +103,18 @@ class SupplierCatalogItem(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Bas
         Index("ix_supplier_catalog_items_workspace_category", "workspace_id", "category_id"),
     )
 
-    workspace_id: Mapped[UUID] = mapped_column(nullable=False)
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
+    )
     supplier_id: Mapped[UUID] = mapped_column(nullable=False)
     category_id: Mapped[UUID] = mapped_column(nullable=False)
     name: Mapped[str] = mapped_column(String(240), nullable=False)
     normalized_name: Mapped[str] = mapped_column(String(280), nullable=False)
     unit: Mapped[str] = mapped_column(String(40), nullable=False)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
     created_by_platform_user_id: Mapped[UUID] = mapped_column(
         ForeignKey("platform_users.id", ondelete="RESTRICT"), nullable=False
     )
@@ -198,14 +202,14 @@ class PurchaseRequest(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
         CheckConstraint(
             "(status = 'pendiente' AND reviewer_membership_id IS NULL AND reviewed_at IS NULL "
             "AND paid_at IS NULL AND delivered_at IS NULL) OR "
-            "(status = 'rechazada' AND reviewer_membership_id IS NOT NULL AND reviewed_at IS NOT NULL "
-            "AND delivered_at IS NULL) OR "
-            "(status = 'aprobada' AND reviewer_membership_id IS NOT NULL AND reviewed_at IS NOT NULL "
-            "AND paid_at IS NULL AND delivered_at IS NULL) OR "
-            "(status = 'pagada' AND reviewer_membership_id IS NOT NULL AND reviewed_at IS NOT NULL "
-            "AND paid_at IS NOT NULL AND delivered_at IS NULL) OR "
-            "(status = 'entregada' AND reviewer_membership_id IS NOT NULL AND reviewed_at IS NOT NULL "
-            "AND delivered_at IS NOT NULL)",
+            "(status = 'rechazada' AND reviewer_membership_id IS NOT NULL "
+            "AND reviewed_at IS NOT NULL AND delivered_at IS NULL) OR "
+            "(status = 'aprobada' AND reviewer_membership_id IS NOT NULL "
+            "AND reviewed_at IS NOT NULL AND paid_at IS NULL AND delivered_at IS NULL) OR "
+            "(status = 'pagada' AND reviewer_membership_id IS NOT NULL "
+            "AND reviewed_at IS NOT NULL AND paid_at IS NOT NULL AND delivered_at IS NULL) OR "
+            "(status = 'entregada' AND reviewer_membership_id IS NOT NULL "
+            "AND reviewed_at IS NOT NULL AND delivered_at IS NOT NULL)",
             name="status_timestamps_consistent",
         ),
         Index(

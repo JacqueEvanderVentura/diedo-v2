@@ -689,9 +689,7 @@ class PurchasingRepository:
             .where(*predicates)
             .order_by(func.lower(SupplierCatalogItem.name), SupplierCatalogItem.id)
         )
-        return tuple(
-            SupplierCatalogItemRecord(item=row[0], category_name=row[1]) for row in rows
-        )
+        return tuple(SupplierCatalogItemRecord(item=row[0], category_name=row[1]) for row in rows)
 
     def get_catalog_item(
         self, workspace_id: UUID, supplier_id: UUID, item_id: UUID

@@ -378,9 +378,12 @@ def test_purchasing_complete_http_contract(client: TestClient) -> None:
         },
     )
     assert catalog_item.status_code == 201, catalog_item.text
-    assert supplier["productCount"] + 1 == client.get(
-        f"/api/v1/purchasing/suppliers/{supplier['id']}", headers=headers
-    ).json()["productCount"]
+    assert (
+        supplier["productCount"] + 1
+        == client.get(f"/api/v1/purchasing/suppliers/{supplier['id']}", headers=headers).json()[
+            "productCount"
+        ]
+    )
 
     compare = client.get(
         "/api/v1/purchasing/catalog/compare",

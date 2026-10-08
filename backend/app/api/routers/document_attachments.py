@@ -325,8 +325,4 @@ def list_purchase_request_quote(
     grant: PurchasingReadGrant,
 ) -> list[DocumentAttachmentResponse]:
     rows = DocumentAttachmentService(database).list_for_owner(grant, "purchase_request", request_id)
-    return [
-        _attachment_response(row)
-        for row in rows
-        if row.attachment.purpose == "quote"
-    ]
+    return [_attachment_response(row) for row in rows if row.attachment.purpose == "quote"]
