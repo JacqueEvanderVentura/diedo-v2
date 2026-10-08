@@ -1,21 +1,41 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
-import path from 'path'
+
+function resolveBuildId() {
+  return process.env.VITE_BUILD_ID || process.env.GITHUB_SHA || 'dev'
+}
+
+function deployVersionPlugin(buildId) {
+  return {
+    name: 'deploy-version',
+    writeBundle(options) {
+      const outDir = options.dir || 'dist'
+      fs.writeFileSync(
+        path.join(outDir, 'version.json'),
+        `${JSON.stringify({ buildId })}\n`,
+      )
+    },
+  }
+}
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const pagesBase = process.env.GITHUB_PAGES === 'true' ? '/diedo-v2/' : '/'
   const apiProxyTarget = env.API_PROXY_TARGET || 'http://127.0.0.1:8000'
+  const buildId = resolveBuildId()
 
   return {
     base: pagesBase,
-    plugins: [react()],
+    plugins: [react(), deployVersionPlugin(buildId)],
     resolve: {
       alias: {
         '@': path.resolve(process.cwd(), 'src'),
       },
     },
     define: {
+      'import.meta.env.VITE_BUILD_ID': JSON.stringify(buildId),
       'import.meta.env.VITE_HAS_SERPER': JSON.stringify(Boolean(env.SERPER_API_KEY)),
     },
     test: {

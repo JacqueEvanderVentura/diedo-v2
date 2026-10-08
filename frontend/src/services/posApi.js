@@ -173,6 +173,7 @@ export const posApi = {
     `${POS_BASE}/receivables/${receivableId}/proofs/${proofId}?version=${version}`,
   ),
   downloadProof: (proofOrUrl) => apiClient.blob(proofUrl(proofOrUrl)),
+  downloadSaleInvoicePdf: (saleId) => apiClient.blob(`${POS_BASE}/sales/${saleId}/invoice.pdf`),
 }
 
 export default posApi
