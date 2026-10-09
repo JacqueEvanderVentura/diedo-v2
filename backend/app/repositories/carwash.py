@@ -35,6 +35,8 @@ class CarwashCatalogRecord:
             return "La categoría o unidad de medida no está activa."
         if self.profile is None or self.profile.sale_price is None:
             return "Configura el precio comercial en Inventarios."
+        if self.profile.available_in_pos is False:
+            return "Este servicio no está habilitado para venta."
         return None
 
 
@@ -111,6 +113,7 @@ class CarwashRepository:
             UnitOfMeasure.status == "active",
             ItemBranchAssignment.status == "active",
             InventoryItemProfile.sale_price.is_not(None),
+            InventoryItemProfile.available_in_pos.is_(True),
             Item.id.not_in(configured),
         )
         if search:

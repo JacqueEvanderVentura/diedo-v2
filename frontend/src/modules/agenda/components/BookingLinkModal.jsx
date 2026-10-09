@@ -53,6 +53,7 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
   const [emailMessage, setEmailMessage] = useState('')
   const [setup, setSetup] = useState(null)
   const [setupRevision, setSetupRevision] = useState(0)
+  const [setupLoading, setSetupLoading] = useState(false)
   const sendAttempt = useRef(null)
   const emailBusy = useRef(false)
 
@@ -69,10 +70,15 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
   useEffect(() => {
     if (!open || isDemo || !branchId) return
     let active = true
-    setSetup(null)
+    setSetupLoading(true)
     publicBookingApi.getContext(branchId).then((context) => {
-      if (active) setSetup(context)
-    }).catch(() => { if (active) setSetup({ unavailable: true }) })
+      if (!active) return
+      setSetup(context)
+    }).catch(() => {
+      if (active) setSetup({ unavailable: true })
+    }).finally(() => {
+      if (active) setSetupLoading(false)
+    })
     return () => { active = false }
   }, [open, branchId, isDemo, setupRevision])
 
@@ -176,7 +182,7 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
     toast.message('Datos cargados del perfil de agendación')
   }
 
-  const profileUrl = documentKey ? buildProfileUrl(documentKey) : null
+  const profileUrl = documentKey ? buildProfileUrl(documentKey, branchId) : null
 
   const whatsappMessage = useMemo(() => {
     const name = recipient.name.trim()
@@ -346,11 +352,20 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
               message={setup.unavailable ? 'No se pudo comprobar la configuración de la sucursal.' : !setup.specialists?.length
                 ? 'Esta sucursal no tiene especialistas habilitados. En RR. HH., edita el empleado, verifica su sucursal y activa “Seleccionable como especialista”.'
                 : 'Esta sucursal no tiene cabinas activas. Solicita al administrador configurar una cabina y vuelve a comprobar.'}
-              actionLabel={!setup.unavailable && !setup.specialists?.length ? 'Configurar especialistas de esta sucursal' : 'Comprobar configuración'}
+              actionLabel={
+                setupLoading
+                  ? 'Comprobando…'
+                  : !setup.unavailable && !setup.specialists?.length
+                    ? 'Configurar especialistas de esta sucursal'
+                    : 'Comprobar configuración'
+              }
               onAction={() => {
+                if (setupLoading) return
                 if (!setup.unavailable && !setup.specialists?.length) {
                   window.open(`/rrhh/directorio?branch=${encodeURIComponent(branchId)}&booking=1`, '_blank', 'noopener,noreferrer')
-                } else setSetupRevision((value) => value + 1)
+                  return
+                }
+                setSetupRevision((value) => value + 1)
               }}
             />
           )}

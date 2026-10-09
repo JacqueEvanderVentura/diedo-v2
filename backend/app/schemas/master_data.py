@@ -15,7 +15,7 @@ CustomerSortField = Literal["name", "status", "createdAt", "updatedAt"]
 AcquisitionSource = Literal[
     "whatsapp", "instagram", "referral", "otros", "pos_walk_in", "app", "ai"
 ]
-CustomerDocumentType = Literal["cedula", "pasaporte"]
+CustomerDocumentType = Literal["cedula", "pasaporte", "rnc"]
 EmployeeSortField = Literal["name", "employeeNumber", "status", "createdAt", "updatedAt"]
 AttachmentClassification = Literal["internal", "customer_document", "employee_document"]
 
@@ -157,11 +157,19 @@ class ImportCustomerItem(ImportRowModel):
     phone: str | None = Field(default=None, max_length=40)
     instagram_url: HttpUrl | None = Field(default=None, max_length=500)
     acquisition_source: AcquisitionSource | None = None
+    document_type: CustomerDocumentType | None = None
+    document_id: str | None = Field(default=None, max_length=64)
 
     @field_validator("instagram_url")
     @classmethod
     def validate_instagram(cls, value: HttpUrl | None) -> HttpUrl | None:
         return validate_instagram_url(value)
+
+    @model_validator(mode="after")
+    def validate_optional_document_pair(self) -> Self:
+        if (self.document_type is None) ^ (self.document_id is None):
+            raise ValueError("documentType y documentId deben enviarse juntos.")
+        return self
 
     @model_validator(mode="before")
     @classmethod
@@ -211,8 +219,8 @@ class CreateCustomerRequest(ApiModel):
     phone: str | None = Field(default=None, max_length=40)
     instagram_url: HttpUrl | None = Field(default=None, max_length=500)
     acquisition_source: AcquisitionSource | None = None
-    document_type: CustomerDocumentType | None = None
-    document_id: str | None = Field(default=None, max_length=64)
+    document_type: CustomerDocumentType
+    document_id: str = Field(min_length=1, max_length=64)
     branch_ids: list[UUID] = Field(min_length=1, max_length=100)
     status: CreateMasterDataStatus = "active"
 
@@ -225,6 +233,11 @@ class CreateCustomerRequest(ApiModel):
     @classmethod
     def normalize_display_name(cls, value: str) -> str:
         return normalize_text(value)
+
+    @field_validator("document_id")
+    @classmethod
+    def strip_document_id(cls, value: str) -> str:
+        return value.strip()
 
     @field_validator("first_name", "last_name", "business_name", "phone")
     @classmethod
@@ -240,8 +253,8 @@ class CreateCustomerRequest(ApiModel):
 
     @model_validator(mode="after")
     def validate_document_pair(self) -> Self:
-        if (self.document_type is None) ^ (self.document_id is None):
-            raise ValueError("documentType y documentId deben enviarse juntos.")
+        if not self.document_id:
+            raise ValueError("documentId es obligatorio.")
         return self
 
 
@@ -308,6 +321,8 @@ class UpdateCustomerRequest(ApiModel):
         if "document_type" in changed or "document_id" in changed:
             if (self.document_type is None) ^ (self.document_id is None):
                 raise ValueError("documentType y documentId deben enviarse juntos.")
+            if self.document_type is None and self.document_id is None:
+                raise ValueError("No puedes eliminar el documento del cliente.")
         return self
 
 
@@ -339,7 +354,7 @@ class EmployeeResponse(ApiModel):
     branches: list[BranchReference]
     supervisor_ids: list[UUID]
     schedule: EmployeeScheduleResponse
-    online_booking_selectable: bool = False
+    online_booking_selectable: bool = True
     status: MasterDataStatus
     version: int
     attachment_count: int
@@ -370,7 +385,7 @@ class CreateEmployeeRequest(ApiModel):
     supervisor_ids: list[UUID] = Field(default_factory=list, max_length=20)
     timezone: str = Field(default="America/Santo_Domingo", min_length=3, max_length=64)
     schedule: WeeklySchedule = Field(default_factory=WeeklySchedule)
-    online_booking_selectable: bool = False
+    online_booking_selectable: bool = True
     status: CreateMasterDataStatus = "active"
 
     @field_validator("employee_number")

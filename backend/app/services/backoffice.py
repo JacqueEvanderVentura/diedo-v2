@@ -33,6 +33,7 @@ from app.repositories.users import RoleAssignmentSpec, UsersRepository
 from app.repositories.workspace_provisioning import WorkspaceProvisioningRepository
 from app.services.attachment_storage import AttachmentStorage
 from app.services.errors import ConflictError, InvalidOperationError, ResourceNotFoundError
+from app.services.membership_access_messages import other_company_message
 from app.services.module_catalog import display_name_for_module
 from app.services.platform_workspace import PLATFORM_WORKSPACE_SLUG
 from app.services.subscription_plans import (
@@ -216,13 +217,17 @@ class BackofficeService:
                 version=1,
             )
             self._session.add(user)
+        membership_status = "active"
+        if users_repo.has_active_membership(user.id):
+            membership_status = "suspended"
         membership = WorkspaceMembership(
             id=uuid7(),
             workspace_id=workspace.id,
             platform_user_id=user.id,
-            status="active",
+            status=membership_status,
             invited_at=now,
-            activated_at=now,
+            activated_at=now if membership_status == "active" else None,
+            revoked_at=now if membership_status == "suspended" else None,
             is_default=not provisioning_repo.has_default_membership(user.id),
         )
         try:
@@ -344,6 +349,14 @@ class BackofficeService:
             )
         if status is not None and status not in {"active", "suspended"}:
             raise InvalidOperationError("Estado de acceso no válido.", "status")
+        if status == "active" and repo.has_active_membership_in_other_workspace(
+            membership.platform_user_id,
+            workspace_id,
+        ):
+            raise ConflictError(
+                other_company_message(before.email),
+                "status",
+            )
         if assignments is not None:
             assignments, roles = UsersService(self._session).validate_workspace_assignments(
                 workspace_id, assignments

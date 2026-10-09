@@ -140,10 +140,16 @@ def test_action_key_collision_concurrent_edits_and_database_scope(client, operat
 @pytest.fixture
 def operation(client, carwash_setup):
     setup = carwash_setup
+    doc_digits = f"{int(uuid7().hex[:12], 16) % 10**11:011d}"
     customer = client.post(
         "/api/v1/customers",
         headers=setup["headers"],
-        json={"displayName": "Cliente operativo", "branchIds": [setup["branchId"]]},
+        json={
+            "displayName": "Cliente operativo",
+            "documentType": "cedula",
+            "documentId": f"{doc_digits[:3]}-{doc_digits[3:10]}-{doc_digits[10]}",
+            "branchIds": [setup["branchId"]],
+        },
     )
     assert customer.status_code == 201, customer.text
     employee = client.post(

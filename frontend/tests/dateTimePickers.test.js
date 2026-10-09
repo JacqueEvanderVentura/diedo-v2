@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { monthGrid, timeSlots } from '@/modules/agenda/lib/calendar'
+import { formatTime12h, monthGrid, timePeriod, timeSlots } from '@/modules/agenda/lib/calendar'
 import { todayKey } from '@/stores/agendaStore'
 
 describe('appointment date/time pickers', () => {
@@ -14,5 +14,12 @@ describe('appointment date/time pickers', () => {
     expect(slots[0]).toBe('08:00')
     expect(slots).toContain('12:00')
     expect(slots.at(-1)).toBe('19:30')
+  })
+
+  it('formats slot labels in 12-hour clock', () => {
+    expect(formatTime12h('08:00')).toBe('8:00 AM')
+    expect(formatTime12h('13:30')).toBe('1:30 PM')
+    expect(timePeriod('11:59')).toBe('am')
+    expect(timePeriod('12:00')).toBe('pm')
   })
 })

@@ -28,6 +28,10 @@ from app.services.attachment_storage import (
 from app.services.auth import AuthPrincipal
 from app.services.authorization import PermissionGrant
 from app.services.customer_documents import prepare_customer_document_fields
+from app.services.document_identity import (
+    assert_document_available_in_workspace,
+    require_document_pair,
+)
 from app.services.errors import (
     AuthorizationError,
     ConflictError,
@@ -182,20 +186,29 @@ class MasterDataService:
                             }
                         )
                         continue
-                prepared = self._prepare_customer_values(
-                    {
-                        "customer_type": raw.get("customer_type", "person"),
-                        "display_name": raw.get("display_name"),
-                        "first_name": raw.get("first_name"),
-                        "last_name": raw.get("last_name"),
-                        "business_name": raw.get("business_name"),
-                        "email": raw.get("email"),
-                        "phone": raw.get("phone"),
-                        "instagram_url": raw.get("instagram_url"),
-                        "acquisition_source": raw.get("acquisition_source"),
-                        "status": "active",
-                    }
-                )
+                import_values: dict[str, object] = {
+                    "customer_type": raw.get("customer_type", "person"),
+                    "display_name": raw.get("display_name"),
+                    "first_name": raw.get("first_name"),
+                    "last_name": raw.get("last_name"),
+                    "business_name": raw.get("business_name"),
+                    "email": raw.get("email"),
+                    "phone": raw.get("phone"),
+                    "instagram_url": raw.get("instagram_url"),
+                    "acquisition_source": raw.get("acquisition_source"),
+                    "status": "active",
+                }
+                if raw.get("document_type") is not None or raw.get("document_id") is not None:
+                    import_values["document_type"] = raw.get("document_type")
+                    import_values["document_id"] = raw.get("document_id")
+                prepared = self._prepare_customer_values(import_values)
+                normalized_doc = cast_optional_str(prepared.get("normalized_document_id"))
+                if normalized_doc:
+                    assert_document_available_in_workspace(
+                        self._session,
+                        workspace_id=grant.workspace_id,
+                        normalized_document_id=normalized_doc,
+                    )
                 record = self._repository.create_customer(
                     workspace_id=grant.workspace_id,
                     actor_platform_user_id=principal.platform_user_id,
@@ -233,7 +246,18 @@ class MasterDataService:
         branch_ids: set[UUID],
     ) -> CustomerRecord:
         self._validate_branches(grant, branch_ids)
+        require_document_pair(
+            cast_optional_str(values.get("document_type")),
+            cast_optional_str(values.get("document_id")),
+        )
         prepared = self._prepare_customer_values(values)
+        normalized_doc = cast_optional_str(prepared.get("normalized_document_id"))
+        if normalized_doc:
+            assert_document_available_in_workspace(
+                self._session,
+                workspace_id=grant.workspace_id,
+                normalized_document_id=normalized_doc,
+            )
         try:
             record = self._repository.create_customer(
                 workspace_id=grant.workspace_id,
@@ -273,7 +297,24 @@ class MasterDataService:
         )
         if branch_ids is not None:
             self._validate_branches(grant, branch_ids)
+        if customer.normalized_document_id is None and not (
+            changes.get("document_type") and changes.get("document_id")
+        ):
+            raise InvalidOperationError(
+                "El documento de identidad es obligatorio.",
+                "documentId",
+            )
         prepared = self._prepare_customer_values(changes)
+        normalized_doc = cast_optional_str(
+            prepared.get("normalized_document_id", customer.normalized_document_id)
+        )
+        if "normalized_document_id" in prepared and normalized_doc:
+            assert_document_available_in_workspace(
+                self._session,
+                workspace_id=grant.workspace_id,
+                normalized_document_id=normalized_doc,
+                exclude_customer_id=customer.id,
+            )
         try:
             record = self._repository.update_customer(
                 customer=customer,

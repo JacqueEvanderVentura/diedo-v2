@@ -4,13 +4,19 @@ from typing import Any
 
 from app.db.models.foundation import Branch, Workspace
 from app.schemas.administration import BranchBillingDocuments, BranchDetails
+from app.services.billing_documents import (
+    resolve_billing_template,
+    template_to_branch_billing,
+)
 
 
 def _merge_billing(
     workspace_docs: dict[str, Any],
     branch: Branch | None,
 ) -> BranchBillingDocuments:
-    workspace_billing = BranchBillingDocuments.model_validate(workspace_docs or {})
+    branch_id = branch.id if branch is not None else None
+    template = resolve_billing_template(workspace_docs, branch_id)
+    workspace_billing = template_to_branch_billing(template)
     merged = workspace_billing.model_dump()
     if branch is not None:
         branch_details = BranchDetails.model_validate(branch.configuration or {})

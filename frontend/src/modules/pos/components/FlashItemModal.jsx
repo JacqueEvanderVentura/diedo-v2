@@ -204,6 +204,8 @@ export function FlashItemModal({ onClose }) {
       unit: form.unit,
       allowNegativeStock: form.allowNegativeStock,
       image: form.image,
+      availableInAgenda: form.type === 'service' ? false : undefined,
+      availableInPos: form.type === 'service' ? true : undefined,
     }
 
     setSaving(true)

@@ -21,6 +21,8 @@ export function mapLeadFromApi(lead) {
     lostReason: lead.lostReason || null,
     pipelineClosedAt: lead.pipelineClosedAt || null,
     customerId: lead.customerId || null,
+    docType: lead.documentType || lead.docType || null,
+    documentId: lead.documentId || null,
   }
 }
 

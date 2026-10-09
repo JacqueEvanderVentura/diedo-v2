@@ -1,5 +1,4 @@
-import html2canvas from 'html2canvas'
-import jsPDF from 'jspdf'
+import { isIOS, prefersPdfOpenInNewTab } from '@/lib/printPlatform'
 
 const PRINT_SUPPRESS_STYLES = `
 <style>
@@ -46,61 +45,34 @@ async function preparePdfDocument(doc) {
   }
 }
 
-/** Download styled HTML as a PDF (same layout as print preview). */
-export async function downloadHtmlAsPdf(html, filename) {
-  const { iframe, doc } = mountHtmlDocument(html)
-  try {
-    await preparePdfDocument(doc)
-    const sheet = doc.querySelector('.sheet') || doc.body
-    const canvas = await html2canvas(sheet, {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: '#ffffff',
-      logging: false,
-      windowWidth: PDF_RENDER_WIDTH_PX,
-      onclone: (documentClone) => {
-        documentClone.querySelectorAll('s.strike, .strike').forEach((node) => {
-          node.style.setProperty('text-decoration', 'line-through', 'important')
-          node.style.setProperty('text-decoration-line', 'line-through', 'important')
-          node.style.setProperty('-webkit-text-decoration-line', 'line-through', 'important')
-          node.style.setProperty('display', 'inline-block', 'important')
-          node.style.setProperty('line-height', '1.25', 'important')
-        })
-      },
-    })
-
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-    const pageWidth = pdf.internal.pageSize.getWidth()
-    const pageHeight = pdf.internal.pageSize.getHeight()
-    const margin = 14
-    const contentWidth = pageWidth - margin * 2
-    const imgHeight = (canvas.height * contentWidth) / canvas.width
-    const imgData = canvas.toDataURL('image/png')
-    let heightLeft = imgHeight
-    let position = margin
-
-    pdf.addImage(imgData, 'PNG', margin, position, contentWidth, imgHeight)
-    heightLeft -= pageHeight - margin * 2
-
-    while (heightLeft > 0) {
-      position = heightLeft - imgHeight + margin
-      pdf.addPage()
-      pdf.addImage(imgData, 'PNG', margin, position, contentWidth, imgHeight)
-      heightLeft -= pageHeight - margin * 2
-    }
-
-    pdf.save(filename)
-  } finally {
-    iframe.remove()
-  }
-}
-
 function revokeObjectUrlLater(url) {
   setTimeout(() => URL.revokeObjectURL(url), 120_000)
 }
 
-/** Print a PDF blob (Safari-friendly; avoids HTML print pagination bugs). */
+function openBlobInNewTab(blob) {
+  const url = URL.createObjectURL(blob)
+  const popup = window.open(url, '_blank', 'noopener,noreferrer')
+  popup?.focus()
+  revokeObjectUrlLater(url)
+  return popup
+}
+
+/** Open printable HTML so the user can print or Save as PDF (Safari / offline fallback). */
+export function openHtmlInNewTab(html) {
+  const payload = html.includes('</head>')
+    ? html.replace('</head>', `${PRINT_SUPPRESS_STYLES}</head>`)
+    : `${PRINT_SUPPRESS_STYLES}${html}`
+  const blob = new Blob([payload], { type: 'text/html;charset=utf-8' })
+  openBlobInNewTab(blob)
+}
+
+/** Print a PDF blob; Safari/iOS opens in a new tab for reliable print/share. */
 export async function printPdfBlob(blob) {
+  if (prefersPdfOpenInNewTab()) {
+    openBlobInNewTab(blob)
+    return
+  }
+
   const url = URL.createObjectURL(blob)
   const iframe = document.createElement('iframe')
   iframe.setAttribute('aria-hidden', 'true')
@@ -118,9 +90,7 @@ export async function printPdfBlob(blob) {
       iframe.contentWindow?.focus()
       iframe.contentWindow?.print()
     } catch {
-      const popup = window.open(url, '_blank', 'noopener,noreferrer')
-      popup?.focus()
-      popup?.print()
+      openBlobInNewTab(blob)
     }
     setTimeout(cleanup, 120_000)
   }
@@ -131,6 +101,10 @@ export async function printPdfBlob(blob) {
 }
 
 export function savePdfBlob(blob, filename) {
+  if (isIOS()) {
+    openBlobInNewTab(blob)
+    return
+  }
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url

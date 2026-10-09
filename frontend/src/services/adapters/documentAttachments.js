@@ -8,6 +8,7 @@ export function mapDocumentAttachmentFromApi(item) {
     checksumSha256: item.checksumSha256 || item.checksum_sha256 || null,
     previewUrl: item.previewUrl || item.preview_url || null,
     downloadUrl: item.previewUrl || item.preview_url || null,
+    purpose: item.purpose || null,
   }
 }
 

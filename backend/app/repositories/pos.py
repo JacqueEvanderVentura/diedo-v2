@@ -314,6 +314,10 @@ class PosRepository:
                 ItemBranchAssignment.branch_id == branch_id,
                 ItemBranchAssignment.status == "active",
                 InventoryItemProfile.sale_price.is_not(None),
+                or_(
+                    Item.item_type != "service",
+                    InventoryItemProfile.available_in_pos.is_(True),
+                ),
             )
         )
         if item_ids is not None:

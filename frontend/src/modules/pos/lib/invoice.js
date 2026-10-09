@@ -118,7 +118,7 @@ function buildInvoiceFooterHtml(data) {
           `<div class="${index === 0 ? 'invoice-footer-legal-name' : 'invoice-footer-legal-line'}">${escapeHtml(line)}</div>`
         )).join('')}
       </div>
-      ${branchName ? `<div class="invoice-footer-branch">${escapeHtml([branchName, data.region].filter(Boolean).join(' · '))}</div>` : ''}
+      ${branchName ? `<div class="invoice-footer-branch">${escapeHtml(branchName)}</div>` : ''}
       <div class="invoice-page-number" aria-hidden="true"></div>
     </footer>
   `
@@ -387,7 +387,6 @@ export function buildInvoiceHtml(data) {
         <h1>${escapeHtml(businessName)}</h1>
         ${businessRnc ? `<p class="muted">RNC: ${escapeHtml(businessRnc)}</p>` : ''}
         ${businessAddress ? `<p class="muted">${escapeHtml(businessAddress.split('\n')[0])}</p>` : ''}
-        ${region ? `<p class="muted">${escapeHtml(region)}</p>` : ''}
       </div>
       <div class="header-right">
         ${logoHtml}

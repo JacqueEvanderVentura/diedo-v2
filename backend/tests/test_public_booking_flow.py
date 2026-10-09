@@ -97,6 +97,7 @@ def booking_setup(client, monkeypatch):
             "branchIds": [branch],
             "salePrice": "1250.00",
             "taxRate": "0",
+            "durationMinutes": 45,
         },
     )
     assert service.status_code == 201, service.text
@@ -115,8 +116,23 @@ def payload_for(employee, service):
         "employeeId": employee,
         "date": (date.today() + timedelta(days=400 + UUID(employee).int % 10000)).isoformat(),
         "time": "10:00",
-        "duration": 45,
     }
+
+
+def _set_service_duration(client, headers, service_id, minutes):
+    detail = client.get(f"/api/v1/inventory/items/{service_id}", headers=headers)
+    assert detail.status_code == 200, detail.text
+    item = detail.json()
+    updated = client.patch(
+        f"/api/v1/inventory/items/{service_id}",
+        headers=headers,
+        json={"version": item["version"], "durationMinutes": minutes},
+    )
+    assert updated.status_code == 200, updated.text
+
+
+def _slot_params(body, employee, service):
+    return {"date": body["date"], "employeeId": employee, "serviceId": service}
 
 
 @pytest.mark.integration
@@ -179,14 +195,18 @@ def test_resources_other_branches_and_past_slots(client, booking_setup):
         "/api/v1/appointment-resources", headers=headers, params={"branchId": other}
     ).json()["items"]
     occupy(other, other_resources[0]["id"], "15:00", employee)
-    slots = client.get(
-        f"{base}/slots", params={"date": body["date"], "employeeId": employee, "duration": 30}
-    ).json()["slots"]
+    _set_service_duration(client, headers, service, 30)
+    slots = client.get(f"{base}/slots", params=_slot_params(body, employee, service)).json()[
+        "slots"
+    ]
     assert "13:00" not in slots  # Every cabin occupied.
     assert "15:00" not in slots  # Specialist attends another branch.
     past = client.get(
         f"{base}/slots",
-        params={"date": (date.today() - timedelta(days=1)).isoformat(), "employeeId": employee},
+        params={
+            **_slot_params(body, employee, service),
+            "date": (date.today() - timedelta(days=1)).isoformat(),
+        },
     ).json()["slots"]
     assert past == []
 
@@ -204,9 +224,10 @@ def test_public_slots_respect_branch_opening_hours(client, booking_setup):
     )
     assert hours.status_code == 200, hours.text
     base = f"/api/v1/public/booking/branches/{branch}"
+    _set_service_duration(client, headers, _service, 30)
     slots = client.get(
         f"{base}/slots",
-        params={"date": body["date"], "employeeId": employee, "duration": 30},
+        params=_slot_params(body, employee, _service),
     ).json()["slots"]
     assert slots
     assert min(slots) >= "10:00"
@@ -234,9 +255,9 @@ def test_schedule_timezone_leave_and_expired_email_retry(client, booking_setup, 
         schedule.timezone = "UTC"
         session.commit()
     # 09:00 UTC = 05:00 Santo Domingo; the lunch break becomes 08:00-09:00.
-    slots = client.get(
-        f"{base}/slots", params={"date": body["date"], "employeeId": employee, "duration": 45}
-    ).json()["slots"]
+    slots = client.get(f"{base}/slots", params=_slot_params(body, employee, service)).json()[
+        "slots"
+    ]
     assert "05:00" in slots and "08:00" not in slots
     response = client.post(
         f"{base}/appointments",
@@ -267,9 +288,7 @@ def test_schedule_timezone_leave_and_expired_email_retry(client, booking_setup, 
         monkeypatch.setattr(settings, "email_enabled", True)
         assert email_notifications.deliver_email(session, notification_id)["status"] == "review"
     assert (
-        client.get(f"{base}/slots", params={"date": body["date"], "employeeId": employee}).json()[
-            "slots"
-        ]
+        client.get(f"{base}/slots", params=_slot_params(body, employee, service)).json()["slots"]
         == []
     )
 
@@ -279,12 +298,16 @@ def test_booking_price_idempotency_and_token_management(client, booking_setup):
     headers, me, branch, employee, service = booking_setup
     base = f"/api/v1/public/booking/branches/{branch}"
     context = client.get(f"{base}/context").json()
-    assert any(s["id"] == service and s["price"] == "1250.00" for s in context["services"])
+    assert any(
+        s["id"] == service and s["price"] == "1250.00" and s["durationMinutes"] == 45
+        for s in context["services"]
+    )
     assert any(s["id"] == employee for s in context["specialists"])
     body = payload_for(employee, service)
-    slots = client.get(
-        f"{base}/slots", params={"date": body["date"], "employeeId": employee, "duration": 90}
-    ).json()["slots"]
+    _set_service_duration(client, headers, service, 90)
+    slots = client.get(f"{base}/slots", params=_slot_params(body, employee, service)).json()[
+        "slots"
+    ]
     assert "11:00" not in slots  # Would cross the lunch break.
     assert "10:00" in slots
     key = {"Idempotency-Key": str(uuid7())}
@@ -307,17 +330,28 @@ def test_booking_price_idempotency_and_token_management(client, booking_setup):
     )
     assert profile.status_code == 200, profile.text
     assert all(not item["managementToken"] for item in profile.json()["items"])
+    assert appointment["durationMinutes"] == 90
     rescheduled = client.post(
         f"{uri}/reschedule",
-        json={"managementToken": token, "date": body["date"], "time": "13:00", "duration": 60},
+        json={"managementToken": token, "date": body["date"], "time": "13:00"},
     )
     assert rescheduled.status_code == 200, rescheduled.text
     assert rescheduled.json()["time"] == "13:00"
+    assert rescheduled.json()["durationMinutes"] == 90
     same = client.post(
         f"{uri}/reschedule",
-        json={"managementToken": token, "date": body["date"], "time": "13:00", "duration": 60},
+        json={"managementToken": token, "date": body["date"], "time": "13:00"},
     )
     assert same.status_code == 200, same.text
+    identified = client.post(
+        f"{base}/identify",
+        json={"documentType": body["documentType"], "documentId": body["documentId"]},
+    )
+    assert identified.status_code == 200, identified.text
+    identified_body = identified.json()
+    assert identified_body["isNew"] is False
+    assert identified_body["lastServiceId"] == str(service)
+    assert identified_body["lastEmployeeId"] == str(employee)
     cancelled = client.post(f"{uri}/cancel", json={"managementToken": token})
     assert cancelled.status_code == 200, cancelled.text
     assert cancelled.json()["status"] == "cancelled"
@@ -339,12 +373,6 @@ def test_booking_price_idempotency_and_token_management(client, booking_setup):
             row for row in notifications if row.event_key.startswith("appointment.confirmed/")
         )
         assert email_notifications.deliver_email(session, old_notice.id)["status"] == "superseded"
-    identified = client.post(
-        f"{base}/identify",
-        json={"documentType": body["documentType"], "documentId": body["documentId"]},
-    )
-    assert identified.status_code == 200, identified.text
-    assert identified.json()["isNew"] is False
     other_branch = UUID(me["visibleBranches"][1]["id"])
     with get_session_factory()() as session:
         assignment = session.scalar(
@@ -662,3 +690,57 @@ def test_disabled_employee_and_concurrent_reservation(client, booking_setup):
     assert sorted(response.status_code for response in responses) == [201, 409], [
         r.text for r in responses
     ]
+
+
+@pytest.mark.integration
+def test_inactive_employee_stays_bookable_when_selectable(client, booking_setup):
+    _, _, branch, employee, _service = booking_setup
+    base = f"/api/v1/public/booking/branches/{branch}"
+    with get_session_factory()() as session:
+        member = session.get(Employee, UUID(employee))
+        member.status = "inactive"
+        member.online_booking_selectable = True
+        session.commit()
+    context = client.get(f"{base}/context").json()
+    assert any(item["id"] == employee for item in context["specialists"])
+    with get_session_factory()() as session:
+        session.get(Employee, UUID(employee)).status = "archived"
+        session.commit()
+    context = client.get(f"{base}/context").json()
+    assert all(item["id"] != employee for item in context["specialists"])
+
+
+@pytest.mark.integration
+def test_booking_context_lists_workspace_branches(client, booking_setup):
+    _, me, branch, _employee, _service = booking_setup
+    context = client.get(f"/api/v1/public/booking/branches/{branch}/context").json()
+    branches = context.get("workspaceBranches") or []
+    assert len(branches) >= 2
+    assert any(item["id"] == branch for item in branches)
+    assert any(item["id"] == me["visibleBranches"][1]["id"] for item in branches)
+
+
+@pytest.mark.integration
+def test_public_portal_register_and_empty_history(client, booking_setup):
+    _, _me, branch, _employee, _service = booking_setup
+    document_id = f"TEST{uuid7().hex[:16]}"
+    register = client.post(
+        f"/api/v1/public/portal/branches/{branch}/register",
+        json={
+            "documentType": "pasaporte",
+            "documentId": document_id,
+            "displayName": "Portal Cliente",
+            "wantsInvoice": False,
+            "wantsContact": False,
+            "observaciones": "Prefiere tarde",
+        },
+    )
+    assert register.status_code == 200, register.text
+    body = register.json()
+    assert body["customerId"]
+    params = {"documentType": "pasaporte", "documentId": document_id}
+    appointments = client.get(
+        f"/api/v1/public/portal/branches/{branch}/appointments", params=params
+    )
+    assert appointments.status_code == 200
+    assert appointments.json()["items"] == []

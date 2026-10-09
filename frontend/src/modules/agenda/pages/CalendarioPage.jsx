@@ -173,9 +173,9 @@ export default function CalendarioPage() {
     }
   }, [appointments, branchResources, canManage, updateAppointment])
 
-  const goToDay = (key) => {
+  const scheduleFromDay = (key) => {
     setCursor(key)
-    setView('day')
+    openNew({ date: key, time: '' })
   }
 
   const rangeLabel =
@@ -289,7 +289,12 @@ export default function CalendarioPage() {
 
       <AnimatedTabPanel panelKey={view}>
         {view === 'week' && (
-          <WeekView cursor={cursor} appointments={filtered} onDayClick={goToDay} onAppointmentClick={openEdit} />
+          <WeekView
+            cursor={cursor}
+            appointments={filtered}
+            onScheduleDay={canManage ? scheduleFromDay : undefined}
+            onAppointmentClick={openEdit}
+          />
         )}
         {view === 'day' && (
           <DayView
@@ -305,7 +310,12 @@ export default function CalendarioPage() {
           />
         )}
         {view === 'month' && (
-          <MonthView cursor={cursor} appointments={filtered} onDayClick={goToDay} onAppointmentClick={openEdit} />
+          <MonthView
+            cursor={cursor}
+            appointments={filtered}
+            onScheduleDay={canManage ? scheduleFromDay : undefined}
+            onAppointmentClick={openEdit}
+          />
         )}
       </AnimatedTabPanel>
 

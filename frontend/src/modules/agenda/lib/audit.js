@@ -75,15 +75,23 @@ export function actionLabel(action) {
   return map[action] || action
 }
 
+function appointmentCreatorLabel(appointment) {
+  if (appointment?.source === 'self') {
+    return appointment.customerName?.trim() || appointment.createdBy || 'Cliente'
+  }
+  return appointment.createdBy || 'Sistema'
+}
+
 export function backfillHistory(appointment) {
   if (Array.isArray(appointment.history) && appointment.history.length) return appointment.history
   const entries = []
   const createdAt = appointment.createdAt || new Date().toISOString()
+  const creator = appointmentCreatorLabel(appointment)
   entries.push({
     id: `log-backfill-create-${appointment.id}`,
     at: createdAt,
     userId: null,
-    userName: appointment.createdBy || 'Sistema',
+    userName: creator,
     action: 'create',
     changes: [{ field: 'appointment', label: 'Registro', from: '—', to: 'Cita registrada en el sistema' }],
   })

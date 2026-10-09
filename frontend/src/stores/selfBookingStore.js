@@ -114,7 +114,8 @@ export const useSelfBookingStore = create(
           profiles: s.profiles.map((p) => (p.id === profileId ? { ...p, customerId } : p)),
         })),
 
-      bookAppointment: async ({ profile, branchId, service, date, time, employeeId, duration, idempotencyKey }) => {
+      bookAppointment: async ({ profile, branchId, service, date, time, employeeId, idempotencyKey }) => {
+        const slotDuration = Number(service?.durationMinutes) || 30
         if (useSessionStore.getState().status !== 'demo') {
           const response = await publicBookingApi.book(branchId, {
             documentType: profile.docType || 'cedula',
@@ -129,7 +130,6 @@ export const useSelfBookingStore = create(
             employeeId,
             date,
             time,
-            duration: duration || 30,
           }, idempotencyKey)
           return response.appointment
         }
@@ -142,7 +142,6 @@ export const useSelfBookingStore = create(
         const refreshedAgenda = useAgendaStore.getState()
         const rrhh = useRrhhStore.getState()
         const employee = rrhh.employees.find((item) => item.id === employeeId)
-        const slotDuration = duration || 30
         const available = isSlotAvailable({
           date,
           employeeId,
@@ -222,6 +221,7 @@ export const useSelfBookingStore = create(
           documentId,
         })
         if (!result.customerId && result.isNew) return null
+        if (!result.customerId) return null
         return {
           docType: result.documentType,
           documentId: normalizeDocumentId(result.documentId, result.documentType),
@@ -231,23 +231,26 @@ export const useSelfBookingStore = create(
           address: result.address || '',
           wantsInvoice: result.wantsInvoice,
           wantsContact: result.wantsContact,
+          observaciones: result.observaciones || '',
           customerId: result.customerId,
+          lastServiceId: result.lastServiceId || '',
+          lastEmployeeId: result.lastEmployeeId || '',
         }
       },
 
-      fetchRemoteSlots: async ({ branchId, date, employeeId, duration }) => {
+      fetchRemoteSlots: async ({ branchId, date, employeeId, serviceId }) => {
         if (useSessionStore.getState().status === 'demo') return null
         const result = await publicBookingApi.listSlots(branchId, {
           date,
           employeeId,
-          duration,
+          serviceId,
         })
         return result.slots || []
       },
 
       sendBookingLinkEmail: ({ profile, branchId, branchName }) => {
         const bookingUrl = buildBookingUrl(branchId)
-        const profileUrl = buildProfileUrl(profile.documentId)
+        const profileUrl = buildProfileUrl(profile.documentId, branchId)
         const content = buildConfirmationEmail({ profile, branchName, bookingUrl, profileUrl })
         return get().queueEmail({
           profileId: profile.id,

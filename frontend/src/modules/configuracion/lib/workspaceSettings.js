@@ -1,5 +1,5 @@
-import { DEFAULT_BILLING_DOCUMENTS } from './billingDocuments'
-import { billingDocumentsToApi, mapBillingDocumentsFromApi } from '@/services/adapters/administration'
+import { billingDocumentsToApi, mapWorkspaceBillingDocumentsFromApi } from '@/services/adapters/administration'
+import { normalizeBillingDocumentsState } from './billingDocuments'
 import { administrationGateway } from '@/services/administrationApi'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
@@ -14,22 +14,27 @@ export function mapWorkspaceSettingsFromApi(settings) {
     taxDefault: Number(settings.taxDefaultRate ?? settings.tax_default_rate ?? 0),
     version: settings.version,
     billingDocuments: billingRaw
-      ? mapBillingDocumentsFromApi(billingRaw)
-      : { ...DEFAULT_BILLING_DOCUMENTS },
+      ? mapWorkspaceBillingDocumentsFromApi(billingRaw)
+      : normalizeBillingDocumentsState(null),
   }
 }
 
 function billingDocumentsToApiCamel(billingDocuments = {}) {
   const raw = billingDocumentsToApi(billingDocuments)
   return {
-    tradeName: raw.trade_name,
-    legalName: raw.legal_name,
-    rnc: raw.rnc,
-    address: raw.address,
-    phone: raw.phone,
-    email: raw.email,
-    logoDataUrl: raw.logo_data_url,
-    footerNote: raw.footer_note,
+    templates: (raw.templates || []).map((template) => ({
+      id: template.id,
+      name: template.name,
+      branchIds: template.branch_ids || [],
+      tradeName: template.trade_name,
+      legalName: template.legal_name,
+      rnc: template.rnc,
+      address: template.address,
+      phone: template.phone,
+      email: template.email,
+      logoDataUrl: template.logo_data_url,
+      footerNote: template.footer_note,
+    })),
   }
 }
 

@@ -8,6 +8,8 @@ from app.services.crm import CrmService
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
 
+from tests.customer_payloads import unique_lead_document_fields
+
 _PASSWORD = "crm-test-password-not-a-secret"
 
 
@@ -81,6 +83,7 @@ def test_lead_status_change_creates_stage_activity(client: TestClient) -> None:
             "name": f"Stage {suffix}",
             "company": f"Co {suffix}",
             "status": "nuevo",
+            **unique_lead_document_fields(),
         },
     )
     assert created.status_code == 201, created.text

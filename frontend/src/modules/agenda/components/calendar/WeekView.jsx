@@ -4,7 +4,7 @@ import { AppointmentChip } from './AppointmentChip'
 import { cn } from '@/lib/utils'
 import { todayKey } from '@/stores/agendaStore'
 
-export function WeekView({ cursor, appointments, onDayClick, onAppointmentClick }) {
+export function WeekView({ cursor, appointments, onScheduleDay, onAppointmentClick }) {
   const days = weekKeysMonday(cursor)
   const byDate = appointments.reduce((acc, a) => {
     ;(acc[a.date] ||= []).push(a)
@@ -29,24 +29,33 @@ export function WeekView({ cursor, appointments, onDayClick, onAppointmentClick 
           return (
             <div
               key={key}
+              role={onScheduleDay ? 'button' : undefined}
+              tabIndex={onScheduleDay ? 0 : undefined}
               data-testid={`calendar-week-day-${key}`}
+              onClick={() => onScheduleDay?.(key)}
+              onKeyDown={(event) => {
+                if (!onScheduleDay || event.target !== event.currentTarget) return
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onScheduleDay(key)
+                }
+              }}
               className={cn(
                 'min-h-[180px] rounded-xl border p-2 text-left',
+                onScheduleDay && 'cursor-pointer transition-colors hover:border-blue-200 hover:bg-blue-50/20',
                 isToday && 'border-blue-200 bg-blue-50/40',
                 !isToday && isSelected && 'border-blue-300 bg-blue-50/30 ring-1 ring-blue-200',
                 !isToday && !isSelected && 'border-slate-100'
               )}
             >
-              <button
-                type="button"
-                onClick={() => onDayClick(key)}
+              <p
                 className={cn(
-                  'mb-2 rounded-md px-1 text-xs font-semibold transition-colors hover:bg-white/80',
+                  'mb-2 px-1 text-xs font-semibold',
                   isToday || isSelected ? 'text-blue-600' : 'text-slate-500'
                 )}
               >
                 {d.getDate()}
-              </button>
+              </p>
               <div className="space-y-0">
                 {list.slice(0, 6).map((apt) => (
                   <AppointmentChip key={apt.id} apt={apt} compact onClick={onAppointmentClick} />

@@ -54,7 +54,9 @@ def checkout_setup(client):
 
 
 def washing(client, setup, **changes):
-    wash = register(client, setup, **changes).json()
+    response = register(client, setup, **changes)
+    assert response.status_code == 201, response.text
+    wash = response.json()
     response = action(client, setup, wash, "start")
     assert response.status_code == 200, response.text
     return response.json()

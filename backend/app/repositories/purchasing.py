@@ -12,14 +12,18 @@ from sqlalchemy.orm import Session, aliased
 from app.db.models import (
     AuditEntry,
     Branch,
+    Item,
+    ItemCategory,
     PlatformUser,
     PurchaseRequest,
     PurchaseRequestItem,
     PurchasingSettings,
     Supplier,
     SupplierBranchAssignment,
+    SupplierCatalogItem,
     WorkspaceMembership,
 )
+from app.db.models.document_attachments import DocumentAttachment
 
 
 @dataclass(frozen=True)
@@ -52,8 +56,24 @@ class PurchaseRequestStatsRecord:
     total: int
     pendiente: int
     aprobada: int
+    pagada: int
     rechazada: int
     entregada: int
+
+
+@dataclass(frozen=True)
+class SupplierCatalogItemRecord:
+    item: SupplierCatalogItem
+    category_name: str | None
+
+
+@dataclass(frozen=True)
+class CatalogCompareRow:
+    product_key: str
+    name: str
+    category_id: UUID
+    category_name: str | None
+    offers: tuple[tuple[UUID, str, UUID, Decimal, str], ...]
 
 
 @dataclass(frozen=True)
@@ -414,6 +434,7 @@ class PurchasingRepository:
                 func.count(PurchaseRequest.id),
                 func.count(PurchaseRequest.id).filter(PurchaseRequest.status == "pendiente"),
                 func.count(PurchaseRequest.id).filter(PurchaseRequest.status == "aprobada"),
+                func.count(PurchaseRequest.id).filter(PurchaseRequest.status == "pagada"),
                 func.count(PurchaseRequest.id).filter(PurchaseRequest.status == "rechazada"),
                 func.count(PurchaseRequest.id).filter(PurchaseRequest.status == "entregada"),
             ).where(*predicates)
@@ -569,14 +590,52 @@ class PurchasingRepository:
         )
         self._session.flush()
 
+    def pay_purchase_request(
+        self,
+        *,
+        request: PurchaseRequest,
+        paid_at: Any,
+        finance_expense_id: UUID,
+        actor_platform_user_id: UUID,
+        request_id: str,
+    ) -> None:
+        request.status = "pagada"
+        request.paid_at = paid_at
+        request.finance_expense_id = finance_expense_id
+        request.updated_by_platform_user_id = actor_platform_user_id
+        request.version += 1
+        self.add_audit(
+            workspace_id=request.workspace_id,
+            actor_platform_user_id=actor_platform_user_id,
+            action="purchasing.request.paid",
+            target_type="purchase_request",
+            target_id=request.id,
+            request_id=request_id,
+            details={"financeExpenseId": str(finance_expense_id)},
+        )
+        self._session.flush()
+
     def deliver_purchase_request(
         self,
         *,
         request: PurchaseRequest,
         delivered_at: Any,
+        line_inventory_map: dict[UUID, UUID],
         actor_platform_user_id: UUID,
         request_id: str,
     ) -> None:
+        items = self._session.scalars(
+            select(PurchaseRequestItem).where(
+                PurchaseRequestItem.workspace_id == request.workspace_id,
+                PurchaseRequestItem.purchase_request_id == request.id,
+            )
+        )
+        for item in items:
+            if item.quantity <= 0:
+                continue
+            inventory_id = line_inventory_map.get(item.id)
+            if inventory_id is not None:
+                item.inventory_item_id = inventory_id
         request.status = "entregada"
         request.delivered_at = delivered_at
         request.updated_by_platform_user_id = actor_platform_user_id
@@ -588,9 +647,256 @@ class PurchasingRepository:
             target_type="purchase_request",
             target_id=request.id,
             request_id=request_id,
-            details={},
+            details={"lineCount": len(line_inventory_map)},
         )
         self._session.flush()
+
+    def count_receipt_images(self, workspace_id: UUID, request_id: UUID) -> int:
+        return self.count_attachments(
+            workspace_id,
+            request_id,
+            purpose="receipt",
+            image_only=True,
+        )
+
+    def count_attachments(
+        self,
+        workspace_id: UUID,
+        request_id: UUID,
+        *,
+        purpose: str,
+        image_only: bool = False,
+    ) -> int:
+        predicates = [
+            DocumentAttachment.workspace_id == workspace_id,
+            DocumentAttachment.purchase_request_id == request_id,
+            DocumentAttachment.purpose == purpose,
+        ]
+        if image_only:
+            predicates.append(
+                DocumentAttachment.content_type.in_(
+                    ("image/jpeg", "image/png", "image/webp", "image/gif")
+                )
+            )
+        counted = self._session.scalar(select(func.count(DocumentAttachment.id)).where(*predicates))
+        return int(counted or 0)
+
+    def list_supplier_catalog(
+        self,
+        *,
+        workspace_id: UUID,
+        supplier_id: UUID,
+        active_only: bool,
+    ) -> tuple[SupplierCatalogItemRecord, ...]:
+        predicates = [
+            SupplierCatalogItem.workspace_id == workspace_id,
+            SupplierCatalogItem.supplier_id == supplier_id,
+        ]
+        if active_only:
+            predicates.append(SupplierCatalogItem.active.is_(True))
+        rows = self._session.execute(
+            select(SupplierCatalogItem, ItemCategory.name)
+            .outerjoin(
+                ItemCategory,
+                (ItemCategory.workspace_id == SupplierCatalogItem.workspace_id)
+                & (ItemCategory.id == SupplierCatalogItem.category_id),
+            )
+            .where(*predicates)
+            .order_by(func.lower(SupplierCatalogItem.name), SupplierCatalogItem.id)
+        )
+        return tuple(SupplierCatalogItemRecord(item=row[0], category_name=row[1]) for row in rows)
+
+    def get_catalog_item(
+        self, workspace_id: UUID, supplier_id: UUID, item_id: UUID
+    ) -> SupplierCatalogItemRecord | None:
+        row = self._session.execute(
+            select(SupplierCatalogItem, ItemCategory.name)
+            .outerjoin(
+                ItemCategory,
+                (ItemCategory.workspace_id == SupplierCatalogItem.workspace_id)
+                & (ItemCategory.id == SupplierCatalogItem.category_id),
+            )
+            .where(
+                SupplierCatalogItem.workspace_id == workspace_id,
+                SupplierCatalogItem.supplier_id == supplier_id,
+                SupplierCatalogItem.id == item_id,
+            )
+        ).one_or_none()
+        return SupplierCatalogItemRecord(item=row[0], category_name=row[1]) if row else None
+
+    def get_catalog_item_for_update(
+        self, workspace_id: UUID, supplier_id: UUID, item_id: UUID
+    ) -> SupplierCatalogItem | None:
+        return self._session.scalar(
+            select(SupplierCatalogItem)
+            .where(
+                SupplierCatalogItem.workspace_id == workspace_id,
+                SupplierCatalogItem.supplier_id == supplier_id,
+                SupplierCatalogItem.id == item_id,
+            )
+            .with_for_update()
+        )
+
+    def create_catalog_item(
+        self,
+        *,
+        item_id: UUID,
+        workspace_id: UUID,
+        supplier_id: UUID,
+        actor_platform_user_id: UUID,
+        values: dict[str, Any],
+    ) -> SupplierCatalogItem:
+        item = SupplierCatalogItem(
+            id=item_id,
+            workspace_id=workspace_id,
+            supplier_id=supplier_id,
+            category_id=values["category_id"],
+            name=values["name"],
+            normalized_name=values["normalized_name"],
+            unit=values["unit"],
+            unit_price=values["unit_price"],
+            active=True,
+            created_by_platform_user_id=actor_platform_user_id,
+            updated_by_platform_user_id=actor_platform_user_id,
+        )
+        self._session.add(item)
+        self._session.flush()
+        self._refresh_supplier_product_count(workspace_id, supplier_id)
+        return item
+
+    def update_catalog_item(
+        self,
+        *,
+        item: SupplierCatalogItem,
+        changes: dict[str, Any],
+        actor_platform_user_id: UUID,
+    ) -> None:
+        for field, value in changes.items():
+            setattr(item, field, value)
+        item.updated_by_platform_user_id = actor_platform_user_id
+        item.version += 1
+        self._session.flush()
+        self._refresh_supplier_product_count(item.workspace_id, item.supplier_id)
+
+    def archive_catalog_item(
+        self,
+        *,
+        item: SupplierCatalogItem,
+        actor_platform_user_id: UUID,
+    ) -> None:
+        item.active = False
+        item.updated_by_platform_user_id = actor_platform_user_id
+        item.version += 1
+        self._session.flush()
+        self._refresh_supplier_product_count(item.workspace_id, item.supplier_id)
+
+    def compare_catalog(
+        self,
+        *,
+        workspace_id: UUID,
+        category_id: UUID | None,
+        search: str | None,
+    ) -> tuple[CatalogCompareRow, ...]:
+        predicates = [
+            SupplierCatalogItem.workspace_id == workspace_id,
+            SupplierCatalogItem.active.is_(True),
+            Supplier.status == "active",
+        ]
+        if category_id is not None:
+            predicates.append(SupplierCatalogItem.category_id == category_id)
+        if search:
+            value = search.casefold()
+            predicates.append(func.lower(SupplierCatalogItem.name).contains(value))
+
+        rows = self._session.execute(
+            select(
+                SupplierCatalogItem.normalized_name,
+                SupplierCatalogItem.name,
+                SupplierCatalogItem.category_id,
+                ItemCategory.name,
+                Supplier.id,
+                Supplier.name,
+                SupplierCatalogItem.id,
+                SupplierCatalogItem.unit_price,
+                SupplierCatalogItem.unit,
+            )
+            .join(
+                Supplier,
+                (Supplier.workspace_id == SupplierCatalogItem.workspace_id)
+                & (Supplier.id == SupplierCatalogItem.supplier_id),
+            )
+            .outerjoin(
+                ItemCategory,
+                (ItemCategory.workspace_id == SupplierCatalogItem.workspace_id)
+                & (ItemCategory.id == SupplierCatalogItem.category_id),
+            )
+            .where(*predicates)
+            .order_by(
+                SupplierCatalogItem.normalized_name,
+                SupplierCatalogItem.category_id,
+                SupplierCatalogItem.unit_price,
+            )
+        )
+
+        grouped: dict[tuple[str, UUID], CatalogCompareRow] = {}
+        for row in rows:
+            key = (row[0], row[2])
+            offer = (row[4], row[5], row[6], row[7], row[8])
+            existing = grouped.get(key)
+            if existing is None:
+                grouped[key] = CatalogCompareRow(
+                    product_key=f"{row[0]}:{row[2]}",
+                    name=row[1],
+                    category_id=row[2],
+                    category_name=row[3],
+                    offers=(offer,),
+                )
+            else:
+                grouped[key] = CatalogCompareRow(
+                    product_key=existing.product_key,
+                    name=existing.name,
+                    category_id=existing.category_id,
+                    category_name=existing.category_name,
+                    offers=existing.offers + (offer,),
+                )
+        return tuple(grouped.values())
+
+    def category_is_supply(self, workspace_id: UUID, category_id: UUID) -> bool:
+        kind = self._session.scalar(
+            select(ItemCategory.category_kind).where(
+                ItemCategory.workspace_id == workspace_id,
+                ItemCategory.id == category_id,
+            )
+        )
+        return kind == "supply"
+
+    def inventory_item_is_supply(self, workspace_id: UUID, item_id: UUID) -> bool:
+        item_type = self._session.scalar(
+            select(Item.item_type).where(
+                Item.workspace_id == workspace_id,
+                Item.id == item_id,
+                Item.status != "archived",
+            )
+        )
+        return item_type == "supply"
+
+    def _refresh_supplier_product_count(self, workspace_id: UUID, supplier_id: UUID) -> None:
+        count = self._session.scalar(
+            select(func.count(SupplierCatalogItem.id)).where(
+                SupplierCatalogItem.workspace_id == workspace_id,
+                SupplierCatalogItem.supplier_id == supplier_id,
+                SupplierCatalogItem.active.is_(True),
+            )
+        )
+        supplier = self._session.scalar(
+            select(Supplier).where(
+                Supplier.workspace_id == workspace_id,
+                Supplier.id == supplier_id,
+            )
+        )
+        if supplier is not None:
+            supplier.product_count = int(count or 0)
+            self._session.flush()
 
     def get_settings(
         self, workspace_id: UUID, *, for_update: bool = False
@@ -773,6 +1079,8 @@ class PurchasingRepository:
                 quantity=item["quantity"],
                 unit=item["unit"],
                 unit_price=item["unit_price"],
+                supplier_catalog_item_id=item.get("supplier_catalog_item_id"),
+                category_id=item.get("category_id"),
             )
             for index, item in enumerate(items, start=1)
         )

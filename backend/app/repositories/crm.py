@@ -200,6 +200,22 @@ class CrmRepository:
             query = query.with_for_update()
         return self._session.scalar(query)
 
+    def lead_by_document(
+        self,
+        workspace_id: UUID,
+        normalized_document_id: str,
+        *,
+        exclude_lead_id: UUID | None = None,
+    ) -> CrmLead | None:
+        query = select(CrmLead).where(
+            CrmLead.workspace_id == workspace_id,
+            CrmLead.normalized_document_id == normalized_document_id,
+            CrmLead.converted_customer_id.is_(None),
+        )
+        if exclude_lead_id is not None:
+            query = query.where(CrmLead.id != exclude_lead_id)
+        return self._session.scalar(query.limit(1))
+
     def add_lead(self, lead: CrmLead) -> None:
         self._session.add(lead)
         self._session.flush()

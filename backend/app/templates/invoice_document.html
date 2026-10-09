@@ -4,6 +4,15 @@
   <meta charset="UTF-8" />
   <title>{{ doc_title }} {{ id }}</title>
   <style>
+    @page {
+      size: A4;
+      margin: 10mm 8mm 22mm 8mm;
+      @bottom-right {
+        content: counter(page) " / " counter(pages);
+        font-size: 9pt;
+        color: #64748b;
+      }
+    }
     :root { color-scheme: light; }
     * { box-sizing: border-box; }
     body {
@@ -17,7 +26,7 @@
     .sheet {
       max-width: 100%;
       margin: 0 auto;
-      min-height: 277mm;
+      min-height: 0;
       display: flex;
       flex-direction: column;
       padding: 0;
@@ -65,6 +74,8 @@
     }
     .label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #94a3b8; margin-bottom: 4px; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead { display: table-header-group; }
+    tr { page-break-inside: avoid; break-inside: avoid; }
     th { text-align: left; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #94a3b8; padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
     th.num, td.num { text-align: right; white-space: nowrap; }
     td { padding: 10px 0; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
@@ -77,7 +88,14 @@
       color: #94a3b8;
       margin-right: 4px;
     }
-    .totals { margin-top: 20px; margin-left: auto; width: 280px; font-size: 13px; }
+    .totals {
+      margin-top: 20px;
+      margin-left: auto;
+      width: 280px;
+      font-size: 13px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
     .totals div { display: flex; justify-content: space-between; padding: 5px 0; color: #475569; }
     .totals .discount { color: #059669; }
     .totals .grand { border-top: 1px solid #e2e8f0; margin-top: 8px; padding-top: 10px; font-size: 16px; font-weight: 700; color: #0f172a; }
@@ -114,6 +132,25 @@
       font-size: 12px;
       color: #334155;
     }
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .sheet {
+        display: block;
+        min-height: auto;
+      }
+      .invoice-footer {
+        position: fixed;
+        bottom: 0;
+        left: 8mm;
+        right: 8mm;
+        margin: 0;
+        padding: 6px 0 0;
+        background: #fff;
+      }
+      .invoice-content {
+        padding-bottom: 42mm;
+      }
+    }
   </style>
 </head>
 <body>
@@ -123,10 +160,9 @@
         <h1>{{ business_name }}</h1>
         {% if business_rnc %}<p class="muted">RNC: {{ business_rnc }}</p>{% endif %}
         {% if business_address_line %}<p class="muted">{{ business_address_line }}</p>{% endif %}
-        {% if region %}<p class="muted">{{ region }}</p>{% endif %}
       </div>
       <div class="header-right">
-        {{ logo_html }}
+        {{ logo_html | safe }}
         <div class="meta">
           <strong>{{ doc_title }}</strong>
           {{ id }}<br />

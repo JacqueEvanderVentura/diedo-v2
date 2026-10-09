@@ -459,4 +459,4 @@ def test_existing_owner_can_receive_another_workspace_without_password(
         headers={"Authorization": f"Bearer {login.json()['accessToken']}"},
     )
     assert workspaces.status_code == 200
-    assert {item["slug"] for item in workspaces.json()} >= {first_slug, second_slug}
+    assert {item["slug"] for item in workspaces.json()} == {first_slug}

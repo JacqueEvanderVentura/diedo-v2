@@ -15,6 +15,11 @@ export const DURATION_OPTIONS = [
   { value: 120, label: '2 Horas' },
 ]
 
+export function durationLabel(minutes) {
+  const value = Number(minutes) || 30
+  return DURATION_OPTIONS.find((option) => option.value === value)?.label || `${value} minutos`
+}
+
 export const RECURRENCE_OPTIONS = [
   { value: 'none', label: 'No se repite (Cita única)' },
   { value: 'weekly', label: 'Cada semana' },

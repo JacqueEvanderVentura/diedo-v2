@@ -14,8 +14,9 @@ import {
   mergePurchaseRequestExtras,
   savePurchaseRequestExtras,
 } from '@/modules/compras/lib/purchaseRequestExtras'
-import { uploadPurchaseQuote } from '@/lib/documentAttachments'
+import { uploadPurchaseDocument, uploadPurchaseQuote } from '@/lib/documentAttachments'
 import { receivePurchaseRequestInventory } from '@/modules/compras/lib/receivePurchaseInventory'
+import { isUuid } from '@/lib/workspaceBranch'
 
 const genId = (prefix) => `${prefix}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const now = () => new Date().toISOString()
@@ -79,6 +80,7 @@ export function deriveRequestStats(requests) {
     total: requests.length,
     pendiente: requests.filter((request) => request.status === 'pendiente').length,
     aprobada: requests.filter((request) => request.status === 'aprobada').length,
+    pagada: requests.filter((request) => request.status === 'pagada').length,
     rechazada: requests.filter((request) => request.status === 'rechazada').length,
     entregada: requests.filter((request) => request.status === 'entregada').length,
   }
@@ -279,27 +281,82 @@ export const useComprasStore = create(
       },
 
       attachPurchaseQuote: async (id, quoteFile, { isOnline = false } = {}) => {
+        return get().attachPurchaseDocument(id, 'quote', quoteFile, { isOnline })
+      },
+
+      attachPurchaseDocument: async (id, purpose, attachment, { isOnline = false } = {}) => {
         const current = get().purchaseRequests.find((request) => request.id === id)
         if (!current) throw new Error('Solicitud no encontrada.')
         if (isOnline && current.version) {
-          if (quoteFile?.pendingFile) {
-            await uploadPurchaseQuote(id, quoteFile)
+          if (attachment?.pendingFile) {
+            if (purpose === 'quote') await uploadPurchaseQuote(id, attachment)
+            else await uploadPurchaseDocument(id, purpose, attachment)
             await get().hydrateFromApi({ force: true })
             return get().purchaseRequests.find((request) => request.id === id)
           }
-          return get().updatePurchaseRequest(id, { quoteFile }, { isOnline })
+          if (purpose === 'quote') {
+            return get().updatePurchaseRequest(id, { quoteFile: attachment }, { isOnline })
+          }
         }
-        const nextQuote = quoteFile?.name ? { name: quoteFile.name } : quoteFile
-        savePurchaseRequestExtras(id, { quoteFile, items: current.items })
+        const nextFile = attachment?.name ? { ...attachment, purpose } : attachment
+        const extras = purpose === 'quote'
+          ? { quoteFile: attachment, items: current.items }
+          : { quoteFile: current.quoteFile, items: current.items }
+        savePurchaseRequestExtras(id, extras)
         set((state) => {
-          const purchaseRequests = state.purchaseRequests.map((request) => (
-            request.id === id
-              ? mergePurchaseRequestExtras({ ...request, quoteFile: nextQuote })
-              : request
-          ))
+          const purchaseRequests = state.purchaseRequests.map((request) => {
+            if (request.id !== id) return request
+            const attachments = [
+              ...(request.attachments || []).filter((item) => item.purpose !== purpose),
+              nextFile,
+            ].filter(Boolean)
+            return mergePurchaseRequestExtras({
+              ...request,
+              attachments,
+              quoteFile: purpose === 'quote' ? nextFile : request.quoteFile,
+            })
+          })
           return { purchaseRequests, stats: deriveRequestStats(purchaseRequests) }
         })
         return get().purchaseRequests.find((request) => request.id === id)
+      },
+
+      payPurchaseRequest: async (
+        id,
+        { isOnline = false, invoiceAttachments = [], paymentAttachments = [] } = {}
+      ) => {
+        const current = get().purchaseRequests.find((request) => request.id === id)
+        if (!current) throw new Error('Solicitud no encontrada.')
+        const pendingInvoice = (invoiceAttachments || []).find((item) => item.pendingFile)
+        const pendingPayment = (paymentAttachments || []).find((item) => item.pendingFile)
+        if (!isOnline) {
+          const attachments = [
+            ...(current.attachments || []),
+            pendingInvoice ? { ...pendingInvoice, purpose: 'invoice' } : null,
+            pendingPayment ? { ...pendingPayment, purpose: 'payment' } : null,
+          ].filter(Boolean)
+          set((state) => {
+            const purchaseRequests = state.purchaseRequests.map((request) => (
+              request.id === id
+                ? { ...request, status: 'pagada', paidAt: now(), attachments }
+                : request
+            ))
+            return { purchaseRequests, stats: deriveRequestStats(purchaseRequests) }
+          })
+          return get().purchaseRequests.find((request) => request.id === id)
+        }
+        if (!get().apiContext.hydrated) await get().hydrateFromApi()
+        if (!current.version) throw new Error('Vuelve a cargar la solicitud antes de pagarla.')
+        if (pendingInvoice) await uploadPurchaseDocument(id, 'invoice', pendingInvoice)
+        if (pendingPayment) await uploadPurchaseDocument(id, 'payment', pendingPayment)
+        const request = mapPurchaseRequestFromApi(
+          await purchasingApi.payRequest(id, { version: current.version })
+        )
+        set((state) => {
+          const purchaseRequests = replaceById(state.purchaseRequests, request)
+          return { purchaseRequests, stats: deriveRequestStats(purchaseRequests), error: null }
+        })
+        return request
       },
 
       reviewPurchaseRequest: async (id, status, reviewerId, { isOnline = false } = {}) => {
@@ -327,14 +384,23 @@ export const useComprasStore = create(
         return request
       },
 
-      markRequestDelivered: async (id, { isOnline = false } = {}) => {
+      markRequestDelivered: async (id, { isOnline = false, lines = [], receiptAttachments = [] } = {}) => {
         const current = mergePurchaseRequestExtras(
           get().purchaseRequests.find((request) => request.id === id) || null
         )
         if (!current) throw new Error('Solicitud no encontrada.')
-        const inventoryResult = await receivePurchaseRequestInventory(current, { isOnline })
+        if (current.status !== 'pagada' && isOnline) {
+          throw new Error('La solicitud debe estar pagada antes de marcarla como recibida.')
+        }
 
         if (!isOnline) {
+          if (current.status !== 'pagada' && current.status !== 'aprobada') {
+            throw new Error('La solicitud debe estar pagada antes de recibirla.')
+          }
+          const inventoryResult = await receivePurchaseRequestInventory(current, {
+            isOnline: false,
+            lines,
+          })
           set((state) => {
             const purchaseRequests = state.purchaseRequests.map((request) => (
               request.id === id ? { ...request, status: 'entregada', deliveredAt: now() } : request
@@ -343,16 +409,68 @@ export const useComprasStore = create(
           })
           return { request: get().purchaseRequests.find((request) => request.id === id), inventoryResult }
         }
+
         if (!get().apiContext.hydrated) await get().hydrateFromApi()
         if (!current.version) throw new Error('Vuelve a cargar la solicitud antes de entregarla.')
+        const receipt = (receiptAttachments || []).find((item) => item.pendingFile)
+        if (!receipt) throw new Error('Debes subir una foto de comprobante de recepción.')
+        const { uploadPurchaseReceipt } = await import('@/lib/documentAttachments')
+        await uploadPurchaseReceipt(id, receipt)
+
+        const payloadLines = (lines || []).map((line) => ({
+          itemId: line.itemId,
+          inventoryItemId: line.inventoryItemId,
+        }))
         const request = mergePurchaseRequestExtras(mapPurchaseRequestFromApi(
-          await purchasingApi.deliverRequest(id, { version: current.version })
+          await purchasingApi.deliverRequest(id, {
+            version: current.version,
+            lines: payloadLines,
+          })
         ))
         set((state) => {
           const purchaseRequests = replaceById(state.purchaseRequests, request)
           return { purchaseRequests, stats: deriveRequestStats(purchaseRequests), error: null }
         })
-        return { request, inventoryResult }
+        return { request, inventoryResult: { received: payloadLines.length, skipped: false } }
+      },
+
+      fetchSupplierCatalog: async (supplierId, { isOnline = false } = {}) => {
+        if (!isOnline || !isUuid(supplierId)) return []
+        if (!get().apiContext.hydrated) await get().hydrateFromApi()
+        const items = await purchasingApi.listSupplierCatalog(supplierId, { activeOnly: true })
+        return items || []
+      },
+
+      saveSupplierCatalogItem: async (supplierId, payload, { isOnline = false } = {}) => {
+        if (!isOnline) throw new Error('El catálogo del proveedor requiere conexión.')
+        if (!isUuid(supplierId)) {
+          throw new Error('Vuelve a cargar los proveedores desde el servidor antes de editar el catálogo.')
+        }
+        if (!get().apiContext.hydrated) await get().hydrateFromApi()
+        if (payload.id) {
+          return purchasingApi.updateSupplierCatalogItem(supplierId, payload.id, {
+            version: payload.version,
+            name: payload.name,
+            unit: payload.unit,
+            unitPrice: payload.unitPrice,
+            categoryId: payload.categoryId,
+            active: payload.active,
+          })
+        }
+        const created = await purchasingApi.createSupplierCatalogItem(supplierId, {
+          name: payload.name,
+          unit: payload.unit,
+          unitPrice: payload.unitPrice,
+          categoryId: payload.categoryId,
+        })
+        await get().hydrateFromApi({ force: true })
+        return created
+      },
+
+      compareCatalog: async (params = {}, { isOnline = false } = {}) => {
+        if (!isOnline) return []
+        if (!get().apiContext.hydrated) await get().hydrateFromApi()
+        return purchasingApi.compareCatalog(params) || []
       },
 
       updateSettings: async (data, { isOnline = false } = {}) => {

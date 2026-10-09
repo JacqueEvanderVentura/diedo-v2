@@ -118,6 +118,8 @@ function leadPayload(data) {
     rawSnippet: data.rawSnippet || null,
     status: data.status || 'nuevo',
     starRating: data.starRating ?? null,
+    documentType: data.docType || data.documentType || null,
+    documentId: data.documentId || null,
   }
 }
 
@@ -295,6 +297,8 @@ function normalizeLead(raw) {
     lostReason: raw.lostReason || null,
     pipelineClosedAt: raw.pipelineClosedAt || null,
     version: raw.version || 1,
+    docType: raw.docType || raw.documentType || 'cedula',
+    documentId: raw.documentId || '',
   }
 }
 
@@ -1033,6 +1037,10 @@ export const useCrmStore = create(
           fields.forEach((field) => {
             if (data[field] !== undefined) payload[field] = data[field]
           })
+          if (data.docType !== undefined || data.documentType !== undefined) {
+            payload.documentType = data.docType ?? data.documentType
+          }
+          if (data.documentId !== undefined) payload.documentId = data.documentId
           try {
             const response = await crmApi.updateLead(id, payload)
             const saved = mapLeadFromApi(response)

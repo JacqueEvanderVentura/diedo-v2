@@ -1,4 +1,7 @@
-import { DEFAULT_BILLING_DOCUMENTS } from '../../modules/configuracion/lib/billingDocuments'
+import {
+  DEFAULT_BILLING_DOCUMENTS,
+  normalizeBillingDocumentsState,
+} from '../../modules/configuracion/lib/billingDocuments'
 
 function optionalText(value) {
   const normalized = String(value || '').trim()
@@ -51,16 +54,41 @@ export function mapBillingDocumentsFromApi(raw) {
   }
 }
 
-export function billingDocumentsToApi(billingDocuments = {}) {
+export function mapWorkspaceBillingDocumentsFromApi(raw) {
+  return normalizeBillingDocumentsState(raw)
+}
+
+function billingTemplateFieldsToApi(template = {}) {
   return {
-    trade_name: billingDocuments.tradeName?.trim() || '',
-    legal_name: billingDocuments.legalName?.trim() || '',
-    rnc: billingDocuments.rnc?.trim() || '',
-    address: billingDocuments.address?.trim() || '',
-    phone: billingDocuments.phone?.trim() || '',
-    email: optionalText(billingDocuments.email),
-    logo_data_url: billingDocuments.logoDataUrl || '',
-    footer_note: billingDocuments.footerNote?.trim() || '',
+    trade_name: template.tradeName?.trim() || '',
+    legal_name: template.legalName?.trim() || '',
+    rnc: template.rnc?.trim() || '',
+    address: template.address?.trim() || '',
+    phone: template.phone?.trim() || '',
+    email: optionalText(template.email),
+    logo_data_url: template.logoDataUrl || '',
+    footer_note: template.footerNote?.trim() || '',
+  }
+}
+
+export function billingDocumentsToApi(billingDocuments = {}) {
+  const state = normalizeBillingDocumentsState(billingDocuments)
+  return {
+    templates: state.templates.map((template) => ({
+      id: template.id,
+      name: template.name?.trim() || 'Plantilla',
+      branch_ids: template.branchIds || [],
+      ...billingTemplateFieldsToApi(template),
+    })),
+  }
+}
+
+export function billingTemplateToApi(template = {}) {
+  return {
+    id: template.id,
+    name: template.name?.trim() || 'Plantilla',
+    branch_ids: template.branchIds || [],
+    ...billingTemplateFieldsToApi(template),
   }
 }
 
@@ -153,7 +181,6 @@ export function branchGeneralPatchToApi(form, branch) {
       email: optionalText(form.email),
       manager: form.manager || '',
       schedule: form.schedule || '',
-      billing_documents: billingDocumentsToApi(form.billingDocuments),
     },
     version: branch.version,
   }

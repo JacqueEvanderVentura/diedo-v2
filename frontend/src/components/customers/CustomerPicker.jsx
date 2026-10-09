@@ -12,6 +12,14 @@ import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
 import { DropdownPanel } from '@/components/ui/DropdownPanel'
 import { truncateDisplayText } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { Select } from '@/components/ui/Select'
+import {
+  DOC_TYPES,
+  formatDocumentInput,
+  validateCustomerDocument,
+  findCustomerByDocument,
+  normalizeDocumentId,
+} from '@/lib/customerDocuments'
 
 const CUSTOMER_NAME_DISPLAY_MAX = 40
 
@@ -26,15 +34,20 @@ export function CustomerPicker({
   manualEntryLabel = 'Cliente manual (escribir datos)',
 }) {
   const customers = useCustomersStore((s) => s.customers)
+  const customersListMeta = useCustomersStore((s) => s.customersListMeta)
+  const fetchCustomersPage = useCustomersStore((s) => s.fetchCustomersPage)
   const addCustomer = useCustomersStore((s) => s.addCustomer)
   const branches = useConfigStore((s) => s.branches)
   const user = useSessionStore((s) => s.user)
+  const online = useSessionStore((s) => s.status === 'online')
 
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
+  const [docType, setDocType] = useState('cedula')
+  const [documentId, setDocumentId] = useState('')
   const [branchIds, setBranchIds] = useState([])
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
@@ -63,6 +76,15 @@ export function CustomerPicker({
     setBranchIds(branchId ? [branchId] : [])
   }, [modalOpen, branchId])
 
+  useEffect(() => {
+    if (!open || !online) return undefined
+    const branchIds = branchId ? [branchId] : []
+    const handle = window.setTimeout(() => {
+      fetchCustomersPage({ page: 1, search: query.trim(), branchIds }).catch(() => {})
+    }, query.trim() ? 400 : 0)
+    return () => window.clearTimeout(handle)
+  }, [open, online, query, branchId, fetchCustomersPage])
+
   const scopedCustomers = useMemo(
     () => customersVisibleToSession(customers, user),
     [customers, user]
@@ -76,7 +98,12 @@ export function CustomerPicker({
   const filtered = branchScopedCustomers.filter((c) => {
     if (c.isDefault) return false
     if (!q) return true
-    return c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q))
+    const docKey = normalizeDocumentId(q, 'cedula')
+    return (
+      c.name.toLowerCase().includes(q)
+      || (c.phone && c.phone.includes(q))
+      || (docKey && c.documentId && normalizeDocumentId(c.documentId, c.docType || 'cedula').includes(docKey))
+    )
   })
 
   const selectCustomer = (c) => {
@@ -93,17 +120,25 @@ export function CustomerPicker({
   const submitCreate = async () => {
     if (!name.trim()) return setErr('Ingresa el nombre del cliente.')
     if (!branchIds.length) return setErr('Selecciona al menos una sucursal.')
+    const docErr = validateCustomerDocument(docType, documentId)
+    if (docErr) return setErr(docErr)
+    const duplicate = findCustomerByDocument(scopedCustomers, docType, documentId)
+    if (duplicate) return setErr('Ya existe un cliente con ese documento.')
     setSaving(true)
     try {
       const customer = await addCustomer({
         name: name.trim(),
         phone: phone.trim() || null,
+        docType,
+        documentId: documentId.trim(),
         branchIds,
       })
       onChange?.(customer)
       toast.success(`Cliente "${customer.name}" creado y seleccionado`)
       setName('')
       setPhone('')
+      setDocType('cedula')
+      setDocumentId('')
       setBranchIds([])
       setErr('')
       setModalOpen(false)
@@ -184,7 +219,7 @@ export function CustomerPicker({
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar por nombre o teléfono…"
+              placeholder="Buscar por nombre, teléfono o cédula…"
               data-testid={`${testIdPrefix}-search`}
               className="w-full rounded-lg border-0 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-700 ring-1 ring-inset ring-transparent placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-600"
             />
@@ -193,7 +228,9 @@ export function CustomerPicker({
 
         <div className="max-h-52 overflow-y-auto p-1.5 scrollbar-thin">
           {filtered.length === 0 ? (
-            <p className="px-3 py-4 text-center text-sm text-slate-400">Sin coincidencias</p>
+            <p className="px-3 py-4 text-center text-sm text-slate-400">
+              {online && open && customersListMeta.loading ? 'Buscando…' : 'Sin coincidencias'}
+            </p>
           ) : (
             filtered.map((c) => (
               <button
@@ -238,6 +275,27 @@ export function CustomerPicker({
               placeholder="Ej. Juan Pérez"
               data-testid={`${testIdPrefix}-new-name`}
             />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-600">Tipo de documento</label>
+              <Select
+                value={docType}
+                onChange={setDocType}
+                options={DOC_TYPES.map((item) => ({ value: item.id, label: item.label }))}
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-600">Documento</label>
+              <Input
+                value={documentId}
+                onChange={(e) => {
+                  setDocumentId(formatDocumentInput(e.target.value, docType))
+                  setErr('')
+                }}
+                placeholder={docType === 'cedula' ? '001-1234567-8' : docType === 'rnc' ? '123456789' : 'Pasaporte'}
+              />
+            </div>
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Teléfono (opcional)</label>

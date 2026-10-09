@@ -176,6 +176,24 @@ class CrmLead(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             "assigned_membership_id",
             "status",
         ),
+        CheckConstraint(
+            "document_type IS NULL OR document_type IN ('cedula', 'pasaporte', 'rnc')",
+            name="crm_leads_document_type_values",
+        ),
+        Index(
+            "ix_crm_leads_workspace_normalized_document",
+            "workspace_id",
+            "normalized_document_id",
+        ),
+        Index(
+            "uq_crm_leads_workspace_document_open",
+            "workspace_id",
+            "normalized_document_id",
+            unique=True,
+            postgresql_where=text(
+                "normalized_document_id IS NOT NULL AND converted_customer_id IS NULL"
+            ),
+        ),
     )
 
     workspace_id: Mapped[UUID] = mapped_column(
@@ -194,6 +212,9 @@ class CrmLead(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     website: Mapped[str | None] = mapped_column(String(500))
     instagram_url: Mapped[str | None] = mapped_column(String(500))
     location: Mapped[str | None] = mapped_column(String(240))
+    document_type: Mapped[str | None] = mapped_column(String(16))
+    document_id: Mapped[str | None] = mapped_column(String(64))
+    normalized_document_id: Mapped[str | None] = mapped_column(String(64))
     source: Mapped[str] = mapped_column(
         String(16), nullable=False, default="manual", server_default=text("'manual'")
     )

@@ -12,6 +12,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,7 @@ from app.db.models import (
     CrmActivity,
     CrmLead,
     CrmSettings,
+    CustomerBranchAssignment,
     CustomerCrmProfile,
     WorkspaceMembership,
 )
@@ -37,13 +39,23 @@ from app.repositories.pos import QuoteRecord, SaleRecord
 from app.schemas.crm import ImportPipelineItem
 from app.services.auth import AuthPrincipal
 from app.services.authorization import PermissionGrant
+from app.services.document_identity import (
+    assert_document_available_in_workspace,
+    prepare_optional_document_values,
+    require_document_pair,
+)
 from app.services.errors import (
     AuthorizationError,
     ConflictError,
     InvalidOperationError,
     ResourceNotFoundError,
 )
-from app.services.master_data import normalize_email, normalize_name, normalize_phone
+from app.services.master_data import (
+    cast_optional_str,
+    normalize_email,
+    normalize_name,
+    normalize_phone,
+)
 from app.services.pos import CheckoutResult, PosService
 
 _LEAD_STAGE_LABELS: dict[str, str] = {
@@ -187,6 +199,13 @@ class CrmService:
             idempotency_key=idempotency_key,
             fingerprint=fingerprint,
         )
+        self._require_manual_lead_document(lead)
+        if lead.normalized_document_id:
+            assert_document_available_in_workspace(
+                self._session,
+                workspace_id=grant.workspace_id,
+                normalized_document_id=lead.normalized_document_id,
+            )
         try:
             self._repository.add_lead(lead)
             self._audit(
@@ -205,7 +224,10 @@ class CrmService:
                 self._require_branch(grant, replay.branch_id)
                 self._require_fingerprint(replay.request_fingerprint, fingerprint)
                 return self._repository.lead_record(replay)
-            raise ConflictError("No se pudo crear el lead.") from exc
+            raise ConflictError(
+                "Ya existe un lead abierto con ese documento en el workspace.",
+                "documentId",
+            ) from exc
 
     def import_leads(
         self,
@@ -239,6 +261,12 @@ class CrmService:
                     idempotency_key=key,
                     fingerprint=fingerprint,
                 )
+                if lead.normalized_document_id:
+                    assert_document_available_in_workspace(
+                        self._session,
+                        workspace_id=grant.workspace_id,
+                        normalized_document_id=lead.normalized_document_id,
+                    )
                 self._repository.add_lead(lead)
                 records.append(self._repository.lead_record(lead))
             self._audit(
@@ -299,6 +327,21 @@ class CrmService:
             lead.star_rating = changes["star_rating"]
         if "acquisition_source" in changes:
             lead.acquisition_source = changes["acquisition_source"]
+        if "document_type" in changes or "document_id" in changes:
+            docs = prepare_optional_document_values(
+                cast_optional_str(cast(str | None, changes.get("document_type"))),
+                cast_optional_str(cast(str | None, changes.get("document_id"))),
+            )
+            lead.document_type = docs["document_type"]
+            lead.document_id = docs["document_id"]
+            lead.normalized_document_id = docs["normalized_document_id"]
+            if lead.normalized_document_id:
+                assert_document_available_in_workspace(
+                    self._session,
+                    workspace_id=grant.workspace_id,
+                    normalized_document_id=lead.normalized_document_id,
+                    exclude_lead_id=lead.id,
+                )
         if "pipeline_value" in changes:
             lead.pipeline_value = cast(Decimal, changes["pipeline_value"])
         previous_status = lead.status
@@ -328,6 +371,7 @@ class CrmService:
             lead.lost_reason = lost_reason
         if not lead.name and not lead.company:
             raise InvalidOperationError("El lead requiere nombre o empresa.", "name")
+        self._require_manual_lead_document(lead)
         lead.updated_by_platform_user_id = principal.platform_user_id
         lead.version += 1
         audit_details: dict[str, Any] = {
@@ -675,15 +719,62 @@ class CrmService:
             "instagram_url": _lead_instagram_url(lead),
             "status": "active",
         }
-        try:
-            customer_record = self._master_data.create_customer(
-                workspace_id=crm_grant.workspace_id,
-                actor_platform_user_id=principal.platform_user_id,
-                values=prepared,
-                branch_ids=branch_ids,
-                request_id=get_request_id(),
-                create_crm_profile=False,
+        doc_type = (
+            cast_optional_str(cast(str | None, values.get("document_type"))) or lead.document_type
+        )
+        doc_id = cast_optional_str(cast(str | None, values.get("document_id"))) or lead.document_id
+        require_document_pair(doc_type, doc_id)
+        doc_fields = prepare_optional_document_values(doc_type, doc_id)
+        prepared.update(doc_fields)
+        normalized_doc = cast(str, doc_fields["normalized_document_id"])
+        existing_customer = self._master_data.customer_by_document(
+            crm_grant.workspace_id, normalized_doc
+        )
+        conflicting_lead = self._repository.lead_by_document(
+            crm_grant.workspace_id,
+            normalized_doc,
+            exclude_lead_id=lead.id,
+        )
+        if conflicting_lead is not None:
+            raise ConflictError(
+                "Ya existe un lead abierto con ese documento en el workspace.",
+                "documentId",
             )
+        if existing_customer is None:
+            assert_document_available_in_workspace(
+                self._session,
+                workspace_id=crm_grant.workspace_id,
+                normalized_document_id=normalized_doc,
+                exclude_lead_id=lead.id,
+            )
+        try:
+            if existing_customer is not None:
+                existing_branches = set(
+                    self._session.scalars(
+                        select(CustomerBranchAssignment.branch_id).where(
+                            CustomerBranchAssignment.workspace_id == crm_grant.workspace_id,
+                            CustomerBranchAssignment.customer_id == existing_customer.id,
+                            CustomerBranchAssignment.status == "active",
+                        )
+                    ).all()
+                )
+                self._master_data.update_customer(
+                    customer=existing_customer,
+                    changes={},
+                    branch_ids=existing_branches | branch_ids,
+                    actor_platform_user_id=principal.platform_user_id,
+                    request_id=get_request_id(),
+                )
+                customer_record = self._master_data.customer_record(existing_customer)
+            else:
+                customer_record = self._master_data.create_customer(
+                    workspace_id=crm_grant.workspace_id,
+                    actor_platform_user_id=principal.platform_user_id,
+                    values=prepared,
+                    branch_ids=branch_ids,
+                    request_id=get_request_id(),
+                    create_crm_profile=False,
+                )
             profile = CustomerCrmProfile(
                 workspace_id=crm_grant.workspace_id,
                 customer_id=customer_record.id,
@@ -714,7 +805,10 @@ class CrmService:
             self._session.commit()
         except IntegrityError as exc:
             self._session.rollback()
-            raise ConflictError("No se pudo convertir el lead.") from exc
+            raise ConflictError(
+                "Ya existe un cliente con ese documento en el workspace.",
+                "documentId",
+            ) from exc
         record = self._repository.customer_record(
             workspace_id=crm_grant.workspace_id,
             customer_id=customer_record.id,
@@ -1172,6 +1266,26 @@ class CrmService:
         )
         return OverviewRecord(branch_id, values, generated_at)
 
+    @staticmethod
+    def _require_manual_lead_document(lead: CrmLead) -> None:
+        if lead.source == "manual" and not lead.normalized_document_id:
+            raise InvalidOperationError(
+                "El documento es obligatorio para leads manuales.",
+                "documentId",
+            )
+
+    @staticmethod
+    def _apply_lead_document_values(lead: CrmLead, values: dict[str, Any]) -> None:
+        if values.get("document_type") is None and values.get("document_id") is None:
+            return
+        docs = prepare_optional_document_values(
+            cast_optional_str(cast(str | None, values.get("document_type"))),
+            cast_optional_str(cast(str | None, values.get("document_id"))),
+        )
+        lead.document_type = docs["document_type"]
+        lead.document_id = docs["document_id"]
+        lead.normalized_document_id = docs["normalized_document_id"]
+
     def _build_lead(
         self,
         *,
@@ -1189,7 +1303,7 @@ class CrmService:
         if status == "perdido" and not lost_reason:
             raise InvalidOperationError("Un lead perdido requiere motivo.", "lostReason")
         pipeline_closed_at = datetime.now(UTC) if status == "perdido" else None
-        return CrmLead(
+        lead = CrmLead(
             workspace_id=grant.workspace_id,
             branch_id=branch_id,
             assigned_membership_id=self._assignee(
@@ -1226,6 +1340,8 @@ class CrmService:
             created_by_platform_user_id=principal.platform_user_id,
             updated_by_platform_user_id=principal.platform_user_id,
         )
+        self._apply_lead_document_values(lead, values)
+        return lead
 
     def _required_membership(self, grant: PermissionGrant) -> WorkspaceMembership:
         membership = self._repository.membership(grant.workspace_id, grant.membership_id)

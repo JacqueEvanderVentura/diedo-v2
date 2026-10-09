@@ -12,6 +12,7 @@ import { useSessionStore } from '@/stores/sessionStore'
 import { catalogApi } from '@/services/catalogApi'
 import { mapCategoryFromApi } from '@/services/adapters/catalog'
 import { resolveCategoryId } from '@/lib/catalogSync'
+import { DURATION_OPTIONS } from '@/data/agenda'
 import { cn } from '@/lib/utils'
 
 const UNITS = [
@@ -35,6 +36,9 @@ const EMPTY = {
   branchId: 'charm-dn',
   branchIds: ['charm-dn'],
   unit: 'ud',
+  availableInAgenda: true,
+  availableInPos: true,
+  durationMinutes: 30,
 }
 
 export function groupServiceBranches(branches) {
@@ -156,6 +160,9 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
       branchIds: f.branchIds?.length
         ? f.branchIds
         : [f.branchId || BRANCHES[0]?.id].filter(Boolean),
+      availableInAgenda: type === 'service' ? f.availableInAgenda !== false : true,
+      availableInPos: type === 'service' ? f.availableInPos !== false : true,
+      durationMinutes: type === 'service' ? Number(f.durationMinutes) || 30 : 30,
     }))
   }
 
@@ -176,6 +183,9 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
     if (isSupply && (form.cost === '' || Number(form.cost) < 0)) return setErr('Ingresa el costo de adquisición.')
     if (!isService && (form.stock === '' || Number(form.stock) < 0)) return setErr('Ingresa el stock.')
     if (isService && !form.branchIds?.length) return setErr('Selecciona al menos una sucursal para el servicio.')
+    if (isService && form.availableInAgenda === false && form.availableInPos === false) {
+      return setErr('Marca al menos Agenda o Punto de venta / ventas.')
+    }
     if (requiresAdjustment && adjustmentReason.trim().length < 2) {
       return setErr('Indica el motivo de la corrección de stock.')
     }
@@ -368,6 +378,46 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
                 </Button>
               </div>
             )}
+          </div>
+        )}
+
+        {isService && (
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3" data-testid="inventory-service-channels">
+            <p className="mb-2 text-xs font-semibold text-slate-700">Disponibilidad del servicio</p>
+            <p className="mb-3 text-xs leading-relaxed text-slate-500">
+              Agenda incluye citas internas y reserva online. Punto de venta / ventas incluye POS, pipeline y Finanzas → Ingresos.
+            </p>
+            <div className="mb-3">
+              <label className="mb-1.5 block text-xs font-medium text-slate-600">Duración de la cita</label>
+              <Select
+                value={form.durationMinutes ?? 30}
+                onChange={(value) => set('durationMinutes', Number(value))}
+                options={DURATION_OPTIONS}
+                data-testid="inventory-service-duration"
+              />
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:gap-6">
+              <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={form.availableInAgenda !== false}
+                  onChange={(e) => { set('availableInAgenda', e.target.checked); setErr('') }}
+                  data-testid="inventory-channel-agenda"
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                Agenda
+              </label>
+              <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={form.availableInPos !== false}
+                  onChange={(e) => { set('availableInPos', e.target.checked); setErr('') }}
+                  data-testid="inventory-channel-pos"
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                Punto de venta / ventas
+              </label>
+            </div>
           </div>
         )}
 

@@ -357,7 +357,7 @@ export default function UsuariosPage({ embedded = false }) {
         if (editing) {
           await usersApi.update(editing.id, {
             roleAssignments,
-            status: form.active ? 'active' : 'suspended',
+            status: form.active ? 'active' : 'inactive',
             version: editing.version,
           })
           successMessage = 'Usuario actualizado'
@@ -377,14 +377,16 @@ export default function UsuariosPage({ embedded = false }) {
             }
           }
           successMessage = copied ? 'Invitación creada; token copiado al portapapeles' : 'Invitación creada'
+          if (invitation.notice) toast.info(invitation.notice)
         } else {
-          await usersApi.create({
+          const created = await usersApi.create({
             displayName: form.name.trim(),
             email: form.email.trim(),
             password: form.password,
             roleAssignments,
           })
           successMessage = 'Usuario creado'
+          if (created.notice) toast.info(created.notice)
         }
         setModalOpen(false)
         toast.success(successMessage)
@@ -413,10 +415,10 @@ export default function UsuariosPage({ embedded = false }) {
     setPendingAction(`status:${user.id}`)
     try {
       await usersApi.update(user.id, {
-        status: user.active ? 'suspended' : 'active',
+        status: user.active ? 'inactive' : 'active',
         version: user.version,
       })
-      toast.success(user.active ? 'Usuario suspendido' : 'Usuario reactivado')
+      toast.success(user.active ? 'Usuario desactivado' : 'Usuario activado')
       await loadApiData()
     } catch (error) {
       toast.error(error.message || 'No se pudo cambiar el estado del usuario.')
@@ -555,9 +557,9 @@ export default function UsuariosPage({ embedded = false }) {
                             disabled={Boolean(pendingAction)}
                             data-testid={`usuario-status-${u.id}`}
                           >
-                            <Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Suspendido'}</Badge>
+                            <Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Inactivo'}</Badge>
                           </button>
-                        ) : <Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Suspendido'}</Badge>
+                        ) : <Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Inactivo'}</Badge>
                       ) : (
                         <button onClick={() => updateUser(u.id, { active: !u.active })}><Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Inactivo'}</Badge></button>
                       )}
@@ -612,9 +614,9 @@ export default function UsuariosPage({ embedded = false }) {
                         </button>
                       ) : canManageMemberships ? (
                         <button onClick={() => toggleOnlineStatus(u)} disabled={Boolean(pendingAction)}>
-                          <Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Suspendido'}</Badge>
+                          <Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Inactivo'}</Badge>
                         </button>
-                      ) : <Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Suspendido'}</Badge>}
+                      ) : <Badge tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Inactivo'}</Badge>}
                     </div>
                   }
                 />
