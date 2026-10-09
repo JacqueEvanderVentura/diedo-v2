@@ -456,6 +456,20 @@ class PurchasingService:
             raise InvalidOperationError(
                 "Solo una solicitud aprobada puede marcarse como pagada.", "status"
             )
+        invoice_count = self._repository.count_attachments(
+            grant.workspace_id, request.id, purpose="invoice"
+        )
+        if invoice_count < 1:
+            raise InvalidOperationError(
+                "Debes subir la factura del proveedor antes de marcarla como pagada.", "invoice"
+            )
+        payment_count = self._repository.count_attachments(
+            grant.workspace_id, request.id, purpose="payment"
+        )
+        if payment_count < 1:
+            raise InvalidOperationError(
+                "Debes subir el comprobante de pago antes de marcarla como pagada.", "payment"
+            )
         self._require_version(request.version, expected_version)
         finance_grant = AuthorizationService(self._session).require_permission(
             principal, "finance.manage"

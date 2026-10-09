@@ -13,4 +13,5 @@ class DocumentAttachmentResponse(ApiModel):
     size_bytes: int
     checksum_sha256: str
     preview_url: str
+    purpose: str = "quote"
     created_at: datetime

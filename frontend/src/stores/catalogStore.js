@@ -50,6 +50,7 @@ function normalizeSeed(p) {
     subtype: isSupply ? 'raw' : 'sale',
     availableInAgenda: p.type === 'service' ? p.availableInAgenda !== false : undefined,
     availableInPos: p.type === 'service' ? p.availableInPos !== false : undefined,
+    durationMinutes: p.type === 'service' ? Number(p.durationMinutes) || 30 : undefined,
   }
 }
 
@@ -183,6 +184,7 @@ export const useCatalogStore = create(
             if (form.type === 'service') {
               updatePayload.availableInAgenda = form.availableInAgenda !== false
               updatePayload.availableInPos = form.availableInPos !== false
+              updatePayload.durationMinutes = Number(form.durationMinutes) || 30
             }
           }
           apiProduct = await inventoryApi.updateItem(existing.id, updatePayload)
@@ -206,6 +208,7 @@ export const useCatalogStore = create(
               taxRate: Number(form.taxPct) || 0,
               availableInAgenda: form.availableInAgenda !== false,
               availableInPos: form.availableInPos !== false,
+              durationMinutes: Number(form.durationMinutes) || 30,
             })
           } else {
             apiProduct = await inventoryApi.createProduct({
@@ -261,6 +264,7 @@ export const useCatalogStore = create(
           image: data.image || null,
           availableInAgenda: type === 'service' ? data.availableInAgenda !== false : undefined,
           availableInPos: type === 'service' ? data.availableInPos !== false : undefined,
+          durationMinutes: type === 'service' ? Number(data.durationMinutes) || 30 : undefined,
         }
         set((s) => ({ products: [product, ...s.products] }))
         return product

@@ -30,12 +30,14 @@ from app.schemas.agenda import (
     UpdateAppointmentRequest,
     UpdateAppointmentResourceRequest,
 )
-from app.services.agenda import AgendaService
+from app.services.agenda import AgendaService, appointment_created_by_label
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+
+from tests.customer_payloads import unique_cedula_document_id
 
 _OWNER_EMAIL = "owner@erp.dev"
 _OWNER_PASSWORD = "agenda-owner-password-not-a-secret"
@@ -256,6 +258,23 @@ def _appointment_payload(
         "recurrence": recurrence,
         "repeatCount": repeat_count,
     }
+
+
+def test_self_booking_created_by_label_uses_customer_name() -> None:
+    appointment = cast(
+        Appointment,
+        type(
+            "Stub",
+            (),
+            {"source": "self", "customer_name": "Evan García"},
+        )(),
+    )
+    assert appointment_created_by_label(appointment, "Portal API") == "Evan García"
+    staff = cast(
+        Appointment,
+        type("Stub", (), {"source": "staff", "customer_name": "Evan García"})(),
+    )
+    assert appointment_created_by_label(staff, "Recepción") == "Recepción"
 
 
 def test_agenda_service_schedule_recurrence_and_money_rules() -> None:
@@ -815,7 +834,7 @@ def test_agenda_financial_changes_require_receivables_permission_and_cancel_debt
             "lastName": suffix,
             "email": f"agenda.protected.{suffix}@example.com",
             "documentType": "cedula",
-            "documentId": f"001-1234567-{suffix[-1]}",
+            "documentId": unique_cedula_document_id(),
             "branchIds": [str(branch_id)],
         },
     )

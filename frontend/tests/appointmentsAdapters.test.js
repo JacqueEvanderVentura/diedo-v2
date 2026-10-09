@@ -58,6 +58,25 @@ describe('adaptadores de Agenda', () => {
     })).toMatchObject({ id: 'resource-1', branchId: 'branch-1', active: true, version: 2 })
   })
 
+  it('atribuye auto-agendado al nombre del cliente en creado por', () => {
+    expect(mapAppointmentFromApi({
+      id: 'appointment-self',
+      branchId: 'branch-1',
+      date: '2026-10-08',
+      time: '10:00',
+      duration: 30,
+      status: 'confirmed',
+      source: 'self',
+      customerName: 'Evan García',
+      createdBy: 'Portal API',
+      serviceName: 'Corte',
+    })).toMatchObject({
+      source: 'self',
+      customerName: 'Evan García',
+      createdBy: 'Evan García',
+    })
+  })
+
   it('construye POST/PATCH versionado y reconoce el 409 de horario', () => {
     const customerId = '01a04f09-32fe-712b-a67a-f0cb64f31431'
     const employeeId = '27c9a3f3-6887-5912-a927-39e1c3109bf1'

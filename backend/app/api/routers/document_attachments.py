@@ -1,7 +1,7 @@
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 
 from app.api.attachment_response import authorized_attachment_response
@@ -16,11 +16,13 @@ from app.api.deps import (
     PurchasingReadGrant,
     PurchasingRequestCreateGrant,
     PurchasingRequestReviewGrant,
+    require_document_attachment_read,
 )
 from app.config import settings
 from app.repositories.document_attachments import DocumentAttachmentRecord
 from app.schemas.common import ErrorResponse
 from app.schemas.document_attachments import DocumentAttachmentResponse
+from app.services.authorization import PermissionGrant
 from app.services.document_attachments import DocumentAttachmentService
 
 router = APIRouter(prefix="/api/v1", tags=["document-attachments"])
@@ -41,6 +43,7 @@ def _attachment_response(record: DocumentAttachmentRecord) -> DocumentAttachment
         size_bytes=attachment.size_bytes,
         checksum_sha256=attachment.checksum_sha256,
         preview_url=record.preview_url,
+        purpose=attachment.purpose,
         created_at=attachment.created_at,
     )
 
@@ -53,7 +56,7 @@ def _attachment_response(record: DocumentAttachmentRecord) -> DocumentAttachment
 def get_document_attachment_content(
     attachment_id: UUID,
     database: DatabaseSession,
-    grant: FinanceReadGrant,
+    grant: Annotated[PermissionGrant, Depends(require_document_attachment_read)],
     storage: AttachmentStorageDep,
 ) -> StreamingResponse:
     attachment = DocumentAttachmentService(database).get_content(grant, attachment_id)
@@ -279,6 +282,68 @@ def upload_purchase_request_quote(
 
 
 @router.post(
+    "/purchasing/requests/{request_id}/invoice",
+    status_code=status.HTTP_201_CREATED,
+    responses=_SECURITY_RESPONSES,
+)
+def upload_purchase_request_invoice(
+    request_id: UUID,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: PurchasingRequestReviewGrant,
+    storage: AttachmentStorageDep,
+    file: Annotated[UploadFile, File()],
+) -> DocumentAttachmentResponse:
+    try:
+        stored = DocumentAttachmentService(database).upload(
+            principal=principal,
+            grant=grant,
+            owner_kind="purchase_request",
+            owner_id=request_id,
+            source=file.file,
+            filename=file.filename,
+            content_type=file.content_type,
+            storage=storage,
+            max_bytes=settings.attachment_max_bytes,
+            purpose="invoice",
+        )
+        return _attachment_response(stored.record)
+    finally:
+        file.file.close()
+
+
+@router.post(
+    "/purchasing/requests/{request_id}/payment",
+    status_code=status.HTTP_201_CREATED,
+    responses=_SECURITY_RESPONSES,
+)
+def upload_purchase_request_payment(
+    request_id: UUID,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: PurchasingRequestReviewGrant,
+    storage: AttachmentStorageDep,
+    file: Annotated[UploadFile, File()],
+) -> DocumentAttachmentResponse:
+    try:
+        stored = DocumentAttachmentService(database).upload(
+            principal=principal,
+            grant=grant,
+            owner_kind="purchase_request",
+            owner_id=request_id,
+            source=file.file,
+            filename=file.filename,
+            content_type=file.content_type,
+            storage=storage,
+            max_bytes=settings.attachment_max_bytes,
+            purpose="payment",
+        )
+        return _attachment_response(stored.record)
+    finally:
+        file.file.close()
+
+
+@router.post(
     "/purchasing/requests/{request_id}/receipt",
     status_code=status.HTTP_201_CREATED,
     responses=_SECURITY_RESPONSES,
@@ -326,3 +391,16 @@ def list_purchase_request_quote(
 ) -> list[DocumentAttachmentResponse]:
     rows = DocumentAttachmentService(database).list_for_owner(grant, "purchase_request", request_id)
     return [_attachment_response(row) for row in rows if row.attachment.purpose == "quote"]
+
+
+@router.get(
+    "/purchasing/requests/{request_id}/attachments",
+    responses=_SECURITY_RESPONSES,
+)
+def list_purchase_request_attachments(
+    request_id: UUID,
+    database: DatabaseSession,
+    grant: PurchasingReadGrant,
+) -> list[DocumentAttachmentResponse]:
+    rows = DocumentAttachmentService(database).list_for_owner(grant, "purchase_request", request_id)
+    return [_attachment_response(row) for row in rows]

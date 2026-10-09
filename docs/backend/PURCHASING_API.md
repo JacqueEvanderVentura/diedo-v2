@@ -41,7 +41,11 @@ return 404. Supplying an out-of-scope branch returns 403.
 | POST | `/api/v1/purchasing/suppliers/{supplierId}/catalog` | Add a catalog item (supply category). |
 | PATCH | `/api/v1/purchasing/suppliers/{supplierId}/catalog/{itemId}` | Update/archive catalog item. |
 | GET | `/api/v1/purchasing/catalog/compare` | Compare prices across suppliers (`categoryId`, `search`). |
+| POST | `/api/v1/purchasing/requests/{requestId}/quote` | Upload supplier quote (`purpose=quote`). |
+| POST | `/api/v1/purchasing/requests/{requestId}/invoice` | Upload supplier invoice (`purpose=invoice`). |
+| POST | `/api/v1/purchasing/requests/{requestId}/payment` | Upload payment proof (`purpose=payment`). |
 | POST | `/api/v1/purchasing/requests/{requestId}/receipt` | Upload receipt photo (`purpose=receipt`). |
+| GET | `/api/v1/purchasing/requests/{requestId}/attachments` | List quote, invoice, payment, and receipt files. |
 | GET | `/api/v1/purchasing/settings` | Read designated approver and notification preference. |
 | GET | `/api/v1/purchasing/settings/approvers` | List active members allowed to review purchase requests. |
 | PUT | `/api/v1/purchasing/settings` | Replace settings with optimistic versioning. |
@@ -55,7 +59,10 @@ Lists accept `page` and `pageSize` (maximum 200) and return `items`, `page`, `pa
   RNC/tax identifier is also unique among non-archived suppliers.
 - A request must contain 1–100 positive-quantity lines and use an active supplier authorized for
   its branch. Monetary amounts are non-negative decimals; `total` is computed from persisted lines.
-- Status transitions are `pendiente → aprobada/rechazada` and `aprobada → entregada`.
+- Status transitions are `pendiente → aprobada/rechazada`, `aprobada → pagada`, and
+  `pagada → entregada`. Paying requires a supplier invoice and a payment proof; receiving requires
+  a receipt photo. Request payloads include `attachments` (with `purpose` and `previewUrl`) so the
+  UI can show cotización, factura, comprobante de pago, and comprobante de recibimiento.
 - Only the configured approver membership may review when one is designated. Delivery still
   requires the review permission.
 - `version` prevents stale supplier, request, review, delivery, and settings writes. Reusing an

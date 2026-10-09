@@ -34,9 +34,12 @@ export function CustomerPicker({
   manualEntryLabel = 'Cliente manual (escribir datos)',
 }) {
   const customers = useCustomersStore((s) => s.customers)
+  const customersListMeta = useCustomersStore((s) => s.customersListMeta)
+  const fetchCustomersPage = useCustomersStore((s) => s.fetchCustomersPage)
   const addCustomer = useCustomersStore((s) => s.addCustomer)
   const branches = useConfigStore((s) => s.branches)
   const user = useSessionStore((s) => s.user)
+  const online = useSessionStore((s) => s.status === 'online')
 
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -72,6 +75,15 @@ export function CustomerPicker({
     if (!modalOpen) return
     setBranchIds(branchId ? [branchId] : [])
   }, [modalOpen, branchId])
+
+  useEffect(() => {
+    if (!open || !online) return undefined
+    const branchIds = branchId ? [branchId] : []
+    const handle = window.setTimeout(() => {
+      fetchCustomersPage({ page: 1, search: query.trim(), branchIds }).catch(() => {})
+    }, query.trim() ? 400 : 0)
+    return () => window.clearTimeout(handle)
+  }, [open, online, query, branchId, fetchCustomersPage])
 
   const scopedCustomers = useMemo(
     () => customersVisibleToSession(customers, user),
@@ -216,7 +228,9 @@ export function CustomerPicker({
 
         <div className="max-h-52 overflow-y-auto p-1.5 scrollbar-thin">
           {filtered.length === 0 ? (
-            <p className="px-3 py-4 text-center text-sm text-slate-400">Sin coincidencias</p>
+            <p className="px-3 py-4 text-center text-sm text-slate-400">
+              {online && open && customersListMeta.loading ? 'Buscando…' : 'Sin coincidencias'}
+            </p>
           ) : (
             filtered.map((c) => (
               <button

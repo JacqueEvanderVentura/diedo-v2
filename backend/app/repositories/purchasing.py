@@ -652,19 +652,34 @@ class PurchasingRepository:
         self._session.flush()
 
     def count_receipt_images(self, workspace_id: UUID, request_id: UUID) -> int:
-        return int(
-            self._session.scalar(
-                select(func.count(DocumentAttachment.id)).where(
-                    DocumentAttachment.workspace_id == workspace_id,
-                    DocumentAttachment.purchase_request_id == request_id,
-                    DocumentAttachment.purpose == "receipt",
-                    DocumentAttachment.content_type.in_(
-                        ("image/jpeg", "image/png", "image/webp", "image/gif")
-                    ),
+        return self.count_attachments(
+            workspace_id,
+            request_id,
+            purpose="receipt",
+            image_only=True,
+        )
+
+    def count_attachments(
+        self,
+        workspace_id: UUID,
+        request_id: UUID,
+        *,
+        purpose: str,
+        image_only: bool = False,
+    ) -> int:
+        predicates = [
+            DocumentAttachment.workspace_id == workspace_id,
+            DocumentAttachment.purchase_request_id == request_id,
+            DocumentAttachment.purpose == purpose,
+        ]
+        if image_only:
+            predicates.append(
+                DocumentAttachment.content_type.in_(
+                    ("image/jpeg", "image/png", "image/webp", "image/gif")
                 )
             )
-            or 0
-        )
+        counted = self._session.scalar(select(func.count(DocumentAttachment.id)).where(*predicates))
+        return int(counted or 0)
 
     def list_supplier_catalog(
         self,

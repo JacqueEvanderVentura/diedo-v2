@@ -267,12 +267,31 @@ class AgendaRepository:
         )
         return int(current or 0) + 1
 
+    def latest_visit_appointment_for_customer(
+        self,
+        *,
+        workspace_id: UUID,
+        customer_id: UUID,
+    ) -> Appointment | None:
+        return self._session.scalar(
+            select(Appointment)
+            .where(
+                Appointment.workspace_id == workspace_id,
+                Appointment.customer_id == customer_id,
+                Appointment.record_status == "active",
+                Appointment.status.in_(("confirmed", "fulfilled")),
+            )
+            .order_by(Appointment.starts_at.desc(), Appointment.id.desc())
+            .limit(1)
+        )
+
     def list_appointments(
         self,
         *,
         workspace_id: UUID,
         allowed_branch_ids: frozenset[UUID] | None,
         branch_id: UUID | None,
+        customer_id: UUID | None,
         date_from: date | None,
         date_to: date | None,
         search: str | None,
@@ -296,6 +315,8 @@ class AgendaRepository:
             filters.append(Appointment.branch_id.in_(allowed_branch_ids))
         if branch_id is not None:
             filters.append(Appointment.branch_id == branch_id)
+        if customer_id is not None:
+            filters.append(Appointment.customer_id == customer_id)
         if date_from is not None:
             filters.append(Appointment.scheduled_date >= date_from)
         if date_to is not None:

@@ -5,6 +5,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
+import { CreatablePicker } from '@/components/ui/CreatablePicker'
 import { useComprasStore } from '@/stores/comprasStore'
 import { useConfigStore } from '@/stores/configStore'
 import { usePosStore } from '@/stores/posStore'
@@ -14,14 +15,26 @@ import { REQUEST_PRIORITIES } from '@/data/compras'
 import { buildBranchFilterOptions } from '@/lib/branches'
 import { AttachmentField } from '@/components/ui/AttachmentField'
 import { filterCategoriesForSection } from '@/lib/categories'
+import { isUuid } from '@/lib/workspaceBranch'
+import {
+  applyInventorySupplyToRequestItem,
+  applySupplierCatalogToRequestItem,
+} from '../lib/purchaseRequestExtras'
+import {
+  COMMON_MEASURE_UNITS,
+  loadCustomMeasureUnits,
+  mergeMeasureUnits,
+} from '../lib/measureUnits'
 
 const emptyItem = () => ({
   name: '',
   qty: 1,
-  unit: 'unidad',
+  unit: 'Unidad',
   price: 0,
+  catalogItemId: '',
   supplyProductId: '',
   supplyCategoryId: '',
+  categoryId: '',
 })
 
 export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 'Usuario actual' }) {
@@ -47,9 +60,13 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
   const [supplierCatalog, setSupplierCatalog] = useState([])
   const fetchSupplierCatalog = useComprasStore((s) => s.fetchSupplierCatalog)
   const isOnline = useSessionStore((s) => s.isOnline())
+  const supplierOptions = useMemo(
+    () => (isOnline ? suppliers.filter((s) => isUuid(s.id)) : suppliers),
+    [suppliers, isOnline],
+  )
 
   useEffect(() => {
-    if (!open || !supplierId || !isOnline) {
+    if (!open || !supplierId || !isOnline || !isUuid(supplierId)) {
       setSupplierCatalog([])
       return
     }
@@ -59,25 +76,19 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
   }, [open, supplierId, isOnline, fetchSupplierCatalog])
 
   const linkCatalogItem = useCallback((idx, catalogItemId) => {
-    const catalogRow = supplierCatalog.find((row) => row.id === catalogItemId)
-    if (!catalogRow) return
+    const catalogRow = catalogItemId
+      ? supplierCatalog.find((row) => row.id === catalogItemId)
+      : null
     setItems((list) => list.map((it, i) => (
       i === idx
-        ? {
-            ...it,
-            catalogItemId,
-            name: catalogRow.name,
-            unit: catalogRow.unit,
-            price: Number(catalogRow.unitPrice) || 0,
-            categoryId: catalogRow.categoryId,
-          }
+        ? applySupplierCatalogToRequestItem(it, catalogRow, supplies, supplyCategories)
         : it
     )))
-  }, [supplierCatalog])
+  }, [supplierCatalog, supplies, supplyCategories])
 
   useEffect(() => {
     if (!open) return
-    setSupplierId(suppliers[0]?.id || '')
+    setSupplierId(supplierOptions[0]?.id || '')
     setBranchId(posBranchId || branches[0]?.id || 'charm-dn')
     setPriority('normal')
     setNotes('')
@@ -85,22 +96,46 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
     setQuoteAttachments([])
     setErr('')
     setSaving(false)
-  }, [open, suppliers, posBranchId, branches])
+  }, [open, supplierOptions, posBranchId, branches])
 
   const linkSupply = (idx, supplyProductId) => {
-    const supply = supplies.find((row) => row.id === supplyProductId)
+    const supply = supplyProductId
+      ? supplies.find((row) => row.id === supplyProductId)
+      : null
     setItems((list) => list.map((it, i) => (
-      i === idx
-        ? {
-            ...it,
-            supplyProductId,
-            name: supply?.name || it.name,
-            unit: supply?.unit || it.unit,
-            supplyCategoryId: supply?.category || it.supplyCategoryId,
-          }
-        : it
+      i === idx ? applyInventorySupplyToRequestItem(it, supply, supplyCategories) : it
     )))
   }
+
+  const unitOptions = useMemo(
+    () => mergeMeasureUnits(
+      COMMON_MEASURE_UNITS,
+      loadCustomMeasureUnits(),
+      supplierCatalog.map((row) => row.unit),
+      supplies.map((row) => row.unit),
+      items.map((row) => row.unit),
+    ),
+    [supplierCatalog, supplies, items],
+  )
+
+  const categoryOptions = useMemo(() => {
+    const seen = new Set()
+    const options = []
+    const push = (id, name) => {
+      if (!id || seen.has(id)) return
+      seen.add(id)
+      options.push({ value: id, label: name || 'Categoría' })
+    }
+    supplyCategories.forEach((row) => push(row.id, row.name))
+    supplierCatalog.forEach((row) => push(row.categoryId, row.categoryName))
+    items.forEach((row) => {
+      const id = row.supplyCategoryId || row.categoryId
+      if (!id || seen.has(id)) return
+      const known = categories.find((category) => category.id === id)
+      push(id, known?.name)
+    })
+    return options
+  }, [supplyCategories, supplierCatalog, items, categories])
 
   const updateItem = (idx, field, value) =>
     setItems((list) => list.map((it, i) => (i === idx ? { ...it, [field]: value } : it)))
@@ -153,7 +188,7 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
               value={supplierId}
               onChange={setSupplierId}
               placeholder="Seleccionar..."
-              options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
+              options={supplierOptions.map((s) => ({ value: s.id, label: s.name }))}
             />
           </div>
           <div>
@@ -228,14 +263,16 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
                   </div>
                   <div className="min-w-0 sm:col-span-2">
                     <label className="mb-1.5 block text-xs font-semibold text-slate-500">Categoría de insumo</label>
-                    <Select
-                      value={item.supplyCategoryId || ''}
-                      onChange={(value) => updateItem(idx, 'supplyCategoryId', value)}
+                    <CreatablePicker
+                      value={item.supplyCategoryId || item.categoryId || ''}
+                      onChange={(value) => setItems((list) => list.map((it, i) => (
+                        i === idx ? { ...it, supplyCategoryId: value, categoryId: value } : it
+                      )))}
+                      options={categoryOptions}
                       placeholder="Categoría"
-                      options={[
-                        { value: '', label: 'Sin categoría' },
-                        ...supplyCategories.map((category) => ({ value: category.id, label: category.name })),
-                      ]}
+                      searchPlaceholder="Buscar categoría…"
+                      disabled={saving}
+                      data-testid={`purchase-request-category-${idx}`}
                     />
                   </div>
                 </div>
@@ -260,10 +297,14 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
                   </div>
                   <div className="min-w-0">
                     <label className="mb-1.5 block text-xs font-semibold text-slate-500">Unidad *</label>
-                    <Input
-                      placeholder="unidad, caja..."
+                    <CreatablePicker
                       value={item.unit}
-                      onChange={(e) => updateItem(idx, 'unit', e.target.value)}
+                      onChange={(unit) => updateItem(idx, 'unit', unit)}
+                      options={unitOptions}
+                      placeholder="Unidad"
+                      searchPlaceholder="Buscar unidad…"
+                      disabled={saving}
+                      data-testid={`purchase-request-unit-${idx}`}
                     />
                   </div>
                   <div className="min-w-0 sm:col-span-2 lg:col-span-1">

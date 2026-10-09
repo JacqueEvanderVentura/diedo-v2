@@ -155,7 +155,7 @@ class Employee(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
         String(16), nullable=False, default="active", server_default=text("'active'")
     )
     online_booking_selectable: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default=text("false")
+        Boolean, nullable=False, default=True, server_default=text("true")
     )
     created_by_platform_user_id: Mapped[UUID] = mapped_column(
         ForeignKey("platform_users.id", ondelete="RESTRICT"), nullable=False

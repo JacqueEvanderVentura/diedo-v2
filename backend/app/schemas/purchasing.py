@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import EmailStr, Field, StringConstraints, field_validator, model_validator
 
 from app.schemas.common import ApiModel
+from app.schemas.document_attachments import DocumentAttachmentResponse
 
 SupplierSortField = Literal["name", "rnc", "contactName", "productCount", "createdAt"]
 PurchaseRequestSortField = Literal[
@@ -101,6 +102,9 @@ class UpdateSupplierRequest(ApiModel):
 
 class PurchaseQuoteFile(ApiModel):
     name: RequiredText = Field(max_length=255)
+    id: UUID | None = None
+    content_type: str | None = None
+    preview_url: str | None = None
 
 
 class PurchaseRequestItemInput(ApiModel):
@@ -137,6 +141,7 @@ class PurchaseRequestResponse(ApiModel):
     priority: PurchaseRequestPriority
     notes: str | None
     quote_file: PurchaseQuoteFile | None
+    attachments: list[DocumentAttachmentResponse] = []
     total: Decimal
     created_at: datetime
     reviewed_at: datetime | None

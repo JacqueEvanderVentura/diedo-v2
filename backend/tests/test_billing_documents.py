@@ -2,7 +2,7 @@ from uuid import uuid7
 
 import pytest
 from app.schemas.administration import WorkspaceBillingDocuments
-from app.services.billing_documents import resolve_billing_template
+from app.services.billing_documents import resolve_billing_template, template_to_branch_billing
 from pydantic import ValidationError
 
 
@@ -46,6 +46,25 @@ def test_workspace_billing_rejects_duplicate_branch_assignments() -> None:
                 ]
             }
         )
+
+
+def test_template_to_branch_billing_strips_template_metadata() -> None:
+    workspace_docs = WorkspaceBillingDocuments.model_validate(
+        {
+            "templates": [
+                {
+                    "id": uuid7(),
+                    "name": "Principal",
+                    "trade_name": "Helios Spa",
+                    "rnc": "1-3290890-2",
+                    "branch_ids": [],
+                }
+            ]
+        }
+    )
+    branch_billing = template_to_branch_billing(workspace_docs.templates[0])
+    assert branch_billing.trade_name == "Helios Spa"
+    assert branch_billing.rnc == "1-3290890-2"
 
 
 def test_resolve_billing_template_prefers_branch_assignment() -> None:

@@ -30,9 +30,15 @@ import { useSortedRows } from '@/hooks/useTableControls'
 import { cn } from '@/lib/utils'
 import { currentSessionActor } from '@/lib/sessionActor'
 import { useSessionStore } from '@/stores/sessionStore'
-import { PurchaseQuoteModal } from '@/modules/compras/components/PurchaseQuoteModal'
+import { PurchaseDocumentModal } from '@/modules/compras/components/PurchaseDocumentModal'
+import { PurchasePayModal } from '@/modules/compras/components/PurchasePayModal'
 import { PurchaseReceiveModal } from '@/modules/compras/components/PurchaseReceiveModal'
 import { mergePurchaseRequestExtras } from '@/modules/compras/lib/purchaseRequestExtras'
+import {
+  PURCHASE_DOCUMENT_TYPES,
+  documentCount,
+  latestDocument,
+} from '@/modules/compras/lib/purchaseDocuments'
 import { AttachmentField } from '@/components/ui/AttachmentField'
 import { useCatalogStore } from '@/stores/catalogStore'
 
@@ -64,7 +70,7 @@ export function SolicitudesTab() {
   const reviewPurchaseRequest = useComprasStore((s) => s.reviewPurchaseRequest)
   const payPurchaseRequest = useComprasStore((s) => s.payPurchaseRequest)
   const markRequestDelivered = useComprasStore((s) => s.markRequestDelivered)
-  const attachPurchaseQuote = useComprasStore((s) => s.attachPurchaseQuote)
+  const attachPurchaseDocument = useComprasStore((s) => s.attachPurchaseDocument)
   const getRequestStats = useComprasStore((s) => s.getRequestStats)
   const branches = useConfigStore((s) => s.branches)
   const categories = useConfigStore((s) => s.categories)
@@ -80,8 +86,9 @@ export function SolicitudesTab() {
   const [selectedId, setSelectedId] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [busyAction, setBusyAction] = useState(null)
-  const [quoteModalRequest, setQuoteModalRequest] = useState(null)
-  const [quoteUpload, setQuoteUpload] = useState([])
+  const [documentModal, setDocumentModal] = useState(null)
+  const [documentUploads, setDocumentUploads] = useState({})
+  const [payModalOpen, setPayModalOpen] = useState(false)
   const [receiveModalOpen, setReceiveModalOpen] = useState(false)
 
   const stats = getRequestStats()
@@ -109,7 +116,7 @@ export function SolicitudesTab() {
       supplier: (r) => supplierName(r.supplierId),
       requester: (r) => r.requesterName || '',
       total: (r) => requestTotal(r),
-      quote: (r) => r.quoteFile ? 1 : 0,
+      quote: (r) => documentCount(r),
       status: (r) => r.status || '',
     },
   })
@@ -145,10 +152,12 @@ export function SolicitudesTab() {
     }
   }
 
-  const handlePay = async (id) => {
-    setBusyAction(`pay:${id}`)
+  const handlePayConfirm = async ({ invoiceAttachments, paymentAttachments }) => {
+    if (!selected) return
+    setBusyAction(`pay:${selected.id}`)
     try {
-      await payPurchaseRequest(id, { isOnline })
+      await payPurchaseRequest(selected.id, { isOnline, invoiceAttachments, paymentAttachments })
+      setPayModalOpen(false)
       toast.success('Solicitud marcada como pagada · gasto registrado en Finanzas')
     } catch (error) {
       toast.error(error.message || 'No se pudo marcar la solicitud como pagada')
@@ -225,7 +234,7 @@ export function SolicitudesTab() {
                       <SortableTh column="supplier" className="px-4 py-3">Proveedor</SortableTh>
                       <SortableTh column="requester" className="px-4 py-3">Solicitado por</SortableTh>
                       <SortableTh column="total" className="px-4 py-3">Monto Total</SortableTh>
-                      <SortableTh column="quote" align="center" className="px-4 py-3">Cotización</SortableTh>
+                      <SortableTh column="quote" align="center" className="px-4 py-3">Documentos</SortableTh>
                       <SortableTh column="status" align="right" className="px-4 py-3">Estado</SortableTh>
                     </tr>
                   </thead>
@@ -249,20 +258,9 @@ export function SolicitudesTab() {
                           <td className="px-4 py-3 text-slate-600">{req.requesterName}</td>
                           <td className="px-4 py-3 font-medium text-slate-800">{formatDOP(requestTotal(req))}</td>
                           <td className="px-4 py-3 text-center">
-                            {req.quoteFile ? (
-                              <button
-                                type="button"
-                                className="text-xs font-medium text-blue-600 hover:underline"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  setQuoteModalRequest(mergePurchaseRequestExtras(req))
-                                }}
-                              >
-                                {req.quoteFile.name}
-                              </button>
-                            ) : (
-                              <span className="text-xs text-slate-400">—</span>
-                            )}
+                            <span className="text-xs font-medium text-slate-600">
+                              {documentCount(mergePurchaseRequestExtras(req))}/4
+                            </span>
                           </td>
                           <td className="px-4 py-3 text-right">
                             <span className={cn('inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold', toneClass[meta.tone])}>
@@ -301,8 +299,8 @@ export function SolicitudesTab() {
                         <MobileField label="Monto">
                           <span className="font-medium text-slate-800">{formatDOP(requestTotal(req))}</span>
                         </MobileField>
-                        <MobileField label="Cotización">
-                          {req.quoteFile ? req.quoteFile.name : '—'}
+                        <MobileField label="Documentos">
+                          {documentCount(mergePurchaseRequestExtras(req))}/4
                         </MobileField>
                       </MobileCardGrid>
                     </MobileCard>
@@ -343,47 +341,61 @@ export function SolicitudesTab() {
                   Total: {formatDOP(requestTotal(selected))}
                 </p>
               </div>
-              <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Cotización</p>
-                  <div className="flex gap-2">
-                    {selected.quoteFile && (
-                      <Button size="sm" variant="secondary" onClick={() => setQuoteModalRequest(selected)}>
-                        <Eye className="h-3.5 w-3.5" /> Ver
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                {['pendiente', 'aprobada'].includes(selected.status) && (
-                  <div className="mt-3 space-y-2">
-                    <AttachmentField
-                      value={quoteUpload}
-                      onChange={setQuoteUpload}
-                      testId="purchase-quote-upload-detail"
-                    />
-                    {quoteUpload[0] && (
-                      <Button
-                        size="sm"
-                        disabled={Boolean(busyAction)}
-                        onClick={async () => {
-                          setBusyAction(`quote:${selected.id}`)
-                          try {
-                            await attachPurchaseQuote(selected.id, quoteUpload[0], { isOnline })
-                            setQuoteUpload([])
-                            toast.success('Cotización guardada')
-                          } catch (error) {
-                            toast.error(error.message || 'No se pudo guardar la cotización')
-                          } finally {
-                            setBusyAction(null)
-                          }
-                        }}
-                      >
-                        <Upload className="h-3.5 w-3.5" />
-                        {busyAction === `quote:${selected.id}` ? 'Guardando…' : 'Guardar cotización'}
-                      </Button>
-                    )}
-                  </div>
-                )}
+              <div className="space-y-3" data-testid="purchase-documents">
+                {PURCHASE_DOCUMENT_TYPES.map((type) => {
+                  const file = latestDocument(selected, type.purpose)
+                  const upload = documentUploads[type.purpose] || []
+                  const canUpload = type.uploadStatuses.includes(selected.status)
+                  return (
+                    <div key={type.purpose} className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{type.label}</p>
+                        {file && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setDocumentModal({ title: type.label, file })}
+                          >
+                            <Eye className="h-3.5 w-3.5" /> Ver
+                          </Button>
+                        )}
+                      </div>
+                      <p className="mt-2 truncate text-sm text-slate-700">
+                        {file?.name || type.empty}
+                      </p>
+                      {canUpload && (
+                        <div className="mt-3 space-y-2">
+                          <AttachmentField
+                            value={upload}
+                            onChange={(value) => setDocumentUploads((prev) => ({ ...prev, [type.purpose]: value }))}
+                            testId={`purchase-${type.purpose}-upload-detail`}
+                          />
+                          {upload[0] && (
+                            <Button
+                              size="sm"
+                              disabled={Boolean(busyAction)}
+                              onClick={async () => {
+                                setBusyAction(`${type.purpose}:${selected.id}`)
+                                try {
+                                  await attachPurchaseDocument(selected.id, type.purpose, upload[0], { isOnline })
+                                  setDocumentUploads((prev) => ({ ...prev, [type.purpose]: [] }))
+                                  toast.success(`${type.label} guardada`)
+                                } catch (error) {
+                                  toast.error(error.message || `No se pudo guardar ${type.label.toLowerCase()}`)
+                                } finally {
+                                  setBusyAction(null)
+                                }
+                              }}
+                            >
+                              <Upload className="h-3.5 w-3.5" />
+                              {busyAction === `${type.purpose}:${selected.id}` ? 'Guardando…' : `Guardar ${type.label.toLowerCase()}`}
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -398,8 +410,8 @@ export function SolicitudesTab() {
                   </>
                 )}
                 {selected.status === 'aprobada' && (
-                  <Button size="sm" disabled={Boolean(busyAction)} onClick={() => handlePay(selected.id)}>
-                    {busyAction === `pay:${selected.id}` ? 'Registrando…' : 'Marcar pagada'}
+                  <Button size="sm" disabled={Boolean(busyAction)} onClick={() => setPayModalOpen(true)}>
+                    Marcar pagada
                   </Button>
                 )}
                 {selected.status === 'pagada' && (
@@ -421,10 +433,20 @@ export function SolicitudesTab() {
         onSubmit={(data) => addPurchaseRequest(data, { isOnline })}
       />
 
-      <PurchaseQuoteModal
-        open={Boolean(quoteModalRequest)}
-        onClose={() => setQuoteModalRequest(null)}
-        request={quoteModalRequest}
+      <PurchaseDocumentModal
+        open={Boolean(documentModal)}
+        onClose={() => setDocumentModal(null)}
+        request={selected}
+        file={documentModal?.file}
+        title={documentModal?.title || 'Documento'}
+      />
+
+      <PurchasePayModal
+        open={payModalOpen}
+        onClose={() => setPayModalOpen(false)}
+        request={selected}
+        onConfirm={handlePayConfirm}
+        busy={Boolean(busyAction)}
       />
 
       <PurchaseReceiveModal

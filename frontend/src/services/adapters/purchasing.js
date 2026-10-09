@@ -1,4 +1,21 @@
+import { mapDocumentAttachmentsFromApi } from '@/services/adapters/documentAttachments'
+
 const optionalText = (value) => value?.trim() || null
+
+function mapQuoteFile(request) {
+  const attachments = mapDocumentAttachmentsFromApi(request.attachments)
+  const quote = [...attachments].reverse().find((item) => item.purpose === 'quote')
+  if (quote) return quote
+  if (!request.quoteFile) return null
+  return {
+    id: request.quoteFile.id || null,
+    name: request.quoteFile.name,
+    contentType: request.quoteFile.contentType || null,
+    previewUrl: request.quoteFile.previewUrl || null,
+    downloadUrl: request.quoteFile.previewUrl || null,
+    purpose: 'quote',
+  }
+}
 
 export function mapSupplierFromApi(supplier) {
   return {
@@ -56,7 +73,8 @@ export function mapPurchaseRequestFromApi(request) {
     status: request.status,
     priority: request.priority,
     notes: request.notes || '',
-    quoteFile: request.quoteFile,
+    quoteFile: mapQuoteFile(request),
+    attachments: mapDocumentAttachmentsFromApi(request.attachments),
     total: Number(request.total) || 0,
     createdAt: request.createdAt,
     reviewedAt: request.reviewedAt,

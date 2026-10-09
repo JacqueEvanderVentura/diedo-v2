@@ -58,6 +58,9 @@ export function mergeApiProduct(apiProduct, localProduct, categoryIdToLocal) {
     availableInPos: isService
       ? apiProduct.availableInPos !== false
       : localProduct?.availableInPos,
+    durationMinutes: isService
+      ? Number(apiProduct.durationMinutes ?? apiProduct.duration_minutes) || 30
+      : localProduct?.durationMinutes,
   }
 }
 

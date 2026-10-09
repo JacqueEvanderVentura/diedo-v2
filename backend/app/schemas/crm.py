@@ -183,6 +183,19 @@ class ImportLeadsRequest(ApiModel):
     source: LeadSource = "import"
     items: list[LeadInput] = Field(min_length=1, max_length=100)
 
+    @model_validator(mode="before")
+    @classmethod
+    def inherit_batch_source_on_items(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        batch_source = data.get("source", "import")
+        items = data.get("items")
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict) and "source" not in item:
+                    item["source"] = batch_source
+        return data
+
 
 class UpdateLeadRequest(ApiModel):
     version: int = Field(ge=1)

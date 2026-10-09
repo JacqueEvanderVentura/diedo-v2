@@ -354,7 +354,7 @@ class EmployeeResponse(ApiModel):
     branches: list[BranchReference]
     supervisor_ids: list[UUID]
     schedule: EmployeeScheduleResponse
-    online_booking_selectable: bool = False
+    online_booking_selectable: bool = True
     status: MasterDataStatus
     version: int
     attachment_count: int
@@ -385,7 +385,7 @@ class CreateEmployeeRequest(ApiModel):
     supervisor_ids: list[UUID] = Field(default_factory=list, max_length=20)
     timezone: str = Field(default="America/Santo_Domingo", min_length=3, max_length=64)
     schedule: WeeklySchedule = Field(default_factory=WeeklySchedule)
-    online_booking_selectable: bool = False
+    online_booking_selectable: bool = True
     status: CreateMasterDataStatus = "active"
 
     @field_validator("employee_number")

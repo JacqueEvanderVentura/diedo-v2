@@ -36,7 +36,8 @@ def test_create_customer_requires_document(client: TestClient) -> None:
         headers=headers,
         json={"displayName": "Sin documento", "branchIds": [branch_id]},
     )
-    assert missing.status_code == 422, missing.text
+    assert missing.status_code == 400, missing.text
+    assert missing.json()["parameter"] == "documentType"
 
 
 @pytest.mark.integration
@@ -66,7 +67,7 @@ def test_import_customer_without_document_succeeds(client: TestClient) -> None:
         "/api/v1/customers/import",
         headers={**headers, "Idempotency-Key": sha256(suffix.encode()).hexdigest()},
         json={
-            "branchId": branch_id,
+            "branchIds": [branch_id],
             "items": [
                 {
                     "externalId": f"imp-{suffix}",
@@ -94,7 +95,7 @@ def test_manual_lead_requires_document(client: TestClient) -> None:
             "source": "manual",
         },
     )
-    assert response.status_code == 422, response.text
+    assert response.status_code == 400, response.text
 
 
 @pytest.mark.integration
@@ -109,7 +110,13 @@ def test_import_lead_without_document_succeeds(client: TestClient) -> None:
         json={
             "branchId": branch_id,
             "source": "import",
-            "items": [{"name": f"Lead import {suffix}", "company": "ACME"}],
+            "items": [
+                {
+                    "branchId": branch_id,
+                    "name": f"Lead import {suffix}",
+                    "company": "ACME",
+                }
+            ],
         },
     )
     assert response.status_code == 201, response.text

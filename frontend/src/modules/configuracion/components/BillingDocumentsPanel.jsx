@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { ChevronDown, ImagePlus, Plus, Save, Trash2 } from 'lucide-react'
 import { useConfigStore } from '@/stores/configStore'
@@ -182,7 +182,11 @@ function BillingTemplateFields({
 }
 
 export default function BillingDocumentsPanel({ embedded = false, visibleBlockIds }) {
-  const branches = useConfigStore((s) => s.branches.filter((branch) => branch.active !== false))
+  const allBranches = useConfigStore((s) => s.branches)
+  const branches = useMemo(
+    () => allBranches.filter((branch) => branch.active !== false),
+    [allBranches],
+  )
   const settings = useConfigStore((s) => s.settings)
   const updateBillingDocuments = useConfigStore((s) => s.updateBillingDocuments)
   const updateSettings = useConfigStore((s) => s.updateSettings)
@@ -200,9 +204,12 @@ export default function BillingDocumentsPanel({ embedded = false, visibleBlockId
   const singleTemplate = templates.length === 1
 
   const syncOpenTemplates = useCallback((state) => {
-    if (state.templates.length === 1) {
-      setOpenTemplateIds(new Set([state.templates[0].id]))
-    }
+    if (state.templates.length !== 1) return
+    const onlyId = state.templates[0].id
+    setOpenTemplateIds((prev) => {
+      if (prev.size === 1 && prev.has(onlyId)) return prev
+      return new Set([onlyId])
+    })
   }, [])
 
   const applyBillingDocuments = useCallback((billingDocuments, version) => {
@@ -362,34 +369,36 @@ export default function BillingDocumentsPanel({ embedded = false, visibleBlockId
             const isOpen = singleTemplate || openTemplateIds.has(template.id)
             return (
               <Card key={template.id} className="overflow-hidden" data-testid={`billing-template-card-${template.id}`}>
-                <button
-                  type="button"
+                <div
                   className={cn(
-                    'flex w-full items-center justify-between gap-3 px-4 py-3 text-left',
-                    singleTemplate ? 'cursor-default' : 'hover:bg-slate-50',
+                    'flex w-full items-center justify-between gap-3 px-4 py-3',
+                    !singleTemplate && 'hover:bg-slate-50',
                   )}
-                  onClick={() => toggleTemplate(template.id)}
-                  disabled={singleTemplate}
-                  aria-expanded={isOpen}
                 >
-                  <div className="min-w-0">
+                  <button
+                    type="button"
+                    className={cn(
+                      'min-w-0 flex-1 text-left',
+                      singleTemplate ? 'cursor-default' : 'cursor-pointer',
+                    )}
+                    onClick={() => toggleTemplate(template.id)}
+                    disabled={singleTemplate}
+                    aria-expanded={isOpen}
+                  >
                     <p className="truncate font-semibold text-slate-800">{template.name || 'Sin nombre'}</p>
                     <p className="text-xs text-slate-500">
                       {template.branchIds?.length
                         ? `${template.branchIds.length} sucursal(es)`
                         : 'Todas las sucursales'}
                     </p>
-                  </div>
+                  </button>
                   <div className="flex shrink-0 items-center gap-2">
                     <Button
                       type="button"
                       size="sm"
                       variant="ghost"
                       disabled={disabled || templates.length <= 1}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        removeTemplate(template.id)
-                      }}
+                      onClick={() => removeTemplate(template.id)}
                       data-testid={`billing-template-remove-${template.id}`}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -398,7 +407,7 @@ export default function BillingDocumentsPanel({ embedded = false, visibleBlockId
                       <ChevronDown className={cn('h-4 w-4 text-slate-400 transition-transform', isOpen && 'rotate-180')} />
                     )}
                   </div>
-                </button>
+                </div>
                 {isOpen && (
                   <div className="border-t border-slate-100 px-4 pb-4">
                     <BillingTemplateFields

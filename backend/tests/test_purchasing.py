@@ -15,6 +15,12 @@ from pydantic import ValidationError
 
 _OWNER_EMAIL = "owner@erp.dev"
 _OWNER_PASSWORD = "purchasing-owner-password-not-a-secret"
+_PNG = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+    b"\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc"
+    b"\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+_PDF = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"
 
 
 def _bootstrap_and_login(client: TestClient) -> tuple[dict[str, str], dict[str, object]]:
@@ -233,7 +239,7 @@ def test_purchasing_complete_http_contract(client: TestClient) -> None:
     assert purchase_request["status"] == "pendiente"
     assert purchase_request["priority"] == "alta"
     assert purchase_request["requesterId"] == membership_id
-    assert purchase_request["quoteFile"] == {"name": "cotizacion.pdf"}
+    assert purchase_request["quoteFile"]["name"] == "cotizacion.pdf"
     assert Decimal(str(purchase_request["total"])) == Decimal("6100.00")
 
     request_replay = client.post(
@@ -335,6 +341,36 @@ def test_purchasing_complete_http_contract(client: TestClient) -> None:
     )
     assert edit_reviewed.status_code == 400
 
+    pay_without_docs = client.post(
+        f"/api/v1/purchasing/requests/{purchase_request['id']}/pay",
+        headers={**headers, "Idempotency-Key": f"pay-no-docs-{suffix}"},
+        json={"version": purchase_request["version"]},
+    )
+    assert pay_without_docs.status_code == 400
+    assert pay_without_docs.json()["parameter"] == "invoice"
+
+    invoice = client.post(
+        f"/api/v1/purchasing/requests/{purchase_request['id']}/invoice",
+        headers=headers,
+        files={"file": ("factura.pdf", _PDF, "application/pdf")},
+    )
+    assert invoice.status_code == 201, invoice.text
+
+    pay_without_payment = client.post(
+        f"/api/v1/purchasing/requests/{purchase_request['id']}/pay",
+        headers={**headers, "Idempotency-Key": f"pay-no-payment-{suffix}"},
+        json={"version": purchase_request["version"]},
+    )
+    assert pay_without_payment.status_code == 400
+    assert pay_without_payment.json()["parameter"] == "payment"
+
+    payment = client.post(
+        f"/api/v1/purchasing/requests/{purchase_request['id']}/payment",
+        headers=headers,
+        files={"file": ("pago.png", _PNG, "image/png")},
+    )
+    assert payment.status_code == 201, payment.text
+
     paid = client.post(
         f"/api/v1/purchasing/requests/{purchase_request['id']}/pay",
         headers={**headers, "Idempotency-Key": f"pay-{suffix}"},
@@ -365,7 +401,20 @@ def test_purchasing_complete_http_contract(client: TestClient) -> None:
         params={"categoryKind": "supply"},
     )
     assert categories.status_code == 200, categories.text
-    category_id = categories.json()[0]["id"]
+    listed_categories = categories.json()
+    category_rows = (
+        listed_categories["items"] if isinstance(listed_categories, dict) else listed_categories
+    )
+    if not category_rows:
+        created_category = client.post(
+            "/api/v1/catalog/categories",
+            headers=headers,
+            json={"name": f"Insumos {suffix}", "categoryKind": "supply"},
+        )
+        assert created_category.status_code == 201, created_category.text
+        category_id = created_category.json()["id"]
+    else:
+        category_id = category_rows[0]["id"]
 
     catalog_item = client.post(
         f"/api/v1/purchasing/suppliers/{supplier['id']}/catalog",
@@ -393,17 +442,23 @@ def test_purchasing_complete_http_contract(client: TestClient) -> None:
     assert compare.status_code == 200, compare.text
     assert len(compare.json()) >= 1
 
+    units = client.get("/api/v1/catalog/units-of-measure", headers=headers)
+    assert units.status_code == 200, units.text
+    unit_rows = units.json()
+    unit_id = unit_rows[0]["id"] if isinstance(unit_rows, list) else unit_rows["items"][0]["id"]
+
     supply = client.post(
         "/api/v1/inventory/supplies",
         headers={**headers, "Idempotency-Key": f"supply-{suffix}"},
         json={
             "name": f"Insumo inventario {suffix}",
             "sku": f"SKU-{suffix}",
-            "branchIds": [branch_id],
-            "trackStock": True,
-            "minimumStock": 0,
-            "cost": "100.00",
             "categoryId": category_id,
+            "unitOfMeasureId": unit_id,
+            "branchId": branch_id,
+            "unitCost": "100.00",
+            "stock": "0",
+            "minimumStock": "0",
         },
     )
     assert supply.status_code == 201, supply.text
@@ -412,15 +467,7 @@ def test_purchasing_complete_http_contract(client: TestClient) -> None:
     receipt = client.post(
         f"/api/v1/purchasing/requests/{purchase_request['id']}/receipt",
         headers=headers,
-        files={
-            "file": (
-                "receipt.png",
-                b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
-                b"\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc"
-                b"\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82",
-                "image/png",
-            )
-        },
+        files={"file": ("receipt.png", _PNG, "image/png")},
     )
     assert receipt.status_code == 201, receipt.text
 
@@ -440,6 +487,8 @@ def test_purchasing_complete_http_contract(client: TestClient) -> None:
     assert delivered.status_code == 200, delivered.text
     assert delivered.json()["status"] == "entregada"
     assert delivered.json()["deliveredAt"] is not None
+    purposes = {item["purpose"] for item in delivered.json()["attachments"]}
+    assert purposes == {"invoice", "payment", "receipt"}
 
     archive = client.delete(f"/api/v1/purchasing/suppliers/{supplier['id']}", headers=headers)
     assert archive.status_code == 204, archive.text

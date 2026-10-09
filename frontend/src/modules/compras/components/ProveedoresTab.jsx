@@ -24,6 +24,7 @@ import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable
 import { useSortedRows } from '@/hooks/useTableControls'
 import { cn } from '@/lib/utils'
 import { useSessionStore } from '@/stores/sessionStore'
+import { isUuid } from '@/lib/workspaceBranch'
 
 export function ProveedoresTab() {
   const suppliers = useComprasStore((s) => s.suppliers)
@@ -39,9 +40,14 @@ export function ProveedoresTab() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
 
+  const visibleSuppliers = useMemo(
+    () => (isOnline ? suppliers.filter((s) => isUuid(s.id)) : suppliers),
+    [suppliers, isOnline],
+  )
+
   const filteredRaw = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return suppliers.filter((s) => {
+    return visibleSuppliers.filter((s) => {
       if (!matchesBranch(s, branchFilter)) return false
       if (!q) return true
       return (
@@ -50,7 +56,7 @@ export function ProveedoresTab() {
         s.contactName?.toLowerCase().includes(q)
       )
     })
-  }, [suppliers, search, branchFilter])
+  }, [visibleSuppliers, search, branchFilter])
 
   const { rows: filtered, sortKey, sortDir, toggleSort } = useSortedRows(filteredRaw, {
     defaultSort: { key: 'name', dir: 'asc' },
@@ -62,7 +68,7 @@ export function ProveedoresTab() {
     },
   })
 
-  const selected = suppliers.find((s) => s.id === selectedId) || filtered[0] || null
+  const selected = visibleSuppliers.find((s) => s.id === selectedId) || filtered[0] || null
 
   const branchNames = (ids) =>
     (ids || [])

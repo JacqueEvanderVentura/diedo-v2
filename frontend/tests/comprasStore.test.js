@@ -23,6 +23,8 @@ vi.mock('@/modules/compras/lib/receivePurchaseInventory', () => ({
 }))
 vi.mock('@/lib/documentAttachments', () => ({
   uploadPurchaseReceipt: vi.fn().mockResolvedValue({ id: 'receipt-id' }),
+  uploadPurchaseQuote: vi.fn().mockResolvedValue({ id: 'quote-id' }),
+  uploadPurchaseDocument: vi.fn().mockResolvedValue({ id: 'doc-id' }),
 }))
 
 import { useComprasStore } from '@/stores/comprasStore'

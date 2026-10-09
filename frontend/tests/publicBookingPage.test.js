@@ -25,12 +25,14 @@ function openLink(url) {
 
 it('loads a shared branch without an administrator session or local branches', async () => {
   publicBookingApi.getContext.mockResolvedValue({
-    branch: { branchId: 'public-branch', branchName: 'Sucursal pública' },
-    services: [], specialists: [],
+    branch: { branchId: 'public-branch', branchName: 'Sucursal pública', timezone: 'America/Santo_Domingo' },
+    services: [],
+    specialists: [],
+    workspaceBranches: [{ id: 'public-branch', name: 'Sucursal pública' }],
   })
   openLink('/agendar?branch=public-branch')
-  expect(await screen.findByText('Sucursal pública')).toBeTruthy()
-  expect(screen.getByText('Identifícate')).toBeTruthy()
+  expect(await screen.findByText('Elige tu sucursal')).toBeTruthy()
+  expect(screen.getByTestId('branch-option-public-branch').textContent).toContain('Sucursal pública')
   expect(publicBookingApi.getContext).toHaveBeenCalledWith('public-branch')
   expect(useConfigStore.getState().branches).toEqual([])
 })

@@ -65,7 +65,7 @@ function normalizeEmployee(data) {
     profileVersion: data.profileVersion || 1,
     profileUpdatedAt: data.profileUpdatedAt || null,
     workSchedule: normalizeWorkSchedule(data.workSchedule),
-    selectableAsSpecialist: data.selectableAsSpecialist ?? /especialista/i.test(data.position || ''),
+    selectableAsSpecialist: data.selectableAsSpecialist ?? true,
     createdAt: data.createdAt || now(),
     updatedAt: data.updatedAt || now(),
     api: data.api === true,

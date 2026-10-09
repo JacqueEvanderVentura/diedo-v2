@@ -28,7 +28,9 @@ def resolve_billing_template(
 
 
 def template_to_branch_billing(template: BillingDocumentTemplate) -> BranchBillingDocuments:
-    return BranchBillingDocuments.model_validate(template.model_dump())
+    return BranchBillingDocuments.model_validate(
+        template.model_dump(exclude={"id", "name", "branch_ids"})
+    )
 
 
 def default_workspace_billing_documents() -> dict[str, Any]:

@@ -218,6 +218,13 @@ def test_document_attachment_owner_branches_and_purchase_quote_name(
     assert refreshed.json()["quoteFile"]["name"] == "cotizacion-oficial.pdf"
     quote_list = client.get(f"/api/v1/purchasing/requests/{request_id}/quote", headers=headers)
     assert len(quote_list.json()) == 1
+    detail = client.get(f"/api/v1/purchasing/requests/{request_id}", headers=headers)
+    assert detail.json()["quoteFile"]["previewUrl"]
+    attachments = client.get(
+        f"/api/v1/purchasing/requests/{request_id}/attachments", headers=headers
+    )
+    assert attachments.status_code == 200
+    assert attachments.json()[0]["purpose"] == "quote"
 
 
 def _document_grant(
@@ -349,6 +356,21 @@ def test_document_attachment_get_content_and_upload_error_paths(
         record_status="active",
         branch_id=None,
     )
+
+    with pytest.raises(InvalidOperationError) as invalid_purpose:
+        service.upload(
+            principal=principal,
+            grant=grant,
+            owner_kind="finance_expense",
+            owner_id=expense_id,
+            source=BytesIO(_PNG),
+            filename="proof.png",
+            content_type="image/png",
+            storage=LocalAttachmentStorage(tmp_path),
+            max_bytes=1024,
+            purpose="unknown",
+        )
+    assert invalid_purpose.value.parameter == "purpose"
 
     class FailingStorage(LocalAttachmentStorage):
         def save(self, source, *, storage_key, content_type, max_bytes):  # type: ignore[no-untyped-def]

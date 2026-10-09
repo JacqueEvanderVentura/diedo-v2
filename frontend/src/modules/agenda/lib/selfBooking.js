@@ -90,10 +90,12 @@ export function buildBookingUrl(branchId = 'charm-dn') {
   return `${base}${path}/agendar?branch=${branchId}`
 }
 
-export function buildProfileUrl(documentId) {
+export function buildProfileUrl(documentId, branchId = '') {
   const base = typeof window !== 'undefined' ? window.location.origin : ''
   const path = import.meta.env.BASE_URL?.replace(/\/$/, '') || ''
-  return `${base}${path}/agendar/perfil?doc=${normalizeDocumentId(documentId)}`
+  const doc = normalizeDocumentId(documentId)
+  const query = branchId ? `branch=${branchId}&doc=${doc}` : `doc=${doc}`
+  return `${base}${path}/agendar/portal?${query}`
 }
 
 export function getAvailableSlots({

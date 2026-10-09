@@ -232,7 +232,7 @@ def test_existing_identity_and_membership_lifecycle(client, operator):
         headers=operator,
         json={
             "workspaceId": company["workspaceId"],
-            "email": other["owner"]["email"],
+            "email": company["owner"]["email"],
             "displayName": "Existing",
             "password": PASSWORD,
         },

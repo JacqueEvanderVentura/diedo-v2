@@ -22,22 +22,9 @@ import { findCustomerByDocument, validateCustomerDocument } from '@/lib/customer
 import { DEFAULT_CRM_PAGE_SIZE, normalizeCrmPageSize } from '@/modules/crm/constants/paging'
 
 import { buildCustomerListApiParams } from '@/modules/crm/lib/customerListParams'
+import { WALK_IN_CUSTOMER } from '@/lib/walkInCustomer'
 
-
-
-export const WALK_IN_CUSTOMER = Object.freeze({
-
-  id: 'walk-in',
-
-  name: 'Cliente Mostrador',
-
-  phone: null,
-
-  isDefault: true,
-
-  source: 'local-ui',
-
-})
+export { WALK_IN_CUSTOMER }
 
 
 

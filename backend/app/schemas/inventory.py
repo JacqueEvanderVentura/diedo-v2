@@ -100,6 +100,7 @@ class InventoryItemResponse(ApiModel):
     tax_rate: Decimal
     available_in_agenda: bool = True
     available_in_pos: bool = True
+    duration_minutes: int = 30
     stock_quantity: Decimal | None
     minimum_stock: Decimal | None
     stock_status: InventoryStockStatus
@@ -168,6 +169,7 @@ class CreateInventoryServiceRequest(_CreateInventoryItemBase):
     tax_rate: Decimal = Field(default=Decimal("18"), ge=0, le=100, decimal_places=2)
     available_in_agenda: bool = True
     available_in_pos: bool = True
+    duration_minutes: int = Field(default=30, ge=5, le=480)
 
     @field_validator("branch_ids")
     @classmethod
@@ -200,6 +202,7 @@ class UpdateInventoryItemRequest(ApiModel):
     status: InventoryItemStatus | None = None
     available_in_agenda: bool | None = None
     available_in_pos: bool | None = None
+    duration_minutes: int | None = Field(default=None, ge=5, le=480)
 
     @field_validator("name")
     @classmethod

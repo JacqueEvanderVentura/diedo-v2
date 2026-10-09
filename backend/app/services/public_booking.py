@@ -67,6 +67,7 @@ class PublicBookingService:
             "has_resources": bool(self._active_resources(branch)),
             "services": services,
             "specialists": specialists,
+            "workspace_branches": self._list_workspace_branches(branch.workspace_id),
         }
 
     def identify(self, branch_id: UUID, document_type: str, document_id: str) -> dict[str, Any]:
@@ -92,8 +93,12 @@ class PublicBookingService:
                 "wants_invoice": False,
                 "wants_contact": False,
                 "address": None,
+                "observaciones": None,
+                "last_service_id": None,
+                "last_employee_id": None,
             }
         extras = self._profile_extras(customer.id)
+        last_visit = self._last_visit_ids(branch.workspace_id, customer.id)
         return {
             "customer_id": customer.id,
             "is_new": False,
@@ -103,6 +108,7 @@ class PublicBookingService:
             "email": customer.email,
             "phone": customer.phone,
             **extras,
+            **last_visit,
         }
 
     def list_slots(
@@ -111,11 +117,16 @@ class PublicBookingService:
         *,
         scheduled_date: date,
         employee_id: UUID,
-        duration_minutes: int,
-    ) -> list[str]:
-        return sorted(
+        service_id: UUID,
+    ) -> tuple[list[str], int]:
+        branch, _workspace = self._resolve_branch(branch_id)
+        _principal, grant = self._system_access(branch.workspace_id)
+        service = self._require_service(grant, branch.id, service_id)
+        duration_minutes = int(service["duration_minutes"])
+        slots = sorted(
             self._slot_resources(branch_id, scheduled_date, employee_id, duration_minutes)
         )
+        return slots, duration_minutes
 
     def _active_resources(self, branch: Branch) -> list[Any]:
         return [
@@ -243,7 +254,7 @@ class PublicBookingService:
         self._lock(f"booking-employee:{employee.id}")
         scheduled_date = cast(date, payload["date"])
         scheduled_time = cast(time, payload["time"])
-        duration = int(payload.get("duration") or 30)
+        duration = int(service["duration_minutes"])
         available = self._slot_resources(branch.id, scheduled_date, employee.id, duration)
         free = available.get(scheduled_time.strftime("%H:%M"), [])
         if not free:
@@ -363,11 +374,12 @@ class PublicBookingService:
         }
 
     def management_slots(
-        self, branch_id: UUID, appointment_id: UUID, token: str, scheduled_date: date, duration: int
+        self, branch_id: UUID, appointment_id: UUID, token: str, scheduled_date: date
     ) -> list[str]:
         appointment, _, _, _, _ = self._authorized_appointment(branch_id, appointment_id, token)
         if appointment.employee_id is None:
             return []
+        duration = int(appointment.duration_minutes)
         return sorted(
             self._slot_resources(
                 branch_id,
@@ -469,13 +481,12 @@ class PublicBookingService:
         management_token: str,
         scheduled_date: date,
         scheduled_time: time,
-        duration: int | None,
     ) -> dict[str, Any]:
         appointment, branch, workspace, principal, grant = self._authorized_appointment(
             branch_id, appointment_id, management_token
         )
         self._require_manageable(appointment)
-        duration_minutes = duration or appointment.duration_minutes
+        duration_minutes = int(appointment.duration_minutes)
         if (
             appointment.scheduled_date,
             appointment.scheduled_time,
@@ -682,7 +693,11 @@ class PublicBookingService:
 
     def _list_services(self, grant: PermissionGrant, branch_id: UUID) -> list[dict[str, Any]]:
         rows = self._session.execute(
-            select(Item, InventoryItemProfile.sale_price)
+            select(
+                Item,
+                InventoryItemProfile.sale_price,
+                InventoryItemProfile.duration_minutes,
+            )
             .join(
                 ItemBranchAssignment,
                 (ItemBranchAssignment.workspace_id == Item.workspace_id)
@@ -705,8 +720,13 @@ class PublicBookingService:
             .order_by(Item.name, Item.id)
         ).all()
         return [
-            {"id": item.id, "name": item.name, "price": price, "duration_minutes": 30}
-            for item, price in rows
+            {
+                "id": item.id,
+                "name": item.name,
+                "price": price,
+                "duration_minutes": duration_minutes or 30,
+            }
+            for item, price, duration_minutes in rows
         ]
 
     def _require_service(
@@ -727,7 +747,7 @@ class PublicBookingService:
             )
             .where(
                 Employee.workspace_id == workspace_id,
-                Employee.status == "active",
+                Employee.status != "archived",
                 Employee.online_booking_selectable.is_(True),
                 EmployeeBranchAssignment.branch_id == branch_id,
                 EmployeeBranchAssignment.status == "active",
@@ -780,6 +800,18 @@ class PublicBookingService:
 
         return self._session.scalar(select(Customer.email).where(Customer.id == customer_id))
 
+    def _last_visit_ids(self, workspace_id: UUID, customer_id: UUID) -> dict[str, UUID | None]:
+        appointment = self._agenda.latest_visit_appointment_for_customer(
+            workspace_id=workspace_id,
+            customer_id=customer_id,
+        )
+        if appointment is None:
+            return {"last_service_id": None, "last_employee_id": None}
+        return {
+            "last_service_id": appointment.service_id,
+            "last_employee_id": appointment.employee_id,
+        }
+
     def _profile_extras(self, customer_id: UUID) -> dict[str, Any]:
         from app.db.models import CustomerCrmProfile
 
@@ -787,7 +819,12 @@ class PublicBookingService:
             select(CustomerCrmProfile).where(CustomerCrmProfile.customer_id == customer_id)
         )
         if profile is None or not profile.notes:
-            return {"wants_invoice": False, "wants_contact": False, "address": None}
+            return {
+                "wants_invoice": False,
+                "wants_contact": False,
+                "address": None,
+                "observaciones": None,
+            }
         try:
             payload = json.loads(profile.notes)
             extras = payload.get("selfBooking") or {}
@@ -797,6 +834,7 @@ class PublicBookingService:
             "wants_invoice": bool(extras.get("wantsInvoice")),
             "wants_contact": bool(extras.get("wantsContact")),
             "address": extras.get("address"),
+            "observaciones": extras.get("observaciones"),
         }
 
     def _save_profile_extras(self, customer_id: UUID, payload: dict[str, Any]) -> None:
@@ -807,12 +845,33 @@ class PublicBookingService:
         )
         if profile is None:
             return
+        existing: dict[str, Any] = {}
+        if profile.notes:
+            try:
+                parsed = json.loads(profile.notes)
+                existing = dict(parsed.get("selfBooking") or {})
+            except json.JSONDecodeError:
+                existing = {}
         extras = {
+            **existing,
             "wantsInvoice": bool(payload.get("wants_invoice")),
             "wantsContact": bool(payload.get("wants_contact")),
             "address": payload.get("address"),
         }
+        if "observaciones" in payload:
+            extras["observaciones"] = payload.get("observaciones")
         profile.notes = json.dumps({"selfBooking": extras}, ensure_ascii=False)
+
+    def _list_workspace_branches(self, workspace_id: UUID) -> list[dict[str, Any]]:
+        rows = self._session.scalars(
+            select(Branch)
+            .where(
+                Branch.workspace_id == workspace_id,
+                Branch.status == "active",
+            )
+            .order_by(Branch.name)
+        ).all()
+        return [{"id": row.id, "name": row.name} for row in rows]
 
 
 class AuthorizationErrorPublic(Exception):

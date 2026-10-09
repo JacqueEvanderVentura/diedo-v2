@@ -68,7 +68,7 @@ class DocumentAttachment(UuidPrimaryKeyMixin, Base):
             name="content_type_values",
         ),
         CheckConstraint(
-            "purpose IN ('quote', 'receipt')",
+            "purpose IN ('quote', 'invoice', 'payment', 'receipt')",
             name="purpose_values",
         ),
         Index("ix_document_attachments_finance_expense", "workspace_id", "finance_expense_id"),

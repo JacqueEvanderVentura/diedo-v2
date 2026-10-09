@@ -79,7 +79,8 @@ class Settings(BaseSettings):
     meta_instagram_app_id: str | None = None
     meta_instagram_app_secret: SecretStr | None = None
     meta_whatsapp_config_id: str | None = None
-    invoice_pdf_renderer: Literal["auto", "stub", "chromium"] = "auto"
+    invoice_pdf_renderer: Literal["auto", "stub", "weasyprint"] = "auto"
+    invoice_pdf_chrome: str | None = None
 
     @field_validator("database_url", mode="before")
     @classmethod

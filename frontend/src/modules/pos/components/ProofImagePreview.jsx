@@ -8,11 +8,18 @@ import { modalBackdropTransition, modalPanelTransition } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg)$/i
+const PDF_EXT = /\.pdf$/i
 
 export function isImageProof(proof, blob) {
   const type = blob?.type || proof?.contentType || ''
   if (type.startsWith('image/')) return true
   return IMAGE_EXT.test(proof?.name || '')
+}
+
+export function isPdfProof(proof, blob) {
+  const type = blob?.type || proof?.contentType || ''
+  if (type === 'application/pdf') return true
+  return PDF_EXT.test(proof?.name || '')
 }
 
 export async function copyImageBlob(blob) {
@@ -139,8 +146,9 @@ export function ProofImagePreview({ proof, loadProof, onDownload, onDelete, clas
       try {
         const nextBlob = proof instanceof Blob ? proof : await loadProof(proof)
         if (cancelled) return
-        // POS proofs are almost always images; prefer preview even if MIME is missing/octet-stream.
-        const canPreview = isImageProof(proof, nextBlob) || IMAGE_EXT.test(proof?.name || '')
+        const canPreview = isImageProof(proof, nextBlob)
+          || isPdfProof(proof, nextBlob)
+          || IMAGE_EXT.test(proof?.name || '')
         if (!canPreview) {
           setBlob(nextBlob)
           setLoading(false)
@@ -233,35 +241,48 @@ export function ProofImagePreview({ proof, loadProof, onDownload, onDelete, clas
     )
   }
 
+  const pdfPreview = isPdfProof(proof, blob)
+
   return (
     <div className={cn('space-y-3', className)} data-testid="proof-image-preview">
       <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-        <button
-          type="button"
-          onClick={() => setLightboxOpen(true)}
-          className="group block w-full cursor-zoom-in text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-          data-testid="proof-preview-open"
-          title="Ampliar comprobante"
-        >
-          <img
+        {pdfPreview ? (
+          <iframe
+            title={proof?.name || 'Documento PDF'}
             src={previewUrl}
-            alt={proof?.name || 'Comprobante adjunto'}
-            className="mx-auto max-h-72 min-h-40 w-full object-contain p-3 transition-opacity group-hover:opacity-95"
-            onError={() => {
-              setPreviewUrl(null)
-              setError('El archivo no se pudo renderizar como imagen.')
-            }}
+            className="h-[70vh] min-h-80 w-full bg-white"
+            data-testid="proof-preview-open"
           />
-        </button>
-        <button
-          type="button"
-          onClick={() => setLightboxOpen(true)}
-          className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-full bg-slate-900/80 px-3 py-1.5 text-xs font-semibold text-white shadow-sm backdrop-blur hover:bg-slate-900"
-          data-testid="proof-preview-enlarge"
-        >
-          <ZoomIn className="h-3.5 w-3.5" />
-          Ampliar
-        </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(true)}
+            className="group block w-full cursor-zoom-in text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+            data-testid="proof-preview-open"
+            title="Ampliar comprobante"
+          >
+            <img
+              src={previewUrl}
+              alt={proof?.name || 'Comprobante adjunto'}
+              className="mx-auto max-h-72 min-h-40 w-full object-contain p-3 transition-opacity group-hover:opacity-95"
+              onError={() => {
+                setPreviewUrl(null)
+                setError('El archivo no se pudo renderizar como imagen.')
+              }}
+            />
+          </button>
+        )}
+        {!pdfPreview && (
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(true)}
+            className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-full bg-slate-900/80 px-3 py-1.5 text-xs font-semibold text-white shadow-sm backdrop-blur hover:bg-slate-900"
+            data-testid="proof-preview-enlarge"
+          >
+            <ZoomIn className="h-3.5 w-3.5" />
+            Ampliar
+          </button>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -269,17 +290,19 @@ export function ProofImagePreview({ proof, loadProof, onDownload, onDelete, clas
           {proof?.name || 'Comprobante'}
         </p>
         <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={handleCopy}
-            disabled={Boolean(busy)}
-            data-testid="proof-preview-copy"
-          >
-            <Copy className="h-3.5 w-3.5" />
-            Copiar
-          </Button>
+          {!pdfPreview && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleCopy}
+              disabled={Boolean(busy)}
+              data-testid="proof-preview-copy"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Copiar
+            </Button>
+          )}
           <Button
             type="button"
             size="sm"

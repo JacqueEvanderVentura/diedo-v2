@@ -13,6 +13,7 @@ from app.api.deps import (
     PurchasingSettingsManageGrant,
     PurchasingSupplierManageGrant,
 )
+from app.repositories.document_attachments import DocumentAttachmentRecord
 from app.repositories.purchasing import (
     CatalogCompareRow,
     PurchaseRequestRecord,
@@ -21,6 +22,7 @@ from app.repositories.purchasing import (
     SupplierRecord,
 )
 from app.schemas.common import ErrorResponse
+from app.schemas.document_attachments import DocumentAttachmentResponse
 from app.schemas.purchasing import (
     CatalogCompareRowResponse,
     CatalogCompareSupplierPrice,
@@ -50,6 +52,8 @@ from app.schemas.purchasing import (
     UpdateSupplierCatalogItemRequest,
     UpdateSupplierRequest,
 )
+from app.services.authorization import PermissionGrant
+from app.services.document_attachments import DocumentAttachmentService
 from app.services.purchasing import PurchasingService, page_count
 
 router = APIRouter(prefix="/api/v1/purchasing", tags=["purchasing"])
@@ -79,7 +83,42 @@ def _supplier_response(record: SupplierRecord) -> SupplierResponse:
     )
 
 
-def _purchase_request_response(record: PurchaseRequestRecord) -> PurchaseRequestResponse:
+def _attachment_response(record: DocumentAttachmentRecord) -> DocumentAttachmentResponse:
+    attachment = record.attachment
+    return DocumentAttachmentResponse(
+        id=attachment.id,
+        original_filename=attachment.original_filename,
+        content_type=attachment.content_type,
+        size_bytes=attachment.size_bytes,
+        checksum_sha256=attachment.checksum_sha256,
+        preview_url=record.preview_url,
+        purpose=attachment.purpose,
+        created_at=attachment.created_at,
+    )
+
+
+def _quote_file(
+    request: Any,
+    attachments: tuple[DocumentAttachmentRecord, ...],
+) -> PurchaseQuoteFile | None:
+    quotes = [row for row in attachments if row.attachment.purpose == "quote"]
+    if quotes:
+        latest = quotes[-1]
+        return PurchaseQuoteFile(
+            name=latest.attachment.original_filename,
+            id=latest.attachment.id,
+            content_type=latest.attachment.content_type,
+            preview_url=latest.preview_url,
+        )
+    if request.quote_file_name:
+        return PurchaseQuoteFile(name=request.quote_file_name)
+    return None
+
+
+def _purchase_request_response(
+    record: PurchaseRequestRecord,
+    attachments: tuple[DocumentAttachmentRecord, ...] = (),
+) -> PurchaseRequestResponse:
     request = record.request
     items = [
         PurchaseRequestItemResponse(
@@ -107,9 +146,8 @@ def _purchase_request_response(record: PurchaseRequestRecord) -> PurchaseRequest
         status=cast(PurchaseRequestStatus, request.status),
         priority=cast(PurchaseRequestPriority, request.priority),
         notes=request.notes,
-        quote_file=(
-            PurchaseQuoteFile(name=request.quote_file_name) if request.quote_file_name else None
-        ),
+        quote_file=_quote_file(request, attachments),
+        attachments=[_attachment_response(row) for row in attachments],
         total=sum((item.subtotal for item in items), Decimal("0")),
         created_at=request.created_at,
         reviewed_at=request.reviewed_at,
@@ -120,6 +158,26 @@ def _purchase_request_response(record: PurchaseRequestRecord) -> PurchaseRequest
         version=request.version,
         updated_at=request.updated_at,
     )
+
+
+def _request_attachments(
+    database: DatabaseSession,
+    grant: PermissionGrant,
+    records: list[PurchaseRequestRecord] | tuple[PurchaseRequestRecord, ...],
+) -> dict[Any, tuple[DocumentAttachmentRecord, ...]]:
+    ids = {item.request.id for item in records}
+    return DocumentAttachmentService(database).attachments_by_owners(
+        grant.workspace_id, "purchase_request", ids
+    )
+
+
+def _respond_request(
+    database: DatabaseSession,
+    grant: PermissionGrant,
+    record: PurchaseRequestRecord,
+) -> PurchaseRequestResponse:
+    attachments = _request_attachments(database, grant, (record,)).get(record.request.id, ())
+    return _purchase_request_response(record, attachments)
 
 
 def _settings_response(record: PurchasingSettingsRecord) -> PurchasingSettingsResponse:
@@ -441,8 +499,12 @@ def list_purchase_requests(
         sort_by=sort_by,
         sort_direction=sort_direction,
     )
+    attachments_map = _request_attachments(database, grant, result.items)
     return PaginatedPurchaseRequestsResponse(
-        items=[_purchase_request_response(item) for item in result.items],
+        items=[
+            _purchase_request_response(item, attachments_map.get(item.request.id, ()))
+            for item in result.items
+        ],
         page=page,
         page_size=page_size,
         total_items=result.total_items,
@@ -462,13 +524,15 @@ def create_purchase_request(
     grant: PurchasingRequestCreateGrant,
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=128)],
 ) -> PurchaseRequestResponse:
-    return _purchase_request_response(
+    return _respond_request(
+        database,
+        grant,
         PurchasingService(database).create_purchase_request(
             principal=principal,
             grant=grant,
             values=payload.model_dump(by_alias=False),
             idempotency_key=idempotency_key,
-        )
+        ),
     )
 
 
@@ -481,8 +545,10 @@ def get_purchase_request(
     database: DatabaseSession,
     grant: PurchasingReadGrant,
 ) -> PurchaseRequestResponse:
-    return _purchase_request_response(
-        PurchasingService(database).get_purchase_request(grant, request_id)
+    return _respond_request(
+        database,
+        grant,
+        PurchasingService(database).get_purchase_request(grant, request_id),
     )
 
 
@@ -502,14 +568,16 @@ def update_purchase_request(
     principal: CurrentPrincipal,
     grant: PurchasingRequestCreateGrant,
 ) -> PurchaseRequestResponse:
-    return _purchase_request_response(
+    return _respond_request(
+        database,
+        grant,
         PurchasingService(database).update_purchase_request(
             principal=principal,
             grant=grant,
             request_id=request_id,
             expected_version=payload.version,
             changes=payload.model_dump(exclude_unset=True, exclude={"version"}, by_alias=False),
-        )
+        ),
     )
 
 
@@ -529,14 +597,16 @@ def review_purchase_request(
     principal: CurrentPrincipal,
     grant: PurchasingRequestReviewGrant,
 ) -> PurchaseRequestResponse:
-    return _purchase_request_response(
+    return _respond_request(
+        database,
+        grant,
         PurchasingService(database).review_purchase_request(
             principal=principal,
             grant=grant,
             request_id=request_id,
             expected_version=payload.version,
             status=payload.status,
-        )
+        ),
     )
 
 
@@ -557,14 +627,16 @@ def pay_purchase_request(
     grant: PurchasingRequestReviewGrant,
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=128)],
 ) -> PurchaseRequestResponse:
-    return _purchase_request_response(
+    return _respond_request(
+        database,
+        grant,
         PurchasingService(database).pay_purchase_request(
             principal=principal,
             grant=grant,
             request_id=request_id,
             expected_version=payload.version,
             idempotency_key=idempotency_key,
-        )
+        ),
     )
 
 
@@ -585,7 +657,9 @@ def deliver_purchase_request(
     grant: PurchasingRequestReviewGrant,
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=128)],
 ) -> PurchaseRequestResponse:
-    return _purchase_request_response(
+    return _respond_request(
+        database,
+        grant,
         PurchasingService(database).deliver_purchase_request(
             principal=principal,
             grant=grant,
@@ -593,7 +667,7 @@ def deliver_purchase_request(
             expected_version=payload.version,
             lines=[line.model_dump(by_alias=False) for line in payload.lines],
             idempotency_key=idempotency_key,
-        )
+        ),
     )
 
 

@@ -228,9 +228,11 @@ class InventoryService:
         )
         available_in_agenda = True
         available_in_pos = True
+        duration_minutes = 30
         if item_type == "service":
             available_in_agenda = bool(values.get("available_in_agenda", True))
             available_in_pos = bool(values.get("available_in_pos", True))
+            duration_minutes = int(values.get("duration_minutes", 30))
             self._validate_service_channel_flags(
                 available_in_agenda=available_in_agenda,
                 available_in_pos=available_in_pos,
@@ -257,6 +259,7 @@ class InventoryService:
             request_id=get_request_id(),
             available_in_agenda=available_in_agenda,
             available_in_pos=available_in_pos,
+            duration_minutes=duration_minutes,
         )
         return self.get_item(grant, item_id)
 
@@ -319,7 +322,11 @@ class InventoryService:
             )
         self._validate_update_kind_fields(item.item_type, changes)
         profile = self._repository.ensure_profile(grant.workspace_id, item.id)
-        if "available_in_agenda" in changes or "available_in_pos" in changes:
+        if (
+            "available_in_agenda" in changes
+            or "available_in_pos" in changes
+            or "duration_minutes" in changes
+        ):
             if item.item_type != "service":
                 raise InvalidOperationError(
                     "Los canales de servicio solo aplican a servicios.",

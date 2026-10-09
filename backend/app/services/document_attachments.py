@@ -34,6 +34,7 @@ _ALLOWED_TYPES = {
     "image/webp": ".webp",
     "image/gif": ".gif",
 }
+_ALLOWED_PURPOSES = {"quote", "invoice", "payment", "receipt"}
 
 
 def _safe_filename(filename: str | None) -> str:
@@ -83,6 +84,8 @@ class DocumentAttachmentService:
         purpose: str = "quote",
     ) -> StoredDocumentAttachment:
         self._require_owner(grant, owner_kind, owner_id)
+        if purpose not in _ALLOWED_PURPOSES:
+            raise InvalidOperationError("El tipo de adjunto no es válido.", "purpose")
         normalized_type = self._content_type(content_type)
         self._digest(source, max_bytes=max_bytes)
         attachment_id = uuid7()

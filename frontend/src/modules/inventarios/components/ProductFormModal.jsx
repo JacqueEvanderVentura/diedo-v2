@@ -12,6 +12,7 @@ import { useSessionStore } from '@/stores/sessionStore'
 import { catalogApi } from '@/services/catalogApi'
 import { mapCategoryFromApi } from '@/services/adapters/catalog'
 import { resolveCategoryId } from '@/lib/catalogSync'
+import { DURATION_OPTIONS } from '@/data/agenda'
 import { cn } from '@/lib/utils'
 
 const UNITS = [
@@ -37,6 +38,7 @@ const EMPTY = {
   unit: 'ud',
   availableInAgenda: true,
   availableInPos: true,
+  durationMinutes: 30,
 }
 
 export function groupServiceBranches(branches) {
@@ -160,6 +162,7 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
         : [f.branchId || BRANCHES[0]?.id].filter(Boolean),
       availableInAgenda: type === 'service' ? f.availableInAgenda !== false : true,
       availableInPos: type === 'service' ? f.availableInPos !== false : true,
+      durationMinutes: type === 'service' ? Number(f.durationMinutes) || 30 : 30,
     }))
   }
 
@@ -384,6 +387,15 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
             <p className="mb-3 text-xs leading-relaxed text-slate-500">
               Agenda incluye citas internas y reserva online. Punto de venta / ventas incluye POS, pipeline y Finanzas → Ingresos.
             </p>
+            <div className="mb-3">
+              <label className="mb-1.5 block text-xs font-medium text-slate-600">Duración de la cita</label>
+              <Select
+                value={form.durationMinutes ?? 30}
+                onChange={(value) => set('durationMinutes', Number(value))}
+                options={DURATION_OPTIONS}
+                data-testid="inventory-service-duration"
+              />
+            </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:gap-6">
               <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700">
                 <input

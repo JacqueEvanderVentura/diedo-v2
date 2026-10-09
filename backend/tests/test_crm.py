@@ -39,7 +39,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from tests.customer_payloads import customer_create_payload, lead_document_fields
+from tests.customer_payloads import customer_create_payload, unique_lead_document_fields
 
 _PASSWORD = "crm-test-password-not-a-secret"
 _NOW = datetime(2026, 9, 1, 16, 0, tzinfo=UTC)
@@ -356,7 +356,7 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
         "source": "manual",
         "rawSnippet": "Spa con agenda, clientes, inventario y punto de venta.",
         "status": "propuesta",
-        **lead_document_fields(suffix[-1]),
+        **unique_lead_document_fields(),
     }
     created = client.post(
         "/api/v1/crm/leads",
@@ -560,7 +560,7 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
             "branchId": branch_id_text,
             "company": f"Renovación anual {suffix}",
             "status": "nuevo",
-            **lead_document_fields("3"),
+            **unique_lead_document_fields(),
         },
     )
     assert lost_lead.status_code == 201, lost_lead.text
@@ -975,7 +975,7 @@ def test_crm_quote_accepted_does_not_auto_invoice_and_crm_invoice_works_without_
             "name": "Cliente Factura",
             "phone": "8095551212",
             "source": "manual",
-            **lead_document_fields(suffix[-1]),
+            **unique_lead_document_fields(),
         },
     )
     assert lead.status_code == 201, lead.text
@@ -1240,6 +1240,7 @@ def test_crm_ui_mode_is_per_membership(client: TestClient) -> None:
     assert stale.status_code == 409
 
 
+@pytest.mark.integration
 def test_import_pipeline_creates_lead_with_pipeline_status(client: TestClient) -> None:
     suffix = uuid7().hex[-12:]
     with session_scope() as session:
@@ -1362,13 +1363,12 @@ def test_lead_star_rating_sort_nulls_last(client: TestClient) -> None:
     )
     headers = {"Authorization": f"Bearer {login.json()['accessToken']}"}
 
-    doc_suffix_by_label = {"cinco": "5", "sin": "6", "dos": "7"}
     for rating, label in (("5", "cinco"), (None, "sin"), ("2.5", "dos")):
         payload = {
             "branchId": str(branch_id),
             "name": f"Lead {label} {suffix}",
             "phone": "8095550000",
-            **lead_document_fields(doc_suffix_by_label[label]),
+            **unique_lead_document_fields(),
         }
         if rating is not None:
             payload["starRating"] = rating
@@ -1505,7 +1505,7 @@ def test_crm_batch_delete_and_import_activities(client: TestClient) -> None:
             "branchId": str(branch_id),
             "name": f"Lead eliminable {suffix}",
             "phone": "8095553434",
-            **lead_document_fields("8"),
+            **unique_lead_document_fields(),
         },
     )
     assert disposable.status_code == 201, disposable.text
@@ -1537,7 +1537,7 @@ def test_crm_batch_delete_and_import_activities(client: TestClient) -> None:
             "displayName": f"Cliente {suffix}",
             "branchIds": [str(branch_id)],
             "lifecycleStatus": "prospecto",
-            **lead_document_fields("4"),
+            **unique_lead_document_fields(),
         },
     )
     assert convert.status_code == 200, convert.text
@@ -1620,7 +1620,7 @@ def test_crm_delete_quote_removes_record_and_unlinks_lead(client: TestClient) ->
             "company": f"Lead cotización {suffix}",
             "name": "Cliente",
             "phone": "8095551212",
-            **lead_document_fields(suffix[-1]),
+            **unique_lead_document_fields(),
         },
     )
     assert lead.status_code == 201, lead.text

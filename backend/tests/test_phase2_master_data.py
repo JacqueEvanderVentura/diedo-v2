@@ -118,6 +118,7 @@ def test_phase2_request_schemas_normalize_and_reject_ambiguous_changes() -> None
     )
     assert employee.employee_number == "EMP-9"
     assert employee.department is None
+    assert employee.online_booking_selectable is True
     with pytest.raises(ValidationError, match="al menos un cambio"):
         UpdateEmployeeRequest(version=1)
     with pytest.raises(ValidationError, match="no puede ser nulo"):

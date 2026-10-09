@@ -38,6 +38,8 @@ def test_instagram_url_is_independent_and_validated_on_leads_and_customers() -> 
             "name": "Helios",
             "website": "https://helios.example",
             "instagramUrl": url,
+            "documentType": "cedula",
+            "documentId": "001-1234567-8",
         }
     )
     assert str(lead.instagram_url) == url
