@@ -203,7 +203,10 @@ def test_resources_other_branches_and_past_slots(client, booking_setup):
     assert "15:00" not in slots  # Specialist attends another branch.
     past = client.get(
         f"{base}/slots",
-        params={"date": (date.today() - timedelta(days=1)).isoformat(), "employeeId": employee},
+        params={
+            **_slot_params(body, employee, service),
+            "date": (date.today() - timedelta(days=1)).isoformat(),
+        },
     ).json()["slots"]
     assert past == []
 
@@ -308,7 +311,7 @@ def test_booking_price_idempotency_and_token_management(client, booking_setup):
     assert "11:00" not in slots  # Would cross the lunch break.
     assert "10:00" in slots
     key = {"Idempotency-Key": str(uuid7())}
-    response = client.post(f"{base}/appointments", json={**body, "duration": 30}, headers=key)
+    response = client.post(f"{base}/appointments", json=body, headers=key)
     assert response.status_code == 201, response.text
     appointment = response.json()["appointment"]
     assert appointment["notification"]["status"] == "disabled"
@@ -340,6 +343,15 @@ def test_booking_price_idempotency_and_token_management(client, booking_setup):
         json={"managementToken": token, "date": body["date"], "time": "13:00"},
     )
     assert same.status_code == 200, same.text
+    identified = client.post(
+        f"{base}/identify",
+        json={"documentType": body["documentType"], "documentId": body["documentId"]},
+    )
+    assert identified.status_code == 200, identified.text
+    identified_body = identified.json()
+    assert identified_body["isNew"] is False
+    assert identified_body["lastServiceId"] == str(service)
+    assert identified_body["lastEmployeeId"] == str(employee)
     cancelled = client.post(f"{uri}/cancel", json={"managementToken": token})
     assert cancelled.status_code == 200, cancelled.text
     assert cancelled.json()["status"] == "cancelled"
@@ -361,15 +373,6 @@ def test_booking_price_idempotency_and_token_management(client, booking_setup):
             row for row in notifications if row.event_key.startswith("appointment.confirmed/")
         )
         assert email_notifications.deliver_email(session, old_notice.id)["status"] == "superseded"
-    identified = client.post(
-        f"{base}/identify",
-        json={"documentType": body["documentType"], "documentId": body["documentId"]},
-    )
-    assert identified.status_code == 200, identified.text
-    identified_body = identified.json()
-    assert identified_body["isNew"] is False
-    assert identified_body["lastServiceId"] == str(service)
-    assert identified_body["lastEmployeeId"] == str(employee)
     other_branch = UUID(me["visibleBranches"][1]["id"])
     with get_session_factory()() as session:
         assignment = session.scalar(

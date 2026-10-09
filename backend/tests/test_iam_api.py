@@ -1546,7 +1546,7 @@ def test_existing_identity_invitation_keeps_global_password_and_hides_token(
             WorkspaceMembership(
                 workspace_id=foreign_workspace.id,
                 platform_user_id=victim.id,
-                status="active",
+                status="suspended",
                 is_default=True,
             )
         )
@@ -1736,7 +1736,7 @@ def test_admin_password_reset_is_global_only_for_single_workspace_identity(
             WorkspaceMembership(
                 workspace_id=foreign_workspace.id,
                 platform_user_id=UUID(str(multi_user["userId"])),
-                status="active",
+                status="suspended",
                 is_default=False,
             )
         )

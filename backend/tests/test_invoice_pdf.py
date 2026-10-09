@@ -146,17 +146,17 @@ def _create_quote(client: TestClient, headers: dict[str, str], branch_id: str) -
     )
     assert customer.status_code == 201, customer.text
     quote = client.post(
-        "/api/v1/pos/quotes",
+        "/api/v1/crm/quotes",
         headers={**headers, "Idempotency-Key": f"quote-pdf-{suffix}"},
         json={
-            "kind": "quote",
             "branchId": branch_id,
             "customerId": customer.json()["id"],
             "lines": [{"itemId": item_id, "quantity": "1"}],
+            "status": "enviada",
         },
     )
     assert quote.status_code == 201, quote.text
-    return quote.json()["id"]
+    return quote.json()["quote"]["id"]
 
 
 @pytest.fixture(autouse=True)

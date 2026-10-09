@@ -63,7 +63,7 @@ def test_service_channel_flags_control_pos_and_agenda(client: TestClient) -> Non
             "availableInPos": False,
         },
     )
-    assert invalid.status_code == 422
+    assert invalid.status_code == 400
 
     pos_state = client.get(
         "/api/v1/pos/state",

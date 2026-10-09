@@ -42,7 +42,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import func, select
 
-from tests.customer_payloads import customer_create_payload
+from tests.customer_payloads import customer_create_payload, unique_cedula_document_id
 
 _OWNER_EMAIL = "owner@erp.dev"
 _OWNER_PASSWORD = "pos-owner-password-not-a-secret"
@@ -747,7 +747,7 @@ def test_terminal_pos_complete_http_flow(client: TestClient, tmp_path: Path) -> 
                 "lastName": suffix,
                 "email": f"pos.customer.{suffix}@example.com",
                 "documentType": "cedula",
-                "documentId": f"001-1234567-{suffix[-1]}",
+                "documentId": unique_cedula_document_id(),
                 "branchIds": [str(branch_id)],
             },
         )
@@ -1307,7 +1307,7 @@ def test_agenda_receivable_keeps_original_amount_after_partial_payment_and_edit(
             "lastName": suffix,
             "email": f"agenda.receivable.{suffix}@example.com",
             "documentType": "cedula",
-            "documentId": f"001-1234567-{suffix[-1]}",
+            "documentId": unique_cedula_document_id(),
             "branchIds": [str(primary_branch_id), str(move_branch_id)],
         },
     )
@@ -1497,7 +1497,7 @@ def test_closed_register_history_and_cross_register_reversals_are_accounted(
             "lastName": suffix,
             "email": f"historical.pos.{suffix}@example.com",
             "documentType": "cedula",
-            "documentId": f"001-1234567-{suffix[-1]}",
+            "documentId": unique_cedula_document_id(),
             "branchIds": [str(branch_id)],
         },
     )
@@ -1927,7 +1927,7 @@ def test_receivable_proof_upload_sets_approval_and_approve_clears_pending(
             "lastName": suffix,
             "email": f"approve.flow.{suffix}@example.com",
             "documentType": "cedula",
-            "documentId": f"001-1234567-{suffix[-1]}",
+            "documentId": unique_cedula_document_id(),
             "branchIds": [str(branch_id)],
         },
     )
@@ -2046,7 +2046,7 @@ def test_checkout_split_tenders_creates_partial_receivable_with_approval_pending
             "lastName": suffix,
             "email": f"split.tender.{suffix}@example.com",
             "documentType": "cedula",
-            "documentId": f"001-1234567-{suffix[-1]}",
+            "documentId": unique_cedula_document_id(),
             "branchIds": [str(branch_id)],
         },
     )
