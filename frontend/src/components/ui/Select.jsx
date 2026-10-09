@@ -13,8 +13,18 @@ const sizes = {
 function normalizeOptions(options) {
   return options.map((opt) =>
     typeof opt === 'object' && opt !== null && 'value' in opt
-      ? { value: String(opt.value), label: opt.label, disabled: !!opt.disabled }
-      : { value: String(opt.id ?? opt.value), label: opt.label ?? opt.name, disabled: !!opt.disabled }
+      ? {
+          value: String(opt.value),
+          label: opt.label,
+          disabled: !!opt.disabled,
+          testId: opt.testId || opt['data-testid'],
+        }
+      : {
+          value: String(opt.id ?? opt.value),
+          label: opt.label ?? opt.name,
+          disabled: !!opt.disabled,
+          testId: opt.testId || opt['data-testid'],
+        }
   )
 }
 
@@ -210,6 +220,7 @@ export function Select({
                       <button
                         type="button"
                         disabled={opt.disabled}
+                        data-testid={opt.testId}
                         onClick={() => pick(opt)}
                         className={cn(
                           'flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors',

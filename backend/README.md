@@ -84,6 +84,17 @@ lead-to-customer-to-opportunity-to-quote-to-sale journey and a second journey wi
 The local database listens on port `5433` to avoid colliding with a PostgreSQL installation on the
 default port.
 
+## Invoice PDFs
+
+CRM quotes, POS sale invoices, and finance document renders use HTML → PDF. With
+`INVOICE_PDF_RENDERER=auto` (default):
+
+- **Docker / production** — [WeasyPrint](https://weasyprint.org/) (Pango/Cairo libraries are in the backend image).
+- **Local Windows / macOS without GTK** — headless **Chrome or Edge** (`--print-to-pdf`). Set `INVOICE_PDF_CHROME` if the browser is not on `PATH`.
+- **Tests** (`APP_ENV=test`) — minimal stub renderer only; never used for real browser downloads.
+
+If neither WeasyPrint nor Chrome/Edge is available, PDF endpoints return **503**. The stub is not a valid invoice PDF.
+
 ## Run the API
 
 ```bash

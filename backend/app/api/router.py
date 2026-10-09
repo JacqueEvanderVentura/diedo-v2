@@ -27,6 +27,7 @@ from app.api.routers import (
     permissions,
     pos,
     public_booking,
+    public_portal,
     purchasing,
     reports,
     users,
@@ -44,6 +45,7 @@ api_router.include_router(carwash_commissions.router)
 api_router.include_router(administration.router)
 api_router.include_router(agenda.router)
 api_router.include_router(public_booking.router)
+api_router.include_router(public_portal.router)
 api_router.include_router(catalog.router)
 api_router.include_router(crm.router)
 api_router.include_router(chat.router)

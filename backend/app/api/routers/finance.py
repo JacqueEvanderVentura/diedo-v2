@@ -104,6 +104,7 @@ def _attachment_responses(
             size_bytes=row.attachment.size_bytes,
             checksum_sha256=row.attachment.checksum_sha256,
             preview_url=row.preview_url,
+            purpose=row.attachment.purpose,
             created_at=row.attachment.created_at,
         )
         for row in records

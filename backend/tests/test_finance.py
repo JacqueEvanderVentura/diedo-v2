@@ -41,8 +41,9 @@ def _login(client: TestClient, email: str = _OWNER_EMAIL) -> tuple[dict[str, str
 
 
 @pytest.fixture
-def finance_context() -> Generator[tuple[TestClient, Session]]:
+def finance_context(request: pytest.FixtureRequest) -> Generator[tuple[TestClient, Session]]:
     """Run the complete demo-backed contract inside a rollback-only transaction."""
+    request.node.add_marker(pytest.mark.integration)
     dispose_engine()
     connection = get_engine().connect()
     transaction = connection.begin()
@@ -887,6 +888,7 @@ def test_finance_income_sale_endpoint(finance_context: tuple[TestClient, Session
 _PNG_DOC_ATTACH = b"\x89PNG\r\n\x1a\ndoc-attach-test"
 
 
+@pytest.mark.integration
 def test_finance_expense_attachment_roundtrip(finance_context) -> None:
     client, _session = finance_context
     headers, me = _login(client)

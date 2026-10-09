@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { CalendarPlus, ChevronRight, LayoutGrid } from 'lucide-react'
 import { publicBookingApi } from '@/services/publicBookingApi'
 import { Button } from '@/components/ui/Button'
-import { Select } from '@/components/ui/Select'
 import { DatePicker } from '@/components/ui/DatePicker'
-import { DURATION_OPTIONS } from '@/data/agenda'
+import { TimePicker } from '@/components/ui/TimePicker'
+import { durationLabel } from '@/data/agenda'
 import { branchDateKey, emailResultMessage } from '../lib/notification'
 
 export default function GestionCitaPage({ branchId, appointmentId, token }) {
   const [appointment, setAppointment] = useState(null)
   const [error, setError] = useState('')
   const [date, setDate] = useState('')
-  const [duration, setDuration] = useState(30)
   const [time, setTime] = useState('')
   const [slots, setSlots] = useState([])
   const [loadingSlots, setLoadingSlots] = useState(false)
@@ -34,7 +34,6 @@ export default function GestionCitaPage({ branchId, appointmentId, token }) {
       if (!active) return
       setAppointment(result)
       setDate(result.date)
-      setDuration(result.durationMinutes)
     }).catch((err) => { if (active) setError(err.message || 'El enlace no es válido o la cita ya no existe.') })
     return () => { active = false }
   }, [branchId, appointmentId, token])
@@ -49,12 +48,12 @@ export default function GestionCitaPage({ branchId, appointmentId, token }) {
       return
     }
     setLoadingSlots(true)
-    publicBookingApi.managementSlots(branchId, appointmentId, { token, date, duration }).then((result) => {
+    publicBookingApi.managementSlots(branchId, appointmentId, { token, date }).then((result) => {
       if (active) setSlots(result.slots)
     }).catch((err) => { if (active) setSlotError(err.message || 'No se pudieron consultar los horarios.') })
       .finally(() => { if (active) setLoadingSlots(false) })
     return () => { active = false }
-  }, [branchId, appointmentId, token, date, duration, appointment, revision])
+  }, [branchId, appointmentId, token, date, appointment, revision])
 
   const mutate = async (action) => {
     if (busyRef.current) return
@@ -66,7 +65,7 @@ export default function GestionCitaPage({ branchId, appointmentId, token }) {
       const payload = { managementToken: token }
       const updated = action === 'cancel'
         ? await publicBookingApi.cancelAppointment(branchId, appointmentId, payload)
-        : await publicBookingApi.rescheduleAppointment(branchId, appointmentId, { ...payload, date, time, duration })
+        : await publicBookingApi.rescheduleAppointment(branchId, appointmentId, { ...payload, date, time })
       setAppointment((current) => ({ ...current, ...updated }))
       setCancelPrompt(false)
       setNotice(`${action === 'cancel' ? 'Cita cancelada.' : 'Cita reagendada.'} ${emailResultMessage(updated.notification)}`)
@@ -97,18 +96,56 @@ export default function GestionCitaPage({ branchId, appointmentId, token }) {
           {appointment.status === 'confirmed' && <>
             <h2 className="font-semibold">Elegir otro horario</h2>
             <DatePicker value={date} minDate={branchDateKey(appointment.timezone)} onChange={(value) => { setTime(''); setDate(value) }} testId="manage-date" />
-            <Select value={duration} onChange={(value) => { setTime(''); setDuration(Number(value)) }} options={DURATION_OPTIONS} data-testid="manage-duration" />
+            <p className="text-sm text-slate-600">
+              Duración: <span data-testid="manage-duration-display">{durationLabel(appointment.durationMinutes)}</span>
+            </p>
             {loadingSlots ? <p role="status">Consultando horarios…</p> : slotError ? <div role="alert"><p>{slotError}</p><Button data-testid="manage-retry-slots" onClick={() => setRevision((value) => value + 1)}>Reintentar</Button></div>
-              : slots.length ? <Select value={time} onChange={setTime} options={slots.map((slot) => ({ value: slot, label: slot }))} placeholder="Selecciona un horario" data-testid="manage-time" />
-                : <p>No hay cupos disponibles para esta fecha y duración.</p>}
-            <Button disabled={busy || loadingSlots || !time} onClick={() => mutate('reschedule')} data-testid="manage-reschedule">{busy ? 'Guardando…' : 'Reagendar cita'}</Button>
+              : slots.length ? (
+                <TimePicker
+                  value={time}
+                  onChange={setTime}
+                  slots={slots}
+                  testId="manage-time"
+                  placeholder="Seleccionar hora"
+                />
+              )
+                : <p>No hay cupos disponibles para esta fecha.</p>}
+            <div className="flex flex-wrap gap-2">
+              <Button disabled={busy || loadingSlots || !time} onClick={() => mutate('reschedule')} data-testid="manage-reschedule">{busy ? 'Guardando…' : 'Reagendar cita'}</Button>
+              {cancelPrompt ? null : (
+                <Button variant="secondary" disabled={busy} onClick={() => setCancelPrompt(true)} data-testid="manage-cancel">Cancelar cita</Button>
+              )}
+            </div>
             {cancelPrompt ? <div className="space-y-2 rounded-lg bg-rose-50 p-3">
               <p>¿Cancelar esta cita y liberar el horario?</p>
-              <div className="flex gap-2"><Button disabled={busy} onClick={() => mutate('cancel')} data-testid="manage-confirm-cancel">Sí, cancelar cita</Button>
+              <div className="flex flex-wrap gap-2"><Button disabled={busy} onClick={() => mutate('cancel')} data-testid="manage-confirm-cancel">Sí, cancelar cita</Button>
                 <Button variant="secondary" disabled={busy} onClick={() => setCancelPrompt(false)} data-testid="manage-keep">Conservar cita</Button></div>
-            </div> : <Button variant="secondary" disabled={busy} onClick={() => setCancelPrompt(true)} data-testid="manage-cancel">Cancelar cita</Button>}
+            </div> : null}
           </>}
-          <Link className="block text-sm text-blue-700 underline" to={`/agendar?branch=${encodeURIComponent(branchId)}`}>Agendar una nueva cita</Link>
+          <nav className="mt-10 space-y-2.5 border-t border-slate-100 pt-8" aria-label="Más opciones">
+            <Link
+              to={`/agendar/portal?branch=${encodeURIComponent(branchId)}`}
+              data-testid="manage-back-portal"
+              className="group flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/90 px-4 py-3.5 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-blue-200 hover:bg-blue-50/70 hover:text-blue-900 hover:shadow-md"
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-blue-600 shadow-sm ring-1 ring-slate-100 transition-colors group-hover:bg-blue-600 group-hover:text-white group-hover:ring-blue-200">
+                <LayoutGrid className="h-5 w-5" aria-hidden />
+              </span>
+              <span className="min-w-0 flex-1">Volver a mi portal</span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition-colors group-hover:text-blue-500" aria-hidden />
+            </Link>
+            <Link
+              to={`/agendar?branch=${encodeURIComponent(branchId)}`}
+              data-testid="manage-new-booking"
+              className="group flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/90 px-4 py-3.5 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-blue-200 hover:bg-blue-50/70 hover:text-blue-900 hover:shadow-md"
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-blue-600 shadow-sm ring-1 ring-slate-100 transition-colors group-hover:bg-blue-600 group-hover:text-white group-hover:ring-blue-200">
+                <CalendarPlus className="h-5 w-5" aria-hidden />
+              </span>
+              <span className="min-w-0 flex-1">Agendar una nueva cita</span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition-colors group-hover:text-blue-500" aria-hidden />
+            </Link>
+          </nav>
         </>}
       </section>
     </main>

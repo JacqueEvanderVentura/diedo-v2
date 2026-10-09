@@ -171,6 +171,7 @@ class MasterDataRepository:
                     Customer.normalized_name.ilike(pattern),
                     Customer.normalized_email.ilike(pattern),
                     Customer.normalized_phone.ilike(pattern),
+                    Customer.normalized_document_id.ilike(pattern),
                 )
             )
         if name:

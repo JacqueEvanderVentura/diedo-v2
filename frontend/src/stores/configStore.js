@@ -123,14 +123,21 @@ const SEED_SETTINGS = {
   region: 'República Dominicana',
   currency: 'RD$',
   billingDocuments: {
-    tradeName: 'Helios 360',
-    legalName: '',
-    rnc: '',
-    address: '',
-    phone: '',
-    email: '',
-    logoDataUrl: '',
-    footerNote: '',
+    templates: [
+      {
+        id: 'tpl-default',
+        name: 'Principal',
+        branchIds: [],
+        tradeName: 'Helios 360',
+        legalName: '',
+        rnc: '',
+        address: '',
+        phone: '',
+        email: '',
+        logoDataUrl: '',
+        footerNote: '',
+      },
+    ],
   },
 }
 
@@ -246,7 +253,7 @@ export const useConfigStore = create(
           workspaceBillingHydrated: true,
           settings: {
             ...s.settings,
-            billingDocuments: { ...s.settings.billingDocuments, ...data },
+            billingDocuments: data,
           },
         })),
 

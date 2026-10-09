@@ -9,6 +9,8 @@ from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from tests.customer_payloads import unique_lead_document_fields
+
 _PASSWORD = "crm-lost-test-password-not-a-secret"
 
 
@@ -36,7 +38,12 @@ def test_lost_lead_persists_and_reopening_preserves_audit() -> None:
         lead = client.post(
             "/api/v1/crm/leads",
             headers={**headers, "Idempotency-Key": f"lost-lead-{marker}"},
-            json={"branchId": branch_id, "name": f"Prospecto {marker}", "status": "propuesta"},
+            json={
+                "branchId": branch_id,
+                "name": f"Prospecto {marker}",
+                "status": "propuesta",
+                **unique_lead_document_fields(),
+            },
         )
         assert lead.status_code == 201, lead.text
         lost = client.patch(
@@ -149,7 +156,11 @@ def test_reopening_does_not_change_a_closed_lead() -> None:
         lead = client.post(
             "/api/v1/crm/leads",
             headers={**headers, "Idempotency-Key": f"converted-lost-lead-{marker}"},
-            json={"branchId": branch_id, "name": f"Convertido {marker}"},
+            json={
+                "branchId": branch_id,
+                "name": f"Convertido {marker}",
+                **unique_lead_document_fields(),
+            },
         )
         assert lead.status_code == 201, lead.text
         current_lead = client.get(f"/api/v1/crm/leads/{lead.json()['id']}", headers=headers)
@@ -186,6 +197,7 @@ def test_lost_lead_search_by_phone_and_name() -> None:
                 "name": f"Cliente sin lead {marker}",
                 "phone": phone,
                 "status": "nuevo",
+                **unique_lead_document_fields(),
             },
         )
         assert first.status_code == 201, first.text
@@ -206,6 +218,7 @@ def test_lost_lead_search_by_phone_and_name() -> None:
                 "branchId": branch_id,
                 "company": f"Plan adicional {marker}",
                 "status": "nuevo",
+                **unique_lead_document_fields(),
             },
         )
         assert second.status_code == 201, second.text

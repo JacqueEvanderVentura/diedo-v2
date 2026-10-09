@@ -22,10 +22,10 @@ from app.repositories.administration import (
     LegalEntityFiscalRecord,
 )
 from app.schemas.administration import (
-    BranchBillingDocuments,
     BranchDetails,
     FiscalTaxIdentityInput,
     NewLegalEntityFiscalProfile,
+    WorkspaceBillingDocuments,
 )
 from app.services.auth import AuthPrincipal
 from app.services.authorization import PermissionGrant
@@ -71,8 +71,8 @@ class AdministrationService:
             if key == "billing_documents" and value is not None:
                 documents = (
                     value
-                    if isinstance(value, BranchBillingDocuments)
-                    else BranchBillingDocuments.model_validate(value)
+                    if isinstance(value, WorkspaceBillingDocuments)
+                    else WorkspaceBillingDocuments.model_validate(value)
                 )
                 workspace.billing_documents = documents.model_dump(mode="json")
                 continue

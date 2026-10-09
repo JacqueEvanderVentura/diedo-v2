@@ -27,6 +27,8 @@ from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from tests.customer_payloads import customer_create_payload
+
 _OWNER_EMAIL = "owner@erp.dev"
 _OWNER_PASSWORD = "phase-two-owner-password-not-a-secret"
 
@@ -80,6 +82,8 @@ def test_phase2_request_schemas_normalize_and_reject_ambiguous_changes() -> None
         displayName="  Cliente   Normalizado  ",
         firstName="  María  ",
         phone="   ",
+        documentType="cedula",
+        documentId="001-1234567-8",
         branchIds=[branch_id],
     )
     assert customer.display_name == "Cliente Normalizado"
@@ -114,6 +118,7 @@ def test_phase2_request_schemas_normalize_and_reject_ambiguous_changes() -> None
     )
     assert employee.employee_number == "EMP-9"
     assert employee.department is None
+    assert employee.online_booking_selectable is True
     with pytest.raises(ValidationError, match="al menos un cambio"):
         UpdateEmployeeRequest(version=1)
     with pytest.raises(ValidationError, match="no puede ser nulo"):
@@ -195,18 +200,24 @@ def test_phase2_customers_employees_schedules_and_attachments(
     assert platform_user.status_code == 201, platform_user.text
     platform_user_id = platform_user.json()["userId"]
 
-    customer_response = client.post(
-        "/api/v1/customers",
-        headers=headers,
-        json={
+    customer_body = customer_create_payload(
+        display_name=f"María Cliente {suffix}",
+        branch_id=branch_id,
+        document_suffix=suffix[-1],
+    )
+    customer_body.update(
+        {
             "customerType": "person",
-            "displayName": f"María Cliente {suffix}",
             "firstName": "María",
             "lastName": f"Cliente {suffix}",
             "email": f"maria.{suffix}@example.com",
             "phone": f"+1 809 555 {suffix[:4]}",
-            "branchIds": [branch_id],
-        },
+        }
+    )
+    customer_response = client.post(
+        "/api/v1/customers",
+        headers=headers,
+        json=customer_body,
     )
     assert customer_response.status_code == 201, customer_response.text
     customer = customer_response.json()
@@ -239,11 +250,11 @@ def test_phase2_customers_employees_schedules_and_attachments(
     other_customer = client.post(
         "/api/v1/customers",
         headers=headers,
-        json={
-            "customerType": "person",
-            "displayName": f"Otro Cliente {suffix}",
-            "branchIds": [branch_id],
-        },
+        json=customer_create_payload(
+            display_name=f"Otro Cliente {suffix}",
+            branch_id=branch_id,
+            document_suffix="2",
+        ),
     )
     assert other_customer.status_code == 201, other_customer.text
     other_id = other_customer.json()["id"]

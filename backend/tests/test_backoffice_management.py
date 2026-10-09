@@ -146,6 +146,7 @@ def test_existing_identity_and_membership_lifecycle(client, operator):
     other = workspace(client, operator, email=company["owner"]["email"])
     staff = member(client, operator, company)
     second = member(client, operator, other, email=staff["email"])
+    assert second["membershipStatus"] == "suspended"
     with TestClient(app) as staff_client:
         first_token = login(staff_client, staff["email"])
         switched = staff_client.post(
@@ -153,21 +154,33 @@ def test_existing_identity_and_membership_lifecycle(client, operator):
             headers=first_token,
             json={"workspaceId": other["workspaceId"]},
         )
-        assert switched.status_code == 200
-        second_token = {"Authorization": f"Bearer {switched.json()['accessToken']}"}
+        assert switched.status_code == 404
         endpoint = f"{BASE}/workspaces/{company['workspaceId']}/members/{staff['membershipId']}"
+        endpoint_other = (
+            f"{BASE}/workspaces/{other['workspaceId']}/members/{second['membershipId']}"
+        )
         suspended = client.patch(
             endpoint,
             headers=operator,
             json={"version": staff["membershipVersion"], "status": "suspended"},
         )
         assert suspended.status_code == 200, suspended.text
-        assert staff_client.get("/api/v1/auth/me", headers=second_token).status_code == 200
+        activated_other = client.patch(
+            endpoint_other,
+            headers=operator,
+            json={"version": second["membershipVersion"], "status": "active"},
+        )
+        assert activated_other.status_code == 200, activated_other.text
+        second_token = login(staff_client, staff["email"])
+        assert (
+            staff_client.get("/api/v1/auth/me", headers=second_token).json()["workspaceId"]
+            == other["workspaceId"]
+        )
         assert (
             client.patch(
                 endpoint,
                 headers=operator,
-                json={"version": staff["membershipVersion"], "status": "active"},
+                json={"version": suspended.json()["membershipVersion"], "status": "active"},
             ).status_code
             == 409
         )
@@ -185,6 +198,14 @@ def test_existing_identity_and_membership_lifecycle(client, operator):
             json={"version": disabled.json()["version"], "status": "active"},
         )
         assert enabled.status_code == 200
+        current_other = client.get(endpoint_other, headers=operator).json()
+        assert current_other["membershipStatus"] == "active"
+        suspended_other = client.patch(
+            endpoint_other,
+            headers=operator,
+            json={"version": current_other["membershipVersion"], "status": "suspended"},
+        )
+        assert suspended_other.status_code == 200
         current = client.get(endpoint, headers=operator).json()
         assert current["membershipStatus"] == "suspended"
         assert (
@@ -195,7 +216,7 @@ def test_existing_identity_and_membership_lifecycle(client, operator):
             ).status_code
             == 200
         )
-        assert login(staff_client, second["email"])
+        assert login(staff_client, staff["email"])
     duplicate = client.post(
         f"{BASE}/users",
         headers=operator,
@@ -211,7 +232,7 @@ def test_existing_identity_and_membership_lifecycle(client, operator):
         headers=operator,
         json={
             "workspaceId": company["workspaceId"],
-            "email": other["owner"]["email"],
+            "email": company["owner"]["email"],
             "displayName": "Existing",
             "password": PASSWORD,
         },

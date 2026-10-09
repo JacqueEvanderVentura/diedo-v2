@@ -42,6 +42,15 @@ const products = [
     branchIds: ['branch-main'],
     apiSynced: true,
   },
+  {
+    id: 'service-pos-only',
+    type: 'service',
+    status: 'active',
+    branchIds: ['branch-main'],
+    apiSynced: true,
+    availableInAgenda: false,
+    availableInPos: true,
+  },
 ]
 
 describe('servicios disponibles por sucursal', () => {
@@ -51,6 +60,7 @@ describe('servicios disponibles por sucursal', () => {
       'service-both',
       'service-dummy',
     ])
+    expect(servicesForBranch(products, 'branch-main').some((item) => item.id === 'service-pos-only')).toBe(false)
     expect(servicesForBranch(products, 'branch-center').map((item) => item.id)).toEqual([
       'service-center',
       'service-both',

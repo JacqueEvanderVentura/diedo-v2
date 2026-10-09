@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import Any, cast
 from uuid import UUID, uuid7
 
@@ -12,23 +13,27 @@ from sqlalchemy.orm import Session
 from app.core.request_context import get_request_id
 from app.repositories.authorization import AuthorizationRepository
 from app.repositories.purchasing import (
+    CatalogCompareRow,
     PurchaseRequestPage,
     PurchaseRequestRecord,
     PurchaseRequestStatsRecord,
     PurchasingApproverRecord,
     PurchasingRepository,
     PurchasingSettingsRecord,
+    SupplierCatalogItemRecord,
     SupplierPage,
     SupplierRecord,
 )
 from app.services.auth import AuthPrincipal
-from app.services.authorization import PermissionGrant
+from app.services.authorization import AuthorizationService, PermissionGrant
 from app.services.errors import (
     AuthorizationError,
     ConflictError,
     InvalidOperationError,
     ResourceNotFoundError,
 )
+from app.services.finance import FinanceService
+from app.services.inventory import InventoryService
 
 
 class PurchasingService:
@@ -436,6 +441,75 @@ class PurchasingService:
             self._session.rollback()
             raise ConflictError("No se pudo revisar la solicitud.") from exc
 
+    def pay_purchase_request(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        request_id: UUID,
+        expected_version: int,
+        idempotency_key: str,
+    ) -> PurchaseRequestRecord:
+        record = self._locked_request(grant, request_id)
+        request = record.request
+        if request.status != "aprobada":
+            raise InvalidOperationError(
+                "Solo una solicitud aprobada puede marcarse como pagada.", "status"
+            )
+        invoice_count = self._repository.count_attachments(
+            grant.workspace_id, request.id, purpose="invoice"
+        )
+        if invoice_count < 1:
+            raise InvalidOperationError(
+                "Debes subir la factura del proveedor antes de marcarla como pagada.", "invoice"
+            )
+        payment_count = self._repository.count_attachments(
+            grant.workspace_id, request.id, purpose="payment"
+        )
+        if payment_count < 1:
+            raise InvalidOperationError(
+                "Debes subir el comprobante de pago antes de marcarla como pagada.", "payment"
+            )
+        self._require_version(request.version, expected_version)
+        finance_grant = AuthorizationService(self._session).require_permission(
+            principal, "finance.manage"
+        )
+        total = sum(
+            (item.quantity * item.unit_price for item in record.items),
+            Decimal("0"),
+        )
+        if total <= 0:
+            raise InvalidOperationError(
+                "La solicitud no tiene un monto válido para pagar.", "items"
+            )
+        expense = FinanceService(self._session).create_expense(
+            principal=principal,
+            grant=finance_grant,
+            values={
+                "concept": f"Compra {request.request_number} · {record.supplier_name}",
+                "amount": total,
+                "category": "insumos",
+                "date": date.today(),
+                "branch_id": request.branch_id,
+                "status": "pagado",
+                "budget_id": None,
+            },
+            idempotency_key=idempotency_key,
+        )
+        try:
+            self._repository.pay_purchase_request(
+                request=request,
+                paid_at=datetime.now(UTC),
+                finance_expense_id=expense.id,
+                actor_platform_user_id=principal.platform_user_id,
+                request_id=get_request_id(),
+            )
+            self._session.commit()
+            return self.get_purchase_request(grant, request_id)
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise ConflictError("No se pudo marcar la solicitud como pagada.") from exc
+
     def deliver_purchase_request(
         self,
         *,
@@ -443,18 +517,88 @@ class PurchasingService:
         grant: PermissionGrant,
         request_id: UUID,
         expected_version: int,
+        lines: list[dict[str, Any]],
+        idempotency_key: str,
     ) -> PurchaseRequestRecord:
         record = self._locked_request(grant, request_id)
         request = record.request
-        if request.status != "aprobada":
+        if request.status != "pagada":
             raise InvalidOperationError(
-                "Solo una solicitud aprobada puede marcarse como entregada.", "status"
+                "Solo una solicitud pagada puede marcarse como recibida.", "status"
+            )
+        if self._repository.count_receipt_images(grant.workspace_id, request.id) < 1:
+            raise InvalidOperationError(
+                "Debes subir al menos una foto de comprobante de recepción.", "receipt"
             )
         self._require_version(request.version, expected_version)
+        line_map = {
+            cast(UUID, row["item_id"]): cast(UUID, row["inventory_item_id"]) for row in lines
+        }
+        purchase_items = [item for item in record.items if item.quantity > 0]
+        if len(line_map) != len(purchase_items):
+            raise InvalidOperationError(
+                "Debes indicar el insumo de inventario para cada línea de la solicitud.", "lines"
+            )
+        for item in purchase_items:
+            if item.id not in line_map:
+                raise InvalidOperationError(
+                    "Falta el mapeo de inventario para una línea de la solicitud.", "lines"
+                )
+            inventory_item_id = line_map[item.id]
+            if not self._repository.inventory_item_is_supply(grant.workspace_id, inventory_item_id):
+                raise ResourceNotFoundError(
+                    "El insumo de inventario no existe o no es válido.", "inventoryItemId"
+                )
+
+        inventory_grant = AuthorizationService(self._session).require_permission(
+            principal, "inventory.move"
+        )
+        deltas: dict[UUID, Decimal] = {}
+        for item in purchase_items:
+            inventory_item_id = line_map[item.id]
+            deltas[inventory_item_id] = deltas.get(inventory_item_id, Decimal("0")) + item.quantity
+
+        inventory_service = InventoryService(self._session)
+        warehouse = inventory_service._repository.get_warehouse(
+            workspace_id=grant.workspace_id,
+            branch_id=request.branch_id,
+            warehouse_id=None,
+        )
+        if warehouse is None:
+            raise ResourceNotFoundError("No hay almacén configurado para la sucursal.", "branchId")
+
+        adjustment_items: list[dict[str, Any]] = []
+        for inventory_item_id, delta in deltas.items():
+            balance = inventory_service._repository.ensure_balance_for_update(
+                workspace_id=grant.workspace_id,
+                item_id=inventory_item_id,
+                branch_id=request.branch_id,
+                warehouse_id=warehouse.id,
+            )
+            adjustment_items.append(
+                {
+                    "item_id": inventory_item_id,
+                    "quantity": balance.quantity + delta,
+                }
+            )
+
+        InventoryService(self._session).create_adjustment_movement(
+            principal=principal,
+            grant=inventory_grant,
+            values={
+                "branch_id": request.branch_id,
+                "warehouse_id": warehouse.id,
+                "comment": f"Compra recibida {request.request_number}",
+                "items": adjustment_items,
+            },
+            idempotency_key=idempotency_key,
+        )
+
         try:
             self._repository.deliver_purchase_request(
                 request=request,
                 delivered_at=datetime.now(UTC),
+                line_inventory_map=line_map,
                 actor_platform_user_id=principal.platform_user_id,
                 request_id=get_request_id(),
             )
@@ -463,6 +607,136 @@ class PurchasingService:
         except IntegrityError as exc:
             self._session.rollback()
             raise ConflictError("No se pudo marcar la solicitud como entregada.") from exc
+
+    def list_supplier_catalog(
+        self, grant: PermissionGrant, supplier_id: UUID, *, active_only: bool = True
+    ) -> tuple[SupplierCatalogItemRecord, ...]:
+        self.get_supplier(grant, supplier_id)
+        return self._repository.list_supplier_catalog(
+            workspace_id=grant.workspace_id,
+            supplier_id=supplier_id,
+            active_only=active_only,
+        )
+
+    def create_supplier_catalog_item(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        supplier_id: UUID,
+        values: dict[str, Any],
+    ) -> SupplierCatalogItemRecord:
+        self.get_supplier(grant, supplier_id)
+        category_id = cast(UUID, values["category_id"])
+        if not self._repository.category_is_supply(grant.workspace_id, category_id):
+            raise ResourceNotFoundError("La categoría no existe o no es de insumos.", "categoryId")
+        normalized = self._normalize_name(cast(str, values["name"]))
+        persistent = {
+            "name": cast(str, values["name"]).strip(),
+            "normalized_name": normalized,
+            "unit": cast(str, values["unit"]).strip(),
+            "unit_price": values["unit_price"],
+            "category_id": category_id,
+        }
+        item_id = uuid7()
+        try:
+            item = self._repository.create_catalog_item(
+                item_id=item_id,
+                workspace_id=grant.workspace_id,
+                supplier_id=supplier_id,
+                actor_platform_user_id=principal.platform_user_id,
+                values=persistent,
+            )
+            self._session.commit()
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise ConflictError(
+                "Ya existe un producto con ese nombre en el catálogo del proveedor.", "name"
+            ) from exc
+        record = self._repository.get_catalog_item(grant.workspace_id, supplier_id, item.id)
+        assert record is not None
+        return record
+
+    def update_supplier_catalog_item(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        supplier_id: UUID,
+        item_id: UUID,
+        expected_version: int,
+        changes: dict[str, Any],
+    ) -> SupplierCatalogItemRecord:
+        self.get_supplier(grant, supplier_id)
+        item = self._repository.get_catalog_item_for_update(
+            grant.workspace_id, supplier_id, item_id
+        )
+        if item is None:
+            raise ResourceNotFoundError("El producto del catálogo no existe.", "itemId")
+        self._require_version(item.version, expected_version)
+        persistent: dict[str, Any] = {}
+        if "name" in changes and changes["name"] is not None:
+            persistent["name"] = cast(str, changes["name"]).strip()
+            persistent["normalized_name"] = self._normalize_name(cast(str, changes["name"]))
+        if "unit" in changes and changes["unit"] is not None:
+            persistent["unit"] = cast(str, changes["unit"]).strip()
+        if "unit_price" in changes and changes["unit_price"] is not None:
+            persistent["unit_price"] = changes["unit_price"]
+        if "category_id" in changes and changes["category_id"] is not None:
+            category_id = cast(UUID, changes["category_id"])
+            if not self._repository.category_is_supply(grant.workspace_id, category_id):
+                raise ResourceNotFoundError(
+                    "La categoría no existe o no es de insumos.", "categoryId"
+                )
+            persistent["category_id"] = category_id
+        if "active" in changes and changes["active"] is not None:
+            persistent["active"] = changes["active"]
+        try:
+            self._repository.update_catalog_item(
+                item=item,
+                changes=persistent,
+                actor_platform_user_id=principal.platform_user_id,
+            )
+            self._session.commit()
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise ConflictError("No se pudo actualizar el producto del catálogo.") from exc
+        record = self._repository.get_catalog_item(grant.workspace_id, supplier_id, item_id)
+        assert record is not None
+        return record
+
+    def archive_supplier_catalog_item(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        supplier_id: UUID,
+        item_id: UUID,
+    ) -> None:
+        self.get_supplier(grant, supplier_id)
+        item = self._repository.get_catalog_item_for_update(
+            grant.workspace_id, supplier_id, item_id
+        )
+        if item is None:
+            raise ResourceNotFoundError("El producto del catálogo no existe.", "itemId")
+        self._repository.archive_catalog_item(
+            item=item,
+            actor_platform_user_id=principal.platform_user_id,
+        )
+        self._session.commit()
+
+    def compare_supplier_catalog(
+        self,
+        grant: PermissionGrant,
+        *,
+        category_id: UUID | None,
+        search: str | None,
+    ) -> tuple[CatalogCompareRow, ...]:
+        return self._repository.compare_catalog(
+            workspace_id=grant.workspace_id,
+            category_id=category_id,
+            search=self._normalize_optional_text(search),
+        )
 
     def get_settings(self, grant: PermissionGrant) -> PurchasingSettingsRecord:
         record = self._repository.get_settings(grant.workspace_id)
@@ -575,6 +849,8 @@ class PurchasingService:
                 "quantity": item["qty"],
                 "unit": cast(str, item["unit"]).strip(),
                 "unit_price": item["price"],
+                "supplier_catalog_item_id": item.get("catalog_item_id"),
+                "category_id": item.get("category_id"),
             }
             for item in items
         ]

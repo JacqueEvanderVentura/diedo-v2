@@ -1,33 +1,51 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
+import { CreatablePicker } from '@/components/ui/CreatablePicker'
 import { useComprasStore } from '@/stores/comprasStore'
 import { useConfigStore } from '@/stores/configStore'
 import { usePosStore } from '@/stores/posStore'
 import { useCatalogStore } from '@/stores/catalogStore'
+import { useSessionStore } from '@/stores/sessionStore'
 import { REQUEST_PRIORITIES } from '@/data/compras'
 import { buildBranchFilterOptions } from '@/lib/branches'
 import { AttachmentField } from '@/components/ui/AttachmentField'
 import { filterCategoriesForSection } from '@/lib/categories'
+import { isUuid } from '@/lib/workspaceBranch'
+import {
+  applyInventorySupplyToRequestItem,
+  applySupplierCatalogToRequestItem,
+} from '../lib/purchaseRequestExtras'
+import {
+  COMMON_MEASURE_UNITS,
+  loadCustomMeasureUnits,
+  mergeMeasureUnits,
+} from '../lib/measureUnits'
 
 const emptyItem = () => ({
   name: '',
   qty: 1,
-  unit: 'unidad',
+  unit: 'Unidad',
   price: 0,
+  catalogItemId: '',
   supplyProductId: '',
   supplyCategoryId: '',
+  categoryId: '',
 })
 
 export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 'Usuario actual' }) {
   const suppliers = useComprasStore((s) => s.suppliers)
   const branches = useConfigStore((s) => s.branches)
   const posBranchId = usePosStore((s) => s.branchId)
-  const supplies = useCatalogStore((s) => s.getSupplies())
+  const catalogProducts = useCatalogStore((s) => s.products)
+  const supplies = useMemo(
+    () => catalogProducts.filter((product) => product.type === 'supply'),
+    [catalogProducts]
+  )
   const categories = useConfigStore((s) => s.categories)
   const supplyCategories = filterCategoriesForSection(categories, 'catalog', 'insumo')
   const branchOptions = buildBranchFilterOptions(branches, { includeAll: false })
@@ -39,10 +57,38 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
   const [quoteAttachments, setQuoteAttachments] = useState([])
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
+  const [supplierCatalog, setSupplierCatalog] = useState([])
+  const fetchSupplierCatalog = useComprasStore((s) => s.fetchSupplierCatalog)
+  const isOnline = useSessionStore((s) => s.isOnline())
+  const supplierOptions = useMemo(
+    () => (isOnline ? suppliers.filter((s) => isUuid(s.id)) : suppliers),
+    [suppliers, isOnline],
+  )
+
+  useEffect(() => {
+    if (!open || !supplierId || !isOnline || !isUuid(supplierId)) {
+      setSupplierCatalog([])
+      return
+    }
+    fetchSupplierCatalog(supplierId, { isOnline })
+      .then((rows) => setSupplierCatalog(rows))
+      .catch(() => setSupplierCatalog([]))
+  }, [open, supplierId, isOnline, fetchSupplierCatalog])
+
+  const linkCatalogItem = useCallback((idx, catalogItemId) => {
+    const catalogRow = catalogItemId
+      ? supplierCatalog.find((row) => row.id === catalogItemId)
+      : null
+    setItems((list) => list.map((it, i) => (
+      i === idx
+        ? applySupplierCatalogToRequestItem(it, catalogRow, supplies, supplyCategories)
+        : it
+    )))
+  }, [supplierCatalog, supplies, supplyCategories])
 
   useEffect(() => {
     if (!open) return
-    setSupplierId(suppliers[0]?.id || '')
+    setSupplierId(supplierOptions[0]?.id || '')
     setBranchId(posBranchId || branches[0]?.id || 'charm-dn')
     setPriority('normal')
     setNotes('')
@@ -50,22 +96,46 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
     setQuoteAttachments([])
     setErr('')
     setSaving(false)
-  }, [open, suppliers, posBranchId, branches])
+  }, [open, supplierOptions, posBranchId, branches])
 
   const linkSupply = (idx, supplyProductId) => {
-    const supply = supplies.find((row) => row.id === supplyProductId)
+    const supply = supplyProductId
+      ? supplies.find((row) => row.id === supplyProductId)
+      : null
     setItems((list) => list.map((it, i) => (
-      i === idx
-        ? {
-            ...it,
-            supplyProductId,
-            name: supply?.name || it.name,
-            unit: supply?.unit || it.unit,
-            supplyCategoryId: supply?.category || it.supplyCategoryId,
-          }
-        : it
+      i === idx ? applyInventorySupplyToRequestItem(it, supply, supplyCategories) : it
     )))
   }
+
+  const unitOptions = useMemo(
+    () => mergeMeasureUnits(
+      COMMON_MEASURE_UNITS,
+      loadCustomMeasureUnits(),
+      supplierCatalog.map((row) => row.unit),
+      supplies.map((row) => row.unit),
+      items.map((row) => row.unit),
+    ),
+    [supplierCatalog, supplies, items],
+  )
+
+  const categoryOptions = useMemo(() => {
+    const seen = new Set()
+    const options = []
+    const push = (id, name) => {
+      if (!id || seen.has(id)) return
+      seen.add(id)
+      options.push({ value: id, label: name || 'Categoría' })
+    }
+    supplyCategories.forEach((row) => push(row.id, row.name))
+    supplierCatalog.forEach((row) => push(row.categoryId, row.categoryName))
+    items.forEach((row) => {
+      const id = row.supplyCategoryId || row.categoryId
+      if (!id || seen.has(id)) return
+      const known = categories.find((category) => category.id === id)
+      push(id, known?.name)
+    })
+    return options
+  }, [supplyCategories, supplierCatalog, items, categories])
 
   const updateItem = (idx, field, value) =>
     setItems((list) => list.map((it, i) => (i === idx ? { ...it, [field]: value } : it)))
@@ -90,7 +160,9 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
           qty: Number(i.qty) || 1,
           price: Number(i.price) || 0,
           supplyProductId: i.supplyProductId || null,
-          supplyCategoryId: i.supplyCategoryId || null,
+          supplyCategoryId: i.supplyCategoryId || i.categoryId || null,
+          catalogItemId: i.catalogItemId || null,
+          categoryId: i.categoryId || i.supplyCategoryId || null,
         })),
         priority,
         notes: notes.trim(),
@@ -116,7 +188,7 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
               value={supplierId}
               onChange={setSupplierId}
               placeholder="Seleccionar..."
-              options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
+              options={supplierOptions.map((s) => ({ value: s.id, label: s.name }))}
             />
           </div>
           <div>
@@ -160,6 +232,23 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
                   )}
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
+                  {supplierCatalog.length > 0 && (
+                    <div className="min-w-0 sm:col-span-2">
+                      <label className="mb-1.5 block text-xs font-semibold text-slate-500">Del catálogo del proveedor</label>
+                      <Select
+                        value={item.catalogItemId || ''}
+                        onChange={(value) => linkCatalogItem(idx, value)}
+                        placeholder="Seleccionar producto del catálogo"
+                        options={[
+                          { value: '', label: 'Otro / manual' },
+                          ...supplierCatalog.map((row) => ({
+                            value: row.id,
+                            label: `${row.name} · ${row.unit} · RD$${row.unitPrice}`,
+                          })),
+                        ]}
+                      />
+                    </div>
+                  )}
                   <div className="min-w-0 sm:col-span-2">
                     <label className="mb-1.5 block text-xs font-semibold text-slate-500">Insumo de inventario</label>
                     <Select
@@ -174,14 +263,16 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
                   </div>
                   <div className="min-w-0 sm:col-span-2">
                     <label className="mb-1.5 block text-xs font-semibold text-slate-500">Categoría de insumo</label>
-                    <Select
-                      value={item.supplyCategoryId || ''}
-                      onChange={(value) => updateItem(idx, 'supplyCategoryId', value)}
+                    <CreatablePicker
+                      value={item.supplyCategoryId || item.categoryId || ''}
+                      onChange={(value) => setItems((list) => list.map((it, i) => (
+                        i === idx ? { ...it, supplyCategoryId: value, categoryId: value } : it
+                      )))}
+                      options={categoryOptions}
                       placeholder="Categoría"
-                      options={[
-                        { value: '', label: 'Sin categoría' },
-                        ...supplyCategories.map((category) => ({ value: category.id, label: category.name })),
-                      ]}
+                      searchPlaceholder="Buscar categoría…"
+                      disabled={saving}
+                      data-testid={`purchase-request-category-${idx}`}
                     />
                   </div>
                 </div>
@@ -206,10 +297,14 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
                   </div>
                   <div className="min-w-0">
                     <label className="mb-1.5 block text-xs font-semibold text-slate-500">Unidad *</label>
-                    <Input
-                      placeholder="unidad, caja..."
+                    <CreatablePicker
                       value={item.unit}
-                      onChange={(e) => updateItem(idx, 'unit', e.target.value)}
+                      onChange={(unit) => updateItem(idx, 'unit', unit)}
+                      options={unitOptions}
+                      placeholder="Unidad"
+                      searchPlaceholder="Buscar unidad…"
+                      disabled={saving}
+                      data-testid={`purchase-request-unit-${idx}`}
                     />
                   </div>
                   <div className="min-w-0 sm:col-span-2 lg:col-span-1">

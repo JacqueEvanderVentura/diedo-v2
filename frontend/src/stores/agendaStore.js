@@ -41,15 +41,18 @@ export const statusMeta = (id) => {
   return APPOINTMENT_STATUSES.find((status) => status.id === normalized) || APPOINTMENT_STATUSES[0]
 }
 
-function auditActor(source) {
-  if (source === 'self') return { userId: null, userName: 'Portal de agendación' }
+function auditActor(source, customerName) {
+  if (source === 'self') {
+    const name = customerName?.trim()
+    return { userId: null, userName: name || 'Cliente' }
+  }
   const actor = currentSessionActor()
   return { userId: actor.id, userName: actor.name }
 }
 
-function stampAudit(action, previous = {}, source = 'staff') {
+function stampAudit(action, previous = {}, source = 'staff', customerName) {
   const timestamp = new Date().toISOString()
-  const actor = auditActor(source)
+  const actor = auditActor(source, customerName ?? previous.customerName)
   if (action === 'create') {
     return {
       createdBy: actor.userName,
@@ -101,14 +104,14 @@ function normalizeAppointment(data) {
 
 function createDemoAppointment(data) {
   const normalized = normalizeAppointment(data)
-  const audit = stampAudit('create', {}, normalized.source)
+  const audit = stampAudit('create', {}, normalized.source, normalized.customerName)
   const payload = { id: genId(), version: 1, ...normalized, ...audit }
   return {
     ...payload,
     history: [{
       id: genLogId(),
       at: audit.createdAt,
-      ...auditActor(normalized.source),
+      ...auditActor(normalized.source, normalized.customerName),
       action: 'create',
       changes: buildCreateChanges(payload),
     }],

@@ -221,6 +221,9 @@ describe('store de catálogo conectado al inventario', () => {
       status: 'active',
       salePrice: 900,
       taxRate: 18,
+      availableInAgenda: true,
+      availableInPos: true,
+      durationMinutes: 30,
     })
     expect(useCatalogStore.getState().products[0]).toMatchObject({
       type: 'service',

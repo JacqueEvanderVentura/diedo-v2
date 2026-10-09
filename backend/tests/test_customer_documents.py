@@ -19,3 +19,11 @@ def test_prepare_cedula_formats_display() -> None:
 def test_prepare_cedula_rejects_short_values() -> None:
     with pytest.raises(ValueError, match="11 dígitos"):
         prepare_customer_document_fields("cedula", "123")
+
+
+def test_prepare_rnc_requires_nine_digits() -> None:
+    doc_type, display, normalized = prepare_customer_document_fields("rnc", "132908902")
+    assert doc_type == "rnc"
+    assert normalized == "132908902"
+    with pytest.raises(ValueError, match="9 dígitos"):
+        prepare_customer_document_fields("rnc", "123")

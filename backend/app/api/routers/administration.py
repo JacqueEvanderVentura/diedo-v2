@@ -18,7 +18,6 @@ from app.api.deps import (
 from app.db.models import Branch, PaymentMethod, Workspace
 from app.repositories.administration import LegalEntityFiscalRecord
 from app.schemas.administration import (
-    BranchBillingDocuments,
     BranchLegalEntityAssignmentResponse,
     BranchResponse,
     CreateBranchRequest,
@@ -37,6 +36,7 @@ from app.schemas.administration import (
     UpdateLegalEntityRequest,
     UpdatePaymentMethodRequest,
     UpdateWorkspaceSettingsRequest,
+    WorkspaceBillingDocuments,
     WorkspaceSettingsResponse,
 )
 from app.schemas.backoffice import WorkspaceDataResetRequest, WorkspaceDataResetResponse
@@ -64,7 +64,9 @@ def _workspace_response(workspace: Workspace) -> WorkspaceSettingsResponse:
         timezone=workspace.timezone,
         locale=workspace.locale,
         tax_default_rate=workspace.tax_default_rate,
-        billing_documents=BranchBillingDocuments.model_validate(workspace.billing_documents or {}),
+        billing_documents=WorkspaceBillingDocuments.model_validate(
+            workspace.billing_documents or {}
+        ),
         version=workspace.version,
     )
 

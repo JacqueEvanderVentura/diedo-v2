@@ -12,6 +12,8 @@ from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from tests.customer_payloads import unique_lead_document_fields
+
 _PASSWORD = "crm-instagram-test-password-not-a-secret"
 
 
@@ -48,6 +50,7 @@ def test_lead_instagram_survives_conversion(client: TestClient) -> None:
             "website": "https://empresa.example",
             "instagramUrl": ig_url,
             "status": "propuesta",
+            **unique_lead_document_fields(),
         },
     )
     assert lead.status_code == 201, lead.text
@@ -92,7 +95,12 @@ def test_migration_recovers_instagram_website_for_converted_customer(client: Tes
     lead = client.post(
         "/api/v1/crm/leads",
         headers={**headers, "Idempotency-Key": f"legacy-lead-{marker}"},
-        json={"branchId": str(branch_id), "name": f"Legado {marker}", "website": ig_url},
+        json={
+            "branchId": str(branch_id),
+            "name": f"Legado {marker}",
+            "website": ig_url,
+            **unique_lead_document_fields(),
+        },
     )
     assert lead.status_code == 201, lead.text
     converted = client.post(

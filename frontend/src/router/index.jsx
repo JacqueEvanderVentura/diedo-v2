@@ -27,6 +27,7 @@ import GestionCitasPage from '@/modules/agenda/pages/GestionCitasPage'
 import AgendarPage from '@/modules/agenda/pages/AgendarPage'
 
 import PerfilPublicoPage from '@/modules/agenda/pages/PerfilPublicoPage'
+import PortalPage from '@/modules/portal/pages/PortalPage'
 
 import ClientesPage from '@/modules/crm/pages/ClientesPage'
 
@@ -124,6 +125,11 @@ export function AppRoutes() {
       <Route
         path="/agendar/perfil"
         element={FEATURES.selfBooking ? <PerfilPublicoPage /> : <FeatureUnavailablePage title="Perfil público próximamente" />}
+      />
+
+      <Route
+        path="/agendar/portal"
+        element={FEATURES.selfBooking ? <PortalPage /> : <FeatureUnavailablePage title="Portal del cliente próximamente" />}
       />
 
       <Route element={<AuthGate />}>

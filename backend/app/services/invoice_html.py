@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from markupsafe import Markup
 
 from app.config import settings
 from app.schemas.invoice_documents import InvoiceDocumentRequest
@@ -43,13 +44,13 @@ def _item_price_html(unit: Decimal, list_price: Decimal) -> str:
     return _escape(format_dop(unit))
 
 
-def _logo_html(logo_data_url: str, business_name: str) -> str:
+def _logo_html(logo_data_url: str, business_name: str) -> Markup:
     if logo_data_url.strip():
         safe_src = logo_data_url.replace('"', "&quot;")
-        return f'<img src="{safe_src}" alt="" class="brand-logo" />'
+        return Markup(f'<img src="{safe_src}" alt="" class="brand-logo" />')
     logo_url = f"{settings.public_app_url.rstrip('/')}/favicon.svg"
     safe_title = _escape(business_name or "Helios 360")
-    return f'<img src="{logo_url}" alt="{safe_title}" class="brand-logo" />'
+    return Markup(f'<img src="{logo_url}" alt="{safe_title}" class="brand-logo" />')
 
 
 def _legal_lines(data: InvoiceDocumentRequest) -> list[dict[str, str]]:
@@ -113,9 +114,7 @@ def build_invoice_document_html(data: InvoiceDocumentRequest) -> str:
                 "line_total": _escape(format_dop(unit * qty)),
             }
         )
-    branch_footer = ""
-    if data.branch_name:
-        branch_footer = " · ".join(part for part in (data.branch_name, data.region) if part)
+    branch_footer = data.branch_name.strip() if data.branch_name else ""
     address_line = data.business_address.splitlines()[0].strip() if data.business_address else ""
     template = _ENV.get_template("invoice_document.html")
     html: str = template.render(
@@ -125,7 +124,6 @@ def build_invoice_document_html(data: InvoiceDocumentRequest) -> str:
         business_name=_escape(data.business_name),
         business_rnc=_escape(data.business_rnc),
         business_address_line=_escape(address_line),
-        region=_escape(data.region),
         logo_html=_logo_html(data.logo_data_url, data.business_name),
         issued_at=_escape(data.issued_at),
         customer_name=_escape(data.customer_name),

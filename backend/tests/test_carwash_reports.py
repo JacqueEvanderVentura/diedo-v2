@@ -252,6 +252,7 @@ def test_service_rollup_and_employee_ranking_preserve_full_totals(client, setup)
             **setup,
             "payload": {
                 **setup["payload"],
+                "plate": f"RPT{index:02d}{uuid7().hex[:4].upper()}",
                 "serviceIds": [service["id"]],
                 "washerId": employee.json()["id"],
                 "supervisorId": employee.json()["id"],

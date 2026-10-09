@@ -74,7 +74,8 @@ describe('cliente API de Compras', () => {
     )
     expect(mocks.post).toHaveBeenCalledWith(
       '/api/v1/purchasing/requests/request-id/deliver',
-      { version: 4 }
+      { version: 4 },
+      { headers: { 'Idempotency-Key': expect.any(String) } }
     )
     expect(mocks.put).toHaveBeenCalledWith('/api/v1/purchasing/settings', {
       version: 2,

@@ -190,6 +190,8 @@ def _lead_response(record: LeadRecord) -> LeadResponse:
         pipeline_closed_at=lead.pipeline_closed_at,
         customer_id=lead.converted_customer_id,
         converted_at=lead.converted_at,
+        document_type=cast(Any, lead.document_type),
+        document_id=lead.document_id,
         version=lead.version,
         created_at=lead.created_at,
         updated_at=lead.updated_at,

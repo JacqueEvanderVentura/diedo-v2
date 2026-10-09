@@ -29,6 +29,7 @@ def _login(client: TestClient) -> dict[str, str]:
     return {"Authorization": f"Bearer {login.json()['accessToken']}"}
 
 
+@pytest.mark.integration
 def test_meta_oauth_handle_callback_without_candidates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -66,6 +67,7 @@ def test_meta_oauth_handle_callback_without_candidates(
         assert exc_info.value.parameter == "channel"
 
 
+@pytest.mark.integration
 def test_meta_oauth_complete_selection_rejects_unknown_provider() -> None:
     from unittest.mock import Mock
 

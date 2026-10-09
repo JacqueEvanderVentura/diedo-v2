@@ -1,22 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams, Link } from 'react-router-dom'
+import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { FileText, Phone, MapPin, Calendar, CheckCircle2, ChevronRight, ChevronLeft } from 'lucide-react'
+import { MapPin, Calendar, CheckCircle2, ChevronRight, ChevronLeft } from 'lucide-react'
 import { HeliosIcon } from '@/components/brand/HeliosIcon'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { DatePicker } from '@/components/ui/DatePicker'
+import { TimePicker } from '@/components/ui/TimePicker'
 import { useConfigStore } from '@/stores/configStore'
-import { useCatalogStore } from '@/stores/catalogStore'
+import { isAgendaBookable, useCatalogStore } from '@/stores/catalogStore'
 import { useAvailabilityAppointments } from '../hooks/useAvailabilityAppointments'
 import { useRrhhStore } from '@/stores/rrhhStore'
 import { useSelfBookingStore, rememberDocument } from '@/stores/selfBookingStore'
+import { OptionalPreferenceCards } from '@/modules/portal/components/OptionalPreferenceCards'
+import { rememberPublicSession, recallPublicSession } from '@/modules/portal/lib/publicSession'
+import { publicPortalApi } from '@/services/publicPortalApi'
 import { useSessionStore } from '@/stores/sessionStore'
 import { publicBookingApi } from '@/services/publicBookingApi'
 import { useBranchBookableStaff } from '@/modules/rrhh/lib/staff'
 import { formatDOP } from '@/lib/format'
-import { formatLongDate, endTime } from '../lib/calendar'
+import { formatLongDate, endTime, formatTime12h } from '../lib/calendar'
 import {
   DOC_TYPES,
   normalizeDocumentId,
@@ -28,14 +32,17 @@ import {
 import { todayKey } from '@/stores/agendaStore'
 import { cn } from '@/lib/utils'
 
-import { DURATION_OPTIONS } from '@/data/agenda'
+import { durationLabel } from '@/data/agenda'
 import { branchDateKey, emailResultMessage, managementUrl } from '../lib/notification'
+import { applyBranchBookingDefaults, fetchLastVisitBookingDefaults } from '../lib/customerBookingDefaults'
 
 const STEPS = ['Identificación', 'Datos', 'Cita', 'Confirmación']
 
 export default function AgendarPage() {
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
+  const navigate = useNavigate()
   const requestedBranchId = params.get('branch')
+  const intentBook = params.get('intent') === 'book'
   const branches = useConfigStore((s) => s.branches)
   const products = useCatalogStore((s) => s.products)
   const employees = useRrhhStore((s) => s.employees)
@@ -50,11 +57,18 @@ export default function AgendarPage() {
   const bookAppointment = useSelfBookingStore((s) => s.bookAppointment)
 
   const [remoteBranch, setRemoteBranch] = useState(null)
+  const [workspaceBranches, setWorkspaceBranches] = useState([])
   const [contextError, setContextError] = useState('')
+  const hasSavedSession = Boolean(
+    requestedBranchId && recallPublicSession()?.documentId && recallPublicSession()?.branchId === requestedBranchId
+  )
+  const [phase, setPhase] = useState(() => (intentBook && hasSavedSession ? 'booking' : 'branch'))
+  const [explicitBranchPick, setExplicitBranchPick] = useState(false)
+  const [showRegister, setShowRegister] = useState(false)
   const branch = isDemo
     ? branches.find((b) => b.id === branchId) || branches[0]
     : remoteBranch?.id === branchId ? remoteBranch : null
-  const [step, setStep] = useState(0)
+  const [step, setStep] = useState(() => (intentBook && hasSavedSession ? 2 : 0))
   const [lookupDocType, setLookupDocType] = useState('cedula')
   const [lookup, setLookup] = useState('')
   const [form, setForm] = useState({
@@ -66,17 +80,18 @@ export default function AgendarPage() {
     address: '',
     wantsInvoice: false,
     wantsContact: false,
+    observaciones: '',
     serviceId: '',
     employeeId: '',
     date: todayKey(),
     time: '',
-    duration: 30,
   })
   const [done, setDone] = useState(false)
   const [savedAppointment, setSavedAppointment] = useState(null)
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
   const attemptRef = useRef(null)
+  const restoredSessionDefaultsRef = useRef(false)
   const [slotLoading, setSlotLoading] = useState(false)
   const [slotError, setSlotError] = useState('')
   const [slotRevision, setSlotRevision] = useState(0)
@@ -88,7 +103,7 @@ export default function AgendarPage() {
   const localBookableStaff = useBranchBookableStaff(branch?.id || branchId)
   const services = useMemo(() => {
     if (remoteServices) return remoteServices
-    return products.filter((p) => p.type === 'service').slice(0, 8)
+    return products.filter((p) => isAgendaBookable(p)).slice(0, 8)
   }, [products, remoteServices])
   const bookableStaff = useMemo(() => {
     if (!isDemo) {
@@ -103,7 +118,7 @@ export default function AgendarPage() {
   }, [isDemo, localBookableStaff, remoteSpecialists])
   const service = services.find((s) => s.id === form.serviceId)
   const selectedEmployee = employees.find((e) => e.id === form.employeeId)
-  const appointmentDuration = form.duration
+  const appointmentDuration = Number(service?.durationMinutes) || 30
 
   const appointments = useAvailabilityAppointments(isDemo ? form.date : null, isDemo ? form.employeeId : null)
 
@@ -135,6 +150,12 @@ export default function AgendarPage() {
           }))
         )
         setRemoteSpecialists(context.specialists || [])
+        setWorkspaceBranches(
+          (context.workspaceBranches || []).map((item) => ({
+            id: item.id,
+            name: item.name,
+          }))
+        )
       })
       .catch(() => {
         if (active) setContextError('No se pudo cargar la sucursal. Intenta nuevamente o solicita un nuevo enlace.')
@@ -143,23 +164,49 @@ export default function AgendarPage() {
   }, [branchId, isDemo])
 
   useEffect(() => {
+    if (isDemo) {
+      setWorkspaceBranches(branches.filter((b) => b.id).map((b) => ({ id: b.id, name: b.name })))
+    }
+  }, [branches, isDemo])
+
+  useEffect(() => {
+    const session = recallPublicSession()
+    if (!branchId || !session?.documentId || session.branchId !== branchId) return
+    if (intentBook) {
+      if (phase === 'branch') {
+        setPhase('booking')
+        setStep(2)
+      }
+      return
+    }
+    if (phase === 'branch' && !explicitBranchPick) {
+      navigate(`/agendar/portal?branch=${branchId}`, { replace: true })
+    }
+  }, [branchId, intentBook, navigate, phase, explicitBranchPick])
+
+  useEffect(() => {
     let active = true
     setRemoteSlots(null)
     setSlotError('')
-    if (isDemo || !branch?.id || !form.employeeId || !form.date) {
+    if (isDemo || !branch?.id || !form.employeeId || !form.date || !form.serviceId) {
       setSlotLoading(false)
       return
     }
     setSlotLoading(true)
-    fetchRemoteSlots({ branchId: branch.id, date: form.date, employeeId: form.employeeId, duration: appointmentDuration })
+    fetchRemoteSlots({
+      branchId: branch.id,
+      date: form.date,
+      employeeId: form.employeeId,
+      serviceId: form.serviceId,
+    })
       .then((slots) => { if (active) setRemoteSlots(slots) })
       .catch((error) => { if (active) setSlotError(error.message || 'No se pudieron consultar los horarios.') })
       .finally(() => { if (active) setSlotLoading(false) })
     return () => { active = false }
-  }, [appointmentDuration, branch?.id, fetchRemoteSlots, form.date, form.employeeId, form.serviceId, isDemo, slotRevision])
+  }, [branch?.id, fetchRemoteSlots, form.date, form.employeeId, form.serviceId, isDemo, slotRevision])
 
   const set = (k, v) => {
-    const changesAvailability = ['serviceId', 'employeeId', 'date', 'duration'].includes(k)
+    const changesAvailability = ['serviceId', 'employeeId', 'date'].includes(k)
     if (changesAvailability) setRemoteSlots(null)
     setForm((f) => ({ ...f, [k]: v, ...(changesAvailability ? { time: '' } : {}) }))
   }
@@ -184,6 +231,55 @@ export default function AgendarPage() {
     })
   }, [form.employeeId, form.date, appointments, selectedEmployee, vacationRequests, appointmentDuration, isDemo, remoteSlots])
 
+  const applyProfileToForm = (found, docType) => {
+    setForm((current) => applyBranchBookingDefaults({
+      ...current,
+      docType: found.docType || docType,
+      documentId: formatDocumentInput(found.documentId, found.docType || docType),
+      name: found.name,
+      email: found.email,
+      phone: found.phone,
+      address: found.address || '',
+      wantsInvoice: found.wantsInvoice,
+      wantsContact: found.wantsContact,
+      observaciones: found.observaciones || '',
+    }, {
+      serviceId: found.lastServiceId,
+      employeeId: found.lastEmployeeId,
+    }, { services, bookableStaff }))
+  }
+
+  useEffect(() => {
+    if (!intentBook || isDemo || !branchId || restoredSessionDefaultsRef.current) return
+    if (!remoteServices?.length || !bookableStaff.length) return
+    const session = recallPublicSession()
+    if (!session?.documentId || session.branchId !== branchId) return
+    if (phase !== 'booking' || step !== 2) return
+    restoredSessionDefaultsRef.current = true
+    identifyRemote(branchId, session.docType || 'cedula', session.documentId)
+      .then((found) => {
+        if (!found) return
+        applyProfileToForm(found, found.docType || session.docType || 'cedula')
+      })
+      .catch(() => {})
+  }, [branchId, identifyRemote, intentBook, isDemo, phase, step])
+
+  const finishAuth = (profile, goBook) => {
+    const activeBranch = branch?.id || branchId
+    rememberPublicSession({
+      branchId: activeBranch,
+      docType: profile.docType,
+      documentId: profile.documentId,
+    })
+    rememberDocument(profile.documentId)
+    if (goBook) {
+      setPhase('booking')
+      setStep(2)
+      return
+    }
+    navigate(`/agendar/portal?branch=${activeBranch}`)
+  }
+
   const lookupDoc = async () => {
     const key = normalizeDocumentId(lookup, lookupDocType)
     if (lookupDocType === 'cedula' && key.length !== 11) {
@@ -193,22 +289,25 @@ export default function AgendarPage() {
       return toast.error('Ingresa un documento válido')
     }
     let found
-    try { found = isDemo ? lookupByDocument(key, lookupDocType) : await identifyRemote(branch?.id || branchId, lookupDocType, key) }
-    catch (error) { return toast.error(error.message || 'No se pudo consultar el documento. Intenta nuevamente.') }
+    try {
+      found = isDemo
+        ? lookupByDocument(key, lookupDocType)
+        : await identifyRemote(branch?.id || branchId, lookupDocType, key)
+    } catch (error) {
+      return toast.error(error.message || 'No se pudo consultar el documento. Intenta nuevamente.')
+    }
     if (found) {
-      setForm((f) => ({
-        ...f,
-        docType: found.docType || lookupDocType,
-        documentId: formatDocumentInput(found.documentId, found.docType || lookupDocType),
-        name: found.name,
-        email: found.email,
-        phone: found.phone,
-        address: found.address,
-        wantsInvoice: found.wantsInvoice,
-        wantsContact: found.wantsContact,
-      }))
-      toast.success(`Bienvenida de nuevo, ${found.name}`)
-      setStep(2)
+      if (isDemo) {
+        const defaults = await fetchLastVisitBookingDefaults(found.customerId)
+        found = {
+          ...found,
+          lastServiceId: defaults.serviceId,
+          lastEmployeeId: defaults.employeeId,
+        }
+      }
+      applyProfileToForm(found, lookupDocType)
+      toast.success(`Bienvenido de nuevo, ${found.name}`)
+      finishAuth({ ...found, docType: found.docType || lookupDocType }, intentBook)
       return
     }
     setForm((f) => ({
@@ -216,11 +315,11 @@ export default function AgendarPage() {
       docType: lookupDocType,
       documentId: formatDocumentInput(key, lookupDocType),
     }))
-    toast.message('Documento nuevo — completa tus datos')
-    setStep(1)
+    setShowRegister(true)
+    toast.message('No encontramos tu documento — completa el registro')
   }
 
-  const saveProfile = () => {
+  const saveProfile = async () => {
     if (!form.name.trim()) return toast.error('Ingresa tu nombre')
     if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return toast.error('Ingresa un correo válido')
     const docKey = normalizeDocumentId(form.documentId, form.docType)
@@ -230,13 +329,63 @@ export default function AgendarPage() {
     }
     if (form.wantsInvoice && !form.email.trim()) return toast.error('El email es requerido para factura')
     if (form.wantsContact && !form.phone.trim()) return toast.error('El teléfono es requerido para contacto')
-    upsertProfile({ ...form, documentId: docKey })
-    setStep(2)
+    const profile = { ...form, documentId: docKey }
+    if (!isDemo) {
+      try {
+        await publicPortalApi.register(branch?.id || branchId, {
+          documentType: profile.docType,
+          documentId: docKey,
+          displayName: profile.name.trim(),
+          email: profile.email.trim() || null,
+          phone: profile.phone.trim() || null,
+          address: profile.address.trim() || null,
+          wantsInvoice: profile.wantsInvoice,
+          wantsContact: profile.wantsContact,
+          observaciones: profile.observaciones.trim() || null,
+        })
+      } catch (error) {
+        return toast.error(error.message || 'No se pudo completar el registro')
+      }
+    }
+    upsertProfile(profile)
+    toast.success('Registro completado')
+    finishAuth({ ...profile, docType: profile.docType }, intentBook)
   }
 
-  const pickSlot = (time) => {
+  const confirmBranch = () => {
+    if (!branchId) return toast.error('Selecciona una sucursal')
+    setExplicitBranchPick(false)
+    setPhase('identity')
+  }
+
+  const openBranchPicker = () => {
+    clearBookIntent()
+    setShowRegister(false)
+    setExplicitBranchPick(true)
+    setPhase('branch')
+  }
+
+  const switchBranch = (nextBranchId) => {
+    setParams((current) => {
+      const next = new URLSearchParams(current)
+      next.set('branch', nextBranchId)
+      return next
+    })
+  }
+
+  const timeSlotsForPicker = useMemo(() => {
+    if (!form.employeeId || !form.date) return []
+    if (slotLoading) return []
+    return slots
+  }, [form.date, form.employeeId, slotLoading, slots])
+
+  const continueToConfirm = () => {
     if (!form.serviceId) return toast.error('Selecciona un servicio')
-    set('time', time)
+    if (!form.employeeId) return toast.error('Selecciona un especialista')
+    if (!form.time) return toast.error('Selecciona una hora')
+    if (!isDemo && (slotLoading || !remoteSlots?.includes(form.time))) {
+      return toast.error('Ese horario ya no está disponible. Elige otro cupo.')
+    }
     setStep(3)
   }
 
@@ -269,7 +418,6 @@ export default function AgendarPage() {
         date: form.date,
         time: form.time,
         employeeId: form.employeeId,
-        duration: appointmentDuration,
         idempotencyKey: attemptRef.current.key,
       })
       setSavedAppointment(appointment)
@@ -286,7 +434,24 @@ export default function AgendarPage() {
     } finally { savingRef.current = false; setSaving(false) }
   }
 
-  const goBack = () => setStep((current) => Math.max(0, current - 1))
+  const clearBookIntent = () => {
+    if (!params.get('intent')) return
+    setParams((current) => {
+      const next = new URLSearchParams(current)
+      next.delete('intent')
+      return next
+    })
+  }
+
+  const goBack = () => {
+    if (phase === 'booking' && step <= 2) {
+      clearBookIntent()
+      setPhase('identity')
+      setStep(0)
+      return
+    }
+    setStep((current) => Math.max(0, current - 1))
+  }
 
   if (!isDemo && (!branch || contextError)) {
     return (
@@ -311,10 +476,10 @@ export default function AgendarPage() {
             {isDemo ? 'Modo demo: no se enviaron correos reales.' : emailResultMessage(savedAppointment?.notification)}
           </p>
           <Link
-            to={isDemo ? `/agendar/perfil?doc=${normalizeDocumentId(form.documentId, form.docType)}` : managementUrl(branch.id, savedAppointment)}
+            to={isDemo ? `/agendar/portal?branch=${branch.id}&doc=${normalizeDocumentId(form.documentId, form.docType)}` : `/agendar/portal?branch=${branch.id}`}
             className="mt-6 inline-flex rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
           >
-            Gestionar mi cita
+            Ir a mi portal
           </Link>
         </div>
       </PublicShell>
@@ -324,113 +489,147 @@ export default function AgendarPage() {
   return (
     <PublicShell branchName={branch?.name}>
       <div className="mx-auto max-w-lg">
-        <Stepper current={step} />
+        {phase === 'booking' && <Stepper current={Math.max(0, step - 2)} />}
 
-        {step === 0 && (
+        {phase === 'branch' && (
           <section className="space-y-4 rounded-2xl border border-slate-100 bg-white p-6 shadow-soft">
-            <h2 className="font-heading text-xl font-bold text-slate-900">Identifícate</h2>
-            <p className="text-sm text-slate-500">Ingresa tu documento para continuar. Si ya estás registrado, pasarás directo a elegir cita.</p>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Tipo de documento</label>
-              <Select
-                value={lookupDocType}
-                onChange={(v) => {
-                  setLookupDocType(v)
-                  setLookup(formatDocumentInput(lookup, v))
-                }}
-                options={DOC_TYPES.map((d) => ({ value: d.id, label: d.label }))}
-                data-testid="self-doc-type"
-              />
-            </div>
-            <Input
-              value={lookup}
-              onChange={(e) => setLookup(formatDocumentInput(e.target.value, lookupDocType))}
-              placeholder={lookupDocType === 'cedula' ? '001-1234567-8' : 'Número de pasaporte'}
-              inputMode={lookupDocType === 'cedula' ? 'numeric' : 'text'}
-              data-testid="self-doc-lookup"
-            />
-            <Button className="w-full" onClick={lookupDoc}>
+            <h2 className="font-heading text-xl font-bold text-slate-900">Elige tu sucursal</h2>
+            <p className="text-sm text-slate-500">Confirma dónde deseas atenderte. Puedes cambiarla si visitas otra ubicación del comercio.</p>
+            <ul className="space-y-2">
+              {(workspaceBranches.length ? workspaceBranches : [{ id: branchId, name: branch?.name || 'Sucursal' }]).map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={() => switchBranch(item.id)}
+                    className={cn(
+                      'w-full rounded-xl border px-4 py-3 text-left text-sm font-semibold transition',
+                      item.id === branchId
+                        ? 'border-slate-900 bg-slate-900 text-white'
+                        : 'border-slate-200 text-slate-700 hover:border-slate-400'
+                    )}
+                    data-testid={`branch-option-${item.id}`}
+                  >
+                    {item.name}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <Button className="w-full" onClick={confirmBranch} data-testid="branch-confirm">
               Continuar <ChevronRight className="h-4 w-4" />
             </Button>
           </section>
         )}
 
-        {step === 1 && (
-          <section className="space-y-4 rounded-2xl border border-slate-100 bg-white p-6 shadow-soft">
-            <h2 className="font-heading text-xl font-bold text-slate-900">Tus datos</h2>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-500">Tipo doc.</label>
-                <Select
-                  value={form.docType}
-                  onChange={(v) => {
-                    set('docType', v)
-                    set('documentId', formatDocumentInput(form.documentId, v))
-                  }}
-                  options={DOC_TYPES.map((d) => ({ value: d.id, label: d.label }))}
-                />
+        {phase === 'identity' && (
+          <section className="space-y-4">
+            <div className="space-y-4 rounded-2xl border border-slate-100 bg-white p-6 shadow-soft">
+              <h2 className="font-heading text-xl font-bold text-slate-900">
+                {showRegister ? 'Completa tu registro' : 'Ingresa tu documento'}
+              </h2>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-500">Tipo de documento *</label>
+                  <Select
+                    value={showRegister ? form.docType : lookupDocType}
+                    onChange={(v) => {
+                      if (showRegister) {
+                        set('docType', v)
+                        set('documentId', formatDocumentInput(form.documentId, v))
+                      } else {
+                        setLookupDocType(v)
+                        setLookup(formatDocumentInput(lookup, v))
+                      }
+                    }}
+                    options={DOC_TYPES.map((d) => ({ value: d.id, label: d.label }))}
+                    data-testid="self-doc-type"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-500">Documento *</label>
+                  <Input
+                    value={showRegister ? form.documentId : lookup}
+                    onChange={(e) => {
+                      const value = formatDocumentInput(e.target.value, showRegister ? form.docType : lookupDocType)
+                      if (showRegister) set('documentId', value)
+                      else setLookup(value)
+                    }}
+                    placeholder="Ej: 402-1465948-5"
+                    data-testid="self-doc-lookup"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-500">Documento</label>
-                <Input
-                  value={form.documentId}
-                  onChange={(e) => set('documentId', formatDocumentInput(e.target.value, form.docType))}
-                  data-testid="self-document"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Nombre completo</label>
-              <Input value={form.name} onChange={(e) => set('name', e.target.value)} data-testid="self-name" />
-            </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <PreferenceCard
-                icon={FileText}
-                title="Quiero recibir factura"
-                active={form.wantsInvoice}
-                onClick={() => set('wantsInvoice', !form.wantsInvoice)}
-              />
-              <PreferenceCard
-                icon={Phone}
-                title="Quiero que me contacten"
-                active={form.wantsContact}
-                onClick={() => set('wantsContact', !form.wantsContact)}
-              />
-            </div>
+              {showRegister && (
+                <>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-500">Nombre *</label>
+                    <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ej: Juan Pérez" data-testid="self-name" />
+                  </div>
+                  <OptionalPreferenceCards
+                    wantsInvoice={form.wantsInvoice}
+                    wantsContact={form.wantsContact}
+                    onToggleInvoice={() => set('wantsInvoice', !form.wantsInvoice)}
+                    onToggleContact={() => set('wantsContact', !form.wantsContact)}
+                    email={form.email}
+                    onEmailChange={(v) => set('email', v)}
+                    phone={form.phone}
+                    onPhoneChange={(v) => set('phone', v)}
+                  />
+                  <div>
+                    <label className="mb-1 flex items-center gap-1 text-xs font-medium text-slate-500">
+                      <MapPin className="h-3.5 w-3.5" /> Dirección (opcional)
+                    </label>
+                    <Input value={form.address} onChange={(e) => set('address', e.target.value)} placeholder="Ej: Calle Principal #123, Santo Domingo" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-500">Observaciones (opcional)</label>
+                    <textarea
+                      value={form.observaciones}
+                      onChange={(e) => set('observaciones', e.target.value)}
+                      rows={3}
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                      placeholder="Comentarios para el comercio"
+                    />
+                  </div>
+                  <Button className="w-full" onClick={saveProfile} data-testid="self-save-profile">
+                    Crear cuenta <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
 
-            {(
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-500">Correo electrónico</label>
-                <Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="tu@email.com (opcional)" data-testid="self-email" />
-              </div>
-            )}
-            {(
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-500">Teléfono</label>
-                <Input value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="809-555-0000" data-testid="self-phone" />
-              </div>
-            )}
+              {!showRegister && (
+                <>
+                  <p className="text-center text-xs text-slate-500">
+                    ¿Primera vez?{' '}
+                    <button
+                      type="button"
+                      className="font-semibold text-blue-600"
+                      onClick={() => {
+                        setForm((f) => ({
+                          ...f,
+                          docType: lookupDocType,
+                          documentId: formatDocumentInput(lookup, lookupDocType),
+                        }))
+                        setShowRegister(true)
+                      }}
+                    >
+                      Regístrate aquí
+                    </button>
+                  </p>
+                  <Button className="w-full" onClick={lookupDoc} data-testid="self-login-search">
+                    Ingresar
+                  </Button>
+                </>
+              )}
 
-            <div>
-              <label className="mb-1 flex items-center gap-1 text-xs font-medium text-slate-500">
-                <MapPin className="h-3.5 w-3.5" /> Dirección (opcional)
-              </label>
-              <Input value={form.address} onChange={(e) => set('address', e.target.value)} placeholder="Sector, ciudad" />
-            </div>
-
-            <div className="flex gap-2">
-              <Button variant="secondary" className="flex-1" onClick={goBack}>
-                <ChevronLeft className="h-4 w-4" /> Atrás
-              </Button>
-              <Button className="flex-[2]" onClick={saveProfile} data-testid="self-save-profile">
-                Siguiente <ChevronRight className="h-4 w-4" />
+              <Button variant="secondary" className="w-full" onClick={openBranchPicker} data-testid="self-change-branch">
+                <ChevronLeft className="h-4 w-4" /> Cambiar sucursal
               </Button>
             </div>
           </section>
         )}
 
-        {step === 2 && (
+        {phase === 'booking' && step === 2 && (
           <section className="space-y-4 rounded-2xl border border-slate-100 bg-white p-6 shadow-soft">
             <h2 className="font-heading text-xl font-bold text-slate-900">Elige tu cita</h2>
             <p className="text-xs text-slate-500">Los horarios se actualizan según el horario del especialista y las citas ya reservadas. {branch?.timezone && `Hora del establecimiento (${branch.timezone}).`}</p>
@@ -447,13 +646,9 @@ export default function AgendarPage() {
             {!bookableStaff.length && <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900" data-testid="self-no-specialists">Esta sucursal todavía no tiene especialistas habilitados para agendar en línea. Contacta al establecimiento.</p>}
             {!services.length && <p role="status">Esta sucursal no tiene servicios disponibles.</p>}
             {!isDemo && !hasResources && <p role="status">La sucursal todavía no tiene cabinas disponibles para recibir reservas.</p>}
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Duración</label>
-              <Select value={form.duration} onChange={(v) => set('duration', Number(v))} options={DURATION_OPTIONS} data-testid="self-duration" />
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-500">Fecha</label>
+                <label className="mb-1.5 block text-sm font-medium text-slate-600">Fecha</label>
                 <DatePicker
                   value={form.date}
                   onChange={(date) => {
@@ -465,7 +660,41 @@ export default function AgendarPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-500">Especialista</label>
+                <label className="mb-1.5 block text-sm font-medium text-slate-600">Hora</label>
+                {slotError ? (
+                  <div role="alert" className="space-y-2">
+                    <p className="text-sm text-red-600">{slotError}</p>
+                    <Button onClick={() => setSlotRevision((v) => v + 1)} data-testid="self-slots-retry">Reintentar</Button>
+                  </div>
+                ) : (
+                  <TimePicker
+                    value={form.time}
+                    onChange={(time) => set('time', time)}
+                    slots={timeSlotsForPicker}
+                    emptyMessage={
+                      slotLoading
+                        ? 'Consultando horarios…'
+                        : !form.employeeId
+                          ? 'Selecciona un especialista.'
+                          : 'No hay cupos según el horario del especialista.'
+                    }
+                    testId="self-booking-time"
+                  />
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <p className="mb-1.5 text-sm font-medium text-slate-600">Duración</p>
+                <p
+                  className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-700"
+                  data-testid="self-duration-display"
+                >
+                  {service ? durationLabel(appointmentDuration) : 'Selecciona un servicio'}
+                </p>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-600">Especialista</label>
                 <Select
                   value={form.employeeId}
                   onChange={(v) => {
@@ -478,40 +707,16 @@ export default function AgendarPage() {
                 />
               </div>
             </div>
-            <div>
-              <label className="mb-2 block text-xs font-medium text-slate-500">Horarios disponibles</label>
-              {slotLoading ? <p role="status">Consultando horarios…</p> : slotError ? (
-                <div role="alert"><p>{slotError}</p><Button onClick={() => setSlotRevision((v) => v + 1)} data-testid="self-slots-retry">Reintentar</Button></div>
-              ) : !form.employeeId ? (
-                <p className="text-sm text-slate-400">Selecciona un especialista.</p>
-              ) : slots.length === 0 ? (
-                <p className="text-sm text-slate-400">No hay cupos para esta fecha.</p>
-              ) : (
-                <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
-                  {slots.map((slot) => (
-                    <button
-                      key={slot}
-                      type="button"
-                      onClick={() => pickSlot(slot)}
-                      className={cn(
-                        'rounded-lg border px-2 py-2 text-sm font-semibold transition-colors',
-                        form.time === slot ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:border-blue-200'
-                      )}
-                      data-testid={`self-slot-${slot}`}
-                    >
-                      {slot}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <Button className="w-full" onClick={continueToConfirm} disabled={!form.time || !form.employeeId} data-testid="self-booking-continue">
+              Continuar <ChevronRight className="h-4 w-4" />
+            </Button>
             <Button variant="secondary" className="w-full" onClick={goBack}>
               <ChevronLeft className="h-4 w-4" /> Atrás
             </Button>
           </section>
         )}
 
-        {step === 3 && service && (
+        {phase === 'booking' && step === 3 && service && (
           <section className="space-y-4 rounded-2xl border border-slate-100 bg-white p-6 shadow-soft">
             <h2 className="font-heading text-xl font-bold text-slate-900">Confirmar</h2>
             <div className="space-y-2 rounded-xl bg-slate-50 p-4 text-sm">
@@ -520,7 +725,9 @@ export default function AgendarPage() {
               <p><span className="text-slate-400">Servicio:</span> {service.name} · {formatDOP(service.price)}</p>
               <p className="flex items-center gap-1.5">
                 <Calendar className="h-4 w-4 text-blue-500" />
-                <span className="capitalize">{formatLongDate(form.date)}</span> · {form.time} – {endTime(form.time, appointmentDuration)}
+                <span className="capitalize">{formatLongDate(form.date)}</span>
+                {' · '}
+                {formatTime12h(form.time)} – {formatTime12h(endTime(form.time, appointmentDuration))}
               </p>
               <p><span className="text-slate-400">Sucursal:</span> {branch?.name}</p>
             </div>
@@ -578,18 +785,3 @@ function Stepper({ current }) {
   )
 }
 
-function PreferenceCard({ icon: Icon, title, active, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'rounded-xl border p-4 text-left transition-colors',
-        active ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-200' : 'border-slate-200 hover:border-slate-300'
-      )}
-    >
-      <Icon className={cn('h-5 w-5', active ? 'text-blue-600' : 'text-slate-400')} />
-      <p className="mt-2 text-xs font-semibold text-slate-700">{title}</p>
-    </button>
-  )
-}

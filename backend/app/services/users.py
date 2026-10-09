@@ -5,6 +5,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from math import ceil
+from typing import Literal
 from uuid import UUID, uuid7
 
 from sqlalchemy.exc import IntegrityError
@@ -29,6 +30,7 @@ from app.services.errors import (
     InvalidOperationError,
     ResourceNotFoundError,
 )
+from app.services.membership_access_messages import other_company_message
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,20 @@ class UserFormOptions:
     roles: tuple[RoleRecord, ...]
     legal_entities: tuple[LegalEntityRecord, ...]
     branches: tuple[BranchRecord, ...]
+
+
+@dataclass(frozen=True)
+class UserMutationResult:
+    user: UserRecord
+    notice: str | None = None
+
+
+def _normalize_membership_status(status: str | None) -> str | None:
+    if status is None:
+        return None
+    if status == "inactive":
+        return "suspended"
+    return status
 
 
 class UsersService:
@@ -142,7 +158,7 @@ class UsersService:
         email: str,
         password: str,
         role_assignments: list[RoleAssignmentSpec],
-    ) -> UserRecord:
+    ) -> UserMutationResult:
         validated_assignments, _ = self._validate_assignments(
             principal,
             grant,
@@ -150,21 +166,57 @@ class UsersService:
         )
 
         normalized_email = normalize_email(email)
-        if self._repository.normalized_email_exists(normalized_email):
-            raise ConflictError("Ya existe un usuario con este email.", "email")
+        now = datetime.now(UTC)
+        notice: str | None = None
         try:
-            user = self._repository.create_user(
-                actor_platform_user_id=principal.platform_user_id,
-                workspace_id=principal.workspace_id,
-                display_name=display_name,
-                email=normalized_email,
-                password_hash=hash_password(password),
-                assignments=validated_assignments,
-                now=datetime.now(UTC),
-                request_id=get_request_id(),
-            )
+            existing = self._repository.platform_user_by_email(normalized_email, lock=True)
+            if existing is not None:
+                if self._repository.membership_exists(grant.workspace_id, existing.id):
+                    raise ConflictError(
+                        "El correo ya pertenece a otro usuario.",
+                        "email",
+                    )
+                membership_status: Literal["active", "suspended", "invited"] = "active"
+                if self._repository.has_active_membership(existing.id):
+                    membership_status = "suspended"
+                    notice = other_company_message(normalized_email)
+                user = self._repository.create_membership_for_existing_user(
+                    actor_platform_user_id=principal.platform_user_id,
+                    workspace_id=grant.workspace_id,
+                    platform_user_id=existing.id,
+                    assignments=validated_assignments,
+                    membership_status=membership_status,
+                    now=now,
+                    request_id=get_request_id(),
+                )
+            else:
+                user = self._repository.create_user(
+                    actor_platform_user_id=principal.platform_user_id,
+                    workspace_id=principal.workspace_id,
+                    display_name=display_name,
+                    email=normalized_email,
+                    password_hash=hash_password(password),
+                    assignments=validated_assignments,
+                    now=now,
+                    request_id=get_request_id(),
+                )
             self._session.commit()
-            return user
+            return UserMutationResult(
+                user=UserRecord(
+                    membership_id=user.membership_id,
+                    platform_user_id=user.platform_user_id,
+                    display_name=user.display_name,
+                    email=user.email,
+                    role=user.role,
+                    branches=user.branches,
+                    role_assignments=user.role_assignments,
+                    last_access_at=user.last_access_at,
+                    status=user.status,
+                    version=user.version,
+                    notice=notice,
+                ),
+                notice=notice,
+            )
         except IntegrityError as exc:
             self._session.rollback()
             raise ConflictError("No se pudo crear el usuario por un conflicto de datos.") from exc
@@ -205,6 +257,15 @@ class UsersService:
         self._require_target_within_grant(grant, current)
         if membership.version != version:
             raise ConflictError("El usuario fue modificado por otra sesión.", "version")
+        status = _normalize_membership_status(status)
+        if status == "active" and self._repository.has_active_membership_in_other_workspace(
+            membership.platform_user_id,
+            grant.workspace_id,
+        ):
+            raise ConflictError(
+                other_company_message(current.email),
+                "status",
+            )
         status_changed = status is not None and membership.status != status
 
         validated_assignments: list[RoleAssignmentSpec] | None = None
@@ -233,7 +294,7 @@ class UsersService:
             removes_workspace_admin
             and self._repository.active_workspace_admin_count(grant.workspace_id) <= 1
         ):
-            raise ConflictError("No se puede suspender o degradar al último administrador.")
+            raise ConflictError("No se puede desactivar o degradar al último administrador.")
 
         now = datetime.now(UTC)
         try:
@@ -353,7 +414,7 @@ class UsersService:
         display_name: str,
         email: str,
         role_assignments: list[RoleAssignmentSpec],
-    ) -> tuple[UserInvitation, str, str]:
+    ) -> tuple[UserInvitation, str, str, str | None]:
         validated_assignments, _ = self._validate_assignments(
             principal,
             grant,
@@ -362,8 +423,11 @@ class UsersService:
         normalized_email = normalize_email(email)
         user = self._repository.platform_user_by_email(normalized_email, lock=True)
         existing_identity = user is not None
+        notice: str | None = None
         if user is not None and self._repository.membership_exists(grant.workspace_id, user.id):
             raise ConflictError("La identidad ya pertenece a este workspace.", "email")
+        if user is not None and self._repository.has_active_membership(user.id):
+            notice = other_company_message(normalized_email)
         if (
             user is not None
             and user.password_hash is None
@@ -431,7 +495,7 @@ class UsersService:
             raise ConflictError(
                 "No se pudo crear la invitación por un conflicto de datos."
             ) from exc
-        return invitation, normalized_email, raw_token
+        return invitation, normalized_email, raw_token, notice
 
     def accept_invitation(self, token: str, password: str | None) -> UserRecord:
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
@@ -472,6 +536,11 @@ class UsersService:
                 "Una identidad existente conserva su credencial global; omite password.",
                 "password",
             )
+        if self._repository.has_active_membership_in_other_workspace(
+            user.id,
+            membership.workspace_id,
+        ):
+            raise ConflictError(other_company_message(user.email), "token")
         membership.status = "active"
         membership.activated_at = now
         membership.version += 1

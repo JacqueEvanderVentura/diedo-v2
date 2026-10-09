@@ -1,4 +1,21 @@
+import { mapDocumentAttachmentsFromApi } from '@/services/adapters/documentAttachments'
+
 const optionalText = (value) => value?.trim() || null
+
+function mapQuoteFile(request) {
+  const attachments = mapDocumentAttachmentsFromApi(request.attachments)
+  const quote = [...attachments].reverse().find((item) => item.purpose === 'quote')
+  if (quote) return quote
+  if (!request.quoteFile) return null
+  return {
+    id: request.quoteFile.id || null,
+    name: request.quoteFile.name,
+    contentType: request.quoteFile.contentType || null,
+    previewUrl: request.quoteFile.previewUrl || null,
+    downloadUrl: request.quoteFile.previewUrl || null,
+    purpose: 'quote',
+  }
+}
 
 export function mapSupplierFromApi(supplier) {
   return {
@@ -49,16 +66,22 @@ export function mapPurchaseRequestFromApi(request) {
       unit: item.unit,
       price: Number(item.price) || 0,
       subtotal: Number(item.subtotal) || 0,
+      catalogItemId: item.catalogItemId || null,
+      categoryId: item.categoryId || null,
+      inventoryItemId: item.inventoryItemId || null,
     })),
     status: request.status,
     priority: request.priority,
     notes: request.notes || '',
-    quoteFile: request.quoteFile,
+    quoteFile: mapQuoteFile(request),
+    attachments: mapDocumentAttachmentsFromApi(request.attachments),
     total: Number(request.total) || 0,
     createdAt: request.createdAt,
     reviewedAt: request.reviewedAt,
     reviewedBy: request.reviewedBy,
+    paidAt: request.paidAt,
     deliveredAt: request.deliveredAt,
+    financeExpenseId: request.financeExpenseId || null,
     version: request.version,
     updatedAt: request.updatedAt,
     apiSynced: true,
@@ -78,6 +101,8 @@ export function purchaseRequestToApiPayload(form) {
       qty: Number(item.qty),
       unit: item.unit?.trim() || 'unidad',
       price: Number(item.price),
+      catalogItemId: item.catalogItemId || null,
+      categoryId: item.categoryId || null,
     })),
     priority: form.priority || 'normal',
     notes: optionalText(form.notes),

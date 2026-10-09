@@ -17,8 +17,14 @@ import {
 export const LOW_STOCK_THRESHOLD = 5
 const genId = () => `prod-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 
+export function isAgendaBookable(product) {
+  return product?.type === 'service' && product?.availableInAgenda !== false
+}
+
 export function isPosSellable(product) {
-  return ['product', 'service', 'membership'].includes(product?.type)
+  if (!['product', 'service', 'membership'].includes(product?.type)) return false
+  if (product.type === 'service' && product.availableInPos === false) return false
+  return true
 }
 
 export function isStockTracked(product) {
@@ -42,6 +48,9 @@ function normalizeSeed(p) {
     cost: Number(p.cost) || 0,
     unit: p.unit || 'ud',
     subtype: isSupply ? 'raw' : 'sale',
+    availableInAgenda: p.type === 'service' ? p.availableInAgenda !== false : undefined,
+    availableInPos: p.type === 'service' ? p.availableInPos !== false : undefined,
+    durationMinutes: p.type === 'service' ? Number(p.durationMinutes) || 30 : undefined,
   }
 }
 
@@ -172,6 +181,11 @@ export const useCatalogStore = create(
             updatePayload.salePrice = Number(form.price) || 0
             updatePayload.taxRate = Number(form.taxPct) || 0
             if (form.type === 'product') updatePayload.unitCost = Number(form.cost) || 0
+            if (form.type === 'service') {
+              updatePayload.availableInAgenda = form.availableInAgenda !== false
+              updatePayload.availableInPos = form.availableInPos !== false
+              updatePayload.durationMinutes = Number(form.durationMinutes) || 30
+            }
           }
           apiProduct = await inventoryApi.updateItem(existing.id, updatePayload)
         } else {
@@ -186,12 +200,15 @@ export const useCatalogStore = create(
               unitCost: Number(form.cost) || 0,
               ...stockPayload,
             })
-          } else if (form.type === 'service') {
+          } else           if (form.type === 'service') {
             apiProduct = await inventoryApi.createService({
               ...commonPayload,
               ...assignmentPayload,
               salePrice: Number(form.price) || 0,
               taxRate: Number(form.taxPct) || 0,
+              availableInAgenda: form.availableInAgenda !== false,
+              availableInPos: form.availableInPos !== false,
+              durationMinutes: Number(form.durationMinutes) || 30,
             })
           } else {
             apiProduct = await inventoryApi.createProduct({
@@ -245,6 +262,9 @@ export const useCatalogStore = create(
           dynamicPrice: !!data.dynamicPrice,
           allowNegativeStock: !!data.allowNegativeStock,
           image: data.image || null,
+          availableInAgenda: type === 'service' ? data.availableInAgenda !== false : undefined,
+          availableInPos: type === 'service' ? data.availableInPos !== false : undefined,
+          durationMinutes: type === 'service' ? Number(data.durationMinutes) || 30 : undefined,
         }
         set((s) => ({ products: [product, ...s.products] }))
         return product

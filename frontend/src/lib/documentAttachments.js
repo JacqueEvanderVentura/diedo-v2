@@ -32,12 +32,27 @@ export async function uploadCashMovementAttachments(registerId, movementId, atta
   )
 }
 
+export async function uploadPurchaseReceipt(requestId, attachment) {
+  return uploadPurchaseDocument(requestId, 'receipt', attachment)
+}
+
 export async function uploadPurchaseQuote(requestId, quoteFile) {
-  if (!quoteFile?.pendingFile) return null
+  return uploadPurchaseDocument(requestId, 'quote', quoteFile)
+}
+
+export async function uploadPurchaseDocument(requestId, purpose, attachment) {
+  if (!attachment?.pendingFile) return null
+  const path = {
+    quote: 'quote',
+    invoice: 'invoice',
+    payment: 'payment',
+    receipt: 'receipt',
+  }[purpose]
+  if (!path) throw new Error('Tipo de documento de compra no válido.')
   const formData = new FormData()
-  formData.append('file', quoteFile.pendingFile, quoteFile.name || quoteFile.pendingFile.name)
-  const response = await apiClient.upload(`/api/v1/purchasing/requests/${requestId}/quote`, formData)
-  return mapDocumentAttachmentFromApi(response)
+  formData.append('file', attachment.pendingFile, attachment.name || attachment.pendingFile.name)
+  const response = await apiClient.upload(`/api/v1/purchasing/requests/${requestId}/${path}`, formData)
+  return mapDocumentAttachmentFromApi({ ...response, purpose: response.purpose || purpose })
 }
 
 export function mergeUploadedAttachments(existing = [], uploaded = []) {

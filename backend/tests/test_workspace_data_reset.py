@@ -56,6 +56,8 @@ def test_tenant_reset_happy_path(
             "firstName": "Cliente",
             "lastName": "Tenant",
             "email": "tenant-reset@example.com",
+            "documentType": "cedula",
+            "documentId": "001-1234567-8",
             "branchIds": [branch_id],
         },
     )

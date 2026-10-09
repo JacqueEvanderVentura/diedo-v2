@@ -90,6 +90,7 @@ class UserRecord:
     last_access_at: datetime | None
     status: Literal["active", "inactive"]
     version: int
+    notice: str | None = None
 
 
 @dataclass(frozen=True)
@@ -512,6 +513,37 @@ class UsersRepository:
             is not None
         )
 
+    def has_active_membership(self, platform_user_id: UUID) -> bool:
+        return (
+            self._session.scalar(
+                select(
+                    exists().where(
+                        WorkspaceMembership.platform_user_id == platform_user_id,
+                        WorkspaceMembership.status == "active",
+                    )
+                )
+            )
+            is True
+        )
+
+    def has_active_membership_in_other_workspace(
+        self,
+        platform_user_id: UUID,
+        exclude_workspace_id: UUID,
+    ) -> bool:
+        return (
+            self._session.scalar(
+                select(
+                    exists().where(
+                        WorkspaceMembership.platform_user_id == platform_user_id,
+                        WorkspaceMembership.workspace_id != exclude_workspace_id,
+                        WorkspaceMembership.status == "active",
+                    )
+                )
+            )
+            is True
+        )
+
     def has_default_membership(self, platform_user_id: UUID) -> bool:
         return (
             self._session.scalar(
@@ -799,6 +831,83 @@ class UsersRepository:
                 outcome="success",
                 request_id=request_id or None,
                 details={
+                    "roleAssignments": [
+                        {
+                            "roleId": str(assignment.role_id),
+                            "scopeType": (
+                                "legalEntity"
+                                if assignment.scope_type == "legal_entity"
+                                else assignment.scope_type
+                            ),
+                            "legalEntityId": (
+                                str(assignment.legal_entity_id)
+                                if assignment.legal_entity_id is not None
+                                else None
+                            ),
+                            "branchId": (
+                                str(assignment.branch_id)
+                                if assignment.branch_id is not None
+                                else None
+                            ),
+                        }
+                        for assignment in assignments
+                    ],
+                },
+            )
+        )
+        self._session.flush()
+        created = self.get_user(
+            workspace_id=workspace_id,
+            membership_id=membership_id,
+            visible_branch_ids=None,
+            visible_legal_entity_ids=None,
+        )
+        if created is None:
+            raise RuntimeError("Created membership could not be loaded.")
+        return created
+
+    def create_membership_for_existing_user(
+        self,
+        *,
+        actor_platform_user_id: UUID,
+        workspace_id: UUID,
+        platform_user_id: UUID,
+        assignments: list[RoleAssignmentSpec],
+        membership_status: Literal["active", "suspended", "invited"],
+        now: datetime,
+        request_id: str,
+    ) -> UserRecord:
+        membership_id = uuid7()
+        membership = WorkspaceMembership(
+            id=membership_id,
+            workspace_id=workspace_id,
+            platform_user_id=platform_user_id,
+            status=membership_status,
+            invited_at=now if membership_status == "invited" else now,
+            activated_at=now if membership_status == "active" else None,
+            revoked_at=now if membership_status == "suspended" else None,
+            is_default=not self.has_default_membership(platform_user_id),
+        )
+        self._session.add(membership)
+        self._session.flush()
+        self.replace_assignments(
+            workspace_id=workspace_id,
+            membership_id=membership_id,
+            assignments=assignments,
+            now=now,
+        )
+        self._session.add(
+            AuditEntry(
+                workspace_id=workspace_id,
+                actor_platform_user_id=actor_platform_user_id,
+                action="membership.create",
+                target_type="workspace_membership",
+                target_id=membership_id,
+                outcome="success",
+                request_id=request_id or None,
+                details={
+                    "identityType": "existing",
+                    "membershipStatus": membership_status,
                     "roleAssignments": [
                         {
                             "roleId": str(assignment.role_id),

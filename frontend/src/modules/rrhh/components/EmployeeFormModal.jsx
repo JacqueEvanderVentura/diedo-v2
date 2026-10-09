@@ -24,7 +24,7 @@ const empty = () => ({
   usuarioId: '',
   jefeIds: [],
   active: true,
-  selectableAsSpecialist: false,
+  selectableAsSpecialist: true,
   hireDate: new Date().toISOString().slice(0, 10),
   workSchedule: emptyWorkSchedule(),
 })

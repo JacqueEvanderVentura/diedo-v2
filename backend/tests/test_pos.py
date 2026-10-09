@@ -42,6 +42,8 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import func, select
 
+from tests.customer_payloads import customer_create_payload, unique_cedula_document_id
+
 _OWNER_EMAIL = "owner@erp.dev"
 _OWNER_PASSWORD = "pos-owner-password-not-a-secret"
 _POS_READER_PASSWORD = "pos-reader-password-not-a-secret"
@@ -744,6 +746,8 @@ def test_terminal_pos_complete_http_flow(client: TestClient, tmp_path: Path) -> 
                 "firstName": "Cliente",
                 "lastName": suffix,
                 "email": f"pos.customer.{suffix}@example.com",
+                "documentType": "cedula",
+                "documentId": unique_cedula_document_id(),
                 "branchIds": [str(branch_id)],
             },
         )
@@ -1302,6 +1306,8 @@ def test_agenda_receivable_keeps_original_amount_after_partial_payment_and_edit(
             "firstName": "Agenda",
             "lastName": suffix,
             "email": f"agenda.receivable.{suffix}@example.com",
+            "documentType": "cedula",
+            "documentId": unique_cedula_document_id(),
             "branchIds": [str(primary_branch_id), str(move_branch_id)],
         },
     )
@@ -1490,6 +1496,8 @@ def test_closed_register_history_and_cross_register_reversals_are_accounted(
             "firstName": "Historical",
             "lastName": suffix,
             "email": f"historical.pos.{suffix}@example.com",
+            "documentType": "cedula",
+            "documentId": unique_cedula_document_id(),
             "branchIds": [str(branch_id)],
         },
     )
@@ -1918,6 +1926,8 @@ def test_receivable_proof_upload_sets_approval_and_approve_clears_pending(
             "firstName": "Cliente",
             "lastName": suffix,
             "email": f"approve.flow.{suffix}@example.com",
+            "documentType": "cedula",
+            "documentId": unique_cedula_document_id(),
             "branchIds": [str(branch_id)],
         },
     )
@@ -2035,6 +2045,8 @@ def test_checkout_split_tenders_creates_partial_receivable_with_approval_pending
             "firstName": "Cliente",
             "lastName": suffix,
             "email": f"split.tender.{suffix}@example.com",
+            "documentType": "cedula",
+            "documentId": unique_cedula_document_id(),
             "branchIds": [str(branch_id)],
         },
     )
@@ -2240,17 +2252,23 @@ def _create_customer(
     branch_id: UUID,
     suffix: str,
 ) -> str:
-    response = client.post(
-        "/api/v1/customers",
-        headers=headers,
-        json={
+    body = customer_create_payload(
+        display_name=f"POS Customer {suffix}",
+        branch_id=branch_id,
+        document_suffix=suffix[-1],
+    )
+    body.update(
+        {
             "customerType": "person",
-            "displayName": f"POS Customer {suffix}",
             "firstName": "Cliente",
             "lastName": suffix,
             "email": f"pos.customer.{suffix}@example.com",
-            "branchIds": [str(branch_id)],
-        },
+        }
+    )
+    response = client.post(
+        "/api/v1/customers",
+        headers=headers,
+        json=body,
     )
     assert response.status_code == 201, response.text
     return response.json()["id"]

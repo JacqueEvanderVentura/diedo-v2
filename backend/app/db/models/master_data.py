@@ -47,7 +47,7 @@ class Customer(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             postgresql_where=text("normalized_document_id IS NOT NULL AND status <> 'archived'"),
         ),
         CheckConstraint(
-            "document_type IS NULL OR document_type IN ('cedula', 'pasaporte')",
+            "document_type IS NULL OR document_type IN ('cedula', 'pasaporte', 'rnc')",
             name="document_type_values",
         ),
     )
@@ -155,7 +155,7 @@ class Employee(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
         String(16), nullable=False, default="active", server_default=text("'active'")
     )
     online_booking_selectable: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default=text("false")
+        Boolean, nullable=False, default=True, server_default=text("true")
     )
     created_by_platform_user_id: Mapped[UUID] = mapped_column(
         ForeignKey("platform_users.id", ondelete="RESTRICT"), nullable=False

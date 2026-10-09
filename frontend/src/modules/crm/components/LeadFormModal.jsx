@@ -5,6 +5,7 @@ import { Save } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
 import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
 import { useConfigStore } from '@/stores/configStore'
 import { useCrmStore } from '@/stores/crmStore'
@@ -14,6 +15,8 @@ import {
   defaultAcquisitionSourceForForm,
 } from '@/data/crm'
 import { cn } from '@/lib/utils'
+import { DOC_TYPES, formatDocumentInput } from '@/modules/agenda/lib/selfBooking'
+import { validateCustomerDocument } from '@/lib/customerDocuments'
 import { resolveInstagramUrl } from '../lib/simplifiedOffer'
 
 const emptyForm = (branchId = '') => ({
@@ -26,6 +29,8 @@ const emptyForm = (branchId = '') => ({
   instagramUrl: '',
   location: '',
   acquisitionSource: 'whatsapp',
+  docType: 'cedula',
+  documentId: '',
 })
 
 function formFromLead(lead, defaultBranch) {
@@ -40,6 +45,10 @@ function formFromLead(lead, defaultBranch) {
     instagramUrl: lead.instagramUrl || resolveInstagramUrl(lead) || '',
     location: lead.location || '',
     acquisitionSource: defaultAcquisitionSourceForForm(lead),
+    docType: lead.docType || lead.documentType || 'cedula',
+    documentId: lead.documentId
+      ? formatDocumentInput(lead.documentId, lead.docType || lead.documentType || 'cedula')
+      : '',
   }
 }
 
@@ -66,6 +75,11 @@ export function LeadFormModal({ open, onClose, onSaved, lead = null }) {
     if (!form.name.trim() && !form.company.trim()) {
       return toast.error('Indica el nombre o la empresa del lead')
     }
+    const requiresDocument = !isEdit || lead?.source === 'manual'
+    if (requiresDocument) {
+      const docErr = validateCustomerDocument(form.docType, form.documentId)
+      if (docErr) return toast.error(docErr)
+    }
     setSubmitting(true)
     try {
       const payload = {
@@ -77,6 +91,8 @@ export function LeadFormModal({ open, onClose, onSaved, lead = null }) {
         instagramUrl: form.instagramUrl.trim() || null,
         location: form.location.trim() || null,
         acquisitionSource: form.acquisitionSource || null,
+        docType: form.docType,
+        documentId: form.documentId.trim(),
       }
       if (isEdit) {
         await updateLead(lead.id, payload)
@@ -137,6 +153,24 @@ export function LeadFormModal({ open, onClose, onSaved, lead = null }) {
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Teléfono</label>
           <Input value={form.phone} onChange={(event) => set('phone', event.target.value)} placeholder="809-555-0000" />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-600">Tipo de documento</label>
+          <Select
+            value={form.docType}
+            onChange={(value) => set('docType', value)}
+            options={DOC_TYPES.map((item) => ({ value: item.id, label: item.label }))}
+            data-testid="lead-field-doc-type"
+          />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-600">Documento</label>
+          <Input
+            value={form.documentId}
+            onChange={(event) => set('documentId', formatDocumentInput(event.target.value, form.docType))}
+            placeholder={form.docType === 'cedula' ? '001-1234567-8' : form.docType === 'rnc' ? '123456789' : 'Pasaporte'}
+            data-testid="lead-field-document"
+          />
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Sitio web</label>

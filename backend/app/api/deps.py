@@ -61,6 +61,19 @@ def require_invoice_document_grant(
     raise AuthorizationError("No tienes permiso para generar documentos de venta.")
 
 
+def require_document_attachment_read(
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+) -> PermissionGrant:
+    service = AuthorizationService(database)
+    for permission_code in ("finance.read", "purchasing.read", "pos.read"):
+        try:
+            return service.require_permission(principal, permission_code)
+        except AuthorizationError:
+            continue
+    raise AuthorizationError("No tienes permiso para ver este adjunto.")
+
+
 _bearer = HTTPBearer(
     auto_error=False,
     scheme_name="BearerAuth",
