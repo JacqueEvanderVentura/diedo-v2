@@ -24,9 +24,13 @@ import {
 
   chunkRows,
 
+  IMPORT_CSV_TEMPLATES,
+
+  IMPORT_TEMPLATE_FORMAT_ERROR,
+
   mapCsvRowToApi,
 
-  parseCsv,
+  parseCsvWithHeaders,
 
   prepareActivityRows,
 
@@ -34,28 +38,12 @@ import {
 
   toPipelineImportItem,
 
+  validateImportTemplateHeaders,
+
   validatePipelineRow,
 
 } from '@/modules/configuracion/lib/csvImport'
 import { isSettingsBlockVisible } from '@/modules/configuracion/lib/settingsSearch'
-
-
-
-const TEMPLATES = {
-
-  pipeline: `externalId,name,company,email,phone,website,location,acquisitionSource,stage,value,notes,lostReason,convert
-
-sample-1,Juan Pérez,,juan@example.com,8095550001,,,whatsapp,contactado,0,,,false`,
-
-  customers: `externalId,customerType,displayName,firstName,lastName,businessName,email,phone,acquisitionSource
-
-sample-c-1,person,Juan Pérez,Juan,Pérez,,juan@example.com,8095550001,otros`,
-
-  activities: `externalId,leadExternalId,contactName,title,description,dueAt
-
-sample-a-1,sample-1,Juan Pérez,Llamada de seguimiento,Notas,2026-09-20T10:00:00.000Z`,
-
-}
 
 
 
@@ -109,13 +97,23 @@ function summarizeImportResults(rows, totalInFile) {
 
     },
 
-    { created: 0, skipped: 0, error: 0 },
+    { created: 0, updated: 0, skipped: 0, error: 0 },
 
   )
 
   const processed = rows.length
 
   const importedOk = summary.created || 0
+
+  const updatedCount = summary.updated || 0
+
+  const headlineParts = [`${importedOk}/${totalInFile} importados al sistema`]
+
+  if (updatedCount > 0) {
+
+    headlineParts.push(`${updatedCount} de ${totalInFile} actualizados`)
+
+  }
 
   return {
 
@@ -125,7 +123,7 @@ function summarizeImportResults(rows, totalInFile) {
 
     processed,
 
-    headline: `${importedOk}/${totalInFile} importados al sistema`,
+    headline: headlineParts.join(', '),
 
   }
 
@@ -373,6 +371,8 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
     if (detailModal === 'created') return report.rows.filter((row) => row.status === 'created')
 
+    if (detailModal === 'updated') return report.rows.filter((row) => row.status === 'updated')
+
     if (detailModal === 'skipped') return report.rows.filter((row) => row.status === 'skipped')
 
     return report.rows.filter((row) => row.status === 'error')
@@ -401,7 +401,17 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
       const text = await file.text()
 
-      const parsed = parseCsv(text)
+      const { headers, rows: parsed } = parseCsvWithHeaders(text)
+
+      const templateCheck = validateImportTemplateHeaders(kind, headers)
+
+      if (!templateCheck.ok) {
+
+        toast.error(IMPORT_TEMPLATE_FORMAT_ERROR)
+
+        return
+
+      }
 
       if (!parsed.length) {
 
@@ -599,7 +609,7 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
                 size="sm"
 
-                onClick={() => downloadTemplate(kind, TEMPLATES[kind])}
+                onClick={() => downloadTemplate(kind, IMPORT_CSV_TEMPLATES[kind])}
 
               >
 
@@ -643,6 +653,17 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
             <li>
 
+              — <DetailLink
+                count={report.summary.updated || 0}
+                label="actualizados"
+                emptyText="0 actualizados"
+                onOpen={() => setDetailModal('updated')}
+              />
+
+            </li>
+
+            <li>
+
               — <DetailLink count={report.summary.skipped || 0} label="duplicados (ya existían)" onOpen={() => setDetailModal('skipped')} />
 
             </li>
@@ -678,11 +699,15 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
             ? 'Importados correctamente'
 
-            : detailModal === 'skipped'
+            : detailModal === 'updated'
 
-              ? 'Duplicados omitidos'
+              ? 'Actualizados'
 
-              : 'Inválidos o con error'
+              : detailModal === 'skipped'
+
+                ? 'Duplicados omitidos'
+
+                : 'Inválidos o con error'
 
         }
 

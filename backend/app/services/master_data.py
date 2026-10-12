@@ -28,6 +28,10 @@ from app.services.attachment_storage import (
 from app.services.auth import AuthPrincipal
 from app.services.authorization import PermissionGrant
 from app.services.customer_documents import prepare_customer_document_fields
+from app.services.customer_import_merge import (
+    build_customer_import_update_changes,
+    find_import_customer_match,
+)
 from app.services.document_identity import (
     assert_document_available_in_workspace,
     require_document_pair,
@@ -157,35 +161,52 @@ class MasterDataService:
         for raw in items:
             external_id = raw.get("external_id")
             try:
-                phone = raw.get("phone")
-                if phone:
-                    existing_page = self._repository.list_customers(
-                        workspace_id=grant.workspace_id,
-                        allowed_branch_ids=grant.allowed_branch_ids,
-                        search=None,
-                        name=None,
-                        phone=normalize_phone(str(phone)),
-                        email=None,
-                        document_id=None,
-                        customer_type=None,
-                        status="active",
-                        branch_id=None,
-                        page=1,
-                        page_size=1,
-                        sort_by="name",
-                        sort_direction="asc",
-                    )
-                    if existing_page.items:
-                        customer = existing_page.items[0]
+                existing_customer = find_import_customer_match(
+                    self._repository,
+                    workspace_id=grant.workspace_id,
+                    allowed_branch_ids=grant.allowed_branch_ids,
+                    raw=raw,
+                )
+                if existing_customer is not None:
+                    update_changes = build_customer_import_update_changes(existing_customer, raw)
+                    if update_changes:
+                        prepared_update = self._prepare_customer_values(update_changes)
+                        normalized_doc = cast_optional_str(
+                            prepared_update.get("normalized_document_id")
+                        )
+                        if normalized_doc:
+                            assert_document_available_in_workspace(
+                                self._session,
+                                workspace_id=grant.workspace_id,
+                                normalized_document_id=normalized_doc,
+                                exclude_customer_id=existing_customer.id,
+                            )
+                        record = self._repository.update_customer(
+                            customer=existing_customer,
+                            changes=prepared_update,
+                            branch_ids=None,
+                            actor_platform_user_id=principal.platform_user_id,
+                            request_id=get_request_id(),
+                        )
+                        self._session.commit()
                         results.append(
                             {
                                 "external_id": external_id,
-                                "customer_id": customer.id,
-                                "status": "skipped",
-                                "message": "Cliente existente con el mismo teléfono.",
+                                "customer_id": record.id,
+                                "status": "updated",
+                                "message": None,
                             }
                         )
-                        continue
+                    else:
+                        results.append(
+                            {
+                                "external_id": external_id,
+                                "customer_id": existing_customer.id,
+                                "status": "skipped",
+                                "message": "Cliente existente sin cambios nuevos.",
+                            }
+                        )
+                    continue
                 import_values: dict[str, object] = {
                     "customer_type": raw.get("customer_type", "person"),
                     "display_name": raw.get("display_name"),

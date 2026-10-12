@@ -234,6 +234,54 @@ class MasterDataRepository:
             )
         )
 
+    def customer_by_normalized_phone(
+        self,
+        workspace_id: UUID,
+        normalized_phone: str,
+        allowed_branch_ids: frozenset[UUID] | None,
+    ) -> Customer | None:
+        query = (
+            select(Customer)
+            .join(
+                CustomerBranchAssignment,
+                (CustomerBranchAssignment.workspace_id == Customer.workspace_id)
+                & (CustomerBranchAssignment.customer_id == Customer.id),
+            )
+            .where(
+                Customer.workspace_id == workspace_id,
+                Customer.normalized_phone == normalized_phone,
+                Customer.status == "active",
+                CustomerBranchAssignment.status == "active",
+            )
+        )
+        if allowed_branch_ids is not None:
+            query = query.where(CustomerBranchAssignment.branch_id.in_(allowed_branch_ids))
+        return self._session.scalar(query.limit(1))
+
+    def customer_by_normalized_email(
+        self,
+        workspace_id: UUID,
+        normalized_email: str,
+        allowed_branch_ids: frozenset[UUID] | None,
+    ) -> Customer | None:
+        query = (
+            select(Customer)
+            .join(
+                CustomerBranchAssignment,
+                (CustomerBranchAssignment.workspace_id == Customer.workspace_id)
+                & (CustomerBranchAssignment.customer_id == Customer.id),
+            )
+            .where(
+                Customer.workspace_id == workspace_id,
+                Customer.normalized_email == normalized_email,
+                Customer.status == "active",
+                CustomerBranchAssignment.status == "active",
+            )
+        )
+        if allowed_branch_ids is not None:
+            query = query.where(CustomerBranchAssignment.branch_id.in_(allowed_branch_ids))
+        return self._session.scalar(query.limit(1))
+
     def customer_record(self, customer: Customer) -> CustomerRecord:
         return self._customer_records([customer])[0]
 
@@ -312,6 +360,7 @@ class MasterDataRepository:
             "document_type",
             "document_id",
             "normalized_document_id",
+            "acquisition_source",
             "status",
         ):
             if field in changes:
