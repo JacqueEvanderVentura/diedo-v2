@@ -138,7 +138,54 @@ def test_import_customer_updates_by_email_when_phone_missing(client: TestClient)
 
 
 @pytest.mark.integration
-def test_import_customer_creates_when_phone_differs(client: TestClient) -> None:
+def test_import_customer_updates_placeholder_by_email_even_if_row_has_phone(
+    client: TestClient,
+) -> None:
+    headers, session = _bootstrap_and_login(client)
+    branch_id = session["visibleBranches"][0]["id"]
+    suffix = uuid7().hex[-8:]
+    email = f"ambar.{suffix}@example.com"
+    phone = f"829{suffix[:7]}"
+    created = _import_customers(
+        client,
+        headers,
+        branch_id,
+        [
+            {
+                "externalId": f"unnamed-{suffix}",
+                "displayName": "Cliente sin nombre",
+                "email": email,
+                "acquisitionSource": "otros",
+            }
+        ],
+    )
+    assert created[0]["status"] == "created"
+
+    updated = _import_customers(
+        client,
+        headers,
+        branch_id,
+        [
+            {
+                "externalId": f"named-{suffix}",
+                "displayName": "Ambar Domínguez",
+                "firstName": "Ambar",
+                "lastName": "Domínguez",
+                "email": email,
+                "phone": phone,
+                "acquisitionSource": "otros",
+            }
+        ],
+    )
+    assert updated[0]["status"] == "updated"
+    assert updated[0]["customerId"] == created[0]["customerId"]
+    assert updated[0]["displayName"] == "Ambar Domínguez"
+
+
+@pytest.mark.integration
+def test_import_customer_updates_when_email_matches_even_if_phone_differs(
+    client: TestClient,
+) -> None:
     headers, session = _bootstrap_and_login(client)
     branch_id = session["visibleBranches"][0]["id"]
     suffix = uuid7().hex[-8:]
@@ -172,5 +219,5 @@ def test_import_customer_creates_when_phone_differs(client: TestClient) -> None:
         ],
     )
     assert first[0]["status"] == "created"
-    assert second[0]["status"] == "created"
-    assert second[0]["customerId"] != first[0]["customerId"]
+    assert second[0]["status"] == "updated"
+    assert second[0]["customerId"] == first[0]["customerId"]

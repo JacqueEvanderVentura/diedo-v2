@@ -188,6 +188,9 @@ export function batchErrorResults(batch, chunkIndex, chunkSize, error) {
   const failedIndex = indexMatch ? Number(indexMatch[1]) : null
   return batch.map((row, rowIndex) => ({
     externalId: row.externalId ?? null,
+    displayName: row.displayName ?? null,
+    phone: row.phone ?? null,
+    email: row.email ?? null,
     status: 'error',
     message: failedIndex === null || failedIndex === rowIndex
       ? message

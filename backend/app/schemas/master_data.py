@@ -203,6 +203,9 @@ class ImportCustomerRowResult(ApiModel):
     customer_id: UUID | None = None
     status: Literal["created", "updated", "skipped", "error"]
     message: str | None = None
+    display_name: str | None = None
+    phone: str | None = None
+    email: str | None = None
 
 
 class ImportCustomersResponse(ApiModel):

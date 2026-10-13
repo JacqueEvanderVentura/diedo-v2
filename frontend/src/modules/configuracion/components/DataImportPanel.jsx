@@ -45,7 +45,12 @@ import {
 } from '@/modules/configuracion/lib/csvImport'
 import { isSettingsBlockVisible } from '@/modules/configuracion/lib/settingsSearch'
 
+const IMPORT_KINDS = ['pipeline', 'customers', 'activities']
 
+function shouldShowBranchPicker(visibleBlockIds) {
+  if (isSettingsBlockVisible(visibleBlockIds, 'branch')) return true
+  return IMPORT_KINDS.some((kind) => isSettingsBlockVisible(visibleBlockIds, kind))
+}
 
 function downloadTemplate(name, content) {
 
@@ -67,7 +72,16 @@ function downloadTemplate(name, content) {
 
 
 
-function normalizeResultRow(row) {
+function normalizeResultRow(row, sourceRow = null) {
+
+  const displayName = row.displayName
+    ?? row.display_name
+    ?? sourceRow?.displayName
+    ?? null
+
+  const phone = row.phone ?? sourceRow?.phone ?? null
+
+  const email = row.email ?? sourceRow?.email ?? null
 
   return {
 
@@ -78,6 +92,12 @@ function normalizeResultRow(row) {
     message: row.message ?? null,
 
     rowNumber: row.rowNumber ?? null,
+
+    displayName,
+
+    phone,
+
+    email,
 
   }
 
@@ -145,7 +165,7 @@ async function importBatches({ rows, chunkSize, runBatch }) {
 
       const response = await runBatch(batch, index)
 
-      allResults.push(...(response.items || []).map(normalizeResultRow))
+      allResults.push(...(response.items || []).map((item, rowIndex) => normalizeResultRow(item, batch[rowIndex])))
 
     } catch (error) {
 
@@ -293,6 +313,72 @@ function DetailLink({ count, label, onOpen, emptyText }) {
 
 
 
+function ImportDetailRow({ row }) {
+
+  const title = row.displayName?.trim()
+    || (row.externalId ? `ID externo ${row.externalId}` : 'Fila sin identificar')
+
+  const contactParts = [row.phone, row.email].filter(Boolean)
+
+  const statusLabel = row.status === 'created'
+    ? 'Nuevo'
+    : row.status === 'updated'
+      ? 'Actualizado'
+      : row.status === 'skipped'
+        ? 'Sin cambios'
+        : row.status === 'error'
+          ? 'Error'
+          : null
+
+  return (
+
+    <li className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+
+      <div className="flex flex-wrap items-start justify-between gap-2">
+
+        <p className="font-medium text-slate-900">
+
+          {title}
+
+          {row.rowNumber ? <span className="font-normal text-slate-500"> · línea {row.rowNumber}</span> : null}
+
+        </p>
+
+        {statusLabel ? (
+          <span className="shrink-0 rounded-full bg-slate-200/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+            {statusLabel}
+          </span>
+        ) : null}
+
+      </div>
+
+      {contactParts.length > 0 ? (
+        <p className="mt-1 text-slate-700">{contactParts.join(' · ')}</p>
+      ) : null}
+
+      {row.displayName && row.externalId ? (
+        <p className="mt-1 text-xs text-slate-500">ID externo: {row.externalId}</p>
+      ) : null}
+
+      {row.status === 'updated' && row.message ? (
+        <p className="mt-2 text-slate-800">
+          <span className="font-medium text-emerald-800">Cambios: </span>
+          {row.message}
+        </p>
+      ) : null}
+
+      {row.status !== 'updated' && row.message ? (
+        <p className="mt-2 text-slate-600">{row.message}</p>
+      ) : null}
+
+    </li>
+
+  )
+
+}
+
+
+
 function ImportDetailModal({ open, onClose, title, rows }) {
 
   return (
@@ -311,19 +397,7 @@ function ImportDetailModal({ open, onClose, title, rows }) {
 
             {rows.map((row, index) => (
 
-              <li key={`${row.externalId || 'row'}-${index}`} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-
-                <p className="font-medium text-slate-900">
-
-                  {row.externalId ? `ID ${row.externalId}` : 'Fila sin ID'}
-
-                  {row.rowNumber ? <span className="font-normal text-slate-500"> · línea {row.rowNumber}</span> : null}
-
-                </p>
-
-                {row.message ? <p className="mt-1 text-slate-600">{row.message}</p> : null}
-
-              </li>
+              <ImportDetailRow key={`${row.externalId || 'row'}-${index}`} row={row} />
 
             ))}
 
@@ -353,15 +427,23 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
   const [detailModal, setDetailModal] = useState(null)
 
+  const [pendingImport, setPendingImport] = useState(null)
 
+  const [pendingBranchId, setPendingBranchId] = useState('')
+
+  const showBranchPicker = shouldShowBranchPicker(visibleBlockIds)
 
   const activeBranchId = useMemo(() => {
-
     if (branchId) return branchId
-
-    return branches.find((branch) => branch.active)?.id || branches[0]?.id || ''
-
+    if (branches.length === 1) return branches[0]?.id || ''
+    return ''
   }, [branchId, branches])
+
+  const resolveBranchId = () => {
+    if (branchId) return branchId
+    if (branches.length === 1) return branches[0]?.id || ''
+    return ''
+  }
 
 
 
@@ -381,14 +463,10 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
 
 
-  const handleFile = async (kind, file) => {
-
-    if (!file || !activeBranchId) {
-
+  const runImport = async (kind, file, targetBranchId) => {
+    if (!file || !targetBranchId) {
       toast.error('Selecciona una sucursal antes de importar.')
-
       return
-
     }
 
     setRunning(kind)
@@ -445,7 +523,7 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
             {
 
-              branchId: activeBranchId,
+              branchId: targetBranchId,
 
               items: batch,
 
@@ -471,7 +549,7 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
           runBatch: (batch, index) => masterDataApi.importCustomers(
 
-            { branchIds: [activeBranchId], items: batch },
+            { branchIds: [targetBranchId], items: batch },
 
             createCrmIdempotencyKey(`customers-${file.name}-${index}`),
 
@@ -491,7 +569,7 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
           runBatch: (batch, index) => crmApi.importActivities(
 
-            { branchId: activeBranchId, items: batch },
+            { branchId: targetBranchId, items: batch },
 
             createCrmIdempotencyKey(`activities-${file.name}-${index}`),
 
@@ -507,9 +585,13 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
       const stats = summarizeImportResults(allRows, parsed.length)
 
+      const branchName = branches.find((branch) => branch.id === targetBranchId)?.name || null
+
       setReport({
 
         kind,
+
+        branchName,
 
         ...stats,
 
@@ -529,6 +611,28 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
     }
 
+  }
+
+  const handleFile = async (kind, file) => {
+    if (!file) return
+    const targetBranchId = resolveBranchId()
+    if (!targetBranchId && branches.length > 1) {
+      setPendingBranchId('')
+      setPendingImport({ kind, file })
+      return
+    }
+    await runImport(kind, file, targetBranchId)
+  }
+
+  const confirmPendingImport = async () => {
+    if (!pendingImport || !pendingBranchId) {
+      toast.error('Selecciona una sucursal antes de importar.')
+      return
+    }
+    setBranchId(pendingBranchId)
+    const { kind, file } = pendingImport
+    setPendingImport(null)
+    await runImport(kind, file, pendingBranchId)
   }
 
 
@@ -553,8 +657,8 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
 
 
-      {isSettingsBlockVisible(visibleBlockIds, 'branch') && (
-      <div>
+      {showBranchPicker && (
+      <div data-settings-block="datos:branch">
 
         <label className="mb-1.5 block text-sm font-medium text-slate-600">Sucursal destino</label>
 
@@ -583,7 +687,7 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
       <div className="grid gap-4 md:grid-cols-3">
 
-        {['pipeline', 'customers', 'activities'].filter((kind) => isSettingsBlockVisible(visibleBlockIds, kind)).map((kind) => (
+        {IMPORT_KINDS.filter((kind) => isSettingsBlockVisible(visibleBlockIds, kind)).map((kind) => (
 
           <div key={kind} className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft">
 
@@ -640,6 +744,7 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
           <p className="mt-1 text-xs text-slate-500">
 
             Archivo: {report.totalInFile} filas · procesadas {report.processed}
+            {report.branchName ? ` · sucursal: ${report.branchName}` : ''}
 
           </p>
 
@@ -686,6 +791,36 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
       )}
 
 
+
+      <Modal
+        open={Boolean(pendingImport)}
+        onClose={() => setPendingImport(null)}
+        title="Sucursal destino"
+        testId="data-import-branch-modal"
+      >
+        <div className="space-y-4 p-5">
+          <p className="text-sm text-slate-600">
+            Elige la sucursal a la que se asignarán los registros de este archivo antes de importar.
+          </p>
+          <BranchMultiSelect
+            branches={branches}
+            branchIds={pendingBranchId ? [pendingBranchId] : []}
+            onChange={(ids) => setPendingBranchId(ids[0] || '')}
+            selectionMode="single"
+            showAllOption={false}
+            className="w-full"
+            testId="data-import-branch-modal-select"
+          />
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setPendingImport(null)}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={confirmPendingImport} disabled={!pendingBranchId}>
+              Importar
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <ImportDetailModal
 

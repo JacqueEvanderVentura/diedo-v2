@@ -1,7 +1,9 @@
 from app.db.models.master_data import Customer
 from app.services.customer_import_merge import (
     build_customer_import_update_changes,
+    customer_has_placeholder_name,
     display_name_is_placeholder,
+    format_customer_import_update_summary,
 )
 
 
@@ -83,3 +85,61 @@ def test_build_customer_import_update_changes_skip_stable_cliente_prefix_name() 
         },
     )
     assert changes == {}
+
+
+def test_format_customer_import_update_summary_shows_field_changes() -> None:
+    customer = Customer(
+        customer_type="person",
+        display_name="Cliente sin nombre",
+        normalized_name="cliente sin nombre",
+        phone="+18297789540",
+        normalized_phone="+18297789540",
+        email=None,
+        status="active",
+    )
+    changes = build_customer_import_update_changes(
+        customer,
+        {
+            "display_name": "Yira Santana",
+            "first_name": "Yira",
+            "last_name": "Santana",
+            "phone": "+18297789540",
+            "email": "yira@example.com",
+        },
+    )
+    summary = format_customer_import_update_summary(customer, changes)
+    assert "Cliente sin nombre" in summary
+    assert "Yira Santana" in summary
+    assert "Correo" in summary
+
+
+def test_placeholder_incoming_name_does_not_overwrite_real_name() -> None:
+    customer = Customer(
+        customer_type="person",
+        display_name="Ambar Domínguez",
+        normalized_name="ambar domínguez",
+        phone="+18299809976",
+        normalized_phone="+18299809976",
+        status="active",
+    )
+    changes = build_customer_import_update_changes(
+        customer,
+        {
+            "display_name": "Cliente sin nombre",
+            "phone": "+18299809976",
+            "email": "Ambardomingueznunez@outlook.com",
+        },
+    )
+    assert "display_name" not in changes
+    assert changes["email"] == "Ambardomingueznunez@outlook.com"
+
+
+def test_placeholder_customer_is_detected() -> None:
+    customer = Customer(
+        customer_type="person",
+        display_name="Cliente sin nombre",
+        normalized_name="cliente sin nombre",
+        email="Ambardomingueznunez@outlook.com",
+        status="active",
+    )
+    assert customer_has_placeholder_name(customer, {})

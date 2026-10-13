@@ -240,23 +240,14 @@ class MasterDataRepository:
         normalized_phone: str,
         allowed_branch_ids: frozenset[UUID] | None,
     ) -> Customer | None:
-        query = (
-            select(Customer)
-            .join(
-                CustomerBranchAssignment,
-                (CustomerBranchAssignment.workspace_id == Customer.workspace_id)
-                & (CustomerBranchAssignment.customer_id == Customer.id),
-            )
-            .where(
-                Customer.workspace_id == workspace_id,
-                Customer.normalized_phone == normalized_phone,
-                Customer.status == "active",
-                CustomerBranchAssignment.status == "active",
-            )
+        matches = self.customers_matching_import_keys(
+            workspace_id=workspace_id,
+            allowed_branch_ids=allowed_branch_ids,
+            normalized_phone=normalized_phone,
+            normalized_email=None,
+            normalized_document_id=None,
         )
-        if allowed_branch_ids is not None:
-            query = query.where(CustomerBranchAssignment.branch_id.in_(allowed_branch_ids))
-        return self._session.scalar(query.limit(1))
+        return matches[0] if matches else None
 
     def customer_by_normalized_email(
         self,
@@ -264,6 +255,33 @@ class MasterDataRepository:
         normalized_email: str,
         allowed_branch_ids: frozenset[UUID] | None,
     ) -> Customer | None:
+        matches = self.customers_matching_import_keys(
+            workspace_id=workspace_id,
+            allowed_branch_ids=allowed_branch_ids,
+            normalized_phone=None,
+            normalized_email=normalized_email,
+            normalized_document_id=None,
+        )
+        return matches[0] if matches else None
+
+    def customers_matching_import_keys(
+        self,
+        *,
+        workspace_id: UUID,
+        allowed_branch_ids: frozenset[UUID] | None,
+        normalized_phone: str | None,
+        normalized_email: str | None,
+        normalized_document_id: str | None,
+    ) -> list[Customer]:
+        filters = []
+        if normalized_phone:
+            filters.append(Customer.normalized_phone == normalized_phone)
+        if normalized_email:
+            filters.append(Customer.normalized_email == normalized_email)
+        if normalized_document_id:
+            filters.append(Customer.normalized_document_id == normalized_document_id)
+        if not filters:
+            return []
         query = (
             select(Customer)
             .join(
@@ -273,14 +291,65 @@ class MasterDataRepository:
             )
             .where(
                 Customer.workspace_id == workspace_id,
-                Customer.normalized_email == normalized_email,
                 Customer.status == "active",
                 CustomerBranchAssignment.status == "active",
+                or_(*filters),
             )
+            .distinct()
         )
         if allowed_branch_ids is not None:
             query = query.where(CustomerBranchAssignment.branch_id.in_(allowed_branch_ids))
-        return self._session.scalar(query.limit(1))
+        seen: dict[UUID, Customer] = {}
+        for customer in self._session.scalars(query):
+            seen.setdefault(customer.id, customer)
+        return list(seen.values())
+
+    def customer_active_branch_ids(
+        self, workspace_id: UUID, customer_ids: Sequence[UUID]
+    ) -> dict[UUID, set[UUID]]:
+        if not customer_ids:
+            return {}
+        rows = self._session.execute(
+            select(CustomerBranchAssignment.customer_id, CustomerBranchAssignment.branch_id).where(
+                CustomerBranchAssignment.workspace_id == workspace_id,
+                CustomerBranchAssignment.customer_id.in_(customer_ids),
+                CustomerBranchAssignment.status == "active",
+            )
+        ).all()
+        result: dict[UUID, set[UUID]] = defaultdict(set)
+        for customer_id, branch_id in rows:
+            result[cast(UUID, customer_id)].add(cast(UUID, branch_id))
+        return result
+
+    def ensure_customer_branches(
+        self, workspace_id: UUID, customer_id: UUID, branch_ids: set[UUID]
+    ) -> bool:
+        if not branch_ids:
+            return False
+        assignments = self._session.scalars(
+            select(CustomerBranchAssignment).where(
+                CustomerBranchAssignment.workspace_id == workspace_id,
+                CustomerBranchAssignment.customer_id == customer_id,
+            )
+        ).all()
+        by_branch = {assignment.branch_id: assignment for assignment in assignments}
+        added = False
+        for branch_id in branch_ids:
+            existing = by_branch.get(branch_id)
+            if existing is None:
+                self._session.add(
+                    CustomerBranchAssignment(
+                        workspace_id=workspace_id,
+                        customer_id=customer_id,
+                        branch_id=branch_id,
+                        status="active",
+                    )
+                )
+                added = True
+            elif existing.status != "active":
+                existing.status = "active"
+                added = True
+        return added
 
     def customer_record(self, customer: Customer) -> CustomerRecord:
         return self._customer_records([customer])[0]
