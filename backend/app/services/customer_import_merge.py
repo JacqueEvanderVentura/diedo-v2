@@ -30,13 +30,14 @@ def display_name_is_placeholder(
     *,
     phone: str | None,
     normalized_phone: str | None,
+    external_id: str | None = None,
 ) -> bool:
     if not display_name:
         return True
     trimmed = display_name.strip()
     if trimmed.lower() == "cliente sin nombre":
         return True
-    if trimmed.startswith("Cliente "):
+    if external_id and trimmed == f"Cliente {external_id.strip()}":
         return True
     if phone and normalize_name(trimmed) == normalize_name(phone):
         return True
@@ -57,12 +58,14 @@ def build_customer_import_update_changes(
     raw: dict[str, Any],
 ) -> dict[str, object]:
     changes: dict[str, object] = {}
+    external_id = _text(raw.get("external_id"))
     incoming_display = _text(raw.get("display_name"))
     if incoming_display and (
         display_name_is_placeholder(
             customer.display_name,
             phone=customer.phone,
             normalized_phone=customer.normalized_phone,
+            external_id=external_id,
         )
         or normalize_name(customer.display_name) != normalize_name(incoming_display)
     ):
@@ -73,6 +76,14 @@ def build_customer_import_update_changes(
         if not incoming:
             continue
         existing = _text(getattr(customer, field))
+        if field == "phone":
+            if normalize_phone(incoming) != normalize_phone(existing):
+                changes[field] = incoming
+            continue
+        if field == "email":
+            if normalize_email(incoming) != normalize_email(existing):
+                changes[field] = incoming
+            continue
         if existing != incoming:
             changes[field] = incoming
 
