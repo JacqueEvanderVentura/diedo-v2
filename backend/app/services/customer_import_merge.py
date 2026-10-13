@@ -5,7 +5,6 @@ from uuid import UUID
 
 from app.db.models.master_data import Customer
 from app.repositories.master_data import MasterDataRepository
-from app.services.customer_documents import normalize_document_id
 
 
 def normalize_name(value: str) -> str:
@@ -119,12 +118,61 @@ def build_customer_import_update_changes(
     return changes
 
 
-def _normalized_import_document_id(raw: dict[str, Any]) -> str | None:
-    document_id = _text(raw.get("document_id"))
-    if not document_id:
-        return None
-    document_type = _text(raw.get("document_type")) or "cedula"
-    return normalize_document_id(document_type, document_id)
+_MEANINGFUL_UPDATE_FIELDS = frozenset(
+    {
+        "display_name",
+        "first_name",
+        "last_name",
+        "business_name",
+        "email",
+        "phone",
+        "document_type",
+        "document_id",
+    }
+)
+
+
+def meaningful_customer_import_changes(changes: dict[str, object]) -> dict[str, object]:
+    return {key: value for key, value in changes.items() if key in _MEANINGFUL_UPDATE_FIELDS}
+
+
+def parse_import_customer_id(raw: dict[str, Any]) -> UUID | None:
+    for key in ("customer_id", "external_id"):
+        value = _text(raw.get(key))
+        if not value:
+            continue
+        try:
+            return UUID(value)
+        except ValueError:
+            continue
+    return None
+
+
+def _customers_in_destination(
+    repository: MasterDataRepository,
+    *,
+    workspace_id: UUID,
+    destination_branch_ids: set[UUID],
+    customers: list[Customer],
+) -> list[Customer]:
+    found = [customer for customer in customers if customer is not None]
+    if not found or not destination_branch_ids:
+        return []
+    branch_map = repository.customer_active_branch_ids(
+        workspace_id, [customer.id for customer in found]
+    )
+    return [
+        customer
+        for customer in found
+        if branch_map.get(customer.id, set()) & destination_branch_ids
+    ]
+
+
+def _prefer_placeholder(customers: list[Customer], raw: dict[str, Any]) -> list[Customer]:
+    placeholders = [
+        customer for customer in customers if customer_has_placeholder_name(customer, raw)
+    ]
+    return placeholders or customers
 
 
 def find_import_customer_matches(
@@ -135,26 +183,59 @@ def find_import_customer_matches(
     destination_branch_ids: set[UUID],
     raw: dict[str, Any],
 ) -> list[Customer]:
-    matches = repository.customers_matching_import_keys(
-        workspace_id=workspace_id,
-        allowed_branch_ids=allowed_branch_ids,
-        normalized_phone=normalize_phone(_text(raw.get("phone"))),
-        normalized_email=normalize_email(_text(raw.get("email"))),
-        normalized_document_id=_normalized_import_document_id(raw),
-    )
-    if not matches:
-        return []
-    branch_map = repository.customer_active_branch_ids(
-        workspace_id, [customer.id for customer in matches]
-    )
-    destination_matches = [
-        customer
-        for customer in matches
-        if branch_map.get(customer.id, set()) & destination_branch_ids
-    ]
-    pool = destination_matches or matches
-    placeholders = [customer for customer in pool if customer_has_placeholder_name(customer, raw)]
-    return placeholders or pool
+    customer_id = parse_import_customer_id(raw)
+    if customer_id is not None:
+        existing = repository.get_customer(workspace_id, customer_id, allowed_branch_ids)
+        by_id = _customers_in_destination(
+            repository,
+            workspace_id=workspace_id,
+            destination_branch_ids=destination_branch_ids,
+            customers=[existing] if existing is not None else [],
+        )
+        if by_id:
+            return by_id
+
+    phone = normalize_phone(_text(raw.get("phone")))
+    if phone:
+        by_phone = _prefer_placeholder(
+            _customers_in_destination(
+                repository,
+                workspace_id=workspace_id,
+                destination_branch_ids=destination_branch_ids,
+                customers=repository.customers_matching_import_keys(
+                    workspace_id=workspace_id,
+                    allowed_branch_ids=allowed_branch_ids,
+                    normalized_phone=phone,
+                    normalized_email=None,
+                    normalized_document_id=None,
+                ),
+            ),
+            raw,
+        )
+        if by_phone:
+            return by_phone
+
+    email = normalize_email(_text(raw.get("email")))
+    if email:
+        by_email = _prefer_placeholder(
+            _customers_in_destination(
+                repository,
+                workspace_id=workspace_id,
+                destination_branch_ids=destination_branch_ids,
+                customers=repository.customers_matching_import_keys(
+                    workspace_id=workspace_id,
+                    allowed_branch_ids=allowed_branch_ids,
+                    normalized_phone=None,
+                    normalized_email=email,
+                    normalized_document_id=None,
+                ),
+            ),
+            raw,
+        )
+        if by_email:
+            return by_email
+
+    return []
 
 
 def find_import_customer_match(

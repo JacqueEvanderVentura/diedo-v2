@@ -1,8 +1,10 @@
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { listChangedFiles, relatedFrontendTests } from './git-changed-files.mjs'
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
+const repoRoot = path.dirname(root)
 
 const ciEnv = {
   ...process.env,
@@ -19,7 +21,8 @@ const ciEnv = {
   VITE_FEATURE_CHAT: 'true',
 }
 
-function run(command, args) {
+function run(label, command, args) {
+  console.log(`prepush: ${label}`)
   const result = spawnSync(command, args, {
     cwd: root,
     env: ciEnv,
@@ -31,13 +34,35 @@ function run(command, args) {
   }
 }
 
+const changed = listChangedFiles(repoRoot, 'frontend').filter((file) =>
+  /\.[jt]sx?$/.test(file),
+)
+const relatedTests = relatedFrontendTests(root, changed)
+if (relatedTests.length) {
+  run(
+    `unit tests cambiados (${relatedTests.length})`,
+    'npx',
+    ['vitest', 'run', ...relatedTests],
+  )
+} else {
+  console.log('prepush: no hay tests frontend ligados al git diff; sigo con la suite completa.')
+}
+
 console.log('prepush: build (frontend CI)')
-run('npm', ['run', 'build'])
+run('build', 'npm', ['run', 'build'])
 
 console.log('prepush: unit tests (frontend CI)')
-run('npm', ['test'])
+run('unit tests', 'npm', ['test'])
 
 console.log('prepush: wrangler dry-run (frontend CI)')
-run('npx', ['wrangler', 'deploy', '--dry-run', '--config', 'wrangler.jsonc', '--env', 'production'])
+run('wrangler dry-run', 'npx', [
+  'wrangler',
+  'deploy',
+  '--dry-run',
+  '--config',
+  'wrangler.jsonc',
+  '--env',
+  'production',
+])
 
 console.log('prepush: frontend checks passed')

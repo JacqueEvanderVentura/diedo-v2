@@ -33,6 +33,7 @@ from app.services.customer_import_merge import (
     customer_import_row_context,
     find_import_customer_matches,
     format_customer_import_update_summary,
+    meaningful_customer_import_changes,
 )
 from app.services.document_identity import (
     assert_document_available_in_workspace,
@@ -192,45 +193,42 @@ class MasterDataService:
                     summaries: list[str] = []
                     last_customer_id = existing_customers[0].id
                     for existing_customer in existing_customers:
-                        update_changes = build_customer_import_update_changes(
-                            existing_customer, raw
+                        update_changes = meaningful_customer_import_changes(
+                            build_customer_import_update_changes(existing_customer, raw)
                         )
-                        added_branch = self._repository.ensure_customer_branches(
+                        self._repository.ensure_customer_branches(
                             grant.workspace_id,
                             existing_customer.id,
                             branch_ids,
                         )
-                        if not update_changes and not added_branch:
+                        if not update_changes:
                             last_customer_id = existing_customer.id
                             continue
-                        if update_changes:
-                            summaries.append(
-                                format_customer_import_update_summary(
-                                    existing_customer,
-                                    update_changes,
-                                )
+                        summaries.append(
+                            format_customer_import_update_summary(
+                                existing_customer,
+                                update_changes,
                             )
-                            prepared_update = self._prepare_customer_values(update_changes)
-                            normalized_doc = cast_optional_str(
-                                prepared_update.get("normalized_document_id")
+                        )
+                        prepared_update = self._prepare_customer_values(update_changes)
+                        normalized_doc = cast_optional_str(
+                            prepared_update.get("normalized_document_id")
+                        )
+                        if normalized_doc:
+                            assert_document_available_in_workspace(
+                                self._session,
+                                workspace_id=grant.workspace_id,
+                                normalized_document_id=normalized_doc,
+                                exclude_customer_id=existing_customer.id,
                             )
-                            if normalized_doc:
-                                assert_document_available_in_workspace(
-                                    self._session,
-                                    workspace_id=grant.workspace_id,
-                                    normalized_document_id=normalized_doc,
-                                    exclude_customer_id=existing_customer.id,
-                                )
-                            record = self._repository.update_customer(
-                                customer=existing_customer,
-                                changes=prepared_update,
-                                branch_ids=None,
-                                actor_platform_user_id=principal.platform_user_id,
-                                request_id=get_request_id(),
-                            )
-                            updated_id = record.id
-                        else:
-                            updated_id = existing_customer.id
+                        record = self._repository.update_customer(
+                            customer=existing_customer,
+                            changes=prepared_update,
+                            branch_ids=None,
+                            actor_platform_user_id=principal.platform_user_id,
+                            request_id=get_request_id(),
+                        )
+                        updated_id = record.id
                     self._session.commit()
                     if updated_id is not None:
                         results.append(

@@ -1,10 +1,21 @@
+from uuid import uuid4
+
 from app.db.models.master_data import Customer
 from app.services.customer_import_merge import (
     build_customer_import_update_changes,
     customer_has_placeholder_name,
     display_name_is_placeholder,
     format_customer_import_update_summary,
+    meaningful_customer_import_changes,
+    parse_import_customer_id,
 )
+
+
+def test_parse_import_customer_id_accepts_uuid_and_ignores_name() -> None:
+    customer_id = uuid4()
+    assert parse_import_customer_id({"external_id": str(customer_id)}) == customer_id
+    assert parse_import_customer_id({"external_id": "charm-not-a-uuid"}) is None
+    assert parse_import_customer_id({"display_name": "Ambar Domínguez"}) is None
 
 
 def test_display_name_is_placeholder() -> None:
@@ -132,6 +143,28 @@ def test_placeholder_incoming_name_does_not_overwrite_real_name() -> None:
     )
     assert "display_name" not in changes
     assert changes["email"] == "Ambardomingueznunez@outlook.com"
+
+
+def test_acquisition_source_only_is_not_a_meaningful_update() -> None:
+    customer = Customer(
+        customer_type="person",
+        display_name="Ambar Domínguez",
+        normalized_name="ambar domínguez",
+        phone="+18299809976",
+        normalized_phone="+18299809976",
+        email="Ambardomingueznunez@outlook.com",
+        status="active",
+    )
+    changes = build_customer_import_update_changes(
+        customer,
+        {
+            "display_name": "Ambar Domínguez",
+            "phone": "+18299809976",
+            "email": "Ambardomingueznunez@outlook.com",
+            "acquisition_source": "otros",
+        },
+    )
+    assert meaningful_customer_import_changes(changes) == {}
 
 
 def test_placeholder_customer_is_detected() -> None:
