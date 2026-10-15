@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -5,7 +6,7 @@ import { listChangedFiles, relatedBackendTests } from './git-changed-files.mjs'
 import {
   lastPrepushLogLine,
   markPrepushSucceeded,
-  parsePytestFailedNodeId,
+  parsePytestFailedNodeIdFromJunit,
   readLastPytestFailure,
   writePytestFailure,
   writeStepFailure,
@@ -17,38 +18,29 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const repoRoot = path.dirname(root)
 const python = resolvePython(root)
 const quick = process.argv.includes('--quick')
+const junitPath = path.join(root, '.local/prepush-pytest.xml')
 
 const ciEnv = {
   ...process.env,
   APP_ENV: process.env.APP_ENV || 'test',
   DATABASE_URL: resolveTestDatabaseUrl(),
+  PYTHONUNBUFFERED: '1',
 }
 
-function run(label, command, args, { shell = false, allowNoTests = false, capturePytest = false } = {}) {
+function run(label, command, args, { shell = false, allowNoTests = false } = {}) {
   console.log(`prepush: ${label}`)
   const result = spawnSync(command, args, {
     cwd: root,
     env: ciEnv,
-    stdio: capturePytest ? ['inherit', 'pipe', 'pipe'] : 'inherit',
-    encoding: capturePytest ? 'utf8' : undefined,
+    stdio: 'inherit',
     shell,
   })
-  if (capturePytest) {
-    if (result.stdout) process.stdout.write(result.stdout)
-    if (result.stderr) process.stderr.write(result.stderr)
-  }
   if (allowNoTests && result.status === 5) {
     console.log(`prepush: ${label} — sin tests recolectados, sigo.`)
     return
   }
   if (result.status !== 0) {
-    if (capturePytest) {
-      const nodeid = parsePytestFailedNodeId(`${result.stdout || ''}${result.stderr || ''}`)
-      if (nodeid) writePytestFailure(root, { label, nodeid })
-      else writeStepFailure(root, { label })
-    } else {
-      writeStepFailure(root, { label })
-    }
+    writeStepFailure(root, { label })
     console.error(`prepush: failed at "${label}" (exit ${result.status ?? 1})`)
     process.exit(result.status ?? 1)
   }
@@ -59,19 +51,59 @@ function run(label, command, args, { shell = false, allowNoTests = false, captur
   }
 }
 
-function runChangedFirst() {
-  const changed = listChangedFiles(repoRoot, 'backend').filter((file) => file.endsWith('.py'))
-  if (!changed.length) {
-    console.log('prepush: no hay .py en git diff (backend); salto el paso de archivos cambiados.')
+function runPytest(label, pytestArgs, { allowNoTests = false } = {}) {
+  fs.mkdirSync(path.dirname(junitPath), { recursive: true })
+  try {
+    fs.unlinkSync(junitPath)
+  } catch {
+    /* no prior report */
+  }
+  const args = [
+    '-u',
+    '-m',
+    'pytest',
+    ...pytestArgs,
+    '-o=junit_family=xunit2',
+    `--junitxml=${junitPath}`,
+  ]
+  console.log(`prepush: ${label}`)
+  const result = spawnSync(python, args, {
+    cwd: root,
+    env: ciEnv,
+    stdio: 'inherit',
+  })
+  if (allowNoTests && result.status === 5) {
+    console.log(`prepush: ${label} — sin tests recolectados, sigo.`)
     return
   }
-  console.log(`prepush: archivos cambiados primero (${changed.length})`)
+  if (result.status !== 0) {
+    const nodeid = parsePytestFailedNodeIdFromJunit(junitPath)
+    if (nodeid) writePytestFailure(root, { label, nodeid })
+    else writeStepFailure(root, { label })
+    console.error(`prepush: failed at "${label}" (exit ${result.status ?? 1})`)
+    process.exit(result.status ?? 1)
+  }
+  if (result.signal) {
+    writeStepFailure(root, { label })
+    console.error(`prepush: aborted at "${label}" (${result.signal})`)
+    process.exit(1)
+  }
+}
+
+function runChangedLint() {
+  const changed = listChangedFiles(repoRoot, 'backend').filter((file) => file.endsWith('.py'))
+  if (!changed.length) {
+    console.log('prepush: fase 2 — sin .py en el diff; salto lint/tests del diff.')
+    return []
+  }
+  console.log(`prepush: fase 2 — diff (${changed.length} archivo(s) .py)`)
   run('ruff check (changed)', python, ['-m', 'ruff', 'check', ...changed])
   run('ruff format --check (changed)', python, ['-m', 'ruff', 'format', '--check', ...changed])
   const appFiles = changed.filter((file) => file.startsWith('app/'))
   if (appFiles.length) {
     run('mypy (changed)', python, ['-m', 'mypy', ...appFiles])
   }
+  return changed
 }
 
 if (quick) {
@@ -84,15 +116,13 @@ if (quick) {
 const lastLog = lastPrepushLogLine(root)
 if (lastLog.startsWith('succeeded ')) {
   console.log(`prepush: última corrida OK (${lastLog.slice('succeeded '.length)})`)
+} else if (lastLog.startsWith('failed ')) {
+  console.log(`prepush: última corrida falló — ver backend/.local/prepush.log`)
 }
+
 const savedFailure = readLastPytestFailure(root)
-if (savedFailure) {
-  const when = quick ? 'antes de los tests del diff' : 'tras el reset de BD'
-  console.log(`prepush: repetiré el último fallo de pytest ${when} → ${savedFailure.nodeid}`)
-}
 
-runChangedFirst()
-
+console.log('prepush: setup — lint global y base de datos de prueba')
 run('ruff check', python, ['-m', 'ruff', 'check', 'app', 'tests'])
 run('ruff format --check', python, ['-m', 'ruff', 'format', '--check', 'app', 'tests'])
 run('mypy', python, ['-m', 'mypy', 'app'])
@@ -108,48 +138,42 @@ if (!quick) {
 }
 
 if (savedFailure?.nodeid) {
-  const replayArgs = ['-m', 'pytest', '-x', '--maxfail=1', '--tb=short', savedFailure.nodeid]
+  const replayArgs = ['-x', '--maxfail=1', '--tb=short', savedFailure.nodeid]
   if (quick) replayArgs.push('-m', 'not integration')
-  run('pytest último fallo guardado', python, replayArgs, {
+  runPytest(`fase 1 — último fallo guardado (${savedFailure.nodeid})`, replayArgs, {
     allowNoTests: true,
-    capturePytest: true,
   })
+} else {
+  console.log('prepush: fase 1 — sin fallo de pytest guardado; sigo.')
 }
 
+const changed = runChangedLint()
 const relatedTests = relatedBackendTests(
   root,
-  listChangedFiles(repoRoot, 'backend').filter((file) => file.endsWith('.py')),
+  changed.length ? changed : listChangedFiles(repoRoot, 'backend').filter((f) => f.endsWith('.py')),
 )
 if (relatedTests.length) {
-  const relatedArgs = ['-m', 'pytest', '-x', '--maxfail=1', '--tb=short', ...relatedTests]
+  const relatedArgs = ['-x', '--maxfail=1', '--tb=short', ...relatedTests]
   if (quick) relatedArgs.push('-m', 'not integration')
-  run(
+  runPytest(
     quick
-      ? `pytest unitarios cambiados (${relatedTests.length})`
-      : `pytest tests relacionados (${relatedTests.length})`,
-    python,
+      ? `fase 2 — pytest unitarios del diff (${relatedTests.length})`
+      : `fase 2 — pytest tests relacionados al diff (${relatedTests.length})`,
     relatedArgs,
-    { allowNoTests: true, capturePytest: true },
+    { allowNoTests: true },
   )
 }
 
-const pytestArgs = ['-m', 'pytest', '-x', '--maxfail=1', '--tb=short']
+const pytestArgs = ['-x', '--maxfail=1', '--tb=short']
 if (quick) {
-  // One argv for the marker expression (cmd.exe treats bare `not` as an operator when shell=true).
   pytestArgs.push('-m', 'not integration')
 } else {
-  pytestArgs.push(
-    '--cov=app',
-    '--cov-report=term-missing',
-    '--cov-fail-under=80',
-  )
+  pytestArgs.push('--cov=app', '--cov-report=term-missing', '--cov-fail-under=80')
 }
 
-run(
-  quick ? 'pytest unitarios (stop on first failure)' : 'pytest (stop on first failure)',
-  python,
+runPytest(
+  quick ? 'fase 3 — pytest unitarios (suite completa)' : 'fase 3 — pytest (suite completa + coverage)',
   pytestArgs,
-  { capturePytest: true },
 )
 
 markPrepushSucceeded(root)

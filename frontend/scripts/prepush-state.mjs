@@ -89,9 +89,20 @@ export function lastPrepushLogLine(frontendRoot) {
   }
 }
 
-/** First path in a Vitest `FAIL  path > …` line (last FAIL wins with bail). */
-export function parseVitestFailedTarget(output) {
-  const matches = [...String(output).matchAll(/^\s*FAIL\s+(\S+)/gm)]
-  if (!matches.length) return null
-  return matches.at(-1)[1].replaceAll('\\', '/')
+/** Test file path from a Vitest junit report (last failure with -x / bail). */
+export function parseVitestFailedTargetFromJunit(xmlPath) {
+  try {
+    const xml = fs.readFileSync(xmlPath, 'utf8')
+    let last = null
+    for (const block of xml.split('<testcase ')) {
+      if (!/<failure|<error/.test(block)) continue
+      const file =
+        block.match(/\bfile="([^"]+)"/)?.[1]?.replaceAll('\\', '/') ||
+        block.match(/\bclassname="([^"]+)"/)?.[1]?.replaceAll('\\', '/')
+      if (file) last = file
+    }
+    return last
+  } catch {
+    return null
+  }
 }

@@ -15,7 +15,7 @@ From `backend/`:
 npm run prepush
 ```
 
-After a pytest failure, the next full run replays that test right after the DB reset (still lints changed `.py` files first). State lives in `backend/.local/prepush-last-failure.json`; a green run writes `backend/.local/prepush.log` with `succeeded …` and clears the saved failure.
+Prepush test order: **setup** (lint + DB reset) → **fase 1** replay last pytest failure from `backend/.local/prepush-last-failure.json` → **fase 2** lint/tests for git diff → **fase 3** full suite. A green run writes `backend/.local/prepush.log` (`succeeded …`) and clears the saved failure.
 
 Equivalent manual sequence:
 

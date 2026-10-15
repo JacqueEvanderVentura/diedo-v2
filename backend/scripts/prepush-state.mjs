@@ -89,9 +89,19 @@ export function lastPrepushLogLine(backendRoot) {
   }
 }
 
-/** Last FAILED node id from pytest output (-x → usually one). */
-export function parsePytestFailedNodeId(output) {
-  const matches = [...String(output).matchAll(/^FAILED (\S+)/gm)]
-  if (!matches.length) return null
-  return matches.at(-1)[1]
+/** Last failed testcase from a pytest --junitxml report (-x → usually one failure). */
+export function parsePytestFailedNodeIdFromJunit(xmlPath) {
+  try {
+    const xml = fs.readFileSync(xmlPath, 'utf8')
+    let last = null
+    for (const block of xml.split('<testcase ')) {
+      if (!/<failure|<error/.test(block)) continue
+      const file = block.match(/\bfile="([^"]+)"/)?.[1]?.replaceAll('\\', '/')
+      const name = block.match(/\bname="([^"]+)"/)?.[1]
+      if (file && name) last = `${file}::${name}`
+    }
+    return last
+  } catch {
+    return null
+  }
 }

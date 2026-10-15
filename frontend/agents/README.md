@@ -12,6 +12,14 @@ Frontend Vitest coverage is separate. If a change touches `backend/`, the Python
 `--cov-fail-under` via `npm run prepush` in `backend/` (see `docs/backend/COVERAGE.md`). Do not
 lower that gate or omit new backend modules from coverage.
 
+## Frontend prepush (`npm run prepush`)
+
+Same phased flow as backend tests: **fase 1** replay last Vitest failure from
+`frontend/.local/prepush-last-failure.json` → **fase 2** tests tied to the git diff → **fase 3**
+production build, full Vitest suite, and Wrangler dry-run. Vitest streams to the terminal; failures
+are recorded via JUnit in `.local/`. A green run writes `frontend/.local/prepush.log` and clears the
+saved failure.
+
 ## Convenciones del proyecto
 - **Stack:** React + Vite (JS/JSX, sin TypeScript, sin Next). Sin backend real: todo mock.
 - **Estado:** Zustand (`src/stores/*`), con `persist` donde aplique.
