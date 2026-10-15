@@ -578,10 +578,7 @@ def test_persisted_appointment_reminders_send_once_and_omit_short_notice(
         second_id = second_appointment.id
 
     with get_session_factory()() as reminder_session:
-        summary = AppointmentReminderService(reminder_session).process_due(
-            recipient_email="booking-test@example.com",
-            now=now,
-        )
+        summary = AppointmentReminderService(reminder_session).process_due(now=now)
         assert summary.sent == 1
         assert summary.omitted == 1
         assert reminder_session.get(Appointment, first_id).reminder_sent is True
@@ -594,7 +591,6 @@ def test_persisted_appointment_reminders_send_once_and_omit_short_notice(
         assert len(notices) == 2
         assert {notice.status for notice in notices} == {"sent", "superseded"}
         repeat = AppointmentReminderService(reminder_session).process_due(
-            recipient_email="booking-test@example.com",
             now=now + timedelta(minutes=5),
         )
         assert repeat.sent == 0
