@@ -123,6 +123,8 @@ class CheckoutSnapshot:
     priced: PricedDocument
     lines: tuple[SaleLine, ...]
     currency: str
+    wash_service_count: int = 0
+    extra_stock_lines: tuple[_PricedCatalogLine, ...] = ()
 
 
 class _CheckoutQuoteExpired(ConflictError):
@@ -1239,8 +1241,10 @@ class PosService:
                 **values,
                 "carwash_wash_id": snapshot.source_id,
                 "snapshot": [
-                    (line.item_id, line.unit_price, line.tax_rate) for line in snapshot.lines
+                    (line.item_id, line.unit_price, line.tax_rate, line.quantity)
+                    for line in snapshot.lines
                 ],
+                "wash_service_count": snapshot.wash_service_count,
             }
         )
         branch_id = cast(UUID, values["branch_id"])
@@ -1381,11 +1385,19 @@ class PosService:
             )
         else:
             priced = snapshot.priced
-            if quote_id is not None or any(
-                line.workspace_id != grant.workspace_id or line.item_type != "service"
-                for line in snapshot.lines
-            ):
+            if quote_id is not None:
                 raise InvalidOperationError("El origen de precios no es válido.")
+            wash_count = snapshot.wash_service_count or len(snapshot.lines)
+            for index, line in enumerate(snapshot.lines):
+                if line.workspace_id != grant.workspace_id:
+                    raise InvalidOperationError("El origen de precios no es válido.")
+                if index < wash_count and line.item_type != "service":
+                    raise InvalidOperationError("El origen de precios no es válido.")
+                if index >= wash_count and line.item_type != "product":
+                    raise InvalidOperationError(
+                        "Solo productos de inventario pueden añadirse al lavado.", "extraLines"
+                    )
+            priced_lines = snapshot.extra_stock_lines
         if customer is None and any(
             line.catalog.item.item_type == "membership" for line in priced_lines
         ):

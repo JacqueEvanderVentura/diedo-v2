@@ -2,6 +2,14 @@ function normSku(sku) {
   return sku ? String(sku).trim().toUpperCase() : null
 }
 
+function resolveInventoryImageUrl(path) {
+  if (!path) return null
+  if (/^https?:\/\//i.test(path)) return path
+  const base = import.meta.env.VITE_API_BASE_URL || '/api-backend'
+  const normalized = base.endsWith('/') ? base.slice(0, -1) : base
+  return `${normalized}${path.startsWith('/') ? path : `/${path}`}`
+}
+
 function findLocalMatch(apiProduct, localProducts) {
   const apiSku = normSku(apiProduct.sku)
   if (apiSku) {
@@ -61,6 +69,9 @@ export function mergeApiProduct(apiProduct, localProduct, categoryIdToLocal) {
     durationMinutes: isService
       ? Number(apiProduct.durationMinutes ?? apiProduct.duration_minutes) || 30
       : localProduct?.durationMinutes,
+    image: resolveInventoryImageUrl(apiProduct.imageUrl || apiProduct.image_url)
+      || localProduct?.image
+      || null,
   }
 }
 

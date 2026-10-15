@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models import CarwashCommission, CarwashWash, CarwashWashLine, SaleLine
-from app.repositories.pos import PosRepository
+from app.repositories.pos import PosCatalogRecord, PosRepository
 from app.schemas.administration import PaymentMethodResponse
 from app.schemas.carwash_checkout import (
     CompleteWashRequest,
@@ -23,8 +23,8 @@ from app.services.authorization import AuthorizationService, PermissionGrant
 from app.services.carwash import CarwashService
 from app.services.carwash_operations import CarwashOperationsService, fingerprint
 from app.services.errors import ConflictError, InvalidOperationError, ResourceNotFoundError
-from app.services.pos import CheckoutSnapshot, PosService
-from app.services.pos_money import PricingInput, money, price_document
+from app.services.pos import CheckoutSnapshot, PosService, _PricedCatalogLine
+from app.services.pos_money import PricingInput, money, price_document, quantity
 
 
 class CarwashCheckoutService:
@@ -84,15 +84,50 @@ class CarwashCheckoutService:
             )
         if payload.price_overrides or payload.discount_value:
             self.pos._require_discount_permission(principal, wash.workspace_id, wash.branch_id)
-        priced = price_document(
-            [
-                PricingInput(
-                    item_id=line.item_id,
-                    quantity=Decimal(1),
-                    unit_price=overrides.get(line.id, line.unit_price),
-                    tax_rate=line.tax_rate,
+        wash_inputs = [
+            PricingInput(
+                item_id=line.item_id,
+                quantity=Decimal(1),
+                unit_price=overrides.get(line.id, line.unit_price),
+                tax_rate=line.tax_rate,
+            )
+            for line in lines
+        ]
+        extra_catalog: list[tuple[PosCatalogRecord, Decimal]] = []
+        if payload.extra_lines:
+            item_ids = {row.item_id for row in payload.extra_lines}
+            records = self.sales.catalog(
+                workspace_id=wash.workspace_id,
+                branch_id=wash.branch_id,
+                item_ids=item_ids,
+            )
+            by_id = {record.item.id: record for record in records}
+            if set(by_id) != item_ids:
+                raise ResourceNotFoundError(
+                    "Un producto no está activo o disponible en la sucursal.", "extraLines"
                 )
-                for line in lines
+            for row in payload.extra_lines:
+                record = by_id[row.item_id]
+                if record.item.item_type != "product":
+                    raise InvalidOperationError(
+                        "Solo productos de inventario pueden añadirse al lavado.", "extraLines"
+                    )
+                if record.profile.sale_price is None:
+                    raise InvalidOperationError(
+                        "El producto no tiene precio de venta configurado.", "extraLines"
+                    )
+                line_quantity = quantity(row.quantity)
+                extra_catalog.append((record, line_quantity))
+        priced = price_document(
+            wash_inputs
+            + [
+                PricingInput(
+                    item_id=record.item.id,
+                    quantity=line_quantity,
+                    unit_price=money(record.profile.sale_price or Decimal("0")),
+                    tax_rate=record.profile.tax_rate,
+                )
+                for record, line_quantity in extra_catalog
             ],
             discount_type=payload.discount_type,
             discount_value=payload.discount_value or Decimal(0),
@@ -101,8 +136,9 @@ class CarwashCheckoutService:
             "1000000000000"
         ):
             raise InvalidOperationError("El total excede el límite admitido por POS.", "total")
-        sale_lines = []
-        for line, price in zip(lines, priced.lines, strict=True):
+        sale_lines: list[SaleLine] = []
+        extra_stock_lines: list[_PricedCatalogLine] = []
+        for line, price in zip(lines, priced.lines[: len(lines)], strict=True):
             catalog = self.operations.catalog.catalog_service(
                 wash.workspace_id, wash.branch_id, line.item_id, lock=False
             )
@@ -127,7 +163,51 @@ class CarwashCheckoutService:
                     line_total=price.line_total,
                 )
             )
-        return CheckoutSnapshot(wash.id, priced, tuple(sale_lines), wash.currency), lines
+        for index, ((record, _), price) in enumerate(
+            zip(extra_catalog, priced.lines[len(lines) :], strict=True)
+        ):
+            sale_lines.append(
+                SaleLine(
+                    workspace_id=wash.workspace_id,
+                    position=len(lines) + index + 1,
+                    item_id=record.item.id,
+                    item_name=record.item.name,
+                    item_sku=record.item.sku,
+                    item_type=record.item.item_type,
+                    unit_symbol=record.unit.symbol,
+                    quantity=price.quantity,
+                    list_price=money(record.profile.sale_price or Decimal("0")),
+                    unit_price=price.unit_price,
+                    unit_cost_snapshot=record.profile.unit_cost,
+                    discount_amount=price.discount_amount,
+                    tax_rate=price.tax_rate,
+                    tax_amount=price.tax_amount,
+                    line_total=price.line_total,
+                )
+            )
+            extra_stock_lines.append(
+                _PricedCatalogLine(
+                    catalog=record,
+                    quantity=price.quantity,
+                    list_price=money(record.profile.sale_price or Decimal("0")),
+                    unit_price=price.unit_price,
+                    discount_amount=price.discount_amount,
+                    tax_rate=price.tax_rate,
+                    tax_amount=price.tax_amount,
+                    line_total=price.line_total,
+                )
+            )
+        return (
+            CheckoutSnapshot(
+                wash.id,
+                priced,
+                tuple(sale_lines),
+                wash.currency,
+                wash_service_count=len(lines),
+                extra_stock_lines=tuple(extra_stock_lines),
+            ),
+            lines,
+        )
 
     def preview(
         self, principal: AuthPrincipal, wash_id: UUID, payload: PreviewWashRequest
@@ -199,7 +279,10 @@ class CarwashCheckoutService:
             wash.final_tax_amount = snapshot.priced.tax_amount
             wash.final_total = snapshot.priced.total
             for line, price, sale_line in zip(
-                lines, snapshot.priced.lines, snapshot.lines, strict=True
+                lines,
+                snapshot.priced.lines[: len(lines)],
+                snapshot.lines[: len(lines)],
+                strict=True,
             ):
                 for role in ("washer", "supervisor"):
                     rate = getattr(line, f"{role}_rate")

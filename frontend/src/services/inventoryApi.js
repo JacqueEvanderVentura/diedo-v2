@@ -88,6 +88,12 @@ export const inventoryApi = {
   createSupply: (payload) => apiClient.post('/api/v1/inventory/supplies', payload, idempotencyOptions()),
   createService: (payload) => apiClient.post('/api/v1/inventory/services', payload, idempotencyOptions()),
   updateItem: (id, payload) => apiClient.patch(`/api/v1/inventory/items/${id}`, payload),
+  uploadItemImage: (id, version, file) => {
+    const formData = new FormData()
+    formData.append('version', String(version))
+    formData.append('file', file, file.name)
+    return apiClient.upload(`/api/v1/inventory/items/${id}/image`, formData)
+  },
   listAssetCategories: () => apiClient.get('/api/v1/inventory/asset-categories'),
   getAssetSummary: (params) => apiClient.get('/api/v1/inventory/assets/summary', params),
   listAssets: (params) => apiClient.get('/api/v1/inventory/assets', params),

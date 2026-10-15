@@ -596,9 +596,18 @@ export function mapRegisterHistoryEntry(register, branchId) {
   }
 }
 
+function resolveInventoryImageUrl(path) {
+  if (!path) return null
+  if (/^https?:\/\//i.test(path)) return path
+  const base = import.meta.env.VITE_API_BASE_URL || '/api-backend'
+  const normalized = base.endsWith('/') ? base.slice(0, -1) : base
+  return `${normalized}${path.startsWith('/') ? path : `/${path}`}`
+}
+
 export function mapPosCatalogItemFromApi(item, branchId = null) {
   const stock = first(item.stockQuantity, item.stock)
   const categoryId = first(item.categoryId, item.category_id)
+  const imagePath = first(item.imageUrl, item.image_url)
   return {
     id: item.id,
     name: item.name,
@@ -611,6 +620,7 @@ export function mapPosCatalogItemFromApi(item, branchId = null) {
     soldOut: item.stockStatus === 'out',
     stockStatus: item.stockStatus || null,
     unit: item.unitSymbol || item.unit || 'ud',
+    image: resolveInventoryImageUrl(imagePath),
     branchId,
     branchIds: branchId ? [branchId] : [],
     apiSynced: true,

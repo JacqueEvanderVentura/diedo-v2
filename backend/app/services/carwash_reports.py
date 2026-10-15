@@ -58,19 +58,23 @@ class CarwashReportService:
         codes = AuthorizationService(self.session).permission_codes_for_branches(
             principal, {branch_id}
         )[branch_id]
+        can_see_financials = bool({"carwash.commissions.read", "carwash.reports.read"} & codes)
         values = self.repository.indicators(
             principal.workspace_id,
             branch_id,
             *date_bounds(today, today, branch.timezone),
-            commissions=bool({"carwash.commissions.read", "carwash.reports.read"} & codes),
+            commissions=can_see_financials,
         )
+        payload = dict(values._mapping)
+        if not can_see_financials:
+            payload["billed_today"] = None
         return CarwashIndicators(
             branch_id=branch_id,
             currency=workspace.default_currency,
             timezone=branch.timezone,
             today=today,
             generated_at=now,
-            **dict(values._mapping),
+            **payload,
         )
 
     def reports(self, principal: AuthPrincipal, filters: CarwashReportFilters) -> CarwashReports:

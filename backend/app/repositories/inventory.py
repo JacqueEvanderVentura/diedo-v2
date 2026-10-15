@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, exists, false, func, or_, select
+from sqlalchemy import ColumnElement, delete, exists, false, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.db.models import (
@@ -27,6 +27,7 @@ from app.db.models import (
     Item,
     ItemBranchAssignment,
     ItemCategory,
+    ItemImage,
     PlatformUser,
     UnitOfMeasure,
 )
@@ -74,6 +75,7 @@ class InventoryItemRecord:
     stock_locations: tuple[StockLocationRecord, ...]
     stock_quantity: Decimal | None
     minimum_stock: Decimal | None
+    has_image: bool = False
 
 
 @dataclass(frozen=True)
@@ -446,6 +448,7 @@ class InventoryRepository:
                 InventoryItemProfile,
                 quantity,
                 minimum,
+                ItemImage.id,
             )
             .join(
                 ItemCategory,
@@ -461,6 +464,10 @@ class InventoryRepository:
                 InventoryItemProfile,
                 (InventoryItemProfile.workspace_id == Item.workspace_id)
                 & (InventoryItemProfile.item_id == Item.id),
+            )
+            .outerjoin(
+                ItemImage,
+                (ItemImage.workspace_id == Item.workspace_id) & (ItemImage.item_id == Item.id),
             )
             .where(
                 Item.workspace_id == workspace_id,
@@ -484,6 +491,7 @@ class InventoryRepository:
             stock_locations=locations.get(item_id, ()),
             stock_quantity=(Decimal(row[4] or 0) if row[0].item_type in _TRACKED_TYPES else None),
             minimum_stock=(Decimal(row[5] or 0) if row[0].item_type in _TRACKED_TYPES else None),
+            has_image=row[6] is not None,
         )
 
     def item_by_creation_key(
@@ -1248,6 +1256,124 @@ class InventoryRepository:
         )
         if visible_branch_ids is not None:
             statement = statement.where(Asset.branch_id.in_(visible_branch_ids))
+        row = self._session.execute(statement).one_or_none()
+        if row is None:
+            return None
+        return AssetAttachmentContentRecord(
+            id=row.id,
+            original_filename=row.original_filename,
+            content_type=row.content_type,
+            size_bytes=row.size_bytes,
+            checksum_sha256=row.checksum_sha256,
+            created_at=row.created_at,
+            content=row.content,
+        )
+
+    def replace_item_image(
+        self,
+        *,
+        item: Item,
+        image: NewAssetImage,
+        actor_membership_id: UUID,
+        actor_platform_user_id: UUID,
+        request_id: str,
+    ) -> None:
+        self._session.execute(
+            delete(ItemImage).where(
+                ItemImage.workspace_id == item.workspace_id,
+                ItemImage.item_id == item.id,
+            )
+        )
+        self._session.add(
+            ItemImage(
+                workspace_id=item.workspace_id,
+                item_id=item.id,
+                uploaded_by_membership_id=actor_membership_id,
+                original_filename=image.original_filename,
+                content_type=image.content_type,
+                size_bytes=len(image.content),
+                checksum_sha256=image.checksum_sha256,
+                content=image.content,
+            )
+        )
+        item.version += 1
+        self.add_audit(
+            workspace_id=item.workspace_id,
+            actor_platform_user_id=actor_platform_user_id,
+            action="inventory.item.image.replace",
+            target_type="item",
+            target_id=item.id,
+            request_id=request_id,
+            details={"version": item.version},
+        )
+        self._session.flush()
+
+    def delete_item_image(
+        self,
+        *,
+        item: Item,
+        actor_platform_user_id: UUID,
+        request_id: str,
+    ) -> bool:
+        scope = (
+            ItemImage.workspace_id == item.workspace_id,
+            ItemImage.item_id == item.id,
+        )
+        if self._session.scalar(select(ItemImage.id).where(*scope)) is None:
+            return False
+        self._session.execute(delete(ItemImage).where(*scope))
+        item.version += 1
+        self.add_audit(
+            workspace_id=item.workspace_id,
+            actor_platform_user_id=actor_platform_user_id,
+            action="inventory.item.image.delete",
+            target_type="item",
+            target_id=item.id,
+            request_id=request_id,
+            details={"version": item.version},
+        )
+        self._session.flush()
+        return True
+
+    def get_item_image_content(
+        self,
+        *,
+        workspace_id: UUID,
+        item_id: UUID,
+        visible_branch_ids: frozenset[UUID] | None,
+    ) -> AssetAttachmentContentRecord | None:
+        statement = (
+            select(
+                ItemImage.id,
+                ItemImage.original_filename,
+                ItemImage.content_type,
+                ItemImage.size_bytes,
+                ItemImage.checksum_sha256,
+                ItemImage.created_at,
+                ItemImage.content,
+            )
+            .join(
+                Item,
+                (Item.workspace_id == ItemImage.workspace_id) & (Item.id == ItemImage.item_id),
+            )
+            .where(
+                ItemImage.workspace_id == workspace_id,
+                ItemImage.item_id == item_id,
+            )
+        )
+        if visible_branch_ids is not None:
+            statement = statement.where(
+                exists(
+                    select(1)
+                    .select_from(ItemBranchAssignment)
+                    .where(
+                        ItemBranchAssignment.workspace_id == Item.workspace_id,
+                        ItemBranchAssignment.item_id == Item.id,
+                        ItemBranchAssignment.branch_id.in_(visible_branch_ids),
+                        ItemBranchAssignment.status == "active",
+                    )
+                )
+            )
         row = self._session.execute(statement).one_or_none()
         if row is None:
             return None

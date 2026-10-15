@@ -7,6 +7,7 @@ import { PaymentMethodPicker } from '@/modules/pos/components/PaymentMethodPicke
 import { PaymentEvidenceFields } from '@/modules/pos/components/PaymentEvidenceFields'
 import { posApi } from '@/services/posApi'
 import { carwashApi } from '../api'
+import { WashExtraProducts } from './WashExtraProducts'
 
 export function WashCheckoutModal({ wash, writable, money, onClose, onSaved }) {
   const [context, setContext] = useState(null)
@@ -24,11 +25,18 @@ export function WashCheckoutModal({ wash, writable, money, onClose, onSaved }) {
   const [uncertain, setUncertain] = useState(false)
   const [completed, setCompleted] = useState(null)
   const [proofDone, setProofDone] = useState(false)
+  const [extras, setExtras] = useState([])
   const pending = useRef(false)
   const attempt = useRef(null)
   const mounted = useRef(true)
   const latest = context?.wash || wash
-  const pricing = JSON.stringify({ version: latest.version, ...(Number(discountValue) > 0 ? { discountType, discountValue } : {}), priceOverrides: Object.entries(prices).filter(([, value]) => value !== '').map(([washLineId, unitPrice]) => ({ washLineId, unitPrice })) })
+  const extraLines = extras.map((row) => ({ itemId: row.itemId, quantity: row.quantity }))
+  const pricing = JSON.stringify({
+    version: latest.version,
+    ...(Number(discountValue) > 0 ? { discountType, discountValue } : {}),
+    priceOverrides: Object.entries(prices).filter(([, value]) => value !== '').map(([washLineId, unitPrice]) => ({ washLineId, unitPrice })),
+    ...(extraLines.length ? { extraLines } : {}),
+  })
   const methods = (context?.paymentMethods || []).map((method) => ({ ...method, enabled: true, requiresProof: method.requiresEvidence && context.canUploadProof && method.settlementPolicy !== 'immediate' }))
   const method = methods.find((item) => item.id === methodId)
   const previewReady = preview?.key === pricing
@@ -94,6 +102,7 @@ export function WashCheckoutModal({ wash, writable, money, onClose, onSaved }) {
           <fieldset disabled={frozen} className="min-w-0 space-y-5">
             <div className="space-y-3"><h3 className="text-sm font-semibold">Servicios registrados</h3>{latest.lines.map((line) => <div key={line.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3"><div className="min-w-0 flex-1"><p className="text-sm font-medium">{line.name}</p><p className="text-xs text-slate-500">Precio capturado: {money(line.unitPrice)} · Impuesto: {line.taxRate}%</p></div>{context.canDiscount && <label className="w-32 text-xs text-slate-600">Precio autorizado<Input aria-label={`Precio de ${line.name}`} type="number" min="0" step="0.01" value={prices[line.id] ?? line.unitPrice} onChange={(event) => setPrices((current) => ({ ...current, [line.id]: event.target.value }))} /></label>}</div>)}</div>
             {context.canDiscount && <div className="grid grid-cols-2 gap-3"><label className="text-sm">Descuento<Select aria-label="Tipo de descuento" value={discountType} onChange={setDiscountType} options={[{ value: 'percent', label: 'Porcentaje' }, { value: 'fixed', label: 'Importe fijo' }]} /></label><label className="text-sm">Valor del descuento<Input aria-label="Valor del descuento" type="number" min="0" max={discountType === 'percent' ? 100 : undefined} step="0.01" value={discountValue} onChange={(event) => setDiscountValue(event.target.value)} /></label></div>}
+            <WashExtraProducts branchId={wash.branchId} extras={extras} onChange={setExtras} disabled={frozen} money={money} />
             <PaymentMethodPicker methods={methods} value={methodId} onChange={(value) => { setMethodId(value); setProof(null) }} testIdPrefix="carwash-payment" gridClassName="grid-cols-2 min-[380px]:grid-cols-3" />
             {!methods.length && <p className="text-sm text-amber-800">No hay métodos de pago habilitados.</p>}
             <PaymentEvidenceFields method={method} reference={reference} onReferenceChange={setReference} proof={proof} onProofChange={setProof} testIdPrefix="carwash-evidence" />

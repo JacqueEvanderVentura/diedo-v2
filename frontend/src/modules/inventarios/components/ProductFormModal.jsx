@@ -10,6 +10,7 @@ import { useInventarioStore } from '@/stores/inventarioStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { catalogApi } from '@/services/catalogApi'
+import { inventoryApi } from '@/services/inventoryApi'
 import { mapCategoryFromApi } from '@/services/adapters/catalog'
 import { resolveCategoryId } from '@/lib/catalogSync'
 import { DURATION_OPTIONS } from '@/data/agenda'
@@ -79,6 +80,8 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
   const [adjustmentReason, setAdjustmentReason] = useState('')
   const [newCategoryName, setNewCategoryName] = useState('')
   const [creatingCategory, setCreatingCategory] = useState(false)
+  const [imageFile, setImageFile] = useState(null)
+  const [imagePreview, setImagePreview] = useState(null)
   const editing = !!product
   const isSupply = form.type === 'supply'
   const isService = form.type === 'service'
@@ -117,6 +120,8 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
       setStockBaseline(product?.stock ?? null)
       setAdjustmentReason('')
       setErr('')
+      setImageFile(null)
+      setImagePreview(product?.image || null)
     }
   }, [open, product, defaultType, taxDefault])
 
@@ -209,11 +214,17 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
         setStockBaseline(Number(form.stock))
         setAdjustmentReason('')
       }
-      await saveProduct(form, product, {
+      const savedId = await saveProduct(form, product, {
         categories: FORM_CATEGORIES,
         configBranches: BRANCHES,
         isOnline,
       })
+      if (imageFile && form.type === 'product' && isOnline) {
+        const saved = useCatalogStore.getState().products.find((row) => row.id === savedId)
+        if (saved?.version) {
+          await inventoryApi.uploadItemImage(savedId, saved.version, imageFile)
+        }
+      }
       toast.success(`"${form.name}" ${editing ? 'actualizado' : 'creado'}`)
       onClose()
     } catch (e) {
@@ -262,6 +273,28 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Nombre</label>
           <Input value={form.name} onChange={(e) => { set('name', e.target.value); setErr('') }} placeholder={isSupply ? 'Ej. Guantes de nitrilo' : 'Ej. Serum vitamina C'} data-testid="inventory-field-name" />
         </div>
+
+        {form.type === 'product' && (
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Imagen del producto</label>
+            <div className="flex items-center gap-4">
+              <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl bg-slate-100 text-xs text-slate-400">
+                {imagePreview ? <img src={imagePreview} alt="" className="h-full w-full object-cover" /> : 'Sin foto'}
+              </div>
+              <Input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                data-testid="inventory-field-image"
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  setImageFile(file || null)
+                  setImagePreview(file ? URL.createObjectURL(file) : product?.image || null)
+                }}
+              />
+            </div>
+            <p className="mt-1 text-xs text-slate-500">Se muestra en inventario y en la terminal POS.</p>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <div>

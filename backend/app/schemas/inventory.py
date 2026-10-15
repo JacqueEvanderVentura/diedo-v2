@@ -108,6 +108,7 @@ class InventoryItemResponse(ApiModel):
     version: int
     created_at: datetime
     updated_at: datetime
+    image_url: str | None = None
 
 
 class PaginatedInventoryItemsResponse(ApiModel):

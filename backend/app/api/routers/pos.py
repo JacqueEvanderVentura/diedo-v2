@@ -221,6 +221,9 @@ def _catalog_response(record: PosCatalogRecord) -> PosCatalogItemResponse:
         tax_rate=record.profile.tax_rate,
         stock_quantity=record.stock_quantity,
         stock_status=cast(Any, stock_status),
+        image_url=(
+            f"/api/v1/inventory/items/{record.item.id}/image/content" if record.has_image else None
+        ),
     )
 
 
