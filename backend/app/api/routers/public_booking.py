@@ -15,6 +15,7 @@ from app.schemas.public_booking import (
     PublicBookAppointmentRequest,
     PublicBookAppointmentResponse,
     PublicBookingContextResponse,
+    PublicBookingEntryContextResponse,
     PublicCancelAppointmentRequest,
     PublicCustomerProfileResponse,
     PublicIdentifyRequest,
@@ -82,6 +83,22 @@ def _handle_public_errors(exc: Exception) -> None:
     if isinstance(exc, AuthorizationErrorPublic):
         raise_api_error(403, str(exc))
     raise exc
+
+
+@router.get(
+    "/context",
+    summary="Contexto público de agendación (sin sucursal preseleccionada)",
+    responses=_SECURITY,
+)
+def get_booking_entry_context(
+    database: DatabaseSession,
+) -> PublicBookingEntryContextResponse:
+    try:
+        payload = PublicBookingService(database).get_entry_context()
+        return PublicBookingEntryContextResponse.model_validate(payload)
+    except Exception as exc:
+        _handle_public_errors(exc)
+        raise
 
 
 @router.get(

@@ -46,6 +46,10 @@ from app.services.errors import (
     InvalidOperationError,
     ResourceNotFoundError,
 )
+from app.services.expense_categories import (
+    normalize_expense_category_changes,
+    resolve_expense_category_fields,
+)
 
 EntityT = TypeVar("EntityT")
 
@@ -106,11 +110,13 @@ class FinanceService:
         self._require_branch(grant, branch_id)
         budget_id = cast(UUID | None, values.get("budget_id"))
         self._validate_budget(grant, budget_id, branch_id)
+        category_fields = resolve_expense_category_fields(self._session, grant.workspace_id, values)
         persistent = {
             "branch_id": branch_id,
             "concept": self._normalize_required_text(cast(str, values["concept"])),
             "amount": values["amount"],
-            "category": values["category"],
+            "category": category_fields["category"],
+            "category_id": category_fields["category_id"],
             "expense_date": values["date"],
             "payment_status": values["status"],
             "budget_id": budget_id,
@@ -157,10 +163,12 @@ class FinanceService:
         self._require_branch(grant, branch_id)
         budget_id = changes.get("budget_id", expense.budget_id)
         self._validate_budget(grant, cast(UUID | None, budget_id), branch_id)
+        changes = normalize_expense_category_changes(self._session, grant.workspace_id, changes)
         mapping = {
             "concept": "concept",
             "amount": "amount",
             "category": "category",
+            "category_id": "category_id",
             "date": "expense_date",
             "branch_id": "branch_id",
             "status": "payment_status",
@@ -244,12 +252,14 @@ class FinanceService:
         branch_id = cast(UUID, values["branch_id"])
         self._require_branch(grant, branch_id)
         concept = self._normalize_required_text(cast(str, values["concept"]))
+        category_fields = resolve_expense_category_fields(self._session, grant.workspace_id, values)
         persistent = {
             "branch_id": branch_id,
             "concept": concept,
             "normalized_concept": concept.casefold(),
             "amount": values["amount"],
-            "category": values["category"],
+            "category": category_fields["category"],
+            "category_id": category_fields["category_id"],
             "day_of_month": values["day_of_month"],
         }
         fingerprint = self._fingerprint(persistent)
@@ -292,10 +302,12 @@ class FinanceService:
         )
         branch_id = cast(UUID, changes.get("branch_id", expense.branch_id))
         self._require_branch(grant, branch_id)
+        changes = normalize_expense_category_changes(self._session, grant.workspace_id, changes)
         mapping = {
             "concept": "concept",
             "amount": "amount",
             "category": "category",
+            "category_id": "category_id",
             "branch_id": "branch_id",
             "day_of_month": "day_of_month",
         }

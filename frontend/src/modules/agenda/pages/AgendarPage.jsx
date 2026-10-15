@@ -42,6 +42,7 @@ export default function AgendarPage() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const requestedBranchId = params.get('branch')
+  const linkedCustomerId = params.get('customer')
   const intentBook = params.get('intent') === 'book'
   const branches = useConfigStore((s) => s.branches)
   const products = useCatalogStore((s) => s.products)
@@ -49,7 +50,7 @@ export default function AgendarPage() {
   const vacationRequests = useRrhhStore((s) => s.vacationRequests)
   const dataMode = useSessionStore((s) => s.status)
   const isDemo = dataMode === 'demo'
-  const branchId = requestedBranchId || (isDemo ? 'charm-dn' : '')
+  const branchId = requestedBranchId || ''
   const lookupByDocument = useSelfBookingStore((s) => s.lookupByDocument)
   const identifyRemote = useSelfBookingStore((s) => s.identifyRemote)
   const fetchRemoteSlots = useSelfBookingStore((s) => s.fetchRemoteSlots)
@@ -58,16 +59,20 @@ export default function AgendarPage() {
 
   const [remoteBranch, setRemoteBranch] = useState(null)
   const [workspaceBranches, setWorkspaceBranches] = useState([])
+  const [workspaceName, setWorkspaceName] = useState('')
   const [contextError, setContextError] = useState('')
+  const [entryLoading, setEntryLoading] = useState(false)
   const hasSavedSession = Boolean(
     requestedBranchId && recallPublicSession()?.documentId && recallPublicSession()?.branchId === requestedBranchId
   )
   const [phase, setPhase] = useState(() => (intentBook && hasSavedSession ? 'booking' : 'branch'))
   const [explicitBranchPick, setExplicitBranchPick] = useState(false)
   const [showRegister, setShowRegister] = useState(false)
-  const branch = isDemo
-    ? branches.find((b) => b.id === branchId) || branches[0]
-    : remoteBranch?.id === branchId ? remoteBranch : null
+  const branch = !branchId
+    ? null
+    : isDemo
+      ? branches.find((b) => b.id === branchId) || null
+      : remoteBranch?.id === branchId ? remoteBranch : null
   const [step, setStep] = useState(() => (intentBook && hasSavedSession ? 2 : 0))
   const [lookupDocType, setLookupDocType] = useState('cedula')
   const [lookup, setLookup] = useState('')
@@ -123,17 +128,51 @@ export default function AgendarPage() {
   const appointments = useAvailabilityAppointments(isDemo ? form.date : null, isDemo ? form.employeeId : null)
 
   useEffect(() => {
-    if (isDemo) return
+    if (!linkedCustomerId) return
+    setForm((current) => (
+      current.customerId === linkedCustomerId
+        ? current
+        : { ...current, customerId: linkedCustomerId }
+    ))
+  }, [linkedCustomerId])
+
+  useEffect(() => {
+    if (isDemo || branchId) return
+    let active = true
+    setEntryLoading(true)
+    setContextError('')
+    setWorkspaceBranches([])
+    setWorkspaceName('')
+    publicBookingApi.getEntryContext()
+      .then((context) => {
+        if (!active) return
+        setWorkspaceName(context.workspaceName || '')
+        setWorkspaceBranches(
+          (context.workspaceBranches || []).map((item) => ({
+            id: item.id,
+            name: item.name,
+          }))
+        )
+      })
+      .catch(() => {
+        if (active) {
+          setContextError('No se pudo cargar las sucursales. Intenta nuevamente más tarde.')
+        }
+      })
+      .finally(() => {
+        if (active) setEntryLoading(false)
+      })
+    return () => { active = false }
+  }, [branchId, isDemo])
+
+  useEffect(() => {
+    if (isDemo || !branchId) return
     let active = true
     setRemoteBranch(null)
     setRemoteServices([])
     setRemoteSpecialists([])
     setRemoteSlots(null)
     setContextError('')
-    if (!branchId) {
-      setContextError('El enlace no contiene una sucursal. Solicita un nuevo enlace al establecimiento.')
-      return
-    }
     publicBookingApi.getContext(branchId)
       .then((context) => {
         if (!active) return
@@ -164,9 +203,8 @@ export default function AgendarPage() {
   }, [branchId, isDemo])
 
   useEffect(() => {
-    if (isDemo) {
-      setWorkspaceBranches(branches.filter((b) => b.id).map((b) => ({ id: b.id, name: b.name })))
-    }
+    if (!isDemo) return
+    setWorkspaceBranches(branches.filter((b) => b.id).map((b) => ({ id: b.id, name: b.name })))
   }, [branches, isDemo])
 
   useEffect(() => {
@@ -453,11 +491,35 @@ export default function AgendarPage() {
     setStep((current) => Math.max(0, current - 1))
   }
 
-  if (!isDemo && (!branch || contextError)) {
+  const awaitingBranchContext = !isDemo && Boolean(branchId) && !branch && !contextError
+  const awaitingEntryContext = !isDemo && !branchId && entryLoading
+  const showBranchGate = phase === 'branch' || (!branchId && !isDemo)
+
+  if (!isDemo && contextError && (branchId || !workspaceBranches.length)) {
     return (
       <PublicShell>
-        <p role={contextError ? 'alert' : 'status'} className="mx-auto max-w-lg text-center text-slate-600">
-          {contextError || 'Cargando sucursal…'}
+        <p role="alert" className="mx-auto max-w-lg text-center text-slate-600">
+          {contextError}
+        </p>
+      </PublicShell>
+    )
+  }
+
+  if (!isDemo && !showBranchGate && awaitingBranchContext) {
+    return (
+      <PublicShell>
+        <p role="status" className="mx-auto max-w-lg text-center text-slate-600">
+          Cargando sucursal…
+        </p>
+      </PublicShell>
+    )
+  }
+
+  if (awaitingEntryContext) {
+    return (
+      <PublicShell>
+        <p role="status" className="mx-auto max-w-lg text-center text-slate-600">
+          Cargando sucursales…
         </p>
       </PublicShell>
     )
@@ -465,7 +527,7 @@ export default function AgendarPage() {
 
   if (done) {
     return (
-      <PublicShell branchName={branch?.name}>
+      <PublicShell branchName={branch?.name || workspaceName || undefined}>
         <div className="mx-auto max-w-md text-center">
           <CheckCircle2 className="mx-auto h-16 w-16 text-emerald-500" />
           <h1 className="mt-4 font-heading text-2xl font-bold text-slate-900">¡Cita confirmada!</h1>
@@ -487,7 +549,7 @@ export default function AgendarPage() {
   }
 
   return (
-    <PublicShell branchName={branch?.name}>
+    <PublicShell branchName={branch?.name || workspaceName || undefined}>
       <div className="mx-auto max-w-lg">
         {phase === 'booking' && <Stepper current={Math.max(0, step - 2)} />}
 

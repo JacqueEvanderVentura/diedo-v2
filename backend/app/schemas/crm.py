@@ -168,8 +168,6 @@ class LeadInput(ApiModel):
             raise ValueError("Debes indicar el nombre o la empresa del lead.")
         if (self.document_type is None) ^ (self.document_id is None):
             raise ValueError("documentType y documentId deben enviarse juntos.")
-        if self.source == "manual" and (not self.document_type or not self.document_id):
-            raise ValueError("El documento es obligatorio para leads manuales.")
         return self
 
 
@@ -255,8 +253,6 @@ class UpdateLeadRequest(ApiModel):
         if "document_type" in self.model_fields_set or "document_id" in self.model_fields_set:
             if (self.document_type is None) ^ (self.document_id is None):
                 raise ValueError("documentType y documentId deben enviarse juntos.")
-            if self.document_type is None and self.document_id is None:
-                raise ValueError("No puedes eliminar el documento del lead.")
         return self
 
 
@@ -301,6 +297,12 @@ class ConvertLeadRequest(ApiModel):
         if value is not None and len(value) != len(set(value)):
             raise ValueError("No repitas sucursales.")
         return value
+
+    @model_validator(mode="after")
+    def require_document_for_conversion(self) -> Self:
+        if (self.document_type is None) ^ (self.document_id is None):
+            raise ValueError("documentType y documentId deben enviarse juntos.")
+        return self
 
 
 class LeadResponse(ApiModel):

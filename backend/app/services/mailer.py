@@ -131,8 +131,10 @@ def _booking_url(appointment: Appointment) -> str:
     return f"{base}/agendar?branch={appointment.branch_id}"
 
 
-def _booking_link_url(branch_id: object) -> str:
+def _booking_link_url(branch_id: object | None = None) -> str:
     base = settings.public_app_url.rstrip("/")
+    if branch_id is None:
+        return f"{base}/agendar"
     return f"{base}/agendar?{urlencode({'branch': str(branch_id)})}"
 
 
@@ -408,14 +410,25 @@ def render_appointment_email(
 
 
 def render_booking_link_email(
-    *, to: str, name: str, branch_name: str, workspace_name: str, branch_id: object
+    *,
+    to: str,
+    name: str,
+    branch_name: str | None,
+    workspace_name: str,
+    branch_id: object | None = None,
 ) -> dict[str, str]:
     url = _booking_link_url(branch_id)
-    intro = "Puedes elegir el horario que mejor te funcione para agendar tu cita en línea."
-    details: list[tuple[str, object]] = [
-        ("Establecimiento", workspace_name),
-        ("Sucursal", branch_name),
-    ]
+    if branch_name is None:
+        intro = (
+            "Puedes elegir la sucursal y el horario que mejor te funcionen "
+            "para agendar tu cita en línea."
+        )
+    else:
+        intro = "Puedes elegir el horario que mejor te funcione para agendar tu cita en línea."
+    details: list[tuple[str, object]] = [("Establecimiento", workspace_name)]
+    if branch_name:
+        details.append(("Sucursal", branch_name))
+    footer_branch = branch_name or workspace_name
     text = _plain_text_email(
         customer_name=name,
         intro=intro,
@@ -424,7 +437,7 @@ def render_booking_link_email(
         detail_heading="Información para agendar",
         details=details,
         workspace_name=workspace_name,
-        branch_name=branch_name,
+        branch_name=footer_branch,
     )
     html = _render_html_email(
         preheader=f"Agenda tu cita en {workspace_name}.",
@@ -439,7 +452,7 @@ def render_booking_link_email(
         detail_heading="Información para agendar",
         details=details,
         workspace_name=workspace_name,
-        branch_name=branch_name,
+        branch_name=footer_branch,
     )
     return {
         "to": to,

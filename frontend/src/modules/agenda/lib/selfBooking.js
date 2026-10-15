@@ -84,10 +84,14 @@ export function formatDocumentDisplay(value, docType = 'cedula') {
   return String(value || '').trim()
 }
 
-export function buildBookingUrl(branchId = 'charm-dn') {
+export function buildBookingUrl(branchId = null, customerId = null) {
   const base = typeof window !== 'undefined' ? window.location.origin : ''
   const path = import.meta.env.BASE_URL?.replace(/\/$/, '') || ''
-  return `${base}${path}/agendar?branch=${branchId}`
+  const query = new URLSearchParams()
+  if (branchId) query.set('branch', String(branchId))
+  if (customerId) query.set('customer', String(customerId))
+  const qs = query.toString()
+  return `${base}${path}/agendar${qs ? `?${qs}` : ''}`
 }
 
 export function buildProfileUrl(documentId, branchId = '') {
@@ -157,10 +161,17 @@ ${bookingUrl ? `Agenda en línea: ${bookingUrl}\n` : ''}
   }
 }
 
-export function buildBookingLinkWhatsAppMessage({ profile, branchName, bookingUrl, profileUrl }) {
+export function buildBookingLinkWhatsAppMessage({
+  profile,
+  branchName,
+  workspaceName,
+  bookingUrl,
+  profileUrl,
+}) {
   const name = profile?.name?.trim() || 'cliente'
+  const place = branchName || workspaceName || 'nuestro establecimiento'
   const lines = [
-    `Hola ${name}, te comparto el enlace para agendar tu próxima cita en ${branchName}:`,
+    `Hola ${name}, te comparto el enlace para agendar tu próxima cita en ${place}:`,
     '',
     bookingUrl,
   ]

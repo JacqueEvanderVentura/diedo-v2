@@ -25,6 +25,22 @@ def booking_setup(client, monkeypatch):
     client._transport.raise_server_exceptions = True
     headers, me = _bootstrap_and_login(client)
     branch = _hq_branch_id(me)
+
+    def enable_online_booking(branch_id: str) -> None:
+        listed = client.get("/api/v1/branches", headers=headers)
+        assert listed.status_code == 200, listed.text
+        branch_row = next(row for row in listed.json() if row["id"] == branch_id)
+        enabled = client.patch(
+            f"/api/v1/branches/{branch_id}",
+            headers=headers,
+            json={
+                "onlineBookingSelectable": True,
+                "version": branch_row["version"],
+            },
+        )
+        assert enabled.status_code == 200, enabled.text
+
+    enable_online_booking(branch)
     cleared_hours = client.put(
         f"/api/v1/branches/{branch}/opening-hours",
         headers=headers,
@@ -57,6 +73,7 @@ def booking_setup(client, monkeypatch):
         },
     )
     assert another_branch.status_code == 201, another_branch.text
+    enable_online_booking(another_branch.json()["id"])
     hq_branch = next(
         (item for item in me["visibleBranches"] if item.get("code") == "HQ"),
         me["visibleBranches"][0],
@@ -106,12 +123,13 @@ def booking_setup(client, monkeypatch):
 
 
 def payload_for(employee, service):
+    suffix = uuid7().hex[:10]
     return {
         "documentType": "pasaporte",
         "documentId": f"TEST{uuid7().hex[:16]}",
         "displayName": "Cliente prueba Agenda",
-        "email": "booking-test@example.com",
-        "phone": "8294220141",
+        "email": f"booking-{suffix}@example.com",
+        "phone": f"809555{suffix[:4]}",
         "serviceId": service,
         "employeeId": employee,
         "date": (date.today() + timedelta(days=400 + UUID(employee).int % 10000)).isoformat(),
@@ -718,6 +736,18 @@ def test_booking_context_lists_workspace_branches(client, booking_setup):
     assert len(branches) >= 2
     assert any(item["id"] == branch for item in branches)
     assert any(item["id"] == me["visibleBranches"][1]["id"] for item in branches)
+
+
+@pytest.mark.integration
+def test_booking_entry_context_lists_selectable_branches(client, booking_setup):
+    _, me, branch, _employee, _service = booking_setup
+    entry = client.get("/api/v1/public/booking/context")
+    assert entry.status_code == 200, entry.text
+    body = entry.json()
+    branches = body.get("workspaceBranches") or []
+    assert body.get("workspaceName")
+    assert len(branches) >= 2
+    assert any(item["id"] == branch for item in branches)
 
 
 @pytest.mark.integration

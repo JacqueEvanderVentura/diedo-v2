@@ -118,6 +118,7 @@ export const useSelfBookingStore = create(
         const slotDuration = Number(service?.durationMinutes) || 30
         if (useSessionStore.getState().status !== 'demo') {
           const response = await publicBookingApi.book(branchId, {
+            customerId: profile.customerId || null,
             documentType: profile.docType || 'cedula',
             documentId: profile.documentId,
             displayName: profile.name,

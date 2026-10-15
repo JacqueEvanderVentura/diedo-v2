@@ -23,6 +23,8 @@ import { isProductAvailableAtBranch } from '@/lib/catalogSync'
 import { CloseLeadInvoiceModal } from '@/modules/crm/components/CloseOpportunityInvoiceModal'
 import { PermissionElevationModal } from '@/components/auth/PermissionElevationModal'
 import { CustomerFormModal } from '@/modules/crm/components/CustomerFormModal'
+import { LeadConvertModal } from '@/modules/crm/components/LeadConvertModal'
+import { leadHasDocument } from '@/modules/crm/lib/leadConversion'
 import { QuoteFormModal } from '@/modules/crm/components/QuoteFormModal'
 import { AppointmentFormModal } from '@/modules/agenda/components/AppointmentFormModal'
 import { downloadSaleInvoicePdf } from '@/modules/crm/lib/sales'
@@ -100,6 +102,8 @@ export function SimplifiedLeadActions({
   const [busyClose, setBusyClose] = useState(false)
   const [customerFormOpen, setCustomerFormOpen] = useState(false)
   const [customerFormDefaults, setCustomerFormDefaults] = useState(null)
+  const [convertModalOpen, setConvertModalOpen] = useState(false)
+  const [convertForAppointment, setConvertForAppointment] = useState(false)
 
   const liveLead = useMemo(
     () => storeLeads.find((item) => item.id === lead?.id) || lead,
@@ -373,6 +377,10 @@ export function SimplifiedLeadActions({
 
   const convertLeadForClose = async () => {
     if (!liveLead?.id) return
+    if (!leadHasDocument(liveLead)) {
+      setConvertModalOpen(true)
+      return
+    }
     setCloseConvertBusy(true)
     try {
       const customer = await convertToCustomer(liveLead.id)
@@ -383,6 +391,17 @@ export function SimplifiedLeadActions({
     } finally {
       setCloseConvertBusy(false)
     }
+  }
+
+  const handleLeadConverted = async (customer) => {
+    if (customer?.id) await attachCustomer(customer)
+    toast.success('Lead convertido a cliente')
+    setConvertModalOpen(false)
+    if (convertForAppointment && customer?.id) {
+      setAppointmentCustomerId(customer.id)
+      setAppointmentOpen(true)
+    }
+    setConvertForAppointment(false)
   }
 
   const openCreateCustomerForClose = () => {
@@ -435,6 +454,11 @@ export function SimplifiedLeadActions({
   const openAppointment = async () => {
     let customerId = effectiveLeadCustomerId(liveLead, activeCustomers)
     if (!customerId && liveLead?.id) {
+      if (!leadHasDocument(liveLead)) {
+        setConvertForAppointment(true)
+        setConvertModalOpen(true)
+        return
+      }
       try {
         const customer = await convertToCustomer(liveLead.id)
         customerId = customer?.id
@@ -673,6 +697,16 @@ export function SimplifiedLeadActions({
           setClosePaymentMethod('efectivo')
           setPendingClose(true)
         }}
+      />
+
+      <LeadConvertModal
+        open={convertModalOpen}
+        lead={liveLead}
+        onClose={() => {
+          setConvertModalOpen(false)
+          setConvertForAppointment(false)
+        }}
+        onConverted={handleLeadConverted}
       />
 
       <CustomerFormModal

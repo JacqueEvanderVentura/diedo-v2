@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, File, Form, Header, Query, Response, UploadFile, status
 
 from app.api.deps import (
+    CatalogOrInventoryReadGrant,
     CurrentPrincipal,
     DatabaseSession,
     InventoryManageGrant,
@@ -277,7 +278,7 @@ def list_warehouses(
 def list_inventory_items(
     response: Response,
     database: DatabaseSession,
-    grant: InventoryReadGrant,
+    grant: CatalogOrInventoryReadGrant,
     branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
     search: Annotated[str | None, Query(max_length=100)] = None,
     item_type: Annotated[InventoryItemType | None, Query(alias="itemType")] = None,

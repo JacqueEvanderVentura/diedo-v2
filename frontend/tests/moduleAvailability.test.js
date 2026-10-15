@@ -17,6 +17,7 @@ describe('moduleAvailability', () => {
       'dashboard',
       'iam',
       'catalog',
+      'inventory',
       'crm',
       'hr',
       'appointments',
@@ -73,8 +74,8 @@ describe('moduleAvailability', () => {
       permission: 'membership.read',
     })
     expect(routeRequirement('/inventarios')).toEqual({
-      module: 'catalog',
-      permission: 'catalog.read',
+      module: 'inventory',
+      permission: 'inventory.read',
     })
     expect(routeRequirement('/crm/clientes')).toEqual({
       module: 'crm',

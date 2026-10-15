@@ -58,9 +58,7 @@ LEGACY_ROLE_PERMISSIONS = {
 }
 
 # Dependencies of CRM and POS workflows; commercial capabilities remain role-specific.
-ROLE_DEPENDENCIES = frozenset(
-    {"customer.read", "catalog.read", "inventory.read", "branch.read", "workspace.read"}
-)
+ROLE_DEPENDENCIES = frozenset({"customer.read", "catalog.read", "branch.read", "workspace.read"})
 ROLE_PERMISSIONS = {
     code: permissions
     | ROLE_DEPENDENCIES

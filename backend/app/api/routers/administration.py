@@ -116,6 +116,7 @@ def _branch_response(branch: Branch) -> BranchResponse:
         status=branch.status,  # type: ignore[arg-type]
         timezone=branch.timezone,
         details=AdministrationService.branch_details(branch),
+        online_booking_selectable=branch.online_booking_selectable,
         version=branch.version,
     )
 

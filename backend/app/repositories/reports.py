@@ -35,6 +35,7 @@ from app.db.models import (
     Workspace,
     WorkspaceMembership,
 )
+from app.services.expense_categories import expense_category_display_name
 
 
 @dataclass(frozen=True)
@@ -226,12 +227,18 @@ class ReportsRepository:
                     amount=income.amount,
                 )
             )
-        for expense, branch in self._session.execute(
-            select(FinanceExpense, Branch)
+        expense_category = aliased(ItemCategory)
+        for expense, branch, catalog_category in self._session.execute(
+            select(FinanceExpense, Branch, expense_category)
             .join(
                 Branch,
                 (Branch.workspace_id == FinanceExpense.workspace_id)
                 & (Branch.id == FinanceExpense.branch_id),
+            )
+            .outerjoin(
+                expense_category,
+                (expense_category.workspace_id == FinanceExpense.workspace_id)
+                & (expense_category.id == FinanceExpense.category_id),
             )
             .where(*expense_filters)
         ):
@@ -242,7 +249,11 @@ class ReportsRepository:
                         expense.expense_date, time(hour=12), tzinfo=starts_at.tzinfo
                     ),
                     transaction_type="gasto",
-                    category=expense.category,
+                    category=expense_category_display_name(
+                        expense.category,
+                        expense.category_id,
+                        catalog_category.name if catalog_category else None,
+                    ),
                     branch_id=expense.branch_id,
                     branch_name=branch.name,
                     amount=expense.amount,

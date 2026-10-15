@@ -180,6 +180,11 @@ class Branch(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
         default=dict,
         server_default=text("'{}'::jsonb"),
     )
+    online_booking_selectable: Mapped[bool] = mapped_column(
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
 
 
 class ModuleDefinition(UuidPrimaryKeyMixin, TimestampMixin, Base):

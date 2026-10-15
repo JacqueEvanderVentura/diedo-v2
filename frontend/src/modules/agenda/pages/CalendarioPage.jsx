@@ -332,8 +332,6 @@ export default function CalendarioPage() {
         <BookingLinkModal
           open={linkModalOpen}
           onClose={() => setLinkModalOpen(false)}
-          branchId={branchId}
-          branchName={branches.find((b) => b.id === branchId)?.name || ''}
         />
       )}
 

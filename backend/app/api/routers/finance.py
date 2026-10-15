@@ -76,6 +76,7 @@ from app.schemas.finance import (
 )
 from app.schemas.pos import SaleDetailResponse
 from app.services.document_attachments import DocumentAttachmentService
+from app.services.expense_categories import expense_category_api_value
 from app.services.finance import FinanceService, page_count
 from app.services.pos import PosService
 
@@ -145,7 +146,8 @@ def _expense_view_response(
         id=record.id,
         concept=record.concept,
         amount=record.amount,
-        category=cast(ExpenseCategory, record.category),
+        category=expense_category_api_value(record.category, record.category_id),
+        category_id=record.category_id,
         date=record.date,
         branch_id=record.branch_id,
         status=cast(PaymentStatus, record.status),
@@ -168,7 +170,8 @@ def _expense_response(
         id=expense.id,
         concept=expense.concept,
         amount=expense.amount,
-        category=cast(ExpenseCategory, expense.category),
+        category=expense_category_api_value(expense.category, expense.category_id),
+        category_id=expense.category_id,
         date=expense.expense_date,
         branch_id=expense.branch_id,
         status=cast(PaymentStatus, expense.payment_status),

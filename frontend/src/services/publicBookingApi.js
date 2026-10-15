@@ -10,6 +10,7 @@ export const publicBookingApi = {
   }),
   getAppointment: (branchId, appointmentId, token) => publicGet(`${base(branchId)}/appointments/${appointmentId}`, { params: { token } }),
   managementSlots: (branchId, appointmentId, params) => publicGet(`${base(branchId)}/appointments/${appointmentId}/slots`, { params }),
+  getEntryContext: () => publicGet('/api/v1/public/booking/context'),
   getContext: (branchId) => publicGet(`${base(branchId)}/context`),
   identify: (branchId, payload) => publicPost(`${base(branchId)}/identify`, payload),
   listSlots: (branchId, params) => publicGet(`${base(branchId)}/slots`, { params }),

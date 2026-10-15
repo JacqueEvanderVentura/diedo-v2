@@ -2,9 +2,28 @@ import { mapDocumentAttachmentsFromApi } from '@/services/adapters/documentAttac
 
 const amount = (value) => Number(value) || 0
 
+const LEGACY_EXPENSE_CATEGORY_IDS = new Set([
+  'alquiler',
+  'servicios',
+  'nomina',
+  'insumos',
+  'marketing',
+  'mantenimiento',
+  'otros',
+])
+
+function expenseCategoryPayload(category) {
+  const value = category || 'otros'
+  if (LEGACY_EXPENSE_CATEGORY_IDS.has(value)) {
+    return { category: value, categoryId: null }
+  }
+  return { category: 'otros', categoryId: value }
+}
+
 export const mapFinanceExpenseFromApi = (item) => ({
   ...item,
   amount: amount(item.amount),
+  category: item.categoryId || item.category,
   budgetId: item.budgetId || null,
   attachments: mapDocumentAttachmentsFromApi(item.attachments),
 })
@@ -63,7 +82,7 @@ export const mapFinanceOverviewFromApi = (item) => ({
 export const expenseToApiPayload = (item) => ({
   concept: item.concept,
   amount: amount(item.amount),
-  category: item.category || 'otros',
+  ...expenseCategoryPayload(item.category),
   date: item.date,
   branchId: item.branchId,
   status: item.status || 'pagado',
@@ -73,7 +92,7 @@ export const expenseToApiPayload = (item) => ({
 export const fixedExpenseToApiPayload = (item) => ({
   concept: item.concept,
   amount: amount(item.amount),
-  category: item.category || 'otros',
+  ...expenseCategoryPayload(item.category),
   branchId: item.branchId,
   dayOfMonth: Number(item.dayOfMonth) || 1,
 })

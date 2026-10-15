@@ -7,7 +7,7 @@ from app.db.session import session_scope
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
 
-from tests.customer_payloads import customer_create_payload
+from tests.customer_payloads import customer_create_payload, unique_lead_document_fields
 
 _OWNER_EMAIL = "owner@erp.dev"
 _OWNER_PASSWORD = "phase-two-owner-password-not-a-secret"
@@ -82,7 +82,7 @@ def test_import_customer_without_document_succeeds(client: TestClient) -> None:
 
 
 @pytest.mark.integration
-def test_manual_lead_requires_document(client: TestClient) -> None:
+def test_manual_lead_without_document_succeeds(client: TestClient) -> None:
     headers, session = _bootstrap_and_login(client)
     branch_id = session["visibleBranches"][0]["id"]
     key = sha256(uuid7().bytes).hexdigest()
@@ -95,7 +95,69 @@ def test_manual_lead_requires_document(client: TestClient) -> None:
             "source": "manual",
         },
     )
-    assert response.status_code == 400, response.text
+    assert response.status_code == 201, response.text
+    assert response.json()["documentId"] is None
+
+
+@pytest.mark.integration
+def test_convert_lead_without_document_fails(client: TestClient) -> None:
+    headers, session = _bootstrap_and_login(client)
+    branch_id = session["visibleBranches"][0]["id"]
+    key = sha256(uuid7().bytes).hexdigest()
+    created = client.post(
+        "/api/v1/crm/leads",
+        headers={**headers, "Idempotency-Key": key},
+        json={
+            "branchId": branch_id,
+            "name": "Lead para convertir sin doc",
+            "source": "manual",
+        },
+    )
+    assert created.status_code == 201, created.text
+    lead = created.json()
+    convert = client.post(
+        f"/api/v1/crm/leads/{lead['id']}/convert",
+        headers={**headers, "Idempotency-Key": f"convert-{key}"},
+        json={
+            "version": lead["version"],
+            "customerType": "business",
+            "displayName": lead["name"],
+            "branchIds": [branch_id],
+        },
+    )
+    assert convert.status_code == 400, convert.text
+    assert convert.json()["parameter"] == "documentId"
+
+
+@pytest.mark.integration
+def test_convert_lead_without_stored_document_succeeds_with_payload(client: TestClient) -> None:
+    headers, session = _bootstrap_and_login(client)
+    branch_id = session["visibleBranches"][0]["id"]
+    key = sha256(uuid7().bytes).hexdigest()
+    created = client.post(
+        "/api/v1/crm/leads",
+        headers={**headers, "Idempotency-Key": key},
+        json={
+            "branchId": branch_id,
+            "name": "Lead con doc al convertir",
+            "source": "manual",
+        },
+    )
+    assert created.status_code == 201, created.text
+    lead = created.json()
+    convert = client.post(
+        f"/api/v1/crm/leads/{lead['id']}/convert",
+        headers={**headers, "Idempotency-Key": f"convert-{key}"},
+        json={
+            "version": lead["version"],
+            "customerType": "business",
+            "displayName": lead["name"],
+            "branchIds": [branch_id],
+            **unique_lead_document_fields(),
+        },
+    )
+    assert convert.status_code == 200, convert.text
+    assert convert.json()["id"]
 
 
 @pytest.mark.integration

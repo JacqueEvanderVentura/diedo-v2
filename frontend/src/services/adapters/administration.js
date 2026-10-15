@@ -119,6 +119,7 @@ export function mapBranchFromApi(branch, legalEntities = []) {
     legalEntityVersion: entity?.version || null,
     sharing: entity?.sharing || { branchCount: 0, shared: false },
     billingDocuments: mapBillingDocumentsFromApi(details.billingDocuments || details.billing_documents),
+    onlineBookingSelectable: Boolean(branch.onlineBookingSelectable),
     source: 'api',
   }
 }
@@ -175,6 +176,7 @@ export function branchGeneralPatchToApi(form, branch) {
     name: form.name.trim(),
     status: form.active ? 'active' : 'inactive',
     timezone: form.timezone || branch.timezone,
+    onlineBookingSelectable: Boolean(form.onlineBookingSelectable),
     details: {
       address: form.address || '',
       phone: form.phone || '',

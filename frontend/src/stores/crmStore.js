@@ -118,8 +118,10 @@ function leadPayload(data) {
     rawSnippet: data.rawSnippet || null,
     status: data.status || 'nuevo',
     starRating: data.starRating ?? null,
-    documentType: data.docType || data.documentType || null,
-    documentId: data.documentId || null,
+    documentType: (data.docType || data.documentType) && data.documentId
+      ? (data.docType || data.documentType)
+      : null,
+    documentId: data.documentId?.trim() ? data.documentId.trim() : null,
   }
 }
 
@@ -1115,11 +1117,14 @@ export const useCrmStore = create(
         starRating: starRating == null || starRating === '' ? null : Number(starRating),
       }),
 
-      convertToCustomer: async (leadId) => {
+      convertToCustomer: async (leadId, documentOverride = null) => {
         const lead = get().leads.find((l) => l.id === leadId)
         if (!lead) return null
         if (isOnline()) {
-          const response = await crmApi.convertLead(leadId, buildLeadConvertRequest(lead))
+          const response = await crmApi.convertLead(
+            leadId,
+            buildLeadConvertRequest(lead, documentOverride),
+          )
           const customer = mapCrmCustomerFromApi(response)
           await Promise.all([
             get().hydrateSection('pipeline'),
@@ -1129,7 +1134,9 @@ export const useCrmStore = create(
           ])
           return customer
         }
-        const customer = await useCustomersStore.getState().addCustomer(buildLeadOfflineCustomer(lead))
+        const customer = await useCustomersStore.getState().addCustomer(
+          buildLeadOfflineCustomer(lead, documentOverride),
+        )
         set((s) => ({
           leads: s.leads.map((l) =>
             l.id === leadId

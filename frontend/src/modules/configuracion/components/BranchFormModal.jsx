@@ -23,6 +23,7 @@ const empty = (legalEntities = []) => {
     manager: '',
     schedule: '09:00 - 21:00',
     active: true,
+    onlineBookingSelectable: false,
     independentBusiness: false,
     legalName: '',
     legalDisplayName: '',
@@ -300,6 +301,19 @@ export function BranchFormModal({
               />
               Negocio Independiente
               {online && <span className="text-xs text-slate-400">(se define según sus datos fiscales)</span>}
+            </label>
+            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-100 bg-white px-4 py-3">
+              <input
+                type="checkbox"
+                checked={Boolean(form.onlineBookingSelectable)}
+                disabled={submitting || branchFieldsDisabled}
+                onChange={(event) => set('onlineBookingSelectable', event.target.checked)}
+                className="h-4 w-4 rounded border-slate-300"
+                data-testid="branch-online-booking"
+              />
+              <span className="text-sm font-medium text-slate-700">
+                Visible en agenda en línea (enlace de autobook)
+              </span>
             </label>
           </div>
         )}
