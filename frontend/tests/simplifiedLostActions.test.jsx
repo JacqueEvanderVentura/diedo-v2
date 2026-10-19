@@ -20,7 +20,10 @@ describe('ficha de oportunidad perdida en CRM Simplificado', () => {
 
   it('muestra el motivo y permite iniciar la reapertura', () => {
     const opportunity = lostOpportunity()
-    useSessionStore.setState({ status: 'demo', user: { branchIds: ['branch-1'] } })
+    useSessionStore.setState({
+      status: 'online',
+      user: { branchIds: ['branch-1'], effectivePermissionCodes: ['crm.manage'] },
+    })
     useCrmStore.setState({ opportunities: [opportunity], quotes: [] })
     render(<SimplifiedLeadActions opportunity={opportunity} lead={null} />)
     expect(screen.getByText('Precio alto')).toBeTruthy()
@@ -43,7 +46,10 @@ describe('ficha de oportunidad perdida en CRM Simplificado', () => {
     const opportunity = lostOpportunity()
     const updateOpportunity = vi.fn().mockResolvedValue({ ...opportunity, stage: 'propuesta' })
     const onActionComplete = vi.fn()
-    useSessionStore.setState({ status: 'demo', user: { branchIds: ['branch-1'] } })
+    useSessionStore.setState({
+      status: 'online',
+      user: { branchIds: ['branch-1'], effectivePermissionCodes: ['crm.manage'] },
+    })
     useCrmStore.setState({ opportunities: [opportunity], quotes: [], updateOpportunity })
     render(<SimplifiedLeadActions
       opportunity={opportunity} lead={null} onActionComplete={onActionComplete}
@@ -59,7 +65,10 @@ describe('ficha de oportunidad perdida en CRM Simplificado', () => {
 
   it('preselecciona Interesados cada vez que se abre el formulario', () => {
     const opportunity = lostOpportunity()
-    useSessionStore.setState({ status: 'demo', user: { branchIds: ['branch-1'] } })
+    useSessionStore.setState({
+      status: 'online',
+      user: { branchIds: ['branch-1'], effectivePermissionCodes: ['crm.manage'] },
+    })
     useCrmStore.setState({ opportunities: [opportunity], quotes: [] })
     render(<SimplifiedLeadActions opportunity={opportunity} lead={null} />)
     fireEvent.click(screen.getByRole('button', { name: 'Reabrir oportunidad' }))
@@ -75,7 +84,10 @@ describe('ficha de oportunidad perdida en CRM Simplificado', () => {
     const opportunity = lostOpportunity()
     const updateOpportunity = vi.fn().mockRejectedValue(new Error('API no disponible'))
     const onActionComplete = vi.fn()
-    useSessionStore.setState({ status: 'demo', user: { branchIds: ['branch-1'] } })
+    useSessionStore.setState({
+      status: 'online',
+      user: { branchIds: ['branch-1'], effectivePermissionCodes: ['crm.manage'] },
+    })
     useCrmStore.setState({ opportunities: [opportunity], quotes: [], updateOpportunity })
     render(<SimplifiedLeadActions
       opportunity={opportunity} lead={null} onActionComplete={onActionComplete}

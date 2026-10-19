@@ -4,8 +4,8 @@ import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 
 afterEach(() => {
-  useSessionStore.setState({ status: 'demo', user: null })
-  configFacade.synchronizeSessionBranches({ status: 'demo', workspaceId: null, visibleBranches: [] })
+  useSessionStore.setState({ status: 'degraded', user: null })
+  configFacade.synchronizeSessionBranches({ status: 'degraded', workspaceId: null, visibleBranches: [] })
 })
 
 describe('config facade tenant branch synchronization', () => {
@@ -82,7 +82,7 @@ describe('config facade tenant branch synchronization', () => {
     expect(useConfigStore.getState().branches.map((branch) => branch.id)).toEqual(['branch-b'])
   })
 
-  it('limpia ramas ante logout/401 y restaura el demo al entrar en modo demo', () => {
+  it('limpia ramas ante logout/401 y permanece vacío sin sesión online', () => {
     configFacade.synchronizeSessionBranches({
       status: 'online',
       workspaceId: 'workspace-a',
@@ -91,8 +91,7 @@ describe('config facade tenant branch synchronization', () => {
     configFacade.synchronizeSessionBranches({ status: 'online', workspaceId: null, visibleBranches: [] })
     expect(useConfigStore.getState().branches).toEqual([])
 
-    configFacade.synchronizeSessionBranches({ status: 'demo', workspaceId: null, visibleBranches: [] })
-    expect(useConfigStore.getState().branches.map((branch) => branch.id)).toContain('charm-dn')
-    expect(useConfigStore.getState().branches.map((branch) => branch.id)).not.toContain('branch-a')
+    configFacade.synchronizeSessionBranches({ status: 'degraded', workspaceId: null, visibleBranches: [] })
+    expect(useConfigStore.getState().branches).toEqual([])
   })
 })

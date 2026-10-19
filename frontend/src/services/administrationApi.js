@@ -1,7 +1,5 @@
 import { apiClient } from './apiClient'
 import { createModuleGateway } from './dataGateway'
-import { demoRepository, DEMO_SEED_ENABLED } from './demoRepository'
-import { useSessionStore } from '@/stores/sessionStore'
 
 export const administrationApi = {
   workspaceSettings: () => apiClient.get('/api/v1/workspace/settings'),
@@ -26,7 +24,4 @@ export const administrationApi = {
 export const administrationGateway = createModuleGateway({
   module: 'administration',
   apiRepository: administrationApi,
-  demoRepository,
-  demoEnabled: DEMO_SEED_ENABLED,
-  demoActive: () => useSessionStore.getState().status === 'demo',
 })

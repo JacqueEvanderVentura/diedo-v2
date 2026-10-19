@@ -2,8 +2,6 @@ import { apiClient } from './apiClient'
 import { createCrmIdempotencyKey } from './crmApi'
 import { readAllPages } from './pagination'
 import { createModuleGateway } from './dataGateway'
-import { demoRepository, DEMO_SEED_ENABLED } from './demoRepository'
-import { useSessionStore } from '@/stores/sessionStore'
 
 export const masterDataApi = {
   customersPage: (params = {}) => apiClient.get('/api/v1/customers', params),
@@ -32,15 +30,9 @@ export const masterDataApi = {
 export const customersGateway = createModuleGateway({
   module: 'customers',
   apiRepository: masterDataApi,
-  demoRepository,
-  demoEnabled: DEMO_SEED_ENABLED,
-  demoActive: () => useSessionStore.getState().status === 'demo',
 })
 
 export const employeesGateway = createModuleGateway({
   module: 'employees',
   apiRepository: masterDataApi,
-  demoRepository,
-  demoEnabled: DEMO_SEED_ENABLED,
-  demoActive: () => useSessionStore.getState().status === 'demo',
 })

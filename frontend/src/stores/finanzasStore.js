@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { DEMO_SNAPSHOT } from '@/data/generated/demoSnapshot'
 import { financeApi } from '@/services/financeApi'
 import {
   accountToApiPayload,
@@ -17,7 +16,6 @@ import {
   mapFinanceLiabilityFromApi,
   mapFinanceOverviewFromApi,
 } from '@/services/adapters/finance'
-import { demoSvgImage } from '@/lib/imageAttachments'
 import { ephemeralJsonStorage, registerSensitiveStateCleaner } from '@/services/storagePolicy'
 import { useSessionStore } from '@/stores/sessionStore'
 import { isRecognizedPosIncome, isThisMonth } from '@/modules/finanzas/lib/finanzas'
@@ -42,13 +40,11 @@ const genId = (prefix = 'fin') =>
 const dayKey = () => new Date().toISOString().slice(0, 10)
 const monthKey = () => dayKey().slice(0, 7)
 const isOnline = () => useSessionStore.getState().status === 'online'
-const BRANCH_ID_BY_CODE = {
-  DOWNTOWN: 'charm-dn',
-  NORTH: 'charm-santiago',
-  EAST: 'charm-este',
-  HQ: 'charm-dn',
+const API_UNAVAILABLE = 'La API no está disponible.'
+
+function assertOnline() {
+  if (!isOnline()) throw new Error(API_UNAVAILABLE)
 }
-const branchIdFor = (code) => BRANCH_ID_BY_CODE[code] || code
 
 export const EXPENSE_CATEGORIES = [
   { id: 'alquiler', name: 'Alquiler' },
@@ -78,111 +74,6 @@ export const catName = (id) => {
   if (fromConfig?.name) return fromConfig.name
   return EXPENSE_CATEGORIES.find((category) => category.id === id)?.name || id
 }
-
-const financeFixture = DEMO_SNAPSHOT.finance || {}
-const budgetIdFor = (seedKey) => seedKey ? `budget:${seedKey}` : null
-
-const SEED_EXPENSES = [
-  ...(financeFixture.expenses || []).map((item) => ({
-    id: `expense:${item.seedKey}`,
-    concept: item.concept,
-    amount: Number(item.amount),
-    category: item.category,
-    date: item.date,
-    branchId: branchIdFor(item.branchCode),
-    status: item.status,
-    budgetId: budgetIdFor(item.budgetSeedKey),
-    activoId: null,
-    attachments: [],
-    source: 'finanzas',
-    editable: true,
-    createdAt: item.createdAt,
-  })),
-  {
-    id: 'expense:seed-mnt-ac-4',
-    concept: 'Mantenimiento preventivo AC sala principal',
-    amount: 4500,
-    category: 'mantenimiento',
-    date: '2026-07-12',
-    branchId: 'charm-santiago',
-    status: 'pagado',
-    budgetId: null,
-    activoId: 'act-seed-4',
-    attachments: [{
-      id: 'exp-att-4',
-      name: 'Factura mantenimiento EQP-009',
-      contentType: 'image/svg+xml',
-      previewObjectUrl: demoSvgImage('#0f766e', 'FAC'),
-      dataUrl: demoSvgImage('#0f766e', 'FAC'),
-    }],
-    source: 'finanzas',
-    editable: true,
-    createdAt: '2026-07-12T10:00:00Z',
-  },
-]
-
-const SEED_FIXED = (financeFixture.fixedExpenses || []).map((item) => ({
-  id: `fixed:${item.seedKey}`,
-  concept: item.concept,
-  amount: Number(item.amount),
-  category: item.category,
-  branchId: branchIdFor(item.branchCode),
-  dayOfMonth: Number(item.dayOfMonth),
-  paidMonths: (item.payments || []).map((payment) => payment.period.slice(0, 7)),
-  payments: item.payments || [],
-  createdAt: item.createdAt,
-}))
-
-const SEED_PASIVOS = (financeFixture.liabilities || []).map((item) => ({
-  id: `liability:${item.seedKey}`,
-  name: item.name,
-  type: item.type,
-  initialAmount: Number(item.initialAmount),
-  pendingAmount: Number(item.pendingAmount),
-  branchId: branchIdFor(item.branchCode),
-  payDay: Number(item.payDay),
-  cutDay: item.cutDay,
-  installment: item.installment == null ? null : Number(item.installment),
-  paidInstallments: Number(item.paidInstallments) || 0,
-  totalInstallments: item.totalInstallments,
-  categoryIds: item.categoryIds || [],
-  createdAt: item.createdAt,
-}))
-
-const SEED_BUDGETS = (financeFixture.budgets || []).map((item) => ({
-  id: budgetIdFor(item.seedKey),
-  name: item.name,
-  group: item.group,
-  monthlyLimit: Number(item.monthlyLimit),
-  branchId: branchIdFor(item.branchCode),
-  createdAt: item.createdAt,
-}))
-
-const SEED_ACCOUNTS = (financeFixture.accounts || []).map((item) => ({
-  id: `account:${item.seedKey}`,
-  name: item.name,
-  type: item.type,
-  bank: item.bank,
-  accountNumber: item.accountNumberMasked,
-  balance: Number(item.balance),
-  currency: item.currency,
-  branchId: branchIdFor(item.branchCode),
-  notes: item.notes || '',
-  createdAt: item.createdAt,
-}))
-
-const SEED_MANUAL_INCOMES = (financeFixture.manualIncomes || []).map((item) => ({
-  id: `income:${item.seedKey}`,
-  category: item.category,
-  branchId: branchIdFor(item.branchCode),
-  amount: Number(item.amount),
-  date: item.date,
-  customer: item.customer || '',
-  source: item.source,
-  status: item.status,
-  editable: true,
-  createdAt: item.createdAt,
-}))
 
 let financeHydrationPromise = null
 
@@ -233,19 +124,19 @@ function deriveAccountStats(accounts) {
 
 function initialState() {
   return {
-    expenses: structuredClone(SEED_EXPENSES),
+    expenses: [],
     expensesProjected: false,
-    fixedExpenses: structuredClone(SEED_FIXED),
-    pasivos: structuredClone(SEED_PASIVOS),
-    budgets: structuredClone(SEED_BUDGETS),
-    accounts: structuredClone(SEED_ACCOUNTS),
-    manualIncomes: structuredClone(SEED_MANUAL_INCOMES),
+    fixedExpenses: [],
+    pasivos: [],
+    budgets: [],
+    accounts: [],
+    manualIncomes: [],
     incomeEntries: [],
     incomesProjected: false,
     overview: null,
-    liabilityStats: derivePasivoStats(SEED_PASIVOS),
-    budgetStats: deriveBudgetStats(SEED_BUDGETS, SEED_EXPENSES),
-    accountStats: deriveAccountStats(SEED_ACCOUNTS),
+    liabilityStats: derivePasivoStats([]),
+    budgetStats: deriveBudgetStats([], []),
+    accountStats: deriveAccountStats([]),
     apiContext: { hydrated: false },
     hydrating: false,
     error: null,
@@ -258,7 +149,7 @@ export const useFinanzasStore = create(
       ...initialState(),
 
       hydrateFromApi: async ({ force = false } = {}) => {
-        if (!isOnline()) return get().expenses
+        if (!isOnline()) return []
         if (financeHydrationPromise) return financeHydrationPromise
         if (get().apiContext.hydrated && !force) return get().expenses
 
@@ -349,18 +240,7 @@ export const useFinanzasStore = create(
       },
 
       addExpense: async (data) => {
-        if (!isOnline()) {
-          const expense = {
-            id: genId('exp'),
-            ...expenseToApiPayload({ ...data, date: data.date || dayKey() }),
-            activoId: data.activoId || null,
-            attachments: data.attachments || [],
-            source: 'finanzas',
-            editable: true,
-          }
-          set((state) => ({ expenses: [expense, ...state.expenses] }))
-          return expense
-        }
+        assertOnline()
         if (!get().apiContext.hydrated) await get().hydrateFromApi()
         const expense = mergeExpenseAttachments(mapFinanceExpenseFromApi(
           await financeApi.createExpense(expenseToApiPayload(data))
@@ -381,14 +261,7 @@ export const useFinanzasStore = create(
       },
 
       updateExpense: async (id, data) => {
-        if (!isOnline()) {
-          set((state) => ({
-            expenses: state.expenses.map((item) => item.id === id
-              ? { ...item, ...data, amount: Number(data.amount ?? item.amount) || 0 }
-              : item),
-          }))
-          return get().expenses.find((item) => item.id === id)
-        }
+        assertOnline()
         const current = get().expenses.find((item) => item.id === id)
         if (!current?.editable || !current.version) throw new Error('Este movimiento viene de Caja y no se edita aquí.')
         const expense = mergeExpenseAttachments(mapFinanceExpenseFromApi(await financeApi.updateExpense(id, {
@@ -409,29 +282,16 @@ export const useFinanzasStore = create(
       },
 
       deleteExpense: async (id) => {
+        assertOnline()
         const current = get().expenses.find((item) => item.id === id)
-        if (isOnline()) {
-          if (!current?.editable || !current.version) throw new Error('Este movimiento se administra desde Caja.')
-          await financeApi.deleteExpense(id, current.version)
-          await get().hydrateFromApi({ force: true })
-        } else {
-          set((state) => ({ expenses: state.expenses.filter((item) => item.id !== id) }))
-        }
+        if (!current?.editable || !current.version) throw new Error('Este movimiento se administra desde Caja.')
+        await financeApi.deleteExpense(id, current.version)
+        await get().hydrateFromApi({ force: true })
       },
 
       addFixed: async (data) => {
+        assertOnline()
         const attachments = data.attachments || []
-        if (!isOnline()) {
-          const expense = {
-            id: genId('fix'),
-            ...fixedExpenseToApiPayload(data),
-            paidMonths: [],
-            attachments,
-          }
-          saveFixedAttachments(expense.id, attachments)
-          set((state) => ({ fixedExpenses: [expense, ...state.fixedExpenses] }))
-          return expense
-        }
         const expense = mergeFixedAttachments(mapFinanceFixedExpenseFromApi(
           await financeApi.createFixedExpense(fixedExpenseToApiPayload(data))
         ))
@@ -448,23 +308,7 @@ export const useFinanzasStore = create(
       },
 
       updateFixed: async (id, data) => {
-        if (!isOnline()) {
-          const nextAttachments = data.attachments ?? undefined
-          set((state) => ({
-            fixedExpenses: state.fixedExpenses.map((item) => {
-              if (item.id !== id) return item
-              const merged = {
-                ...item,
-                ...data,
-                amount: Number(data.amount ?? item.amount) || 0,
-                attachments: nextAttachments ?? item.attachments ?? [],
-              }
-              saveFixedAttachments(id, merged.attachments)
-              return merged
-            }),
-          }))
-          return get().fixedExpenses.find((item) => item.id === id)
-        }
+        assertOnline()
         const current = get().fixedExpenses.find((item) => item.id === id)
         if (!current?.version) throw new Error('Vuelve a cargar el gasto fijo antes de editarlo.')
         const expense = mapFinanceFixedExpenseFromApi(await financeApi.updateFixedExpense(id, {
@@ -485,27 +329,15 @@ export const useFinanzasStore = create(
       },
 
       deleteFixed: async (id) => {
+        assertOnline()
         const current = get().fixedExpenses.find((item) => item.id === id)
-        if (isOnline()) {
-          if (!current?.version) throw new Error('Vuelve a cargar el gasto fijo antes de eliminarlo.')
-          await financeApi.deleteFixedExpense(id, current.version)
-          await get().hydrateFromApi({ force: true })
-        } else {
-          set((state) => ({ fixedExpenses: state.fixedExpenses.filter((item) => item.id !== id) }))
-        }
+        if (!current?.version) throw new Error('Vuelve a cargar el gasto fijo antes de eliminarlo.')
+        await financeApi.deleteFixedExpense(id, current.version)
+        await get().hydrateFromApi({ force: true })
       },
 
       payFixed: async (id) => {
-        if (!isOnline()) {
-          const period = monthKey()
-          set((state) => ({
-            fixedExpenses: state.fixedExpenses.map((item) =>
-              item.id === id && !item.paidMonths?.includes(period)
-                ? { ...item, paidMonths: [...(item.paidMonths || []), period] }
-                : item),
-          }))
-          return get().fixedExpenses.find((item) => item.id === id)
-        }
+        assertOnline()
         const expense = mapFinanceFixedExpenseFromApi(await financeApi.payFixedExpense(id))
         set((state) => ({ fixedExpenses: replaceById(state.fixedExpenses, expense) }))
         await get().hydrateFromApi({ force: true })
@@ -515,11 +347,7 @@ export const useFinanzasStore = create(
       isFixedPaidThisMonth: (fixed) => (fixed.paidMonths || []).includes(monthKey()),
 
       addPasivo: async (data) => {
-        if (!isOnline()) {
-          const pasivo = { id: genId('pas'), ...liabilityToApiPayload(data) }
-          set((state) => ({ pasivos: [pasivo, ...state.pasivos] }))
-          return pasivo
-        }
+        assertOnline()
         const pasivo = mapFinanceLiabilityFromApi(
           await financeApi.createLiability(liabilityToApiPayload(data))
         )
@@ -529,12 +357,7 @@ export const useFinanzasStore = create(
       },
 
       updatePasivo: async (id, data) => {
-        if (!isOnline()) {
-          set((state) => ({
-            pasivos: state.pasivos.map((item) => item.id === id ? { ...item, ...data } : item),
-          }))
-          return get().pasivos.find((item) => item.id === id)
-        }
+        assertOnline()
         const current = get().pasivos.find((item) => item.id === id)
         if (!current?.version) throw new Error('Vuelve a cargar el pasivo antes de editarlo.')
         const pasivo = mapFinanceLiabilityFromApi(await financeApi.updateLiability(id, {
@@ -547,22 +370,15 @@ export const useFinanzasStore = create(
       },
 
       deletePasivo: async (id) => {
+        assertOnline()
         const current = get().pasivos.find((item) => item.id === id)
-        if (isOnline()) {
-          if (!current?.version) throw new Error('Vuelve a cargar el pasivo antes de eliminarlo.')
-          await financeApi.deleteLiability(id, current.version)
-          await get().hydrateFromApi({ force: true })
-        } else {
-          set((state) => ({ pasivos: state.pasivos.filter((item) => item.id !== id) }))
-        }
+        if (!current?.version) throw new Error('Vuelve a cargar el pasivo antes de eliminarlo.')
+        await financeApi.deleteLiability(id, current.version)
+        await get().hydrateFromApi({ force: true })
       },
 
       addBudget: async (data) => {
-        if (!isOnline()) {
-          const budget = { id: genId('bud'), ...budgetToApiPayload(data) }
-          set((state) => ({ budgets: [budget, ...state.budgets] }))
-          return budget
-        }
+        assertOnline()
         const budget = mapFinanceBudgetFromApi(
           await financeApi.createBudget(budgetToApiPayload(data))
         )
@@ -572,14 +388,7 @@ export const useFinanzasStore = create(
       },
 
       updateBudget: async (id, data) => {
-        if (!isOnline()) {
-          set((state) => ({
-            budgets: state.budgets.map((item) => item.id === id
-              ? { ...item, ...data, monthlyLimit: Number(data.monthlyLimit ?? item.monthlyLimit) || 0 }
-              : item),
-          }))
-          return get().budgets.find((item) => item.id === id)
-        }
+        assertOnline()
         const current = get().budgets.find((item) => item.id === id)
         if (!current?.version) throw new Error('Vuelve a cargar el presupuesto antes de editarlo.')
         const budget = mapFinanceBudgetFromApi(await financeApi.updateBudget(id, {
@@ -592,22 +401,15 @@ export const useFinanzasStore = create(
       },
 
       deleteBudget: async (id) => {
+        assertOnline()
         const current = get().budgets.find((item) => item.id === id)
-        if (isOnline()) {
-          if (!current?.version) throw new Error('Vuelve a cargar el presupuesto antes de eliminarlo.')
-          await financeApi.deleteBudget(id, current.version)
-          await get().hydrateFromApi({ force: true })
-        } else {
-          set((state) => ({ budgets: state.budgets.filter((item) => item.id !== id) }))
-        }
+        if (!current?.version) throw new Error('Vuelve a cargar el presupuesto antes de eliminarlo.')
+        await financeApi.deleteBudget(id, current.version)
+        await get().hydrateFromApi({ force: true })
       },
 
       addAccount: async (data) => {
-        if (!isOnline()) {
-          const account = { id: genId('acc'), ...accountToApiPayload(data) }
-          set((state) => ({ accounts: [account, ...state.accounts] }))
-          return account
-        }
+        assertOnline()
         const account = mapFinanceAccountFromApi(
           await financeApi.createAccount(accountToApiPayload(data))
         )
@@ -617,14 +419,7 @@ export const useFinanzasStore = create(
       },
 
       updateAccount: async (id, data) => {
-        if (!isOnline()) {
-          set((state) => ({
-            accounts: state.accounts.map((item) => item.id === id
-              ? { ...item, ...data, balance: Number(data.balance ?? item.balance) || 0 }
-              : item),
-          }))
-          return get().accounts.find((item) => item.id === id)
-        }
+        assertOnline()
         const current = get().accounts.find((item) => item.id === id)
         if (!current?.version) throw new Error('Vuelve a cargar la cuenta antes de editarla.')
         const account = mapFinanceAccountFromApi(await financeApi.updateAccount(id, {
@@ -637,27 +432,15 @@ export const useFinanzasStore = create(
       },
 
       deleteAccount: async (id) => {
+        assertOnline()
         const current = get().accounts.find((item) => item.id === id)
-        if (isOnline()) {
-          if (!current?.version) throw new Error('Vuelve a cargar la cuenta antes de eliminarla.')
-          await financeApi.deleteAccount(id, current.version)
-          await get().hydrateFromApi({ force: true })
-        } else {
-          set((state) => ({ accounts: state.accounts.filter((item) => item.id !== id) }))
-        }
+        if (!current?.version) throw new Error('Vuelve a cargar la cuenta antes de eliminarla.')
+        await financeApi.deleteAccount(id, current.version)
+        await get().hydrateFromApi({ force: true })
       },
 
       addManualIncome: async (data) => {
-        if (!isOnline()) {
-          const income = {
-            id: genId('inc'),
-            ...manualIncomeToApiPayload({ ...data, date: data.date || dayKey() }),
-            attachments: data.attachments || [],
-            editable: true,
-          }
-          set((state) => ({ manualIncomes: [income, ...state.manualIncomes] }))
-          return income
-        }
+        assertOnline()
         const income = mergeIncomeAttachments(mapFinanceIncomeFromApi(
           await financeApi.createManualIncome(manualIncomeToApiPayload(data))
         ))
@@ -677,18 +460,7 @@ export const useFinanzasStore = create(
       },
 
       updateIncome: async (id, data) => {
-        if (!isOnline()) {
-          set((state) => ({
-            manualIncomes: state.manualIncomes.map((item) => item.id === id
-              ? { ...item, ...data, amount: Number(data.amount ?? item.amount) || 0 }
-              : item),
-            incomeEntries: state.incomeEntries.map((item) => item.id === id
-              ? { ...item, ...data, amount: Number(data.amount ?? item.amount) || 0 }
-              : item),
-          }))
-          return get().incomeEntries.find((item) => item.id === id)
-            || get().manualIncomes.find((item) => item.id === id)
-        }
+        assertOnline()
         const current = get().incomeEntries.find((item) => item.id === id)
           || get().manualIncomes.find((item) => item.id === id)
         if (!current?.version) throw new Error('Vuelve a cargar el ingreso antes de editarlo.')
@@ -713,18 +485,12 @@ export const useFinanzasStore = create(
       updateManualIncome: (id, data) => get().updateIncome(id, data),
 
       deleteIncome: async (id) => {
+        assertOnline()
         const current = get().incomeEntries.find((item) => item.id === id)
           || get().manualIncomes.find((item) => item.id === id)
-        if (isOnline()) {
-          if (!current?.version) throw new Error('Vuelve a cargar el ingreso antes de eliminarlo.')
-          await financeApi.deleteIncome(id, current.version)
-          await get().hydrateFromApi({ force: true })
-        } else {
-          set((state) => ({
-            manualIncomes: state.manualIncomes.filter((item) => item.id !== id),
-            incomeEntries: state.incomeEntries.filter((item) => item.id !== id),
-          }))
-        }
+        if (!current?.version) throw new Error('Vuelve a cargar el ingreso antes de eliminarlo.')
+        await financeApi.deleteIncome(id, current.version)
+        await get().hydrateFromApi({ force: true })
       },
 
       deleteManualIncome: (id) => get().deleteIncome(id),
@@ -794,6 +560,7 @@ export const useFinanzasStore = create(
     {
       name: 'diedo-finanzas',
       storage: ephemeralJsonStorage,
+      version: 2,
       partialize: (state) => ({
         expenses: state.expenses,
         fixedExpenses: state.fixedExpenses,

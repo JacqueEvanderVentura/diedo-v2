@@ -93,8 +93,8 @@ export default function SucursalesPage({ embedded = false, visibleBlockIds }) {
   const [legalEntities, setLegalEntities] = useState([])
   const [apiSettings, setApiSettings] = useState(null)
   const [state, setState] = useState(() => ({
-    status: online ? 'loading' : 'demo',
-    source: online ? null : 'demo',
+    status: online ? 'loading' : 'error',
+    source: online ? null : null,
     error: null,
   }))
   const [query, setQuery] = useState('')
@@ -103,8 +103,8 @@ export default function SucursalesPage({ embedded = false, visibleBlockIds }) {
 
   const load = useCallback(async ({ clear = false } = {}) => {
     if (!online) {
-      setState({ status: 'demo', source: 'demo', error: null })
-      return true
+      setState({ status: 'error', source: null, error: new Error('La API no está disponible.') })
+      return false
     }
     const requestedWorkspaceId = sessionUser?.workspaceId
     if (clear) configFacade.clearApiBranches({ workspaceId: requestedWorkspaceId })

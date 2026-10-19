@@ -1,7 +1,5 @@
 import { apiClient } from './apiClient'
 import { createModuleGateway } from './dataGateway'
-import { demoRepository, DEMO_SEED_ENABLED } from './demoRepository'
-import { useSessionStore } from '@/stores/sessionStore'
 import {
   appointmentPatchToApiPayload,
   appointmentStatusToApi,
@@ -116,7 +114,4 @@ export const appointmentsApi = {
 export const appointmentsGateway = createModuleGateway({
   module: 'appointments',
   apiRepository: appointmentsApi,
-  demoRepository,
-  demoEnabled: DEMO_SEED_ENABLED,
-  demoActive: () => useSessionStore.getState().status === 'demo',
 })

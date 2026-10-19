@@ -5,23 +5,10 @@ import { ephemeralJsonStorage } from '@/services/storagePolicy'
 const genId = () => `ntf-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const now = () => new Date().toISOString()
 
-const SEED_NOTIFICATIONS = [
-  {
-    id: 'ntf-seed-1',
-    userId: 'admin',
-    type: 'mention',
-    title: 'María Recepción te mencionó',
-    body: 'INC-1193: Revisa el estado de la máquina de vapor.',
-    read: false,
-    createdAt: now(),
-    link: { path: '/incidencias', incidenciaId: 'inc-seed-1' },
-  },
-]
-
 export const useNotificationsStore = create(
   persist(
     (set, get) => ({
-      notifications: SEED_NOTIFICATIONS,
+      notifications: [],
 
       addMentionNotifications: ({ authorId, authorName, userIds, incidenciaId, incidenciaCode, messagePreview }) => {
         const unique = [...new Set(userIds)].filter((id) => id && id !== authorId)
@@ -64,11 +51,10 @@ export const useNotificationsStore = create(
     {
       name: 'diedo-notifications',
       storage: ephemeralJsonStorage,
+      version: 2,
       merge: (persisted, current) => {
         const state = { ...current, ...(persisted || {}) }
-        if (!Array.isArray(state.notifications) || state.notifications.length === 0) {
-          state.notifications = SEED_NOTIFICATIONS
-        }
+        if (!Array.isArray(state.notifications)) state.notifications = []
         return state
       },
     }

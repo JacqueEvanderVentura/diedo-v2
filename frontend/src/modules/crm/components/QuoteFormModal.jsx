@@ -59,7 +59,7 @@ export function QuoteFormModal({
   const [customerModalOpen, setCustomerModalOpen] = useState(false)
 
   const editing = Boolean(quote)
-  const canManage = useSessionStore((s) => s.status === 'demo' || (s.hasPermission('crm.manage') && s.hasPermission('sales.quote.manage')))
+  const canManage = useSessionStore((s) => s.status === 'online' && s.hasPermission('crm.manage') && s.hasPermission('sales.quote.manage'))
   const editable = canManage && isQuoteEditable(quote)
 
   useEffect(() => {

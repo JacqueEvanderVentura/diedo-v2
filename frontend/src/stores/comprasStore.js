@@ -19,52 +19,9 @@ import { receivePurchaseRequestInventory } from '@/modules/compras/lib/receivePu
 
 const genId = (prefix) => `${prefix}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const now = () => new Date().toISOString()
-const daysAgo = (days) => new Date(Date.now() - days * 86400000).toISOString()
+const EMPTY_SETTINGS = { approverUserId: null, notifyOnRequest: true }
+const API_UNAVAILABLE = 'La API no está disponible.'
 
-const SEED_SUPPLIERS = [
-  { id: 'sup-1', name: 'Distribuidora del Caribe', rnc: '131-12345-6', contactName: 'Juan Pérez', phone: '809-555-0199', email: 'ventas@proveedor.com', address: 'Calle Central #12, Santo Domingo', branchIds: ['charm-dn', 'charm-santiago'], productCount: 24, active: true, createdAt: daysAgo(60) },
-  { id: 'sup-2', name: 'Beauty Supply RD', rnc: '101-99887-2', contactName: 'María López', phone: '829-555-4400', email: 'pedidos@beautysupply.do', address: 'Av. Winston Churchill, SD', branchIds: ['charm-dn'], productCount: 12, active: true, createdAt: daysAgo(30) },
-]
-
-const SEED_REQUESTS = [
-  {
-    id: 'req-1',
-    number: 'req-1',
-    supplierId: 'sup-1',
-    branchId: 'charm-dn',
-    requesterName: 'Leonedis Hamburgo',
-    requesterId: 'u1',
-    items: [
-      { name: 'Cera depilatoria premium', qty: 10, unit: 'unidad', price: 450 },
-      { name: 'Guantes desechables', qty: 5, unit: 'caja', price: 320 },
-    ],
-    status: 'pendiente',
-    priority: 'normal',
-    notes: 'Reposición mensual de insumos láser.',
-    quoteFile: null,
-    createdAt: daysAgo(1),
-    reviewedAt: null,
-    reviewedBy: null,
-  },
-  {
-    id: 'req-2',
-    number: 'req-2',
-    supplierId: 'sup-2',
-    branchId: 'charm-dn',
-    requesterName: 'María Recepción',
-    requesterId: 'u2',
-    items: [{ name: 'Shampoo profesional', qty: 20, unit: 'unidad', price: 280 }],
-    status: 'aprobada',
-    priority: 'alta',
-    notes: 'Urgente para sucursal DN.',
-    quoteFile: { name: 'cotizacion-shampoo.pdf' },
-    createdAt: daysAgo(4),
-    reviewedAt: daysAgo(3),
-    reviewedBy: 'u1',
-  },
-]
-
-const SEED_SETTINGS = { approverUserId: 'u1', notifyOnRequest: true }
 let purchasingHydrationPromise = null
 
 export function requestTotal(request) {
@@ -88,40 +45,14 @@ function replaceById(items, next) {
   return items.map((item) => (item.id === next.id ? next : item))
 }
 
-function localSupplier(data) {
-  return {
-    id: genId('sup'),
-    productCount: 0,
-    active: true,
-    createdAt: now(),
-    branchIds: [],
-    ...data,
-  }
-}
-
-function localRequest(data) {
-  const id = genId('req')
-  return {
-    id,
-    number: id,
-    status: 'pendiente',
-    priority: 'normal',
-    quoteFile: null,
-    createdAt: now(),
-    reviewedAt: null,
-    reviewedBy: null,
-    ...data,
-  }
-}
-
 export const useComprasStore = create(
   persist(
     (set, get) => ({
-      suppliers: SEED_SUPPLIERS,
-      purchaseRequests: SEED_REQUESTS,
-      settings: SEED_SETTINGS,
+      suppliers: [],
+      purchaseRequests: [],
+      settings: EMPTY_SETTINGS,
       approvers: [],
-      stats: deriveRequestStats(SEED_REQUESTS),
+      stats: deriveRequestStats([]),
       apiContext: { hydrated: false },
       hydrating: false,
       error: null,
@@ -175,11 +106,7 @@ export const useComprasStore = create(
       },
 
       addSupplier: async (data, { isOnline = false } = {}) => {
-        if (!isOnline) {
-          const supplier = localSupplier(data)
-          set((state) => ({ suppliers: [supplier, ...state.suppliers] }))
-          return supplier
-        }
+        if (!isOnline) throw new Error(API_UNAVAILABLE)
         if (!get().apiContext.hydrated) await get().hydrateFromApi()
         const supplier = mapSupplierFromApi(
           await purchasingApi.createSupplier(supplierToApiPayload(data))
@@ -189,14 +116,7 @@ export const useComprasStore = create(
       },
 
       updateSupplier: async (id, data, { isOnline = false } = {}) => {
-        if (!isOnline) {
-          set((state) => ({
-            suppliers: state.suppliers.map((supplier) => (
-              supplier.id === id ? { ...supplier, ...data } : supplier
-            )),
-          }))
-          return get().suppliers.find((supplier) => supplier.id === id)
-        }
+        if (!isOnline) throw new Error(API_UNAVAILABLE)
         if (!get().apiContext.hydrated) await get().hydrateFromApi()
         const current = get().suppliers.find((supplier) => supplier.id === id)
         if (!current?.version) throw new Error('Vuelve a cargar el proveedor antes de editarlo.')
@@ -222,15 +142,11 @@ export const useComprasStore = create(
       },
 
       addPurchaseRequest: async (data, { isOnline = false } = {}) => {
-        if (isOnline && !get().apiContext.hydrated) await get().hydrateFromApi()
-        const request = mergePurchaseRequestExtras(isOnline
-          ? mapPurchaseRequestFromApi(
-              await purchasingApi.createRequest(purchaseRequestToApiPayload(data))
-            )
-          : localRequest({
-              ...data,
-              quoteFile: data.quoteFile?.name ? { name: data.quoteFile.name } : data.quoteFile,
-            }))
+        if (!isOnline) throw new Error(API_UNAVAILABLE)
+        if (!get().apiContext.hydrated) await get().hydrateFromApi()
+        const request = mergePurchaseRequestExtras(mapPurchaseRequestFromApi(
+          await purchasingApi.createRequest(purchaseRequestToApiPayload(data))
+        ))
         savePurchaseRequestExtras(request.id, {
           quoteFile: data.quoteFile,
           items: data.items,
@@ -243,21 +159,7 @@ export const useComprasStore = create(
       },
 
       updatePurchaseRequest: async (id, data, { isOnline = false } = {}) => {
-        if (!isOnline) {
-          savePurchaseRequestExtras(id, {
-            quoteFile: data.quoteFile,
-            items: data.items,
-          })
-          set((state) => {
-            const purchaseRequests = state.purchaseRequests.map((request) => (
-              request.id === id
-                ? mergePurchaseRequestExtras({ ...request, ...data })
-                : request
-            ))
-            return { purchaseRequests, stats: deriveRequestStats(purchaseRequests) }
-          })
-          return get().purchaseRequests.find((request) => request.id === id)
-        }
+        if (!isOnline) throw new Error(API_UNAVAILABLE)
         if (!get().apiContext.hydrated) await get().hydrateFromApi()
         const current = get().purchaseRequests.find((request) => request.id === id)
         if (!current?.version) throw new Error('Vuelve a cargar la solicitud antes de editarla.')
@@ -279,41 +181,22 @@ export const useComprasStore = create(
       },
 
       attachPurchaseQuote: async (id, quoteFile, { isOnline = false } = {}) => {
+        if (!isOnline) throw new Error(API_UNAVAILABLE)
         const current = get().purchaseRequests.find((request) => request.id === id)
         if (!current) throw new Error('Solicitud no encontrada.')
-        if (isOnline && current.version) {
+        if (current.version) {
           if (quoteFile?.pendingFile) {
             await uploadPurchaseQuote(id, quoteFile)
             await get().hydrateFromApi({ force: true })
             return get().purchaseRequests.find((request) => request.id === id)
           }
-          return get().updatePurchaseRequest(id, { quoteFile }, { isOnline })
+          return get().updatePurchaseRequest(id, { quoteFile }, { isOnline: true })
         }
-        const nextQuote = quoteFile?.name ? { name: quoteFile.name } : quoteFile
-        savePurchaseRequestExtras(id, { quoteFile, items: current.items })
-        set((state) => {
-          const purchaseRequests = state.purchaseRequests.map((request) => (
-            request.id === id
-              ? mergePurchaseRequestExtras({ ...request, quoteFile: nextQuote })
-              : request
-          ))
-          return { purchaseRequests, stats: deriveRequestStats(purchaseRequests) }
-        })
-        return get().purchaseRequests.find((request) => request.id === id)
+        throw new Error('Vuelve a cargar la solicitud antes de adjuntar la cotización.')
       },
 
       reviewPurchaseRequest: async (id, status, reviewerId, { isOnline = false } = {}) => {
-        if (!isOnline) {
-          set((state) => {
-            const purchaseRequests = state.purchaseRequests.map((request) => (
-              request.id === id
-                ? { ...request, status, reviewedAt: now(), reviewedBy: reviewerId }
-                : request
-            ))
-            return { purchaseRequests, stats: deriveRequestStats(purchaseRequests) }
-          })
-          return get().purchaseRequests.find((request) => request.id === id)
-        }
+        if (!isOnline) throw new Error(API_UNAVAILABLE)
         if (!get().apiContext.hydrated) await get().hydrateFromApi()
         const current = get().purchaseRequests.find((request) => request.id === id)
         if (!current?.version) throw new Error('Vuelve a cargar la solicitud antes de revisarla.')
@@ -334,15 +217,7 @@ export const useComprasStore = create(
         if (!current) throw new Error('Solicitud no encontrada.')
         const inventoryResult = await receivePurchaseRequestInventory(current, { isOnline })
 
-        if (!isOnline) {
-          set((state) => {
-            const purchaseRequests = state.purchaseRequests.map((request) => (
-              request.id === id ? { ...request, status: 'entregada', deliveredAt: now() } : request
-            ))
-            return { purchaseRequests, stats: deriveRequestStats(purchaseRequests) }
-          })
-          return { request: get().purchaseRequests.find((request) => request.id === id), inventoryResult }
-        }
+        if (!isOnline) throw new Error(API_UNAVAILABLE)
         if (!get().apiContext.hydrated) await get().hydrateFromApi()
         if (!current.version) throw new Error('Vuelve a cargar la solicitud antes de entregarla.')
         const request = mergePurchaseRequestExtras(mapPurchaseRequestFromApi(
@@ -356,10 +231,7 @@ export const useComprasStore = create(
       },
 
       updateSettings: async (data, { isOnline = false } = {}) => {
-        if (!isOnline) {
-          set((state) => ({ settings: { ...state.settings, ...data } }))
-          return get().settings
-        }
+        if (!isOnline) throw new Error(API_UNAVAILABLE)
         if (!get().apiContext.hydrated) await get().hydrateFromApi()
         const current = get().settings
         if (!current?.version) throw new Error('Vuelve a cargar la configuración antes de guardarla.')
@@ -376,11 +248,11 @@ export const useComprasStore = create(
       getRequestTotal: requestTotal,
 
       clearSensitive: () => set({
-        suppliers: SEED_SUPPLIERS,
-        purchaseRequests: SEED_REQUESTS,
-        settings: SEED_SETTINGS,
+        suppliers: [],
+        purchaseRequests: [],
+        settings: EMPTY_SETTINGS,
         approvers: [],
-        stats: deriveRequestStats(SEED_REQUESTS),
+        stats: deriveRequestStats([]),
         apiContext: { hydrated: false },
         hydrating: false,
         error: null,
@@ -389,6 +261,7 @@ export const useComprasStore = create(
     {
       name: 'diedo-compras',
       storage: ephemeralJsonStorage,
+      version: 2,
       partialize: (state) => ({
         suppliers: state.suppliers,
         purchaseRequests: state.purchaseRequests,

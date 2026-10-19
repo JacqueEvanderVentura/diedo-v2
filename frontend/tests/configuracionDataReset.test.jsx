@@ -50,7 +50,7 @@ function seedSession(user) {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
-  useSessionStore.setState({ status: 'demo', user: null, accessToken: null })
+  useSessionStore.setState({ status: 'degraded', user: null, accessToken: null })
 })
 
 describe('Configuracion data reset', () => {

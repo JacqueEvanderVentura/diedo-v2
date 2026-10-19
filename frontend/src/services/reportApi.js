@@ -1,4 +1,3 @@
-import { MEMBERSHIP_SEED } from '@/data/reportes'
 import { METHOD_LABELS } from '@/modules/crm/lib/crm'
 import { buildPersonalReport } from '@/modules/reportes/lib/personalReport'
 import { paginateSlice, matchesSearch } from '@/modules/reportes/lib/pagination'
@@ -180,33 +179,24 @@ export async function fetchMembershipReport(params) {
       },
     }
   }
-  await delay()
-  const filtered = filterMemberships(MEMBERSHIP_SEED, params)
-  const page = paginateSlice(filtered, params, {
-    clientName: (row) => row.clientName,
-    plan: (row) => row.plan,
-    branchId: (row) => row.branchId,
-    amount: (row) => row.amount,
-    status: (row) => row.status,
-    lastPayment: (row) => row.lastPaymentAt || row.lastPayment || '',
-  })
-  const active = filtered.filter((row) => row.status === 'activo')
-  const mrr = active.reduce((sum, row) => sum + row.amount, 0)
   return {
-    ...page,
+    items: [],
+    page: params.page || 1,
+    pageSize: params.pageSize || 10,
+    total: 0,
+    totalPages: 1,
+    from: 0,
+    to: 0,
     summary: {
-      activeCount: active.length,
-      mrr,
-      avgTicket: active.length ? mrr / active.length : 0,
-      proximo: filtered.filter((row) => row.status === 'proximo').length,
-      vencido: filtered.filter((row) => row.status === 'vencido').length,
-      newThisMonth: 30,
-      growthPct: 12,
-      growth: ['mar', 'abr', 'may', 'jun', 'jul', 'ago'].map((label, index) => ({
-        label,
-        value: 9000 + index * 4500,
-      })),
-      plans: [...new Set(MEMBERSHIP_SEED.map((row) => row.plan))].sort(),
+      activeCount: 0,
+      mrr: 0,
+      avgTicket: 0,
+      proximo: 0,
+      vencido: 0,
+      newThisMonth: 0,
+      growthPct: 0,
+      growth: [],
+      plans: [],
     },
   }
 }

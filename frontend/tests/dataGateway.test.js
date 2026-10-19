@@ -35,39 +35,13 @@ describe('createModuleGateway', () => {
     await expect(gateway.mutate('update', 1)).rejects.toBeInstanceOf(MutationBlockedError)
   })
 
-  it('distingue error sin cache de demo explícito', async () => {
+  it('propaga error cuando no hay cache previo', async () => {
     const errorGateway = createModuleGateway({
       module: 'error',
       apiRepository: { list: vi.fn().mockRejectedValue(new Error('offline')) },
     })
     await expect(errorGateway.read('list')).rejects.toThrow('offline')
     expect(errorGateway.getState().status).toBe(DATA_STATES.ERROR)
-
-    const realWorkspaceGateway = createModuleGateway({
-      module: 'real-workspace',
-      apiRepository: { list: vi.fn().mockRejectedValue(new Error('offline')) },
-      demoRepository: { list: vi.fn().mockResolvedValue([{ id: 'demo' }]) },
-      demoEnabled: true,
-      demoActive: () => false,
-    })
-    await expect(realWorkspaceGateway.read('list')).rejects.toThrow('offline')
-    expect(realWorkspaceGateway.getState().status).toBe(DATA_STATES.ERROR)
-
-    const demoList = vi.fn().mockResolvedValue([{ id: 'demo' }])
-    const demoApiList = vi.fn().mockRejectedValue(new Error('offline'))
-    const demoGateway = createModuleGateway({
-      module: 'demo',
-      apiRepository: { list: demoApiList },
-      demoRepository: { list: demoList },
-      demoEnabled: true,
-      demoActive: () => true,
-    })
-    const result = await demoGateway.read('list')
-    expect(result.status).toBe(DATA_STATES.DEMO)
-    expect(result.source).toBe('demo')
-    expect(result.data).toEqual([{ id: 'demo' }])
-    expect(demoList).toHaveBeenCalledOnce()
-    expect(demoApiList).not.toHaveBeenCalled()
   })
 
   it('descarta una lectura tardía después de limpiar el tenant', async () => {

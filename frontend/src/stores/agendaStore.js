@@ -240,11 +240,8 @@ export const useAgendaStore = create((set, get) => ({
   },
 
   addAppointment: async (data) => {
-    if (useSessionStore.getState().status === 'demo') {
-      const created = createDemoAppointment(data)
-      set((state) => ({ appointments: [created, ...state.appointments] }))
-      syncAppointmentReceivable(created)
-      return created
+    if (useSessionStore.getState().status !== 'online') {
+      throw new Error('La API no está disponible.')
     }
     try {
       const created = await appointmentsGateway.mutate('createAppointment', data)
@@ -265,25 +262,15 @@ export const useAgendaStore = create((set, get) => ({
     }
   },
 
-  addAppointments: async (list) => {
-    if (!Array.isArray(list) || list.length === 0) return []
-    if (useSessionStore.getState().status !== 'demo') {
-      throw new Error('Las series deben enviarse como una sola cita con recurrencia.')
-    }
-    const created = list.map(createDemoAppointment)
-    set((state) => ({ appointments: [...created, ...state.appointments] }))
-    created.forEach(syncAppointmentReceivable)
-    return created
+  addAppointments: async () => {
+    throw new Error('Las series deben enviarse como una sola cita con recurrencia.')
   },
 
   updateAppointment: async (id, data) => {
     const current = get().appointments.find((appointment) => appointment.id === id)
     if (!current) throw new Error('Cita no encontrada.')
-    if (useSessionStore.getState().status === 'demo') {
-      const updated = updateDemoAppointment(current, data)
-      set((state) => ({ appointments: replaceAppointment(state.appointments, updated) }))
-      syncAppointmentReceivable(updated)
-      return updated
+    if (useSessionStore.getState().status !== 'online') {
+      throw new Error('La API no está disponible.')
     }
     try {
       const updated = await appointmentsGateway.mutate('updateAppointment', id, { ...current, ...data }, current.version)
@@ -312,12 +299,8 @@ export const useAgendaStore = create((set, get) => ({
       })
       if (!deletion.canDelete) throw new Error(deletion.deleteReason)
     }
-    if (session.status === 'demo') {
-      set((state) => ({
-        appointments: state.appointments.filter((appointment) => appointment.id !== id),
-      }))
-      removeAppointmentReceivable(id)
-      return current
+    if (session.status !== 'online') {
+      throw new Error('La API no está disponible.')
     }
     try {
       await appointmentsGateway.mutate('deleteAppointment', id, current.version)
@@ -352,11 +335,8 @@ export const useAgendaStore = create((set, get) => ({
       throw new Error('Usa el flujo de cumplimiento para marcar la cita como cumplida.')
     }
     if (normalizeAppointmentStatus(current.status) === nextStatus) return current
-    if (useSessionStore.getState().status === 'demo') {
-      const updated = updateDemoAppointment(current, { status: nextStatus, completed: false })
-      set((state) => ({ appointments: replaceAppointment(state.appointments, updated) }))
-      syncAppointmentReceivable(updated)
-      return updated
+    if (useSessionStore.getState().status !== 'online') {
+      throw new Error('La API no está disponible.')
     }
     try {
       const updated = await appointmentsGateway.mutate(

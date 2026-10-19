@@ -86,7 +86,7 @@ export default function CotizacionesPage() {
   const markReceivablePaid = usePosStore((s) => s.markReceivablePaid)
   const attachReceivableProof = usePosStore((s) => s.attachReceivableProof)
   const isOnline = useSessionStore((state) => state.isOnline())
-  const canManage = useSessionStore((s) => s.status === 'demo' || (s.hasPermission('crm.manage') && s.hasPermission('sales.quote.manage')))
+  const canManage = useSessionStore((s) => s.status === 'online' && s.hasPermission('crm.manage') && s.hasPermission('sales.quote.manage'))
   const canInvoice = useSessionStore((state) => state.hasPermission(QUOTE_INVOICE_PERMISSION))
   const canCollectReceivables = useSessionStore((state) => state.hasPermission('pos.receivables.collect'))
 

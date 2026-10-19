@@ -27,7 +27,8 @@ function PerfilPorDocumento() {
   const [params] = useSearchParams()
   const docParam = params.get('doc') || recallDocument()
   const branchId = params.get('branch') || useConfigStore.getState().branches[0]?.id
-  const isDemo = useSessionStore((s) => s.status) === 'demo'
+  const isOnline = useSessionStore((s) => s.status === 'online')
+  const isDemo = false
   const lookupByDocument = useSelfBookingStore((s) => s.lookupByDocument)
   const upsertProfile = useSelfBookingStore((s) => s.upsertProfile)
   const addClaim = useSelfBookingStore((s) => s.addClaim)

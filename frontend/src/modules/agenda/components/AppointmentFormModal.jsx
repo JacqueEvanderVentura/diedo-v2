@@ -87,7 +87,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
   const notesChanged = !editing || form.notes !== originalNotes
   const notesTooLong = notesLength > APPOINTMENT_NOTES_MAX_LENGTH
   const legacyNotes = editing && notesTooLong && !notesChanged
-  const servicesReady = sessionStatus === 'demo' || catalogHydrated
+  const servicesReady = sessionStatus === 'online' && catalogHydrated
   const services = useMemo(
     () => servicesForBranch(allProducts, form.branchId, { online: sessionStatus === 'online' }),
     [allProducts, form.branchId, sessionStatus]

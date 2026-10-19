@@ -1,9 +1,7 @@
 import { branchQueryParams } from '@/lib/branches'
 import { apiClient } from './apiClient'
 import { createModuleGateway } from './dataGateway'
-import { demoRepository, DEMO_SEED_ENABLED } from './demoRepository'
 import { ENDPOINTS } from './endpoints'
-import { useSessionStore } from '@/stores/sessionStore'
 
 const STATUS_FROM_API = {
   confirmed: 'confirmada',
@@ -82,9 +80,4 @@ export const dashboardApi = {
 export const dashboardGateway = createModuleGateway({
   module: 'dashboard',
   apiRepository: dashboardApi,
-  demoRepository: {
-    dashboard: (filters) => demoRepository.dashboard(filters),
-  },
-  demoEnabled: DEMO_SEED_ENABLED,
-  demoActive: () => useSessionStore.getState().status === 'demo',
 })

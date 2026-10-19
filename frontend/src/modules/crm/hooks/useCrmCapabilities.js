@@ -2,7 +2,7 @@ import { useSessionStore } from '@/stores/sessionStore'
 
 export function useCrmCapabilities() {
   const session = useSessionStore()
-  const can = (code) => session.status === 'demo' || session.hasPermission(code)
+  const can = (code) => session.status === 'online' && session.hasPermission(code)
   return {
     manage: can('crm.manage'),
     convert: can('crm.manage') && can('customer.manage'),

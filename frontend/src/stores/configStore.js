@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { ephemeralJsonStorage } from '@/services/storagePolicy'
-import { BRANCHES, CATEGORIES, PAYMENT_METHODS } from '@/data/products'
+import { PAYMENT_METHODS } from '@/data/products'
 import { PERMISSION_MODULES, buildDefaultMatrix, USER_ROLES } from '@/data/permisos'
 import { DEFAULT_WHATSAPP_TEMPLATES } from '@/data/whatsappTemplates'
 import { newPasswordError } from '@/lib/passwordPolicy'
@@ -50,80 +50,11 @@ const branchDefaults = {
   partners: [],
 }
 
-const SEED_BRANCHES = [
-  {
-    id: 'charm-dn',
-    name: 'Charm DN',
-    ...branchDefaults,
-    address: 'Av. Winston Churchill, Santo Domingo',
-    phone: '+1 809 555 0101',
-    email: 'charmdn@charm.do',
-    legalName: 'Charm Esthetic Clinic SRL',
-    rnc: '1-3290890-2',
-    partners: [{ name: 'Leonedis Hamburgo', share: 60 }],
-  },
-  {
-    id: 'charm-santiago',
-    name: 'Charm Santiago',
-    ...branchDefaults,
-    address: 'Av. Estrella Sadhalá, Santiago',
-    phone: '+1 809 555 0102',
-    email: 'charmsantiago@charm.do',
-    legalName: 'Charm Esthetic Clinic SRL',
-    partners: [{ name: 'Socio Santiago', share: 100 }],
-  },
-  {
-    id: 'charm-este',
-    name: 'Charm Este',
-    ...branchDefaults,
-    address: 'Av. Las Américas, Santo Domingo Este',
-    independentBusiness: true,
-    legalName: 'Charm Este SRL',
-    partners: [{ name: 'Evander Jean Paul', share: 50 }, { name: 'Socio Este', share: 50 }],
-  },
-]
+const DEFAULT_PAYMENT_METHODS = PAYMENT_METHODS.map((m) => ({ ...m, enabled: true, core: true }))
 
-const CATALOG_SEED_TYPES = {
-  'depto-laser': 'servicio',
-  laser: 'servicio',
-  otros: 'servicio',
-  ventas: 'servicio',
-  productos: 'producto',
-  insumos: 'insumo',
-}
-
-const SEED_CATEGORIES = [
-  ...CATEGORIES.filter((c) => c.id !== 'all').map((c, i) => ({
-    id: c.id,
-    name: c.name,
-    description: '',
-    type: CATALOG_SEED_TYPES[c.id] || 'producto',
-    color: CATEGORY_COLORS[i % CATEGORY_COLORS.length].id,
-    active: true,
-  })),
-  { id: 'fin-ing-servicios', name: 'Servicios', description: 'Ingresos por servicios', type: 'ingreso', color: 'emerald', active: true },
-  { id: 'fin-ing-efectivo', name: 'Efectivo', description: 'Ingresos en efectivo', type: 'ingreso', color: 'sky', active: true },
-  { id: 'fin-ing-transferencia', name: 'Transferencias Bancarias', description: 'Ingresos por transferencia', type: 'ingreso', color: 'teal', active: true },
-  { id: 'fin-gas-alquiler', name: 'Alquiler', description: 'Gasto fijo de local', type: 'gasto', color: 'rose', active: true },
-  { id: 'fin-gas-insumos', name: 'Insumos', description: 'Materiales y consumibles', type: 'gasto', color: 'amber', active: true },
-  { id: 'fin-gas-marketing', name: 'Marketing', description: 'Publicidad y promociones', type: 'gasto', color: 'violet', active: true },
-]
-
-const SEED_METHODS = PAYMENT_METHODS.map((m) => ({ ...m, enabled: true, core: true }))
-
-const SEED_USERS = [
-  { id: 'u1', name: 'Alex Demo', email: 'alex.admin.demo@example.test', role: 'Administrador', active: true, branchIds: ['charm-dn', 'charm-santiago', 'charm-este'], lastAccess: null },
-  { id: 'u2', name: 'Mar Demo', email: 'mar.manager.demo@example.test', role: 'Supervisor', active: true, branchIds: ['charm-dn'], lastAccess: null },
-  { id: 'u3', name: 'Sol Demo', email: 'sol.cashier.demo@example.test', role: 'Cajero', active: true, branchIds: ['charm-dn'], lastAccess: null },
-]
-
-const SEED_SETTINGS = {
-  businessName: 'Helios 360',
-  taxDefault: 18,
-  region: 'República Dominicana',
-  currency: 'RD$',
+const EMPTY_SETTINGS = {
   billingDocuments: {
-    tradeName: 'Helios 360',
+    tradeName: '',
     legalName: '',
     rnc: '',
     address: '',
@@ -157,11 +88,11 @@ function normalizeCategory(data) {
 export const useConfigStore = create(
   persist(
     (set, get) => ({
-      branches: SEED_BRANCHES,
-      categories: SEED_CATEGORIES,
-      paymentMethods: SEED_METHODS,
-      users: SEED_USERS,
-      settings: SEED_SETTINGS,
+      branches: [],
+      categories: [],
+      paymentMethods: structuredClone(DEFAULT_PAYMENT_METHODS),
+      users: [],
+      settings: structuredClone(EMPTY_SETTINGS),
       permissions: buildDefaultMatrix(),
       whatsappTemplates: structuredClone(DEFAULT_WHATSAPP_TEMPLATES),
 
@@ -196,7 +127,7 @@ export const useConfigStore = create(
           paymentMethods: [...s.paymentMethods, { id: genId('pm'), name, icon: 'Wallet', enabled: true, core: false }],
         })),
       setPaymentMethods: (paymentMethods) => set({ paymentMethods }),
-      resetPaymentMethods: () => set({ paymentMethods: structuredClone(SEED_METHODS) }),
+      resetPaymentMethods: () => set({ paymentMethods: structuredClone(DEFAULT_PAYMENT_METHODS) }),
       togglePaymentMethod: (id) =>
         set((s) => ({
           paymentMethods: s.paymentMethods.map((m) => (m.id === id ? { ...m, enabled: !m.enabled } : m)),
@@ -290,6 +221,8 @@ export const useConfigStore = create(
     {
       name: 'diedo-config',
       storage: ephemeralJsonStorage,
+      version: 2,
+      migrate: (persisted) => persisted ?? {},
       merge: (persisted, current) => {
         const state = { ...current, ...(persisted || {}) }
         const defaults = buildDefaultMatrix()

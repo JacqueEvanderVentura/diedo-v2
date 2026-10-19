@@ -62,10 +62,10 @@ export function PageShell() {
   const shouldHydrateFinance = requiresFinanceData(pathname)
 
   useEffect(() => {
-    if (!crmSection || !['online', 'demo'].includes(sessionStatus)) return
+    if (!crmSection || sessionStatus !== 'online') return
     useCrmStore.getState().ensureWorkspaceSettings().catch(() => {})
-    const requests = canReadCrm || sessionStatus === 'demo' ? [hydrateCrmSection(crmSection)] : []
-    if (CRM_SECTIONS_REQUIRING_CUSTOMERS.has(crmSection) && (canReadCustomers || sessionStatus === 'demo')) {
+    const requests = canReadCrm ? [hydrateCrmSection(crmSection)] : []
+    if (CRM_SECTIONS_REQUIRING_CUSTOMERS.has(crmSection) && canReadCustomers) {
       requests.push(hydrateCustomers({ force: false }))
     }
     if (['quotes', 'pipeline', 'customers'].includes(crmSection) && sessionStatus === 'online' && canReadCatalog) {

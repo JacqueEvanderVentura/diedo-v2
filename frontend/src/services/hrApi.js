@@ -1,6 +1,5 @@
 import { apiClient } from './apiClient'
 import { createModuleGateway } from './dataGateway'
-import { demoRepository, DEMO_SEED_ENABLED } from './demoRepository'
 import { useSessionStore } from '@/stores/sessionStore'
 
 const idempotencyOptions = () => ({
@@ -89,56 +88,6 @@ function mapOverview(item) {
   }
 }
 
-function mapDemoOverview(data) {
-  const employees = demoRepository.employees()
-  const requests = (data.leaveRequests || []).map(mapLeaveRequest)
-  const debts = (data.debts || []).map(mapDebt)
-  const debt = debts.reduce((summary, item) => {
-    const paid = item.payments.reduce((total, payment) => total + payment.amount, 0)
-    const pending = Math.max(0, item.amount - paid)
-    summary.totalDebt += item.amount
-    summary.totalPaid += paid
-    summary.pending += pending
-    if (pending > 0) summary.employeeIds.add(item.employeeId)
-    return summary
-  }, { totalDebt: 0, totalPaid: 0, pending: 0, employeeIds: new Set() })
-  return {
-    totalEmployees: employees.length,
-    activeEmployees: employees.filter((employee) => employee.status !== 'inactive').length,
-    approvedVacations: requests.filter((request) => request.status === 'aprobada').length,
-    pendingApprovals: requests.filter((request) => request.status === 'pendiente').length,
-    debt: {
-      totalDebt: debt.totalDebt,
-      totalPaid: debt.totalPaid,
-      pending: debt.pending,
-      employeesWithDebt: debt.employeeIds.size,
-    },
-    recentRequests: requests.slice(0, 3),
-  }
-}
-
-function mapDemoHr(data) {
-  const employeeProfiles = demoRepository.employees().map((employee) => ({
-    employeeId: employee.seedKey,
-    initialSalary: Number(employee.futureHr?.initialSalary) || 0,
-    salary: Number(employee.futureHr?.salary) || 0,
-    vacationDays: Number(employee.futureHr?.vacationDays) || 0,
-    bankName: employee.futureHr?.bankName || '',
-    bankAccountType: employee.futureHr?.bankAccountType || 'ahorro',
-    bankAccountNumber: employee.futureHr?.bankAccountNumber || '',
-    bankDocument: employee.futureHr?.bankDocument || '',
-    profileVersion: 1,
-  }))
-  return {
-    employeeProfiles,
-    vacationRequests: (data.leaveRequests || []).map(mapLeaveRequest),
-    employeeDebts: (data.debts || []).map(mapDebt),
-    documentHistory: (data.documents || []).map(mapDocument),
-    debtStats: null,
-    overview: mapDemoOverview(data),
-  }
-}
-
 export const hrApi = {
   hr: async () => {
     const session = useSessionStore.getState()
@@ -219,12 +168,6 @@ export const hrApi = {
 export const hrGateway = createModuleGateway({
   module: 'hr',
   apiRepository: hrApi,
-  demoRepository: {
-    hr: () => mapDemoHr(demoRepository.hr()),
-    overview: () => mapDemoOverview(demoRepository.hr()),
-  },
-  demoEnabled: DEMO_SEED_ENABLED,
-  demoActive: () => useSessionStore.getState().status === 'demo',
 })
 
 export { mapDebt, mapDebtStats, mapDocument, mapLeaveRequest, mapOverview, mapProfile }

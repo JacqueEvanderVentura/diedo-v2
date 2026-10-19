@@ -39,13 +39,13 @@ export default function CarwashPage() {
   const [indicatorRevision, setIndicatorRevision] = useState(0)
   const refreshIndicators = useCallback(() => setIndicatorRevision((value) => value + 1), [])
   const tabListRef = useRef(null)
-  const isDemo = status === 'demo'
-  const allowed = isDemo || (hasModule('carwash') && hasPermission('carwash.read'))
-  const branches = (isDemo ? configuredBranches : user?.visibleBranches || []).filter((branch) => branch.active !== false && branch.status !== 'inactive')
+  const isOnline = status === 'online'
+  const allowed = isOnline && hasModule('carwash') && hasPermission('carwash.read')
+  const branches = (user?.visibleBranches || configuredBranches).filter((branch) => branch.active !== false && branch.status !== 'inactive')
   const { tab, branchId } = resolveCarwashScope(params, branches, hasPermission, activeBranchId)
   const branch = branches.find((item) => item.id === branchId)
   const populated = params.get('example') !== 'empty'
-  const data = previewData({ isDemo, populated, branchId })
+  const data = previewData({ isDemo: false, populated, branchId })
   const canReadCommissions = hasPermission('carwash.commissions.read')
   const canManageWashes = hasPermission('carwash.wash.manage')
   const scopeKey = `${status}:${user?.workspaceId}:${user?.membershipId}:${branchId}`
@@ -97,20 +97,11 @@ export default function CarwashPage() {
         <div className="min-w-0"><h1 className="flex items-center gap-2 font-heading text-xl min-[380px]:text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl"><Car className="h-7 w-7 shrink-0 text-blue-500" aria-hidden />Carwash Management</h1><p className="mt-1 text-sm text-slate-500">Sucursal activa: <strong className="font-semibold text-slate-800">{branch?.name || 'Sin sucursales disponibles'}</strong></p></div>
         <div className="flex flex-col gap-3 sm:flex-row">
           <Select className="sm:w-56" size="sm" disabled={!branches.length} value={branchId} options={branches.map((item) => ({ value: item.id, label: item.name }))} onChange={(nextBranchId) => updateQuery({ branchId: nextBranchId, employeeId: null, servicePage: null, washPage: null, commissionPage: null, settlementPage: null })} placeholder="Seleccionar sucursal" data-testid="carwash-branch" />
-          {canManageWashes && <Button disabled={!branchId || (!isDemo && !canRegister)} title={isDemo ? 'Vista previa del registro' : 'Registrar un vehículo desde Control Operativo'} data-testid="carwash-new-wash" onClick={() => isDemo ? setPreview({ type: 'wash' }) : setOpenRequest((value) => value + 1)}><Plus className="h-4 w-4" aria-hidden />Nuevo Servicio</Button>}
+          {canManageWashes && <Button disabled={!branchId || !canRegister} title="Registrar un vehículo desde Control Operativo" data-testid="carwash-new-wash" onClick={() => setOpenRequest((value) => value + 1)}><Plus className="h-4 w-4" aria-hidden />Nuevo Servicio</Button>}
         </div>
       </div>
-      {isDemo && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm text-blue-900" role="status" data-testid="carwash-availability-notice">
-        <div className="flex min-w-0 items-start gap-2"><Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /><p>{`Vista previa · Datos ficticios del ${CARWASH_PREVIEW_DATE}. Las operaciones están deshabilitadas.`}</p></div>
-        {isDemo && <Button size="sm" variant="secondary" data-testid="carwash-toggle-example" onClick={() => updateQuery({ example: populated ? 'empty' : null })}>{populated ? 'Ver escenario vacío' : 'Ver ejemplos'}</Button>}
-      </div>}
       {!branchId && <InlineSetupCard title="No tienes sucursales disponibles" message="Un administrador debe asignarte una sucursal para operar en Carwash." testId="carwash-no-branches" />}
-      {isDemo ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 sm:gap-4">
-        <CarwashMetric label="Activos en espera" value={isDemo ? data.washes.filter((item) => ['waiting', 'washing'].includes(item.status)).length : '—'} icon={Clock3} />
-        <CarwashMetric label="Completados hoy" value={isDemo ? completed.length : '—'} icon={CheckCircle2} tone="green" />
-        <CarwashMetric label="Facturado hoy" value={isDemo ? formatDOP(completed.reduce((sum, item) => sum + Number(item.total), 0)) : '—'} icon={DollarSign} tone="violet" />
-        <CarwashMetric label="Comisiones pendientes" value={isDemo && canReadCommissions ? formatDOP(pending) : '—'} icon={Wallet} tone="amber" />
-      </div> : <ConnectedIndicators key={scopeKey} branchId={branchId} workspace={user?.workspace} revision={indicatorRevision} />}
+      <ConnectedIndicators key={scopeKey} branchId={branchId} workspace={user?.workspace} revision={indicatorRevision} />
       <div className="max-w-full overflow-x-auto pb-1 scrollbar-thin">
         <div ref={tabListRef} role="tablist" aria-label="Secciones de Carwash" onKeyDown={onTabKeyDown} className="inline-flex min-w-max gap-1 rounded-xl bg-slate-200/80 p-1">
           {CARWASH_TABS.map((item) => {
@@ -121,12 +112,11 @@ export default function CarwashPage() {
         </div>
       </div>
       <section role="tabpanel" id={`carwash-panel-${tab}`} aria-labelledby={`carwash-tab-${tab}`} tabIndex={0} className="min-w-0 focus-visible:outline-blue-600">
-        {tab === 'operativo' && (isDemo ? <OperationsPanel data={data} params={params} updateQuery={updateQuery} isDemo /> : <ConnectedOperationsPanel key={scopeKey} scopeKey={scopeKey} onChanged={refreshIndicators} branchId={branchId} workspace={user?.workspace} params={params} updateQuery={updateQuery} openRequest={openRequest} onAvailability={setOperationAccess} />)}
-        {tab === 'comisiones' && (isDemo ? <CommissionsPanel data={data} params={params} updateQuery={updateQuery} isDemo /> : <ConnectedCommissionsPanel onChanged={refreshIndicators} key={scopeKey} branchId={branchId} workspace={user?.workspace} params={params} updateQuery={updateQuery} />)}
-        {tab === 'reportes' && <ReportsPanel key={scopeKey} branchId={branchId} workspace={user?.workspace} data={data} isDemo={isDemo} params={params} updateQuery={updateQuery} />}
-        {tab === 'configuracion' && (isDemo ? <SettingsPanel services={data.services} isDemo onPreview={setPreview} /> : <ConnectedSettingsPanel key={`${status}:${user?.workspaceId}:${user?.membershipId}:${branchId}`} branchId={branchId} workspace={user?.workspace} params={params} updateQuery={updateQuery} />)}
+        {tab === 'operativo' && <ConnectedOperationsPanel key={scopeKey} scopeKey={scopeKey} onChanged={refreshIndicators} branchId={branchId} workspace={user?.workspace} params={params} updateQuery={updateQuery} openRequest={openRequest} onAvailability={setOperationAccess} />}
+        {tab === 'comisiones' && <ConnectedCommissionsPanel onChanged={refreshIndicators} key={scopeKey} branchId={branchId} workspace={user?.workspace} params={params} updateQuery={updateQuery} />}
+        {tab === 'reportes' && <ReportsPanel key={scopeKey} branchId={branchId} workspace={user?.workspace} data={data} isDemo={false} params={params} updateQuery={updateQuery} />}
+        {tab === 'configuracion' && <ConnectedSettingsPanel key={`${status}:${user?.workspaceId}:${user?.membershipId}:${branchId}`} branchId={branchId} workspace={user?.workspace} params={params} updateQuery={updateQuery} />}
       </section>
-      {isDemo && preview && <CarwashPreviewModal preview={preview} onClose={() => setPreview(null)} />}
     </div>
   )
 }
