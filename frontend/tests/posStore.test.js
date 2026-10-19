@@ -95,7 +95,7 @@ describe('store online de Terminal POS', () => {
   })
 
   afterAll(() => {
-    useSessionStore.setState({ status: 'demo', accessToken: null, user: null })
+    useSessionStore.setState({ status: 'degraded', accessToken: null, user: null })
     usePosStore.getState().clearSensitive()
   })
 
@@ -478,9 +478,13 @@ describe('store online de Terminal POS', () => {
     )
   })
 
-  it('elimina semillas demo al entrar en sesión online', () => {
-    useSessionStore.setState({ status: 'demo', accessToken: null, user: null })
-    expect(usePosStore.getState().sales.length).toBeGreaterThan(0)
+  it('limpia datos locales al entrar en sesión online', () => {
+    usePosStore.setState({
+      sales: [{ id: 'local-sale', total: 100, items: [] }],
+      receivables: [{ id: 'local-cxc', amount: 50, payments: [] }],
+      heldCarts: [{ id: 'held-1', items: [{ name: 'Item', qty: 1, price: 1 }] }],
+    })
+    useSessionStore.setState({ status: 'degraded', accessToken: null, user: null })
 
     useSessionStore.setState({
       status: 'online',
@@ -679,10 +683,10 @@ describe('store online de Terminal POS', () => {
     })
   })
 
-  it('marca las ventas demo como ingresos reconocidos al cerrar la caja', async () => {
-    useSessionStore.setState({ status: 'demo', accessToken: null, user: null })
+  it('bloquea el cierre de caja cuando la API no está disponible', async () => {
+    useSessionStore.setState({ status: 'degraded', accessToken: null, user: null })
     const sale = {
-      id: 'demo-sale',
+      id: 'local-sale',
       status: 'completed',
       method: 'tarjeta',
       total: 100,
@@ -699,15 +703,8 @@ describe('store online de Terminal POS', () => {
       registerHistory: [],
     })
 
-    await usePosStore.getState().closeRegister(500)
-
-    expect(usePosStore.getState().sales[0]).toMatchObject({
-      id: 'demo-sale',
-      status: 'completed',
-      recognizedAt: expect.any(String),
-    })
-    expect(usePosStore.getState().sales[0].recognizedAt).toBe(
-      usePosStore.getState().lastCloseSummary.closedAt
-    )
+    await expect(usePosStore.getState().closeRegister(500)).rejects.toThrow('La API no está disponible.')
+    expect(usePosStore.getState().sales[0].recognizedAt).toBeNull()
+    expect(mocks.closeRegister).not.toHaveBeenCalled()
   })
 })

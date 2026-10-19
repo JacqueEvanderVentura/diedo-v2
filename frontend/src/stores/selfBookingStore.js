@@ -1,50 +1,17 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { ephemeralJsonStorage, ephemeralStorage } from '@/services/storagePolicy'
-import { useAgendaStore } from '@/stores/agendaStore'
 import { useCustomersStore } from '@/stores/customersStore'
 import {
   normalizeDocumentId,
   buildBookingUrl,
   buildProfileUrl,
   buildConfirmationEmail,
-  isSlotAvailable,
 } from '@/modules/agenda/lib/selfBooking'
-import { useRrhhStore } from '@/stores/rrhhStore'
-import { useSessionStore } from '@/stores/sessionStore'
 import { publicBookingApi } from '@/services/publicBookingApi'
 
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const now = () => new Date().toISOString()
-
-const SEED_PROFILES = [
-  {
-    id: 'prof-1',
-    docType: 'cedula',
-    documentId: '00112345678',
-    name: 'María Fernández',
-    email: 'maria.fernandez@email.com',
-    phone: '809-555-0142',
-    address: 'Los Prados, Santo Domingo',
-    wantsInvoice: true,
-    wantsContact: false,
-    customerId: 'c1',
-    createdAt: '2026-01-10T10:00:00.000Z',
-  },
-  {
-    id: 'prof-2',
-    docType: 'cedula',
-    documentId: '40298765432',
-    name: 'José Ramírez',
-    email: 'jose.ramirez@email.com',
-    phone: '809-555-0198',
-    address: '',
-    wantsInvoice: false,
-    wantsContact: true,
-    customerId: 'c2',
-    createdAt: '2026-01-12T10:00:00.000Z',
-  },
-]
 
 function normalizeProfile(data) {
   return {
@@ -63,7 +30,7 @@ function normalizeProfile(data) {
 export const useSelfBookingStore = create(
   persist(
     (set, get) => ({
-      profiles: SEED_PROFILES,
+      profiles: [],
       claims: [],
       emails: [],
 
@@ -114,71 +81,23 @@ export const useSelfBookingStore = create(
           profiles: s.profiles.map((p) => (p.id === profileId ? { ...p, customerId } : p)),
         })),
 
-      bookAppointment: async ({ profile, branchId, service, date, time, employeeId, idempotencyKey }) => {
-        const slotDuration = Number(service?.durationMinutes) || 30
-        if (useSessionStore.getState().status !== 'demo') {
-          const response = await publicBookingApi.book(branchId, {
-            documentType: profile.docType || 'cedula',
-            documentId: profile.documentId,
-            displayName: profile.name,
-            email: profile.email || null,
-            phone: profile.phone || null,
-            address: profile.address || null,
-            wantsInvoice: profile.wantsInvoice,
-            wantsContact: profile.wantsContact,
-            serviceId: service.id,
-            employeeId,
-            date,
-            time,
-          }, idempotencyKey)
-          return response.appointment
-        }
-        const customer = await get().ensureCustomer(profile)
-        const agenda = useAgendaStore.getState()
-        await agenda.hydrateAppointments({
-          force: true,
-          params: { dateFrom: date, dateTo: date, employeeId },
-        }).catch(() => {})
-        const refreshedAgenda = useAgendaStore.getState()
-        const rrhh = useRrhhStore.getState()
-        const employee = rrhh.employees.find((item) => item.id === employeeId)
-        const available = isSlotAvailable({
-          date,
-          employeeId,
-          duration: slotDuration,
-          time,
-          appointments: refreshedAgenda.appointments,
-          employee,
-          vacationRequests: rrhh.vacationRequests,
-        })
-        if (!available) {
-          throw new Error('Ese horario ya no está disponible. Elige otro cupo.')
-        }
-        const appointment = {
-          date,
-          time,
-          duration: slotDuration,
-          employeeId,
-          branchId,
-          customerId: customer.id,
-          customerName: profile.name,
-          customerPhone: profile.phone || '',
+      bookAppointment: async ({ profile, branchId, service, date, time, employeeId, duration, idempotencyKey }) => {
+        const response = await publicBookingApi.book(branchId, {
+          documentType: profile.docType || 'cedula',
+          documentId: profile.documentId,
+          displayName: profile.name,
+          email: profile.email || null,
+          phone: profile.phone || null,
+          address: profile.address || null,
+          wantsInvoice: profile.wantsInvoice,
+          wantsContact: profile.wantsContact,
           serviceId: service.id,
-          serviceName: service.name,
-          price: service.price,
-          status: 'pendiente',
-          source: 'self',
-          firstTime: !get().profiles.find((p) => p.id === profile.id)?.customerId,
-        }
-        agenda.addAppointment(appointment)
-        get().queueEmail({
-          profileId: profile.id,
-          to: profile.email || profile.phone,
-          kind: 'confirmation',
-          subject: 'Cita confirmada — Charm',
-          body: `Hola ${profile.name}, tu cita para ${service.name} el ${date} a las ${time} fue registrada.`,
-        })
-        return appointment
+          employeeId,
+          date,
+          time,
+          duration: duration || Number(service?.durationMinutes) || 30,
+        }, idempotencyKey)
+        return response.appointment
       },
 
       addClaim: ({ profileId, documentId, appointmentId, type, message }) => {
@@ -213,9 +132,6 @@ export const useSelfBookingStore = create(
       },
 
       identifyRemote: async (branchId, docType, documentId) => {
-        if (useSessionStore.getState().status === 'demo') {
-          return get().lookupByDocument(documentId)
-        }
         const result = await publicBookingApi.identify(branchId, {
           documentType: docType,
           documentId,
@@ -239,7 +155,6 @@ export const useSelfBookingStore = create(
       },
 
       fetchRemoteSlots: async ({ branchId, date, employeeId, serviceId }) => {
-        if (useSessionStore.getState().status === 'demo') return null
         const result = await publicBookingApi.listSlots(branchId, {
           date,
           employeeId,

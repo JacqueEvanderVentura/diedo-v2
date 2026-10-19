@@ -1,8 +1,4 @@
 import { appointmentsApi } from '@/services/appointmentsApi'
-import { useAgendaStore } from '@/stores/agendaStore'
-import { useSessionStore } from '@/stores/sessionStore'
-
-const VISIT_STATUSES = new Set(['confirmada', 'cumplida', 'confirmed', 'fulfilled'])
 
 export function applyBranchBookingDefaults(form, { serviceId, employeeId }, { services, bookableStaff }) {
   const next = { ...form }
@@ -18,16 +14,6 @@ export function applyBranchBookingDefaults(form, { serviceId, employeeId }, { se
 export async function fetchLastVisitBookingDefaults(customerId) {
   if (!customerId || customerId === 'walk-in') {
     return { serviceId: '', employeeId: '' }
-  }
-  if (useSessionStore.getState().status === 'demo') {
-    const appointments = useAgendaStore.getState().appointments
-    const last = [...appointments]
-      .filter((apt) => apt.customerId === customerId && VISIT_STATUSES.has(apt.status))
-      .sort((left, right) => `${right.date}T${right.time}`.localeCompare(`${left.date}T${left.time}`))[0]
-    return {
-      serviceId: last?.serviceId || '',
-      employeeId: last?.employeeId || '',
-    }
   }
   const items = await appointmentsApi.appointments({
     customerId,

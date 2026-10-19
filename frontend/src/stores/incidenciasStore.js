@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { DEMO_SNAPSHOT } from '@/data/generated/demoSnapshot'
 import { statusMeta } from '@/data/incidencias'
 import { incidentsApi } from '@/services/incidentsApi'
 import {
@@ -16,81 +15,7 @@ import {
 const genId = (prefix = 'inc') =>
   `${prefix}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const now = () => new Date().toISOString()
-const DEMO_BRANCH_IDS = {
-  HQ: 'charm-dn',
-  NORTH: 'charm-santiago',
-  DOWNTOWN: 'charm-dn',
-  EAST: 'charm-este',
-}
-const DEMO_ASSET_IDS = {
-  'north-laser-machine': 'act-seed-4',
-  'east-cooling-system': 'act-seed-4',
-  'north-pos-tablet': 'act-seed-5',
-}
-
-const demoUsersBySeedKey = new Map(
-  DEMO_SNAPSHOT.iam.users.map((user) => [user.seedKey, user])
-)
-const demoEmployeesBySeedKey = new Map(
-  DEMO_SNAPSHOT.employees.items.map((employee) => [employee.seedKey, employee])
-)
-
-const SEED = DEMO_SNAPSHOT.incidents.items.map((incident) => {
-  const attachments = (incident.attachments || []).map((attachment) => ({
-    id: `demo:${incident.seedKey}:${attachment.seedKey}`,
-    name: attachment.originalFilename,
-    contentType: attachment.contentType,
-    sizeBytes: 0,
-    checksum: null,
-    previewUrl: null,
-    previewObjectUrl: `data:${attachment.contentType};base64,${attachment.contentBase64}`,
-    createdAt: attachment.createdAt,
-  }))
-  return {
-    id: `demo:${incident.seedKey}`,
-    code: incident.code,
-    title: incident.title,
-    description: incident.description || '',
-    type: incident.type,
-    priority: incident.priority,
-    status: incident.status,
-    branchId: DEMO_BRANCH_IDS[incident.branchCode] || incident.branchCode,
-    activoId: DEMO_ASSET_IDS[incident.assetSeedKey] || null,
-    employee: incident.employeeSeedKey
-      ? {
-        id: incident.employeeSeedKey,
-        name: [
-          demoEmployeesBySeedKey.get(incident.employeeSeedKey)?.firstName,
-          demoEmployeesBySeedKey.get(incident.employeeSeedKey)?.lastName,
-        ].filter(Boolean).join(' ') || incident.employeeSeedKey,
-      }
-      : null,
-    employeeId: incident.employeeSeedKey || null,
-    employeeIncidentKind: incident.employeeIncidentKind || null,
-    reporter: {
-      id: `demo:${incident.reporterUserSeedKey}`,
-      name: demoUsersBySeedKey.get(incident.reporterUserSeedKey)?.displayName || 'Sistema demo',
-    },
-    intervenientes: incident.participantUserSeedKeys.map((seedKey) => ({
-      id: `demo:${seedKey}`,
-      name: demoUsersBySeedKey.get(seedKey)?.displayName || seedKey,
-    })),
-    attachments,
-    images: attachments.map((attachment) => attachment.previewObjectUrl),
-    activity: incident.activities.map((activity) => ({
-      id: `demo:${incident.seedKey}:${activity.seedKey}`,
-      type: activity.type,
-      authorId: `demo:${activity.authorUserSeedKey}`,
-      author: demoUsersBySeedKey.get(activity.authorUserSeedKey)?.displayName || 'Sistema demo',
-      message: activity.message,
-      createdAt: activity.createdAt,
-    })),
-    version: 1,
-    createdAt: incident.createdAt,
-    updatedAt: incident.updatedAt,
-    apiSynced: false,
-  }
-})
+const API_UNAVAILABLE = 'La API no está disponible.'
 
 let incidentHydrationPromise = null
 let storeGeneration = 0
@@ -178,51 +103,12 @@ function fileToDataUrl(file) {
   })
 }
 
-function localIncident(data) {
-  const createdAt = now()
-  const id = genId()
-  return {
-    id,
-    code: `INC-${Date.now().toString().slice(-6)}`,
-    title: data.title,
-    description: data.description || '',
-    type: data.type || 'activo',
-    priority: data.priority || 'media',
-    status: 'abierta',
-    branchId: data.branchId || null,
-    activoId: data.activoId || null,
-    employee: data.employeeId
-      ? { id: data.employeeId, name: data.employeeName || data.employeeId }
-      : null,
-    employeeId: data.employeeId || null,
-    employeeIncidentKind: data.employeeIncidentKind || null,
-    reporter: { id: null, name: data.reportedBy || 'Sistema local' },
-    intervenientes: data.intervenientes || [],
-    attachments: [],
-    images: data.images || [],
-    activity: [
-      {
-        id: genId('activity'),
-        type: 'created',
-        authorId: null,
-        author: data.reportedBy || 'Sistema local',
-        message: 'Incidencia reportada y abierta.',
-        createdAt,
-      },
-    ],
-    version: 1,
-    createdAt,
-    updatedAt: createdAt,
-    apiSynced: false,
-  }
-}
-
 export const useIncidenciasStore = create(
   persist(
     (set, get) => ({
-      incidencias: SEED,
-      selectedId: SEED[0]?.id || null,
-      stats: deriveIncidentStats(SEED),
+      incidencias: [],
+      selectedId: null,
+      stats: deriveIncidentStats([]),
       apiContext: { hydrated: false },
       hydrating: false,
       error: null,
@@ -286,18 +172,7 @@ export const useIncidenciasStore = create(
       },
 
       addIncidencia: async (data, { isOnline = false } = {}) => {
-        if (!isOnline) {
-          const incident = localIncident(data)
-          set((state) => {
-            const incidencias = [incident, ...state.incidencias]
-            return {
-              incidencias,
-              selectedId: incident.id,
-              stats: deriveIncidentStats(incidencias),
-            }
-          })
-          return incident
-        }
+        if (!isOnline) throw new Error(API_UNAVAILABLE)
         if (!get().apiContext.hydrated) await get().hydrateFromApi()
 
         const created = mapIncidentFromApi(
@@ -338,42 +213,17 @@ export const useIncidenciasStore = create(
       },
 
       updateStatus: async (id, status, author = 'Sistema', { isOnline = false } = {}) => {
-        if (isOnline && !get().apiContext.hydrated) await get().hydrateFromApi()
+        if (!isOnline) throw new Error(API_UNAVAILABLE)
+        if (!get().apiContext.hydrated) await get().hydrateFromApi()
         const current = get().incidencias.find((incident) => incident.id === id)
         if (!current) throw new Error('La incidencia no existe.')
-        if (isOnline) {
-          const incident = mapIncidentFromApi(
-            await incidentsApi.updateStatus(id, { status, version: current.version }),
-            current
-          )
-          set((state) => {
-            const incidencias = replaceIncident(state.incidencias, incident)
-            return { incidencias, stats: deriveIncidentStats(incidencias), error: null }
-          })
-          return incident
-        }
-
-        const updatedAt = now()
-        const incident = {
-          ...current,
-          status,
-          version: current.version + 1,
-          updatedAt,
-          activity: [
-            {
-              id: genId('activity'),
-              type: 'status_changed',
-              authorId: null,
-              author,
-              message: `Estado cambiado a ${statusMeta(status).name.toLowerCase()}.`,
-              createdAt: updatedAt,
-            },
-            ...current.activity,
-          ],
-        }
+        const incident = mapIncidentFromApi(
+          await incidentsApi.updateStatus(id, { status, version: current.version }),
+          current
+        )
         set((state) => {
           const incidencias = replaceIncident(state.incidencias, incident)
-          return { incidencias, stats: deriveIncidentStats(incidencias) }
+          return { incidencias, stats: deriveIncidentStats(incidencias), error: null }
         })
         return incident
       },
@@ -381,117 +231,84 @@ export const useIncidenciasStore = create(
       addComment: async (id, author, message, { isOnline = false } = {}) => {
         const normalized = message?.trim()
         if (!normalized) return null
-        if (isOnline && !get().apiContext.hydrated) await get().hydrateFromApi()
+        if (!isOnline) throw new Error(API_UNAVAILABLE)
+        if (!get().apiContext.hydrated) await get().hydrateFromApi()
         const current = get().incidencias.find((incident) => incident.id === id)
         if (!current) throw new Error('La incidencia no existe.')
-        if (isOnline) {
-          const updatedAt = now()
-          const optimisticActivity = {
-            id: genId('activity'),
-            type: 'comment',
-            authorId: null,
-            author,
-            message: normalized,
-            createdAt: updatedAt,
-            pending: true,
-          }
-          const optimistic = {
-            ...current,
-            activity: [optimisticActivity, ...current.activity],
-          }
-          set((state) => ({
-            incidencias: replaceIncident(state.incidencias, optimistic),
-          }))
-          try {
-            const incident = mapIncidentFromApi(
-              await incidentsApi.addComment(id, {
-                message: normalized,
-                version: current.version,
-              }),
-              current
-            )
-            set((state) => ({
-              incidencias: replaceIncident(state.incidencias, incident),
-              error: null,
-            }))
-            return incident
-          } catch (error) {
-            set((state) => ({
-              incidencias: replaceIncident(state.incidencias, current),
-            }))
-            throw error
-          }
-        }
-
         const updatedAt = now()
-        const incident = {
-          ...current,
-          version: current.version + 1,
-          updatedAt,
-          activity: [
-            {
-              id: genId('activity'),
-              type: 'comment',
-              authorId: null,
-              author,
-              message: normalized,
-              createdAt: updatedAt,
-            },
-            ...current.activity,
-          ],
+        const optimisticActivity = {
+          id: genId('activity'),
+          type: 'comment',
+          authorId: null,
+          author,
+          message: normalized,
+          createdAt: updatedAt,
+          pending: true,
         }
-        set((state) => ({ incidencias: replaceIncident(state.incidencias, incident) }))
-        return incident
+        const optimistic = {
+          ...current,
+          activity: [optimisticActivity, ...current.activity],
+        }
+        set((state) => ({
+          incidencias: replaceIncident(state.incidencias, optimistic),
+        }))
+        try {
+          const incident = mapIncidentFromApi(
+            await incidentsApi.addComment(id, {
+              message: normalized,
+              version: current.version,
+            }),
+            current
+          )
+          set((state) => ({
+            incidencias: replaceIncident(state.incidencias, incident),
+            error: null,
+          }))
+          return incident
+        } catch (error) {
+          set((state) => ({
+            incidencias: replaceIncident(state.incidencias, current),
+          }))
+          throw error
+        }
       },
 
       addImages: async (id, files, { isOnline = false } = {}) => {
         if (!files?.length) return null
-        if (isOnline && !get().apiContext.hydrated) await get().hydrateFromApi()
+        if (!isOnline) throw new Error(API_UNAVAILABLE)
+        if (!get().apiContext.hydrated) await get().hydrateFromApi()
         const current = get().incidencias.find((incident) => incident.id === id)
         if (!current) throw new Error('La incidencia no existe.')
-        if (isOnline) {
-          const optimisticAttachments = files.map((file, index) => ({
-            id: `pending-${genId('att')}-${index}`,
-            name: file.name || `Evidencia ${index + 1}`,
-            contentType: file.type || 'image/jpeg',
-            previewObjectUrl: createPreviewObjectUrl(file),
-            pending: true,
-          }))
-          const optimistic = {
-            ...current,
-            attachments: [...(current.attachments || []), ...optimisticAttachments],
-            images: [
-              ...(current.images || []),
-              ...optimisticAttachments.map((attachment) => attachment.previewObjectUrl).filter(Boolean),
-            ],
-          }
-          set((state) => ({ incidencias: replaceIncident(state.incidencias, optimistic) }))
-          try {
-            const response = await incidentsApi.uploadAttachments(id, current.version, files)
-            const incident = await loadMissingPreviews(mapIncidentFromApi(response, current))
-            optimisticAttachments.forEach((attachment) => revokeObjectUrl(attachment.previewObjectUrl))
-            set((state) => ({
-              incidencias: replaceIncident(state.incidencias, incident),
-              error: null,
-            }))
-            return incident
-          } catch (error) {
-            releaseIncidentPreviews(optimistic)
-            set((state) => ({ incidencias: replaceIncident(state.incidencias, current) }))
-            throw error
-          }
-        }
-
-        const images = await Promise.all(files.map(fileToDataUrl))
-        const updatedAt = now()
-        const incident = {
+        const optimisticAttachments = files.map((file, index) => ({
+          id: `pending-${genId('att')}-${index}`,
+          name: file.name || `Evidencia ${index + 1}`,
+          contentType: file.type || 'image/jpeg',
+          previewObjectUrl: createPreviewObjectUrl(file),
+          pending: true,
+        }))
+        const optimistic = {
           ...current,
-          images: [...current.images, ...images],
-          version: current.version + 1,
-          updatedAt,
+          attachments: [...(current.attachments || []), ...optimisticAttachments],
+          images: [
+            ...(current.images || []),
+            ...optimisticAttachments.map((attachment) => attachment.previewObjectUrl).filter(Boolean),
+          ],
         }
-        set((state) => ({ incidencias: replaceIncident(state.incidencias, incident) }))
-        return incident
+        set((state) => ({ incidencias: replaceIncident(state.incidencias, optimistic) }))
+        try {
+          const response = await incidentsApi.uploadAttachments(id, current.version, files)
+          const incident = await loadMissingPreviews(mapIncidentFromApi(response, current))
+          optimisticAttachments.forEach((attachment) => revokeObjectUrl(attachment.previewObjectUrl))
+          set((state) => ({
+            incidencias: replaceIncident(state.incidencias, incident),
+            error: null,
+          }))
+          return incident
+        } catch (error) {
+          releaseIncidentPreviews(optimistic)
+          set((state) => ({ incidencias: replaceIncident(state.incidencias, current) }))
+          throw error
+        }
       },
 
       getStats: () => get().stats || deriveIncidentStats(get().incidencias),
@@ -500,9 +317,9 @@ export const useIncidenciasStore = create(
         storeGeneration += 1
         releaseAllPreviews()
         set({
-          incidencias: SEED,
-          selectedId: SEED[0]?.id || null,
-          stats: deriveIncidentStats(SEED),
+          incidencias: [],
+          selectedId: null,
+          stats: deriveIncidentStats([]),
           apiContext: { hydrated: false },
           hydrating: false,
           error: null,
@@ -512,6 +329,7 @@ export const useIncidenciasStore = create(
     {
       name: 'diedo-incidencias',
       storage: ephemeralJsonStorage,
+      version: 2,
       partialize: (state) => ({
         incidencias: state.incidencias,
         selectedId: state.selectedId,

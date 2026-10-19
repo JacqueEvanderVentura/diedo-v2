@@ -90,6 +90,11 @@ const mutationAttemptKeys = new Map()
 const detailRequests = new Map()
 
 const isOnlineMode = () => useSessionStore.getState().status === 'online'
+const API_UNAVAILABLE = 'La API no está disponible.'
+
+function assertOnline() {
+  if (!isOnlineMode()) throw new Error(API_UNAVAILABLE)
+}
 
 function serializableAttemptPayload(value) {
   return JSON.stringify(value, (_key, current) => {
@@ -116,93 +121,7 @@ function mutationAttempt(operation, payload) {
 // Payment methods that DON'T settle immediately -> generate an account receivable (CxC).
 export const RECEIVABLE_METHODS = ['transferencia', 'link', 'cxc']
 
-const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString()
-const minsAgo = (n) => new Date(Date.now() - n * 60000).toISOString()
-
-const SEED_SHIFT_SALES = [
-  { id: 'shift-s1', total: 3600, method: 'tarjeta', customer: { id: 'c6', name: 'Airenys Mateo Cedano' }, reference: 'APR-4410', items: [{ name: 'Paq. sesiones', qty: 1, price: 3600 }], createdAt: minsAgo(32) },
-  { id: 'shift-s2', total: 3600, method: 'tarjeta', customer: { id: 'c7', name: 'Onna Pacheco' }, reference: 'APR-4408', items: [{ name: 'Paq. sesiones', qty: 1, price: 3600 }], createdAt: minsAgo(31) },
-  { id: 'shift-s3', total: 3600, method: 'tarjeta', customer: { id: 'c8', name: 'Propina Celimar' }, reference: 'APR-4405', items: [{ name: 'Propina', qty: 1, price: 3600 }], createdAt: minsAgo(27) },
-  { id: 'shift-s4', total: 3600, method: 'tarjeta', customer: { id: 'c8', name: 'Propina Celimar' }, reference: 'APR-4402', items: [{ name: 'Propina', qty: 1, price: 3600 }], createdAt: minsAgo(23) },
-].map((sale) => ({ ...sale, status: sale.status || 'completed', recognizedAt: null }))
-
-const SEED_SHIFT_EXPENSES = [
-  { id: 'exp-shift-1', concept: 'Gift Card', amount: 250, createdAt: minsAgo(7) },
-  { id: 'exp-shift-2', concept: 'Propina a Celimar', amount: 200, createdAt: minsAgo(22) },
-  { id: 'exp-shift-3', concept: 'Propina a celimar', amount: 200, createdAt: minsAgo(23) },
-]
-
-const daysFromNow = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10)
-
-const SEED_RECEIVABLES = [
-  { id: 'cxc-seed-1', saleId: 'sale-seed-1', branchId: 'charm-dn', customer: { id: 'c1', name: 'María Fernández' }, amount: 5500, method: 'transferencia', reference: 'TRF-8842', status: 'pending', createdAt: daysAgo(1), dueDate: daysFromNow(14), notes: '', payments: [], items: [{ name: 'Paq. 12 sesiones Brasileño (íntimo)', qty: 1, price: 5500 }] },
-  { id: 'cxc-seed-2', saleId: 'sale-seed-2', branchId: 'charm-dn', customer: { id: 'c2', name: 'José Ramírez' }, amount: 12000, method: 'link', reference: 'LNK-3391', status: 'pending', createdAt: daysAgo(0), dueDate: daysFromNow(7), notes: '', payments: [], items: [{ name: '50% Paquete de 2 Cuerpos Completos', qty: 1, price: 12000 }] },
-  {
-    id: 'cxc-seed-partial',
-    saleId: 'sale-seed-partial',
-    branchId: 'charm-este',
-    customer: { id: 'c6', name: 'Cheisy Marte Rochttis' },
-    amount: 7000,
-    method: 'cxc',
-    reference: 'CXC-0142',
-    status: 'partial',
-    createdAt: daysAgo(5),
-    dueDate: daysFromNow(3),
-    notes: 'Plan de 3 abonos acordado con cliente.',
-    payments: [
-      { id: 'pay-p1', amount: 2500, method: 'transferencia', reference: 'TRF-2201', note: 'Primer abono', createdAt: daysAgo(4) },
-      { id: 'pay-p2', amount: 1500, method: 'efectivo', reference: null, note: 'Segundo abono en caja', createdAt: daysAgo(2) },
-    ],
-    items: [{ name: 'Paquete corporal premium', qty: 1, price: 7000 }],
-  },
-  {
-    id: 'cxc-seed-3',
-    saleId: 'sale-seed-3',
-    branchId: 'charm-santiago',
-    customer: { id: 'c3', name: 'Ana Cristina Vargas' },
-    amount: 700,
-    method: 'cxc',
-    reference: 'CXC-0007',
-    status: 'paid',
-    createdAt: daysAgo(2),
-    dueDate: daysAgo(1),
-    notes: '',
-    paidAt: daysAgo(1),
-    paidMethod: 'efectivo',
-    payments: [{ id: 'pay-full', amount: 700, method: 'efectivo', reference: null, note: 'Pago completo', createdAt: daysAgo(1) }],
-    items: [{ name: '1 Sesión rostro', qty: 1, price: 700 }],
-  },
-].map(normalizeReceivable)
-
-const SEED_OPEN_QUOTES = [
-  {
-    id: 'quote-seed-1',
-    customer: { id: 'c1', name: 'María Fernández', phone: '809-555-0142' },
-    items: [{ id: 'svc-axilas', name: '1 sesión axilas', price: 900, listPrice: 900, sku: '8', qty: 2 }],
-    discountMode: 'pct',
-    discountValue: 0,
-    paymentMethod: 'efectivo',
-    paymentReference: '',
-    documentKind: 'quote',
-    createdAt: daysAgo(0),
-    updatedAt: daysAgo(0),
-  },
-]
-
-// Historial de ventas mock
-const SEED_SALES = [
-  { id: 'sale-h1', branchId: 'charm-dn', total: 900, method: 'efectivo', soldBy: 'Leonedis Hamburgo', customer: { id: 'c1', name: 'María Fernández' }, reference: null, items: [{ name: '1 sesión axilas', qty: 1, price: 720, listPrice: 900 }], createdAt: daysAgo(1) },
-  { id: 'sale-h2', branchId: 'charm-dn', total: 5000, method: 'tarjeta', soldBy: 'Ana Vendedora', customer: { id: 'c3', name: 'Ana Cristina Vargas' }, reference: 'APR-2231', items: [{ name: 'Paq. 12 sesiones Rostro completo', qty: 1, price: 5000, listPrice: 5000 }], createdAt: daysAgo(2) },
-  { id: 'sale-h3', branchId: 'charm-este', total: 1780, method: 'efectivo', soldBy: 'Ana Vendedora', customer: { id: 'c5', name: 'Carla Jiménez' }, reference: null, items: [{ name: 'Red Bull', qty: 2, price: 180, listPrice: 180 }, { name: '1 sesión axilas', qty: 1, price: 900, listPrice: 900 }, { name: '1 Sesión rostro', qty: 1, price: 700, listPrice: 700 }], createdAt: daysAgo(3) },
-  { id: 'sale-h4', branchId: 'charm-dn', total: 12000, method: 'link', soldBy: 'Carlos Cajero', customer: { id: 'c2', name: 'José Ramírez' }, reference: 'LNK-3391', items: [{ name: '50% Paquete de 2 Cuerpos Completos', qty: 1, price: 12000, listPrice: 12000 }], createdAt: daysAgo(4) },
-  { id: 'sale-h5', branchId: 'charm-santiago', total: 1200, method: 'tarjeta', soldBy: 'María Recepción', customer: { id: 'c4', name: 'Luis Alberto Peña' }, reference: 'APR-9910', items: [{ name: '1 sesión piernas completas', qty: 1, price: 1200, listPrice: 1200 }], createdAt: daysAgo(5) },
-  { id: 'sale-h6', branchId: 'charm-dn', total: 2500, method: 'efectivo', soldBy: 'Leonedis Hamburgo', customer: { id: 'c3', name: 'Ana Cristina Vargas' }, reference: null, items: [{ name: 'Facial hidratante', qty: 1, price: 2000, listPrice: 2500 }], createdAt: daysAgo(6) },
-  { id: 'sale-h7', branchId: 'charm-este', total: 900, method: 'efectivo', soldBy: 'Carlos Cajero', customer: { id: 'c1', name: 'María Fernández' }, reference: null, items: [{ name: '1 sesión axilas', qty: 1, price: 900, listPrice: 900 }], createdAt: daysAgo(9) },
-].map((sale) => ({
-  ...sale,
-  status: sale.status || 'completed',
-  recognizedAt: sale.createdAt,
-}))
+const DEFAULT_POS_BRANCH = 'charm-dn'
 
 const EMPTY_ONLINE_REGISTER = Object.freeze({
   id: null,
@@ -232,31 +151,6 @@ function emptyOnlineData(branchId) {
     registerSummary: null,
     heldCarts: [],
     openQuotes: [],
-    lastCloseSummary: null,
-    pagination: emptyPagination(),
-  }
-}
-
-function demoServerData() {
-  return {
-    posCatalog: [],
-    register: { open: true, openedAt: minsAgo(90), openingCash: 2000, closedAt: null, branchId: 'charm-dn' },
-    cashSales: 0,
-    shiftSales: structuredClone(SEED_SHIFT_SALES),
-    shiftIncomes: [],
-    expenses: structuredClone(SEED_SHIFT_EXPENSES),
-    registerHistory: [],
-    sales: structuredClone(SEED_SALES),
-    receivables: structuredClone(SEED_RECEIVABLES),
-    receivableSummary: null,
-    quoteSummary: null,
-    registerSummary: null,
-    heldCarts: SEED_OPEN_QUOTES.map((quote) => ({
-      ...structuredClone(quote),
-      heldKind: 'quote',
-      label: `${quote.customer?.name || 'Sin cliente'} · Cotización`,
-    })),
-    openQuotes: structuredClone(SEED_OPEN_QUOTES),
     lastCloseSummary: null,
     pagination: emptyPagination(),
   }
@@ -496,8 +390,8 @@ export const usePosStore = create(
   persist(
     (set, get) => ({
       // ---- cart ----
-      branchId: 'charm-dn',
-      cajaBranchId: 'charm-dn',
+      branchId: DEFAULT_POS_BRANCH,
+      cajaBranchId: DEFAULT_POS_BRANCH,
       registerByBranch: {},
       cajaHydrating: false,
       cxcHydrating: false,
@@ -517,31 +411,11 @@ export const usePosStore = create(
       documentKind: 'invoice',
       isFinalized: false,
       activeQuoteId: null,
-      heldCarts: SEED_OPEN_QUOTES.map((q) => ({
-        ...q,
-        heldKind: 'quote',
-        label: `${q.customer?.name || 'Sin cliente'} · Cotización`,
-      })),
-      openQuotes: SEED_OPEN_QUOTES,
 
-      // ---- caja (register) ----
-      register: { open: true, openedAt: minsAgo(90), openingCash: 2000, closedAt: null, branchId: 'charm-dn' },
-      cashSales: 0,
-      shiftSales: SEED_SHIFT_SALES,
-      shiftIncomes: [],
-      expenses: SEED_SHIFT_EXPENSES,
-      registerHistory: [],
-      sales: SEED_SALES,
-      receivables: SEED_RECEIVABLES,
-      receivableSummary: null,
-      quoteSummary: null,
-      registerSummary: null,
-      lastCloseSummary: null,
-      pagination: emptyPagination(),
+      ...emptyOnlineData(DEFAULT_POS_BRANCH),
 
       // ---- online synchronization ----
-      posCatalog: [],
-      apiContext: { hydrated: false, mode: 'demo', branchId: null, lastSyncedAt: null },
+      apiContext: { hydrated: false, mode: 'offline', branchId: null, lastSyncedAt: null },
       hydrating: false,
       mutating: null,
       error: null,
@@ -851,15 +725,17 @@ export const usePosStore = create(
         detailRequests.clear()
         useConfigStore.getState().resetPaymentMethods()
         set({
-          branchId: 'charm-dn',
-          cajaBranchId: 'charm-dn',
+          branchId: DEFAULT_POS_BRANCH,
+          cajaBranchId: DEFAULT_POS_BRANCH,
           registerByBranch: {},
           cajaHydrating: false,
           cxcHydrating: false,
           cxcWorkspaceScope: false,
           cxcWorkspaceHydrated: false,
-          ...demoServerData(),
-          apiContext: { hydrated: false, mode: 'demo', branchId: null, lastSyncedAt: null },
+          customer: DEFAULT_CUSTOMER,
+          ...EMPTY_CART_PATCH,
+          ...emptyOnlineData(DEFAULT_POS_BRANCH),
+          apiContext: { hydrated: false, mode: 'offline', branchId: null, lastSyncedAt: null },
           hydrating: false,
           mutating: null,
           error: null,
@@ -874,18 +750,18 @@ export const usePosStore = create(
         set({ cxcHydrating: true, error: null })
         try {
           if (!isOnlineMode()) {
-            const demo = demoServerData()
             set({
-              receivables: demo.receivables,
-              openQuotes: demo.openQuotes,
-              heldCarts: demo.heldCarts,
+              receivables: [],
+              openQuotes: [],
+              heldCarts: [],
               receivableSummary: null,
               quoteSummary: null,
               cxcWorkspaceScope: true,
               cxcWorkspaceHydrated: true,
               cxcHydrating: false,
+              error: 'La API no está disponible.',
             })
-            return demo.receivables
+            return []
           }
 
           const receivablesPage = await fetchAllPaginated(
@@ -1239,6 +1115,7 @@ export const usePosStore = create(
       retainCart: () => {
         const s = get()
         if (!s.items.length) return false
+        assertOnline()
         if (isOnlineMode()) {
           const currentQuote = s.activeQuoteId
             ? s.heldCarts.find((item) => item.id === s.activeQuoteId)
@@ -1369,6 +1246,7 @@ export const usePosStore = create(
       saveOpenQuote: () => {
         const s = get()
         if (!s.items.length || s.isFinalized) return false
+        assertOnline()
         if (isOnlineMode()) {
           const currentQuote = s.activeQuoteId
             ? s.heldCarts.find((item) => item.id === s.activeQuoteId)
@@ -1459,7 +1337,8 @@ export const usePosStore = create(
       updateQuote: (id, patch) => {
         const quote = get().heldCarts.find((item) => item.id === id)
         if (!quote) return false
-        if (!isOnlineMode() || !quote.apiSynced) {
+        assertOnline()
+        if (!quote.apiSynced) {
           set((state) => ({
             heldCarts: state.heldCarts.map((item) => item.id === id ? { ...item, ...patch } : item),
             openQuotes: state.openQuotes.map((item) => item.id === id ? { ...item, ...patch } : item),
@@ -1670,66 +1549,43 @@ export const usePosStore = create(
 
       // ---- caja actions ----
       openRegister: (openingCash) => {
+        assertOnline()
         const branchId = get().cajaBranchId || get().branchId
-        if (isOnlineMode()) {
-          const payload = registerOpenToApiPayload({
-            branchId,
-            openingCash,
-          })
-          return runOnlineMutation({
-            set,
-            get,
-            operation: `register:open:${branchId}`,
-            payload,
-            refreshScope: 'caja',
-            request: (idempotencyKey) => posApi.openRegister(payload, { idempotencyKey }),
-            apply: (response) => {
-              const register = mapRegisterMutationResponse(response, branchId)
-              const snapshot = {
-                register,
-                registerSummary: register.summary || null,
-                cashSales: register.summary?.cashSales || 0,
-                shiftSales: [],
-                shiftIncomes: [],
-                expenses: [],
-                lastCloseSummary: null,
-                pagination: emptyPagination(),
-              }
-              set((state) => ({
-                ...snapshot,
-                registerByBranch: {
-                  ...state.registerByBranch,
-                  [branchId]: pickRegisterSnapshot({ ...state, ...snapshot }, branchId),
-                },
-              }))
-            },
-          }).then((response) => {
-            get().hydrateRegisterHistory({ force: true }).catch(() => null)
-            return response
-          })
-        }
-        const snapshot = {
-          register: {
-            open: true,
-            openedAt: now(),
-            openingCash: Number(openingCash) || 0,
-            closedAt: null,
-            branchId,
+        const payload = registerOpenToApiPayload({
+          branchId,
+          openingCash,
+        })
+        return runOnlineMutation({
+          set,
+          get,
+          operation: `register:open:${branchId}`,
+          payload,
+          refreshScope: 'caja',
+          request: (idempotencyKey) => posApi.openRegister(payload, { idempotencyKey }),
+          apply: (response) => {
+            const register = mapRegisterMutationResponse(response, branchId)
+            const snapshot = {
+              register,
+              registerSummary: register.summary || null,
+              cashSales: register.summary?.cashSales || 0,
+              shiftSales: [],
+              shiftIncomes: [],
+              expenses: [],
+              lastCloseSummary: null,
+              pagination: emptyPagination(),
+            }
+            set((state) => ({
+              ...snapshot,
+              registerByBranch: {
+                ...state.registerByBranch,
+                [branchId]: pickRegisterSnapshot({ ...state, ...snapshot }, branchId),
+              },
+            }))
           },
-          cashSales: 0,
-          shiftSales: [],
-          shiftIncomes: [],
-          expenses: [],
-          lastCloseSummary: null,
-        }
-        set((state) => ({
-          ...snapshot,
-          registerByBranch: {
-            ...state.registerByBranch,
-            [branchId]: pickRegisterSnapshot({ ...state, ...snapshot }, branchId),
-          },
-        }))
-        return get().register
+        }).then((response) => {
+          get().hydrateRegisterHistory({ force: true }).catch(() => null)
+          return response
+        })
       },
       closeRegister: (actualCash) => {
         const countedCash = Number(actualCash)
@@ -1742,99 +1598,49 @@ export const usePosStore = create(
         ) {
           return Promise.reject(new Error('Ingresa el efectivo contado para cerrar la caja.'))
         }
-        if (isOnlineMode()) {
-          const register = get().register
-          if (!register?.id) return Promise.reject(new Error('No hay una caja sincronizada para cerrar.'))
-          const branchId = get().cajaBranchId || get().branchId
-          const mapCloseSummary = (response) => mapRegisterHistoryMutationResponse(
-            response,
-            branchId
-          )
-          const payload = registerCloseToApiPayload(register, countedCash)
-          return runOnlineMutation({
-            set,
-            get,
-            operation: `register:close:${register.id}`,
-            payload,
-            refreshScope: 'caja',
-            request: (idempotencyKey) => posApi.closeRegister(register.id, payload, { idempotencyKey }),
-            apply: (response) => {
-              const closed = mapRegisterMutationResponse(response, branchId)
-              const summary = mapCloseSummary(response)
-              const snapshot = {
-                register: { ...closed, open: false },
-                registerSummary: closed.summary || null,
-                lastCloseSummary: summary,
-              }
-              set((state) => ({
-                ...snapshot,
-                registerByBranch: {
-                  ...state.registerByBranch,
-                  [branchId]: pickRegisterSnapshot({ ...state, ...snapshot }, branchId),
-                },
-              }))
-            },
-          }).then((response) => {
-            const summary = mapCloseSummary(response)
-            set({ lastCloseSummary: summary })
-            get().hydrateRegisterHistory({ force: true }).catch(() => null)
-            return response
-          })
+        if (!isOnlineMode()) {
+          return Promise.reject(new Error(API_UNAVAILABLE))
         }
-        set((s) => {
-          const closedAt = now()
-          const activeSales = s.shiftSales.filter((sale) => sale.status !== 'voided')
-          const recognizedShiftSales = s.shiftSales.map((sale) => ({
-            ...sale,
-            recognizedAt: sale.recognizedAt || closedAt,
-          }))
-          const cashExpenses = s.expenses.reduce((a, e) => a + e.amount, 0)
-          const cashIncomes = s.shiftIncomes.reduce((a, i) => a + i.amount, 0)
-          const expected = s.register.openingCash + s.cashSales + cashIncomes - cashExpenses
-          const totalSales = activeSales.reduce((a, sale) => a + sale.total, 0)
-          const branchId = s.cajaBranchId || s.branchId
-          const summary = {
-            openingCash: s.register.openingCash,
-            branchId,
-            cashSales: s.cashSales,
-            cashIncomes,
-            expenses: cashExpenses,
-            totalSales,
-            salesCount: activeSales.length,
-            expected,
-            actual: countedCash,
-            difference: countedCash - expected,
-            closedAt,
-          }
-          const snapshot = {
-            register: { ...s.register, open: false, closedAt, branchId },
-            shiftSales: recognizedShiftSales,
-            lastCloseSummary: summary,
-          }
-          return {
-            ...snapshot,
-            sales: recognizedShiftSales.reduce(
-              (items, sale) => replaceById(items, sale),
-              s.sales
-            ),
-            registerHistory: [
-              {
-                id: genId('close'),
-                openedAt: s.register.openedAt,
-                userName: 'Leonedis Hamburgo',
-                ...summary,
+        const register = get().register
+        if (!register?.id) return Promise.reject(new Error('No hay una caja sincronizada para cerrar.'))
+        const branchId = get().cajaBranchId || get().branchId
+        const mapCloseSummary = (response) => mapRegisterHistoryMutationResponse(
+          response,
+          branchId
+        )
+        const payload = registerCloseToApiPayload(register, countedCash)
+        return runOnlineMutation({
+          set,
+          get,
+          operation: `register:close:${register.id}`,
+          payload,
+          refreshScope: 'caja',
+          request: (idempotencyKey) => posApi.closeRegister(register.id, payload, { idempotencyKey }),
+          apply: (response) => {
+            const closed = mapRegisterMutationResponse(response, branchId)
+            const summary = mapCloseSummary(response)
+            const snapshot = {
+              register: { ...closed, open: false },
+              registerSummary: closed.summary || null,
+              lastCloseSummary: summary,
+            }
+            set((state) => ({
+              ...snapshot,
+              registerByBranch: {
+                ...state.registerByBranch,
+                [branchId]: pickRegisterSnapshot({ ...state, ...snapshot }, branchId),
               },
-              ...s.registerHistory,
-            ],
-            registerByBranch: {
-              ...s.registerByBranch,
-              [branchId]: pickRegisterSnapshot({ ...s, ...snapshot }, branchId),
-            },
-          }
+            }))
+          },
+        }).then((response) => {
+          const summary = mapCloseSummary(response)
+          set({ lastCloseSummary: summary })
+          get().hydrateRegisterHistory({ force: true }).catch(() => null)
+          return response
         })
-        return get().lastCloseSummary
       },
       addIncome: ({ concept, amount, method, reference }) => {
+        assertOnline()
         if (isOnlineMode()) {
           const register = get().register
           if (!register?.id) return Promise.reject(new Error('Abre la caja antes de registrar movimientos.'))
@@ -1867,6 +1673,7 @@ export const usePosStore = create(
         return true
       },
       addExpense: ({ concept, amount, items, method, reference }) => {
+        assertOnline()
         if (isOnlineMode()) {
           const register = get().register
           if (!register?.id) return Promise.reject(new Error('Abre la caja antes de registrar movimientos.'))
@@ -1900,6 +1707,7 @@ export const usePosStore = create(
       },
 
       recordSale: ({ total, method, customer, reference, items, subtotal, discountAmt, discountPct, taxPct, taxAmt }) => {
+        assertOnline()
         if (isOnlineMode()) {
           const data = { total, method, customer, reference, items, subtotal, discountAmt, discountPct, taxPct, taxAmt }
           const state = {
@@ -1984,7 +1792,8 @@ export const usePosStore = create(
         const sale = get().sales.find((item) => item.id === id)
           || get().shiftSales.find((item) => item.id === id)
         if (!sale) return false
-        if (!isOnlineMode() || !sale.apiSynced) {
+        assertOnline()
+        if (!sale.apiSynced) {
           const voidedAt = now()
           set((state) => ({
             sales: state.sales.map((item) => item.id === id
@@ -2080,6 +1889,7 @@ export const usePosStore = create(
       updateReceivable: (id, data) => {
         const current = get().receivables.find((receivable) => receivable.id === id)
         if (!current) return false
+        assertOnline()
         if (isOnlineMode() && current.apiSynced) {
           const payload = receivablePatchToApiPayload(current, data)
           return runOnlineMutation({
@@ -2108,7 +1918,7 @@ export const usePosStore = create(
       },
 
       syncAppointmentReceivable: (appointment) => {
-        if (isOnlineMode()) return
+        if (!isOnlineMode()) return
         if (!appointment?.id) return
         const shouldHave = appointment.pendingPayment && Number(appointment.pendingAmount) > 0
         const receivableId = agendaReceivableId(appointment.id)
@@ -2175,6 +1985,7 @@ export const usePosStore = create(
       addReceivablePayment: (id, { amount, method = 'efectivo', reference, note, proof }) => {
         const paymentAmount = Number(amount) || 0
         if (paymentAmount <= 0) return
+        assertOnline()
         const receivable = get().receivables.find((item) => item.id === id)
         if (isOnlineMode() && receivable?.apiSynced) {
           const data = { amount: paymentAmount, method, reference, note, proof }
@@ -2246,11 +2057,7 @@ export const usePosStore = create(
           reference: extra.reference || null,
         })
         if (extra.proof && !isOnlineMode()) {
-          set((s) => ({
-            receivables: s.receivables.map((x) =>
-              x.id === id ? { ...x, proof: extra.proof, reference: extra.reference || x.reference } : x
-            ),
-          }))
+          throw new Error(API_UNAVAILABLE)
         }
         return result
       },
@@ -2378,6 +2185,7 @@ export const usePosStore = create(
       },
 
       attachReceivableProof: (id, payload) => {
+        assertOnline()
         if (isOnlineMode()) {
           const receivable = get().receivables.find((item) => item.id === id)
           const file = payload?.proof
@@ -2456,7 +2264,8 @@ export const usePosStore = create(
       voidReceivable: (id, reason) => {
         const receivable = get().receivables.find((item) => item.id === id)
         if (!receivable) return false
-        if (!isOnlineMode() || !receivable.apiSynced) {
+        assertOnline()
+        if (!receivable.apiSynced) {
           set((state) => ({ receivables: state.receivables.filter((item) => item.id !== id) }))
           return true
         }
@@ -2484,15 +2293,7 @@ export const usePosStore = create(
           if (currentPayment) break
         }
         if (!currentPayment) return false
-        if (!isOnlineMode()) {
-          set((state) => ({
-            receivables: state.receivables.map((receivable) => normalizeReceivable({
-              ...receivable,
-              payments: (receivable.payments || []).filter((payment) => payment.id !== paymentId),
-            })),
-          }))
-          return true
-        }
+        assertOnline()
         const payload = voidToApiPayload(currentPayment, reason || 'Pago reversado desde Terminal POS')
         return runOnlineMutation({
           set,
@@ -2592,68 +2393,52 @@ export const usePosStore = create(
     {
       name: 'diedo-pos',
       storage: ephemeralJsonStorage,
-      version: 8,
+      version: 9,
       migrate: (persisted) => persisted ?? {},
       merge: (persisted, current) => {
         const state = { ...current, ...(persisted || {}) }
-        const branchFallback = ['charm-dn', 'charm-dn', 'charm-este', 'charm-dn', 'charm-santiago', 'charm-dn', 'charm-este']
         if (Array.isArray(state.items)) {
           state.items = state.items.map((i) => ({
             ...i,
             listPrice: i.listPrice ?? i.price,
           }))
         }
-        if (!Array.isArray(state.heldCarts)) state.heldCarts = []
-        if (!Array.isArray(state.openQuotes) || state.openQuotes.length === 0) {
-          state.openQuotes = SEED_OPEN_QUOTES
-        }
-        if (Array.isArray(state.openQuotes) && state.openQuotes.length > 0) {
-          const heldIds = new Set(state.heldCarts.map((h) => h.id))
-          const backfill = state.openQuotes
-            .filter((q) => !heldIds.has(q.id))
-            .map((q) => ({
-              ...q,
-              heldKind: 'quote',
-              label: `${q.customer?.name || 'Sin cliente'} · Cotización`,
-            }))
-          if (backfill.length) state.heldCarts = [...backfill, ...state.heldCarts]
-        }
         if (!state.documentKind) state.documentKind = 'invoice'
         if (state.isFinalized == null) state.isFinalized = false
         if (state.activeQuoteId == null) state.activeQuoteId = null
-        state.apiContext = { hydrated: false, mode: 'demo', branchId: null, lastSyncedAt: null }
+        const empty = emptyOnlineData(state.branchId || DEFAULT_POS_BRANCH)
+        state.heldCarts = Array.isArray(state.heldCarts) ? state.heldCarts : empty.heldCarts
+        state.openQuotes = Array.isArray(state.openQuotes) ? state.openQuotes : empty.openQuotes
+        state.sales = Array.isArray(state.sales)
+          ? state.sales.map((s) => ({
+              ...s,
+              items: (s.items || []).map((item) => ({
+                ...item,
+                listPrice: item.listPrice ?? item.price,
+              })),
+            }))
+          : empty.sales
+        state.shiftSales = Array.isArray(state.shiftSales) ? state.shiftSales : empty.shiftSales
+        state.shiftIncomes = Array.isArray(state.shiftIncomes) ? state.shiftIncomes : empty.shiftIncomes
+        state.registerHistory = Array.isArray(state.registerHistory) ? state.registerHistory : empty.registerHistory
+        state.receivables = Array.isArray(state.receivables)
+          ? state.receivables.map((r) => {
+              if (r.payments?.length) return normalizeReceivable(r)
+              if (r.status === 'paid' && r.paidAt) {
+                return normalizeReceivable({
+                  ...r,
+                  payments: [{ id: 'pay-migrated', amount: r.amount, method: r.paidMethod || 'efectivo', createdAt: r.paidAt }],
+                })
+              }
+              return normalizeReceivable({ ...r, payments: [] })
+            })
+          : empty.receivables
+        state.expenses = Array.isArray(state.expenses) ? state.expenses : empty.expenses
+        state.register = state.register || empty.register
+        state.apiContext = { hydrated: false, mode: 'offline', branchId: null, lastSyncedAt: null }
         state.hydrating = false
         state.mutating = null
         state.error = null
-        if (!Array.isArray(state.sales) || state.sales.length === 0) {
-          state.sales = SEED_SALES
-        } else {
-          state.sales = state.sales.map((s, i) => ({
-            ...s,
-            branchId: s.branchId || branchFallback[i % branchFallback.length] || 'charm-dn',
-            items: (s.items || []).map((item) => ({
-              ...item,
-              listPrice: item.listPrice ?? item.price,
-            })),
-          }))
-        }
-        if (!Array.isArray(state.shiftSales)) state.shiftSales = state.register?.open ? SEED_SHIFT_SALES : []
-        if (!Array.isArray(state.shiftIncomes)) state.shiftIncomes = []
-        if (!Array.isArray(state.registerHistory)) state.registerHistory = []
-        if (Array.isArray(state.receivables)) {
-          state.receivables = state.receivables.map((r) => {
-            if (r.payments?.length) return normalizeReceivable(r)
-            if (r.status === 'paid' && r.paidAt) {
-              return normalizeReceivable({
-                ...r,
-                payments: [{ id: 'pay-migrated', amount: r.amount, method: r.paidMethod || 'efectivo', createdAt: r.paidAt }],
-              })
-            }
-            return normalizeReceivable({ ...r, payments: [] })
-          })
-        } else {
-          state.receivables = SEED_RECEIVABLES
-        }
         return state
       },
       partialize: (s) => ({
@@ -2668,7 +2453,7 @@ export const usePosStore = create(
         paymentReference: s.paymentReference,
         isExpense: s.isExpense,
         activeQuoteId: s.activeQuoteId,
-        apiContext: { hydrated: false, mode: 'demo', branchId: null, lastSyncedAt: null },
+        apiContext: { hydrated: false, mode: 'offline', branchId: null, lastSyncedAt: null },
       }),
     }
   )
@@ -2680,7 +2465,5 @@ useSessionStore.subscribe((state, previousState) => {
   if (state.status === previousState.status) return
   if (state.status === 'online') {
     usePosStore.getState().clearSensitive()
-  } else if (state.status === 'demo') {
-    usePosStore.getState().resetOnlineState()
   }
 })

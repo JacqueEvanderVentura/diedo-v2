@@ -34,19 +34,19 @@ export default function App() {
   useEffect(() => {
     if (!initialized) return
     configFacade.synchronizeSessionBranches({ status, workspaceId, visibleBranches })
-    if (isPlatformOperator || (status !== 'demo' && !workspaceId)) return
+    if (isPlatformOperator || status !== 'online' || !workspaceId) return
     const session = useSessionStore.getState()
     const requests = []
     if (status === 'online') {
       requests.push(hydrateWorkspaceBillingSettings({ force: true }))
     }
-    if (status === 'demo' || (session.hasModule('crm') && session.hasPermission('customer.read'))) {
+    if (session.hasModule('crm') && session.hasPermission('customer.read')) {
       requests.push(hydrateCustomers({ force: false }))
     }
-    if (status === 'demo' || (session.hasModule('hr') && session.hasPermission('employee.read'))) {
+    if (session.hasModule('hr') && session.hasPermission('employee.read')) {
       requests.push(hydrateEmployees({ force: true }), hydrateHrData({ force: true }))
     }
-    if (status === 'demo' || useSessionStore.getState().hasModule('appointments')) {
+    if (session.hasModule('appointments')) {
       requests.push(hydrateAppointments({ force: true }))
     }
     if (

@@ -46,8 +46,8 @@ Estas variables son de compilaciÃ³n; modificarlas exige reconstruir y publicar
 ## Despliegue y operaciÃ³n
 
 1. Railway espera que Backend CI y Frontend CI terminen correctamente.
-2. El pre-deploy de `api` ejecuta `python -m app.scripts.predeploy`, que aplica Alembic y despuÃ©s
-   reconcilia el seed demo en un Ãºnico proceso secuencial.
+2. El pre-deploy de `api` ejecuta `python -m app.scripts.predeploy`, que aplica solo migraciones Alembic.
+   El seed demo (`python -m app.scripts.seed_demo`) queda reservado a entornos locales/dev explÃ­citos y estÃ¡ bloqueado en producciÃ³n.
 3. Verificar `/health/ready` en `api`, `/health` y una ruta profunda en `web`.
 4. Revisar logs sin copiar secretos y comprobar login, refresh, `/api/v1/auth/me` y un flujo de archivo.
 5. Mantener `web` de Railway activo durante 48 h como fallback de transiciÃ³n.

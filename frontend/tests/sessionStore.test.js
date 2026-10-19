@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-async function loadSessionStore({ ready, demoEnabled, refreshed = false, me = null }) {
+async function loadSessionStore({ ready, refreshed = false, me = null }) {
   vi.resetModules()
   const clearModuleGatewayCaches = vi.fn()
   const clearSensitiveLocalState = vi.fn()
@@ -11,12 +11,6 @@ async function loadSessionStore({ ready, demoEnabled, refreshed = false, me = nu
       refresh: vi.fn().mockResolvedValue(refreshed),
       me: vi.fn().mockResolvedValue(me),
       switchWorkspace: vi.fn().mockResolvedValue({ accessToken: 'workspace-access' }),
-    },
-  }))
-  vi.doMock('@/services/demoRepository', () => ({
-    DEMO_SEED_ENABLED: demoEnabled,
-    demoRepository: {
-      session: () => ({ id: 'demo-user', name: 'Alex Demo', source: 'demo' }),
     },
   }))
   vi.doMock('@/services/dataGateway', () => ({ clearModuleGatewayCaches }))
@@ -44,7 +38,7 @@ afterEach(() => vi.clearAllMocks())
 
 describe('session bootstrap', () => {
   it('conserva la identidad del contexto si no cambió para evitar recargas repetidas', async () => {
-    const loaded = await loadSessionStore({ ready: null, demoEnabled: false, me: {
+    const loaded = await loadSessionStore({ ready: null, me: {
       userId: 'user-a', workspaceId: 'workspace-a', membershipId: 'member-a', displayName: 'Usuario', visibleBranches: [], enabledModules: ['foundation'],
     } })
     loaded.store.setState({ accessToken: 'access' })
@@ -56,32 +50,21 @@ describe('session bootstrap', () => {
   it('queda online sin inventar identidad cuando refresh responde 401', async () => {
     const { store } = await loadSessionStore({
       ready: { status: 'ready', schemaRevision: '20260829_0006' },
-      demoEnabled: false,
       refreshed: false,
     })
     await store.getState().bootstrap()
     expect(store.getState()).toMatchObject({ status: 'online', initialized: true, user: null })
   })
 
-  it('muestra estado degradado recuperable cuando la API cae y demo está apagado', async () => {
-    const { store } = await loadSessionStore({ ready: null, demoEnabled: false })
+  it('muestra estado degradado recuperable cuando la API cae', async () => {
+    const { store } = await loadSessionStore({ ready: null })
     await store.getState().bootstrap()
     expect(store.getState()).toMatchObject({ status: 'degraded', initialized: true, user: null })
     expect(store.getState().bootError).toContain('API no está disponible')
   })
 
-  it('entra en demo solamente con el flag explícito', async () => {
-    const { store } = await loadSessionStore({ ready: null, demoEnabled: true })
-    await store.getState().bootstrap()
-    expect(store.getState()).toMatchObject({
-      status: 'demo',
-      initialized: true,
-      user: { id: 'demo-user', source: 'demo' },
-    })
-  })
-
   it('limpia caches, maestros y sucursales al perder la sesión', async () => {
-    const loaded = await loadSessionStore({ ready: null, demoEnabled: false })
+    const loaded = await loadSessionStore({ ready: null })
 
     loaded.store.getState().clearSession()
 
@@ -93,7 +76,6 @@ describe('session bootstrap', () => {
   it('limpia el tenant anterior antes de instalar el workspace nuevo', async () => {
     const loaded = await loadSessionStore({
       ready: { status: 'ready', schemaRevision: '20260829_0007' },
-      demoEnabled: false,
       me: {
         userId: 'user-b',
         membershipId: 'membership-b',

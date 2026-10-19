@@ -3,7 +3,6 @@ export const DATA_STATES = Object.freeze({
   READY: 'ready',
   STALE: 'stale',
   ERROR: 'error',
-  DEMO: 'demo',
 })
 
 export class MutationBlockedError extends Error {
@@ -22,13 +21,7 @@ export class TenantStateChangedError extends Error {
 
 const gateways = new Set()
 
-export function createModuleGateway({
-  module,
-  apiRepository,
-  demoRepository,
-  demoEnabled = false,
-  demoActive = () => true,
-}) {
+export function createModuleGateway({ module, apiRepository }) {
   const cached = new Map()
   let generation = 0
   let state = { module, status: DATA_STATES.LOADING, source: null, lastSyncedAt: null, error: null }
@@ -44,18 +37,6 @@ export function createModuleGateway({
       const requestGeneration = generation
       const cacheKey = `${operation}:${JSON.stringify(args)}`
       state = { ...state, status: DATA_STATES.LOADING, error: null }
-      if (demoEnabled && demoActive() && demoRepository?.[operation]) {
-        const data = await demoRepository[operation](...args)
-        assertCurrentGeneration(requestGeneration)
-        state = {
-          module,
-          status: DATA_STATES.DEMO,
-          source: 'demo',
-          lastSyncedAt: null,
-          error: null,
-        }
-        return { data, ...state }
-      }
       try {
         const data = await apiRepository[operation](...args)
         assertCurrentGeneration(requestGeneration)

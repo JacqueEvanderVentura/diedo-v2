@@ -10,8 +10,6 @@ import {
 
   mapCustomerFromApi,
 
-  mapCustomerFromDemo,
-
   mapCustomersPaginatedFromApi,
 
 } from '@/services/adapters/masterData'
@@ -99,8 +97,8 @@ export const useCustomersStore = create((set, get) => ({
   },
 
   fetchCustomer: async (id) => {
-    if (useSessionStore.getState().status === 'demo') {
-      return get().customers.find((customer) => customer.id === id) || null
+    if (useSessionStore.getState().status !== 'online') {
+      throw new Error('La API no está disponible.')
     }
     const { data } = await customersGateway.read('customer', id)
     const customer = mapCustomerFromApi(data)
@@ -193,53 +191,9 @@ export const useCustomersStore = create((set, get) => ({
 
     try {
 
-      if (useSessionStore.getState().status === 'demo') {
-
-        const result = await customersGateway.read('customers')
-
-        const mapper = result.source === 'demo' ? mapCustomerFromDemo : mapCustomerFromApi
-
-        const customers = [WALK_IN_CUSTOMER, ...result.data.map(mapper)]
-
-        set({
-
-          customers,
-
-          customersListMeta: {
-
-            page: 1,
-
-            pageSize: targetSize,
-
-            totalPages: 1,
-
-            totalItems: Math.max(0, customers.length - 1),
-
-            loading: false,
-
-            loadingMore: false,
-
-            search: searchKey,
-
-            typeFilter: typeKey,
-
-            statusFilter: statusKey,
-
-            branchIds: branchKey,
-
-          },
-
-          dataState: customersGateway.getState(),
-
-          hydrating: false,
-
-        })
-
-        return customers
-
+      if (useSessionStore.getState().status !== 'online') {
+        throw new Error('La API no está disponible.')
       }
-
-
 
       const { data: response } = await customersGateway.read('customersPage',
 
@@ -374,18 +328,8 @@ export const useCustomersStore = create((set, get) => ({
 
 
   addCustomer: async (data) => {
-
-    if (useSessionStore.getState().status === 'demo') {
-      const docErr = validateCustomerDocument(data.docType || 'cedula', data.documentId)
-      if (docErr) throw new Error(docErr)
-      const duplicate = findCustomerByDocument(get().customers, data.docType || 'cedula', data.documentId)
-      if (duplicate) throw new Error('Ya existe un cliente con ese documento.')
-      const customer = { id: data.id || genId(), status: 'active', active: true, ...data, source: 'demo' }
-
-      set((state) => ({ customers: [customer, ...state.customers] }))
-
-      return customer
-
+    if (useSessionStore.getState().status !== 'online') {
+      throw new Error('La API no está disponible.')
     }
 
     const branchIds = useSessionStore.getState().user?.branchIds || []
@@ -414,24 +358,8 @@ export const useCustomersStore = create((set, get) => ({
 
     if (!ids.length) return { items: [] }
 
-    if (useSessionStore.getState().status === 'demo') {
-
-      set((state) => ({
-
-        customers: state.customers.filter((customer) => !ids.includes(customer.id)),
-
-        customersListMeta: {
-
-          ...state.customersListMeta,
-
-          totalItems: Math.max(0, state.customersListMeta.totalItems - ids.length),
-
-        },
-
-      }))
-
-      return { items: ids.map((customerId) => ({ customerId, status: 'deleted' })) }
-
+    if (useSessionStore.getState().status !== 'online') {
+      throw new Error('La API no está disponible.')
     }
 
     const response = await masterDataApi.deleteCustomersBatch({ customerIds: ids })
@@ -480,18 +408,8 @@ export const useCustomersStore = create((set, get) => ({
 
     if (!current) throw new Error('Cliente no encontrado.')
 
-    if (useSessionStore.getState().status === 'demo') {
-
-      const customer = { ...current, ...data, source: 'demo' }
-
-      set((state) => ({
-
-        customers: state.customers.map((item) => (item.id === id ? customer : item)),
-
-      }))
-
-      return customer
-
+    if (useSessionStore.getState().status !== 'online') {
+      throw new Error('La API no está disponible.')
     }
 
     const payload = customerToApiPayload({ ...current, ...data })

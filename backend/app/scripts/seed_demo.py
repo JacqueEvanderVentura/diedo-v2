@@ -13,11 +13,7 @@ def resolve_demo_password(config: Settings) -> SecretStr | None:
     if not config.demo_seed_enabled:
         return None
     if config.app_env == "production":
-        if not config.allow_production_demo_seed:
-            raise RuntimeError("Production demo seeding requires ALLOW_PRODUCTION_DEMO_SEED=true.")
-        if config.demo_admin_password is None:
-            raise RuntimeError("Set DEMO_ADMIN_PASSWORD before seeding production demo users.")
-        return config.demo_admin_password
+        raise RuntimeError("Demo seeding is disabled in production.")
     if config.app_env == "staging":
         raise RuntimeError("Demo seeding is disabled in staging.")
     configured_password = config.demo_admin_password or config.local_bootstrap_admin_password

@@ -48,7 +48,7 @@ export default function CalendarioPage() {
   const updateAppointment = useAgendaStore((s) => s.updateAppointment)
   const { activeBranchId: branchId, setActiveBranch: setBranchId, branches, selectOptions } = useActiveBranchScope()
   const canManage = useSessionStore((s) => s.hasPermission('appointment.manage'))
-  const isDemo = useSessionStore((s) => s.status === 'demo')
+  const isOnline = useSessionStore((s) => s.status === 'online')
   const [openingHours, setOpeningHours] = useState([])
   const [view, setView] = useState('week')
   const [cursor, setCursor] = useState(todayKey())
@@ -79,14 +79,14 @@ export default function CalendarioPage() {
   }, [branchId, hydrateResources])
 
   useEffect(() => {
-    if (!branchId || isDemo) {
+    if (!branchId || !isOnline) {
       setOpeningHours([])
       return
     }
     appointmentsApi.branchOpeningHours(branchId)
       .then(setOpeningHours)
       .catch(() => setOpeningHours([]))
-  }, [branchId, isDemo])
+  }, [branchId, isOnline])
 
   const branchResources = useMemo(
     () => sortResources(

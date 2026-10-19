@@ -36,13 +36,11 @@ import {
 import {
   SIMPLIFIED_WORKSPACE_STAGES,
   buildSimplifiedLeadQuery,
-  countSimplifiedWorkspaceStageCounts,
   filterLeadsForSimplifiedWorkspace,
   leadsMatchingSimplifiedWorkspaceFilters,
   needsSimplifiedWorkspaceClientFilter,
 } from '@/modules/crm/lib/simplifiedWorkspaceQuery'
 import { formatLeadStageMoveTitle } from '@/modules/crm/lib/leadStageLabels'
-import { paginateSlice } from '@/modules/reportes/lib/pagination'
 import { appendQuoteRevision } from '@/modules/crm/lib/quoteRevisions'
 import { matchesBranches } from '@/lib/branches'
 import { resolvePeriodRange } from '@/lib/datePeriod'
@@ -80,11 +78,9 @@ let crmGeneration = 0
 
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const now = () => new Date().toISOString()
-const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString()
 const isOnline = () => useSessionStore.getState().status === 'online'
 const crmCommerceEnabled = () => {
   const session = useSessionStore.getState()
-  if (session.status === 'demo') return true
   return canAccessCrmCommerce(session.user?.enabledModules, session.user?.effectivePermissionCodes)
 }
 const emptyCrmPage = () => ({ items: [] })
@@ -302,39 +298,7 @@ function normalizeLead(raw) {
   }
 }
 
-const RAW_SEED_LEADS = [
-  { name: 'Glamour Studio RD', company: 'Glamour Studio', location: 'Santo Domingo', rawSnippet: 'Salón de belleza con citas y venta de productos', source: 'serp', acquisitionSource: 'instagram', status: 'propuesta', pipelineValue: 45000, phone: '809-555-1001', customerId: 'c2' },
-  { name: 'Spa Zen Caribe', company: 'Spa Zen', location: 'Piantini, SD', rawSnippet: 'Spa wellness masajes faciales reservas online', source: 'serp', acquisitionSource: 'whatsapp', status: 'negociacion', pipelineValue: 78000, phone: '809-555-1002' },
-  { name: 'Clínica Dental Sonrisa', company: 'Dental Sonrisa', location: 'Santiago', rawSnippet: 'Consultorio dental citas pacientes', source: 'referral', acquisitionSource: 'referral', status: 'nuevo', phone: '809-555-1003', branchId: 'charm-santiago' },
-  { name: 'Café Colonial', company: 'Café Colonial', location: 'Zona Colonial', rawSnippet: 'Restaurante café comida rápida POS', source: 'manual', acquisitionSource: 'pos_walk_in', status: 'nuevo', branchId: 'charm-este' },
-  { name: 'Boutique Estilo', company: 'Boutique Estilo', location: 'Las Terrenas', rawSnippet: 'Tienda retail ropa inventario', source: 'import', acquisitionSource: 'otros', status: 'contactado', branchId: 'charm-santiago' },
-  { name: 'AutoShine Carwash', company: 'AutoShine', location: 'Los Alcarrizos', rawSnippet: 'Car wash lavado autos citas membresías', source: 'serp', acquisitionSource: 'whatsapp', status: 'contactado', pipelineValue: 32000, phone: '809-555-1006', branchId: 'charm-santiago' },
-  { name: 'FitLife Gym', company: 'FitLife', location: 'Naco', rawSnippet: 'Gimnasio fitness clases membresías CRM', source: 'serp', acquisitionSource: 'instagram', status: 'nuevo', pipelineValue: 55000, phone: '809-555-1007' },
-  { name: 'Ferretería El Martillo', company: 'El Martillo', location: 'San Cristóbal', rawSnippet: 'Ferretería retail inventario multi sucursal', source: 'manual', acquisitionSource: 'otros', status: 'perdido', lostReason: 'Sin presupuesto' },
-  { name: 'Nails & More', company: 'Nails & More', location: 'Bávaro', rawSnippet: 'Nail salon belleza citas', source: 'serp', acquisitionSource: 'referral', status: 'propuesta', pipelineValue: 28000, phone: '809-555-1009' },
-  { name: 'Restaurante Mar Azul', company: 'Mar Azul', location: 'Boca Chica', rawSnippet: 'Restaurante mariscos facturación caja', source: 'referral', acquisitionSource: 'whatsapp', status: 'contactado', phone: '809-555-1010' },
-]
-
-const hoursFromNow = (h) => new Date(Date.now() + h * 3600000).toISOString()
-
-const SEED_ACTIVITIES = [
-  { id: 'act-1', type: 'llamada', title: 'Llamada inicial Glamour Studio', description: 'Presentación de módulos Agenda y POS', leadId: 'lead-seed-1', customerName: 'Glamour Studio RD', assignedUserId: 'u1', dueAt: daysAgo(2), completedAt: daysAgo(2), createdAt: daysAgo(3) },
-  { id: 'act-2', type: 'email', title: 'Propuesta enviada Spa Zen', description: 'Cotización suite completa', leadId: 'lead-seed-2', customerName: 'Spa Zen Caribe', assignedUserId: 'u2', dueAt: daysAgo(1), completedAt: daysAgo(1), createdAt: daysAgo(2) },
-  { id: 'act-3', type: 'reunion', title: 'Demo AutoShine', description: 'Demostración POS en sitio', leadId: 'lead-seed-6', customerName: 'AutoShine Carwash', assignedUserId: 'u1', dueAt: hoursFromNow(3), completedAt: null, createdAt: daysAgo(1) },
-  { id: 'act-4', type: 'tarea', title: 'Seguimiento FitLife', description: 'Enviar caso de éxito gym', leadId: 'lead-seed-7', customerName: 'FitLife Gym', assignedUserId: 'u2', dueAt: hoursFromNow(26), completedAt: null, createdAt: daysAgo(0) },
-  { id: 'act-5', type: 'tarea', title: 'Llamar a Nicole Sosa', description: 'Confirmar próxima sesión de prueba', customerName: 'Nicole Sosa', assignedUserId: 'u1', dueAt: hoursFromNow(-2), completedAt: null, createdAt: daysAgo(0) },
-]
-
-const SEED_QUOTES = [
-  { id: 'qt-1', number: 'COT-2026-001', leadId: 'lead-seed-1', customerId: 'c2', customerName: 'Glamour Studio RD', status: 'enviada', total: 45000, items: [{ name: 'Módulo Agenda', qty: 1, price: 25000 }, { name: 'Módulo POS', qty: 1, price: 20000 }], branchId: 'charm-dn', validUntil: daysAgo(-15), createdAt: daysAgo(5), updatedAt: daysAgo(5) },
-  { id: 'qt-2', number: 'COT-2026-002', leadId: 'lead-seed-2', customerName: 'Spa Zen Caribe', status: 'borrador', total: 78000, items: [{ name: 'Suite Helios Completa', qty: 1, price: 78000 }], branchId: 'charm-dn', validUntil: daysAgo(-20), createdAt: daysAgo(2), updatedAt: daysAgo(2) },
-]
-
-function buildSeedLeads() {
-  return RAW_SEED_LEADS.map((l, i) =>
-    normalizeLead({ ...l, id: `lead-seed-${i + 1}`, createdAt: daysAgo(30 - i * 2), updatedAt: daysAgo(i) })
-  )
-}
+const API_UNAVAILABLE = 'La API no está disponible.'
 
 export const useCrmStore = create(
   persist(
@@ -376,22 +340,18 @@ export const useCrmStore = create(
       hydrate: async ({ force = false } = {}) => {
         const online = isOnline()
         const alreadyHydratedForSession = online
-          ? get().dataState.status === 'ready' && get().dataState.source === 'api'
-          : get().dataState.status === 'demo'
+          && get().dataState.status === 'ready'
+          && get().dataState.source === 'api'
         if (get().hydrating || (!force && alreadyHydratedForSession)) {
           return get()
         }
         if (!online) {
           set({
-            leads: buildSeedLeads(),
-            activities: SEED_ACTIVITIES,
-            quotes: SEED_QUOTES,
-            sales: [],
-            customers: [],
-            dataState: { status: 'demo', source: 'demo', error: null },
             hydrating: false,
+            error: API_UNAVAILABLE,
+            dataState: { status: 'error', source: null, error: API_UNAVAILABLE },
           })
-          return get()
+          throw new Error(API_UNAVAILABLE)
         }
         set({ hydrating: true, error: null, dataState: { status: 'loading', source: 'api', error: null } })
         try {
@@ -751,34 +711,7 @@ export const useCrmStore = create(
           },
         }))
         try {
-          if (!isOnline()) {
-            const q = search.trim().toLowerCase()
-            const allLeads = get().leads.length ? get().leads : buildSeedLeads()
-            const filtered = filterLeadsForSimplifiedWorkspace(
-              allLeads.filter((item) => item.status === stage),
-              { branchIds, dateFilter },
-            ).filter((item) => {
-              if (!q) return true
-              const title = (item.company || item.name || '').toLowerCase()
-              const phone = (item.phone || '').toLowerCase()
-              return title.includes(q) || phone.includes(q)
-            })
-            const slice = paginateSlice(filtered, { page, pageSize })
-            set((state) => ({
-              simplifiedWorkspace: {
-                ...state.simplifiedWorkspace,
-                items: slice.items,
-                page: slice.page,
-                pageSize: slice.pageSize,
-                totalItems: slice.total,
-                totalPages: slice.totalPages,
-                loading: false,
-                error: null,
-              },
-              leads: upsertById(state.leads, slice.items),
-            }))
-            return get().simplifiedWorkspace
-          }
+          if (!isOnline()) throw new Error(API_UNAVAILABLE)
 
           const { params } = buildSimplifiedLeadQuery({
             stage,
@@ -827,16 +760,7 @@ export const useCrmStore = create(
           simplifiedWorkspace: { ...state.simplifiedWorkspace, countsLoading: true, countsError: null },
         }))
         try {
-          const countFromLeads = (leads) => countSimplifiedWorkspaceStageCounts(leads, { search, branchIds, dateFilter })
-
-          if (!isOnline()) {
-            const allLeads = get().leads.length ? get().leads : buildSeedLeads()
-            const stageCounts = countFromLeads(allLeads)
-            set((state) => ({
-              simplifiedWorkspace: { ...state.simplifiedWorkspace, stageCounts, countsLoading: false, countsError: null },
-            }))
-            return stageCounts
-          }
+          if (!isOnline()) throw new Error(API_UNAVAILABLE)
 
           const baseQuery = buildSimplifiedLeadQuery({
             stage: SIMPLIFIED_WORKSPACE_STAGES[0],
@@ -1742,7 +1666,8 @@ export const useCrmStore = create(
     {
       name: 'diedo-crm',
       storage: ephemeralJsonStorage,
-      version: 4,
+      version: 5,
+      migrate: (persisted) => persisted ?? {},
       partialize: (state) => ({
         serpHourCount: state.serpHourCount,
         serpHourWindowStart: state.serpHourWindowStart,

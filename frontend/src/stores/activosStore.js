@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { demoSvgImage, createPreviewObjectUrl, revokeObjectUrl, fileToDataUrl } from '@/lib/imageAttachments'
+import { createPreviewObjectUrl, revokeObjectUrl, fileToDataUrl } from '@/lib/imageAttachments'
 import { ephemeralJsonStorage, registerSensitiveStateCleaner } from '@/services/storagePolicy'
 import { inventoryApi } from '@/services/inventoryApi'
 import {
@@ -31,93 +31,7 @@ export const statusMeta = (id) => ACTIVO_STATUSES.find((s) => s.id === id) || AC
 export const catName = (id, categories = ACTIVO_CATEGORIES) =>
   categories.find((c) => c.id === id)?.name || id
 
-function seedAttachment(id, name, color, label) {
-  const previewObjectUrl = demoSvgImage(color, label)
-  return {
-    id,
-    name,
-    contentType: 'image/svg+xml',
-    previewObjectUrl,
-    dataUrl: previewObjectUrl,
-  }
-}
-
-const SEED = [
-  { id: 'act-seed-1', name: 'Silla ergonómica de recepción', code: 'MOB-001', category: 'mobiliario', value: 8500, status: 'activo', location: 'Recepción', branchId: 'charm-dn', purchaseDate: '2024-03-12', notes: '', attachments: [] },
-  { id: 'act-seed-2', name: 'Laptop administración', code: 'TEC-014', category: 'tecnologia', value: 42000, status: 'activo', location: 'Oficina', branchId: 'charm-dn', purchaseDate: '2023-11-05', notes: 'MacBook Air M2', attachments: [] },
-  { id: 'act-seed-3', name: 'Esterilizador UV', code: 'EQP-003', category: 'equipos', value: 15600, status: 'reparacion', location: 'Sala 2', branchId: 'charm-este', purchaseDate: '2024-01-20', notes: 'En taller externo', attachments: [] },
-  {
-    id: 'act-seed-4',
-    name: 'Aire acondicionado 24k BTU',
-    code: 'EQP-009',
-    category: 'equipos',
-    value: 38000,
-    status: 'activo',
-    location: 'Sala principal',
-    branchId: 'charm-santiago',
-    purchaseDate: '2022-06-18',
-    notes: 'AC sala principal',
-    attachments: [seedAttachment('act-att-4a', 'Placa EQP-009', '#2563eb', 'EQP-009')],
-    images: [demoSvgImage('#2563eb', 'EQP-009')],
-  },
-  { id: 'act-seed-5', name: 'Impresora térmica antigua', code: 'TEC-002', category: 'tecnologia', value: 4200, status: 'baja', location: 'Almacén', branchId: 'charm-dn', purchaseDate: '2020-02-10', notes: 'Reemplazada', attachments: [] },
-  {
-    id: 'act-seed-6',
-    name: 'Aire acondicionado 18k BTU',
-    code: 'EQP-010',
-    category: 'equipos',
-    value: 29500,
-    status: 'activo',
-    location: 'Cabina 1',
-    branchId: 'charm-santiago',
-    purchaseDate: '2023-04-10',
-    notes: 'AC cabina 1',
-    attachments: [seedAttachment('act-att-6a', 'Placa EQP-010', '#dc2626', 'EQP-010')],
-    images: [demoSvgImage('#dc2626', 'EQP-010')],
-  },
-  {
-    id: 'act-seed-7',
-    name: 'Aire acondicionado 12k BTU',
-    code: 'EQP-011',
-    category: 'equipos',
-    value: 22000,
-    status: 'activo',
-    location: 'Recepción',
-    branchId: 'charm-este',
-    purchaseDate: '2023-08-02',
-    notes: 'AC recepción',
-    attachments: [seedAttachment('act-att-7a', 'Placa EQP-011', '#16a34a', 'EQP-011')],
-    images: [demoSvgImage('#16a34a', 'EQP-011')],
-  },
-  {
-    id: 'act-seed-8',
-    name: 'Aire acondicionado 36k BTU',
-    code: 'EQP-012',
-    category: 'equipos',
-    value: 52000,
-    status: 'activo',
-    location: 'Sala VIP',
-    branchId: 'charm-dn',
-    purchaseDate: '2021-11-15',
-    notes: 'AC sala VIP',
-    attachments: [seedAttachment('act-att-8a', 'Placa EQP-012', '#9333ea', 'EQP-012')],
-    images: [demoSvgImage('#9333ea', 'EQP-012')],
-  },
-  {
-    id: 'act-seed-9',
-    name: 'Aire acondicionado 24k BTU',
-    code: 'EQP-013',
-    category: 'equipos',
-    value: 36500,
-    status: 'reparacion',
-    location: 'Almacén técnico',
-    branchId: 'charm-dn',
-    purchaseDate: '2020-05-20',
-    notes: 'En revisión',
-    attachments: [seedAttachment('act-att-9a', 'Placa EQP-013', '#ea580c', 'EQP-013')],
-    images: [demoSvgImage('#ea580c', 'EQP-013')],
-  },
-]
+const API_UNAVAILABLE = 'La API no está disponible.'
 
 let assetHydrationPromise = null
 
@@ -169,7 +83,7 @@ async function loadMissingAssetPreviews(asset, previous = null) {
 export const useActivosStore = create(
   persist(
     (set, get) => ({
-      activos: SEED,
+      activos: [],
       categories: ACTIVO_CATEGORIES,
       summary: null,
       apiContext: { hydrated: false },
@@ -221,13 +135,7 @@ export const useActivosStore = create(
       },
 
       saveActivo: async (data, existing, { isOnline }) => {
-        if (!isOnline) {
-          if (existing) {
-            get().updateActivo(existing.id, data)
-            return get().activos.find((activo) => activo.id === existing.id)
-          }
-          return get().addActivo(data)
-        }
+        if (!isOnline) throw new Error(API_UNAVAILABLE)
 
         if (!get().apiContext.hydrated || !get().categories.some((category) => category.apiSynced)) {
           await get().hydrateFromApi()
@@ -272,7 +180,8 @@ export const useActivosStore = create(
         const current = get().activos.find((activo) => activo.id === id)
         if (!current) throw new Error('El activo no existe.')
 
-        if (isOnline && current.apiSynced) {
+        if (!isOnline) throw new Error(API_UNAVAILABLE)
+        if (current.apiSynced) {
           if (!get().apiContext.hydrated) await get().hydrateFromApi()
           const optimisticAttachments = files.map((file, index) => ({
             id: `pending-${genId()}-${index}`,
@@ -303,21 +212,7 @@ export const useActivosStore = create(
           }
         }
 
-        const dataUrls = await Promise.all(files.map(fileToDataUrl))
-        const attachments = dataUrls.map((dataUrl, index) => ({
-          id: genId('att'),
-          name: files[index]?.name || `Foto ${index + 1}`,
-          contentType: files[index]?.type || 'image/jpeg',
-          previewObjectUrl: dataUrl,
-          dataUrl,
-        }))
-        const asset = {
-          ...current,
-          attachments: [...(current.attachments || []), ...attachments],
-          images: [...(current.images || []), ...dataUrls],
-        }
-        set((state) => ({ activos: replaceAsset(state.activos, asset) }))
-        return asset
+        throw new Error(API_UNAVAILABLE)
       },
 
       retireActivo: async (id, { isOnline }) => {
@@ -333,10 +228,8 @@ export const useActivosStore = create(
         if (!current) throw new Error('El activo no existe.')
         if (current.status === 'baja') return current
 
-        if (!isOnline || !current.apiSynced) {
-          get().updateActivo(current.id, { status: 'baja' })
-          return get().activos.find((activo) => activo.id === current.id)
-        }
+        if (!isOnline) throw new Error(API_UNAVAILABLE)
+        if (!current.apiSynced) throw new Error(API_UNAVAILABLE)
 
         const response = await inventoryApi.updateAsset(id, {
           version: current.version,
@@ -393,7 +286,7 @@ export const useActivosStore = create(
       getStats: () => get().summary || deriveAssetStats(get().activos),
 
       clearSensitive: () => set({
-        activos: SEED,
+        activos: [],
         categories: ACTIVO_CATEGORIES,
         summary: null,
         apiContext: { hydrated: false },
@@ -404,6 +297,8 @@ export const useActivosStore = create(
     {
       name: 'diedo-activos',
       storage: ephemeralJsonStorage,
+      version: 2,
+      migrate: (persisted) => persisted ?? {},
       partialize: (state) => ({ activos: state.activos, apiContext: { hydrated: false } }),
     }
   )

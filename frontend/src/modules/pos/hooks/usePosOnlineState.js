@@ -22,10 +22,7 @@ export function usePosOnlineState() {
   const isOnline = dataMode === 'online'
 
   useEffect(() => {
-    if (!isOnline) {
-      if (dataMode === 'demo' && apiContext.mode !== 'demo') resetOnlineState()
-      return
-    }
+    if (!isOnline) return
     if (!authenticated) return
     const onlineBranches = branches.filter((branch) => UUID_PATTERN.test(branch.id))
     if (!onlineBranches.length) return

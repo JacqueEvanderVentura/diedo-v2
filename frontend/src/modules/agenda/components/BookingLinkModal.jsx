@@ -48,7 +48,7 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
 
   const [customer, setCustomer] = useState(null)
   const [recipient, setRecipient] = useState(emptyRecipient)
-  const isDemo = useSessionStore((s) => s.status) === 'demo'
+  const isOnline = useSessionStore((s) => s.status === 'online')
   const [sendingEmail, setSendingEmail] = useState(false)
   const [emailMessage, setEmailMessage] = useState('')
   const [setup, setSetup] = useState(null)
@@ -68,7 +68,7 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
   }, [open])
 
   useEffect(() => {
-    if (!open || isDemo || !branchId) return
+    if (!open || !isOnline || !branchId) return
     let active = true
     setSetupLoading(true)
     publicBookingApi.getContext(branchId).then((context) => {
@@ -80,7 +80,7 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
       if (active) setSetupLoading(false)
     })
     return () => { active = false }
-  }, [open, branchId, isDemo, setupRevision])
+  }, [open, branchId, isOnline, setupRevision])
 
   useEffect(() => {
     if (!open) return
@@ -95,10 +95,6 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
     const email = recipient.email.trim()
     if (name.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setEmailMessage('Ingresa un nombre y correo válidos para enviar el enlace.')
-      return
-    }
-    if (isDemo) {
-      setEmailMessage('Modo demo: no se envían correos reales.')
       return
     }
     const payload = { branchId, name, email }

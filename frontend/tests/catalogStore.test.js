@@ -81,9 +81,8 @@ describe('store de catálogo conectado al inventario', () => {
     expect(useCatalogStore.getState().products).toEqual([])
   })
 
-  it('no conserva productos demo al hidratar en línea', async () => {
-    useCatalogStore.getState().ensureDemoSeed()
-    expect(useCatalogStore.getState().products.length).toBeGreaterThan(0)
+  it('inicia sin productos locales y hidrata vacío desde la API', async () => {
+    expect(useCatalogStore.getState().products).toEqual([])
 
     mocks.listCategories.mockResolvedValue({ items: [category] })
     mocks.listAllItems.mockResolvedValue({ items: [] })

@@ -1,6 +1,5 @@
 import { useConfigStore } from '@/stores/configStore'
 
-const demoBranches = structuredClone(useConfigStore.getState().branches)
 let activeWorkspaceId = null
 let apiOwned = false
 
@@ -41,12 +40,6 @@ export const configFacade = {
   branches: () => useConfigStore.getState().branches,
 
   synchronizeSessionBranches({ status, workspaceId, visibleBranches = [] }) {
-    if (status === 'demo') {
-      if (apiOwned) useConfigStore.getState().setBranches(structuredClone(demoBranches))
-      activeWorkspaceId = null
-      apiOwned = false
-      return
-    }
     if (status !== 'online' || !workspaceId) {
       useConfigStore.getState().setBranches([])
       activeWorkspaceId = null
@@ -80,6 +73,4 @@ export const configFacade = {
     apiOwned = true
     return true
   },
-
-  activeWorkspace: () => activeWorkspaceId,
 }

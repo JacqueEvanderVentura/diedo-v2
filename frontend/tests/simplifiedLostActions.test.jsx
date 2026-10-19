@@ -23,9 +23,16 @@ describe('ficha de lead perdido en CRM Simplificado', () => {
     updatedAt: '2026-09-21T16:00:00Z',
   })
 
+  const sessionWithManage = () => {
+    useSessionStore.setState({
+      status: 'online',
+      user: { branchIds: ['branch-1'], effectivePermissionCodes: ['crm.manage'] },
+    })
+  }
+
   it('muestra el motivo y permite iniciar la reapertura', () => {
     const lead = lostLead()
-    useSessionStore.setState({ status: 'demo', user: { branchIds: ['branch-1'] } })
+    sessionWithManage()
     useCrmStore.setState({ leads: [lead], quotes: [] })
     render(<SimplifiedLeadActions lead={lead} />)
     expect(screen.getByText('Precio alto')).toBeTruthy()
@@ -48,7 +55,7 @@ describe('ficha de lead perdido en CRM Simplificado', () => {
     const lead = lostLead()
     const updateLead = vi.fn().mockResolvedValue({ ...lead, status: 'propuesta' })
     const onActionComplete = vi.fn()
-    useSessionStore.setState({ status: 'demo', user: { branchIds: ['branch-1'] } })
+    sessionWithManage()
     useCrmStore.setState({ leads: [lead], quotes: [], updateLead })
     render(<SimplifiedLeadActions lead={lead} onActionComplete={onActionComplete} />)
     fireEvent.click(screen.getByRole('button', { name: 'Reabrir oportunidad' }))
@@ -62,7 +69,7 @@ describe('ficha de lead perdido en CRM Simplificado', () => {
 
   it('preselecciona Interesados cada vez que se abre el formulario', () => {
     const lead = lostLead()
-    useSessionStore.setState({ status: 'demo', user: { branchIds: ['branch-1'] } })
+    sessionWithManage()
     useCrmStore.setState({ leads: [lead], quotes: [] })
     render(<SimplifiedLeadActions lead={lead} />)
     fireEvent.click(screen.getByRole('button', { name: 'Reabrir oportunidad' }))
@@ -78,7 +85,7 @@ describe('ficha de lead perdido en CRM Simplificado', () => {
     const lead = lostLead()
     const updateLead = vi.fn().mockRejectedValue(new Error('API no disponible'))
     const onActionComplete = vi.fn()
-    useSessionStore.setState({ status: 'demo', user: { branchIds: ['branch-1'] } })
+    sessionWithManage()
     useCrmStore.setState({ leads: [lead], quotes: [], updateLead })
     render(<SimplifiedLeadActions lead={lead} onActionComplete={onActionComplete} />)
     fireEvent.click(screen.getByRole('button', { name: 'Reabrir oportunidad' }))

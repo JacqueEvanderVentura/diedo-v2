@@ -3,21 +3,14 @@ import { persist } from 'zustand/middleware'
 import { ephemeralJsonStorage, registerSensitiveStateCleaner } from '@/services/storagePolicy'
 import { employeesGateway } from '@/services/masterDataApi'
 import { hrGateway } from '@/services/hrApi'
-import { employeeToApiPayload, mapEmployeeFromApi, mapEmployeeFromDemo } from '@/services/adapters/masterData'
+import { employeeToApiPayload, mapEmployeeFromApi } from '@/services/adapters/masterData'
 import { useSessionStore } from '@/stores/sessionStore'
 import { debtBalance, debtStatus } from '@/modules/rrhh/lib/rrhh'
 import { normalizeWorkSchedule } from '@/modules/rrhh/lib/schedule'
 
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const now = () => new Date().toISOString()
-const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10)
-
-const SEED_REVIEWS = [
-  { id: 'rev-1', employeeId: 'emp-2', period: '2026-Q1', score: 4.5, notes: 'Excelente liderazgo de equipo.', status: 'publicado', createdAt: daysAgo(30) },
-  { id: 'rev-2', employeeId: 'emp-3', period: '2026-Q1', score: 4, notes: 'Buen desempeño técnico.', status: 'publicado', createdAt: daysAgo(28) },
-  { id: 'rev-3', employeeId: 'emp-5', period: '2026-Q1', score: 3.5, notes: 'Mejorar puntualidad.', status: 'publicado', createdAt: daysAgo(25) },
-  { id: 'rev-4', employeeId: 'emp-7', period: '2026-Q1', score: 4, notes: 'Muy buena actitud.', status: 'borrador', createdAt: daysAgo(5) },
-]
+const API_UNAVAILABLE = 'La API no está disponible.'
 
 function normalizeEmployee(data) {
   const branchIds = Array.isArray(data.branchIds) && data.branchIds.length
@@ -90,7 +83,7 @@ export const useRrhhStore = create(
       employeeDebts: [],
       documentHistory: [],
       payrollRuns: [],
-      performanceReviews: SEED_REVIEWS,
+      performanceReviews: [],
       employeeBookingFlags: {},
       getEmployeeByUserId: (userId) => get().employees.find((e) => e.usuarioId === userId),
 
@@ -101,11 +94,10 @@ export const useRrhhStore = create(
         set({ hydratingEmployees: true })
         try {
           const result = await employeesGateway.read('employees')
-          const mapper = result.source === 'demo' ? mapEmployeeFromDemo : mapEmployeeFromApi
           const profileByEmployee = new Map(get().employeeProfiles.map((item) => [item.employeeId, item]))
           const flags = get().employeeBookingFlags || {}
           const employees = result.data.map((item) => {
-            const employee = normalizeEmployee(mapper(item))
+            const employee = normalizeEmployee(mapEmployeeFromApi(item))
             const merged = normalizeEmployee({ ...employee, ...(profileByEmployee.get(employee.id) || {}) })
             if (Object.hasOwn(flags, merged.id)) {
               return normalizeEmployee({ ...merged, selectableAsSpecialist: flags[merged.id] })
@@ -176,17 +168,13 @@ export const useRrhhStore = create(
       },
 
       addEmployee: async (data) => {
-        let emp
-        if (useSessionStore.getState().status === 'demo') {
-          emp = normalizeEmployee({ ...data, source: 'demo' })
-        } else {
-          const branchIds = useSessionStore.getState().user?.branchIds || []
-          const response = await employeesGateway.mutate(
-            'createEmployee',
-            employeeToApiPayload(data, branchIds)
-          )
-          emp = normalizeEmployee(mapEmployeeFromApi(response))
-        }
+        if (useSessionStore.getState().status !== 'online') throw new Error(API_UNAVAILABLE)
+        const branchIds = useSessionStore.getState().user?.branchIds || []
+        const response = await employeesGateway.mutate(
+          'createEmployee',
+          employeeToApiPayload(data, branchIds)
+        )
+        const emp = normalizeEmployee(mapEmployeeFromApi(response))
         set((s) => ({ employees: [emp, ...s.employees], hrOverview: null }))
         return emp
       },
@@ -194,36 +182,32 @@ export const useRrhhStore = create(
       updateEmployee: async (id, data) => {
         const current = get().employees.find((employee) => employee.id === id)
         if (!current) throw new Error('Empleado no encontrado.')
-        let employee
-        if (useSessionStore.getState().status === 'demo') {
-          employee = normalizeEmployee({ ...current, ...data, id, source: 'demo' })
-        } else {
-          const complete = { ...current, ...data }
-          const { schedule, timezone, ...basicPayload } = employeeToApiPayload(complete)
-          if (Object.hasOwn(data, 'selectableAsSpecialist')) {
-            basicPayload.onlineBookingSelectable = data.selectableAsSpecialist
-          }
-          const response = await employeesGateway.mutate('updateEmployee', id, {
-            ...basicPayload,
-            version: current.version,
+        if (useSessionStore.getState().status !== 'online') throw new Error(API_UNAVAILABLE)
+        const complete = { ...current, ...data }
+        const { schedule, timezone, ...basicPayload } = employeeToApiPayload(complete)
+        if (Object.hasOwn(data, 'selectableAsSpecialist')) {
+          basicPayload.onlineBookingSelectable = data.selectableAsSpecialist
+        }
+        const response = await employeesGateway.mutate('updateEmployee', id, {
+          ...basicPayload,
+          version: current.version,
+        })
+        let employee = normalizeEmployee(mapEmployeeFromApi(response))
+        const scheduleChanged = Object.hasOwn(data, 'workSchedule')
+          && JSON.stringify(normalizeWorkSchedule(data.workSchedule))
+            !== JSON.stringify(normalizeWorkSchedule(current.workSchedule))
+        if (scheduleChanged) {
+          const updatedSchedule = await employeesGateway.mutate('updateEmployeeSchedule', id, {
+            timezone,
+            week: schedule,
+            version: current.scheduleVersion,
           })
-          employee = normalizeEmployee(mapEmployeeFromApi(response))
-          const scheduleChanged = Object.hasOwn(data, 'workSchedule')
-            && JSON.stringify(normalizeWorkSchedule(data.workSchedule))
-              !== JSON.stringify(normalizeWorkSchedule(current.workSchedule))
-          if (scheduleChanged) {
-            const updatedSchedule = await employeesGateway.mutate('updateEmployeeSchedule', id, {
-              timezone,
-              week: schedule,
-              version: current.scheduleVersion,
-            })
-            employee = normalizeEmployee({
-              ...employee,
-              workSchedule: updatedSchedule.week,
-              scheduleTimezone: updatedSchedule.timezone,
-              scheduleVersion: updatedSchedule.version,
-            })
-          }
+          employee = normalizeEmployee({
+            ...employee,
+            workSchedule: updatedSchedule.week,
+            scheduleTimezone: updatedSchedule.timezone,
+            scheduleVersion: updatedSchedule.version,
+          })
         }
         set((state) => ({
           employees: state.employees.map((item) => (item.id === id ? {
@@ -238,10 +222,7 @@ export const useRrhhStore = create(
       deleteEmployee: async (id) => {
         const current = get().employees.find((employee) => employee.id === id)
         if (!current) return
-        if (useSessionStore.getState().status === 'demo') {
-          set((state) => ({ employees: state.employees.filter((employee) => employee.id !== id) }))
-          return
-        }
+        if (useSessionStore.getState().status !== 'online') throw new Error(API_UNAVAILABLE)
         const response = await employeesGateway.mutate('updateEmployee', id, {
           version: current.version,
           status: 'archived',
@@ -272,13 +253,12 @@ export const useRrhhStore = create(
       }),
 
       addVacationRequest: async (data) => {
-        const req = useSessionStore.getState().status === 'demo'
-          ? { id: genId('vr'), status: 'pendiente', createdAt: now(), reviewedAt: null, reviewedBy: null, version: 1, ...data }
-          : await hrGateway.mutate('createLeaveRequest', {
-              startDate: data.startDate,
-              endDate: data.endDate,
-              reason: data.reason,
-            })
+        if (useSessionStore.getState().status !== 'online') throw new Error(API_UNAVAILABLE)
+        const req = await hrGateway.mutate('createLeaveRequest', {
+          startDate: data.startDate,
+          endDate: data.endDate,
+          reason: data.reason,
+        })
         set((s) => ({
           vacationRequests: [req, ...s.vacationRequests],
           hrOverview: null,
@@ -294,12 +274,11 @@ export const useRrhhStore = create(
       reviewVacationRequest: async (id, status, reviewerId) => {
         const current = get().vacationRequests.find((request) => request.id === id)
         if (!current) throw new Error('Solicitud no encontrada.')
-        const request = useSessionStore.getState().status === 'demo'
-          ? { ...current, status, reviewedAt: now(), reviewedBy: reviewerId, version: (current.version || 1) + 1 }
-          : await hrGateway.mutate('reviewLeaveRequest', id, {
-              status,
-              version: current.version,
-            })
+        if (useSessionStore.getState().status !== 'online') throw new Error(API_UNAVAILABLE)
+        const request = await hrGateway.mutate('reviewLeaveRequest', id, {
+          status,
+          version: current.version,
+        })
         set((state) => ({
           vacationRequests: state.vacationRequests.map((item) => item.id === id ? request : item),
           hrOverview: null,
@@ -308,14 +287,13 @@ export const useRrhhStore = create(
       },
 
       addEmployeeDebt: async (data) => {
-        const debt = useSessionStore.getState().status === 'demo'
-          ? { id: genId('debt'), payments: [], createdAt: now(), version: 1, ...data, amount: Number(data.amount) || 0 }
-          : await hrGateway.mutate('createDebt', {
-              employeeId: data.employeeId,
-              concept: data.concept,
-              clientName: data.clientName,
-              amount: Number(data.amount),
-            })
+        if (useSessionStore.getState().status !== 'online') throw new Error(API_UNAVAILABLE)
+        const debt = await hrGateway.mutate('createDebt', {
+          employeeId: data.employeeId,
+          concept: data.concept,
+          clientName: data.clientName,
+          amount: Number(data.amount),
+        })
         set((s) => ({
           employeeDebts: [debt, ...s.employeeDebts],
           hrDebtStats: null,
@@ -327,16 +305,11 @@ export const useRrhhStore = create(
       addDebtPayment: async (debtId, amount) => {
         const current = get().employeeDebts.find((debt) => debt.id === debtId)
         if (!current) throw new Error('Deuda no encontrada.')
-        const debt = useSessionStore.getState().status === 'demo'
-          ? {
-              ...current,
-              version: (current.version || 1) + 1,
-              payments: [...(current.payments || []), { id: genId('pay'), amount: Number(amount), date: now().slice(0, 10) }],
-            }
-          : await hrGateway.mutate('createDebtPayment', debtId, {
-              amount: Number(amount),
-              paidOn: now().slice(0, 10),
-            })
+        if (useSessionStore.getState().status !== 'online') throw new Error(API_UNAVAILABLE)
+        const debt = await hrGateway.mutate('createDebtPayment', debtId, {
+          amount: Number(amount),
+          paidOn: now().slice(0, 10),
+        })
         set((state) => ({
           employeeDebts: state.employeeDebts.map((item) => item.id === debtId ? debt : item),
           hrDebtStats: null,
@@ -346,9 +319,8 @@ export const useRrhhStore = create(
       },
 
       addDocumentRecord: async (data) => {
-        const doc = useSessionStore.getState().status === 'demo'
-          ? { id: genId('doc'), createdAt: now(), ...data }
-          : await hrGateway.mutate('createDocument', data)
+        if (useSessionStore.getState().status !== 'online') throw new Error(API_UNAVAILABLE)
+        const doc = await hrGateway.mutate('createDocument', data)
         set((s) => ({ documentHistory: [doc, ...s.documentHistory] }))
         return doc
       },

@@ -78,7 +78,7 @@ export default function ClientesPage() {
   const sessionUser = useSessionStore((s) => s.user)
 
   useEffect(() => {
-    if (useSessionStore.getState().hasPermission('appointment.read') || useSessionStore.getState().status === 'demo') {
+    if (useSessionStore.getState().hasPermission('appointment.read')) {
       hydrateAppointments({ params: {} }).catch(() => {})
     }
   }, [hydrateAppointments])

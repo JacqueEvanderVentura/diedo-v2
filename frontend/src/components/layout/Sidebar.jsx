@@ -239,7 +239,6 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
   const ensureWorkspaceSettings = useCrmStore((state) => state.ensureWorkspaceSettings)
   const navigation = useMemo(() => {
     const withCrmMode = (groups) => groups.map((group) => resolveCrmNavGroup(group, crmUiMode))
-    if (sessionStatus === 'demo') return withCrmMode(NAV_GROUPS)
     if (sessionUser?.isPlatformOperator) {
       return BACKOFFICE_NAV_ITEMS
     }
@@ -267,7 +266,7 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
   }, [crmUiMode, effectivePermissionCodes, enabledModules, sessionStatus, sessionUser?.isPlatformOperator])
 
   useEffect(() => {
-    if (sessionStatus !== 'online' && sessionStatus !== 'demo') return
+    if (sessionStatus !== 'online') return
     ensureWorkspaceSettings().catch(() => {})
   }, [ensureWorkspaceSettings, sessionStatus])
   const [open, setOpen] = useState(() => deriveOpenNavGroups(navigation, location.pathname))

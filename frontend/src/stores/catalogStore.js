@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { ephemeralJsonStorage, registerSensitiveStateCleaner } from '@/services/storagePolicy'
-import { PRODUCTS, SUPPLIES } from '@/data/products'
 import { catalogApi } from '@/services/catalogApi'
 import { inventoryApi } from '@/services/inventoryApi'
 import { lookupsApi } from '@/services/lookupsApi'
@@ -31,33 +30,7 @@ export function isStockTracked(product) {
   return product?.type === 'product' || product?.type === 'supply'
 }
 
-function normalizeSeed(p) {
-  const isSupply = p.type === 'supply'
-  return {
-    id: p.id,
-    sku: p.sku ?? null,
-    name: p.name,
-    price: isSupply ? 0 : p.price,
-    category: p.category,
-    type: p.type,
-    stock: p.type === 'service' ? null : p.stock ?? 0,
-    minStock: p.minStock ?? 0,
-    taxPct: isSupply ? 0 : 18,
-    branchId: p.branchId || 'charm-dn',
-    branchIds: p.branchIds || [p.branchId || 'charm-dn'],
-    cost: Number(p.cost) || 0,
-    unit: p.unit || 'ud',
-    subtype: isSupply ? 'raw' : 'sale',
-    availableInAgenda: p.type === 'service' ? p.availableInAgenda !== false : undefined,
-    availableInPos: p.type === 'service' ? p.availableInPos !== false : undefined,
-    durationMinutes: p.type === 'service' ? Number(p.durationMinutes) || 30 : undefined,
-  }
-}
-
-const SEED = [
-  ...PRODUCTS.map((p) => normalizeSeed(p)),
-  ...SUPPLIES.map((p) => normalizeSeed(p)),
-]
+const API_UNAVAILABLE = 'La API no está disponible.'
 
 export function deriveLowStock(products) {
   return products
@@ -81,9 +54,6 @@ export const useCatalogStore = create(
     (set, get) => ({
       products: [],
       apiContext: { units: [], apiBranches: [], hydrated: false },
-
-      ensureDemoSeed: () =>
-        set((state) => (state.products.length ? state : { products: SEED.map((p) => ({ ...p })) })),
 
       clearSensitive: () =>
         set({
@@ -122,13 +92,7 @@ export const useCatalogStore = create(
       },
 
       saveProduct: async (form, existing, { categories, configBranches, isOnline }) => {
-        if (!isOnline) {
-          if (existing) {
-            get().updateProduct(existing.id, form)
-            return existing.id
-          }
-          return get().addProduct(form).id
-        }
+        if (!isOnline) throw new Error(API_UNAVAILABLE)
 
         let context = get().apiContext
         if (!context.hydrated || !context.units?.length || !context.apiBranches?.length || !context.categories?.length) {
@@ -330,7 +294,13 @@ export const useCatalogStore = create(
 
       getLowStock: () => deriveLowStock(get().products),
     }),
-    { name: 'diedo-catalog', storage: ephemeralJsonStorage, partialize: (s) => ({ products: s.products, apiContext: { hydrated: false } }) },
+    {
+      name: 'diedo-catalog',
+      storage: ephemeralJsonStorage,
+      version: 2,
+      migrate: (persisted) => persisted ?? {},
+      partialize: (s) => ({ products: s.products, apiContext: { hydrated: false } }),
+    },
   ),
 )
 

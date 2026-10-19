@@ -47,8 +47,8 @@ export default function AgendarPage() {
   const products = useCatalogStore((s) => s.products)
   const employees = useRrhhStore((s) => s.employees)
   const vacationRequests = useRrhhStore((s) => s.vacationRequests)
-  const dataMode = useSessionStore((s) => s.status)
-  const isDemo = dataMode === 'demo'
+  const isOnline = useSessionStore((s) => s.status === 'online')
+  const isDemo = false
   const branchId = requestedBranchId || (isDemo ? 'charm-dn' : '')
   const lookupByDocument = useSelfBookingStore((s) => s.lookupByDocument)
   const identifyRemote = useSelfBookingStore((s) => s.identifyRemote)
