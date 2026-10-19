@@ -50,7 +50,7 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
   const supplyCategories = filterCategoriesForSection(categories, 'catalog', 'insumo')
   const branchOptions = buildBranchFilterOptions(branches, { includeAll: false })
   const [supplierId, setSupplierId] = useState('')
-  const [branchId, setBranchId] = useState('charm-dn')
+  const [branchId, setBranchId] = useState('')
   const [priority, setPriority] = useState('normal')
   const [notes, setNotes] = useState('')
   const [items, setItems] = useState([emptyItem()])
@@ -89,7 +89,7 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
   useEffect(() => {
     if (!open) return
     setSupplierId(supplierOptions[0]?.id || '')
-    setBranchId(posBranchId || branches[0]?.id || 'charm-dn')
+    setBranchId(posBranchId || branches[0]?.id || '')
     setPriority('normal')
     setNotes('')
     setItems([emptyItem()])

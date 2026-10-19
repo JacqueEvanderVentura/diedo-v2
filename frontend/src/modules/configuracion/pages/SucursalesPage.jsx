@@ -93,9 +93,6 @@ export default function SucursalesPage({ embedded = false, visibleBlockIds }) {
   const canUpdateWorkspace = useSessionStore((state) => state.hasPermission('workspace.update'))
   const branches = useConfigStore((state) => state.branches)
   const localSettings = useConfigStore((state) => state.settings)
-  const addLocal = useConfigStore((state) => state.addBranch)
-  const updateLocal = useConfigStore((state) => state.updateBranch)
-  const deleteLocal = useConfigStore((state) => state.deleteBranch)
   const [legalEntities, setLegalEntities] = useState([])
   const [apiSettings, setApiSettings] = useState(null)
   const [state, setState] = useState(() => ({
@@ -177,9 +174,7 @@ export default function SucursalesPage({ embedded = false, visibleBlockIds }) {
 
   const submit = async (data, { tab }) => {
     if (!online) {
-      editing ? updateLocal(editing.id, data) : addLocal(data)
-      toast.success(editing ? 'Sucursal actualizada' : 'Sucursal creada')
-      return
+      throw new Error('La API no está disponible.')
     }
 
     ensureReady()
@@ -234,7 +229,7 @@ export default function SucursalesPage({ embedded = false, visibleBlockIds }) {
 
   const toggle = async (branch) => {
     if (!online) {
-      updateLocal(branch.id, { active: !branch.active })
+      toast.error('La API no está disponible.')
       return
     }
     try {
@@ -258,7 +253,7 @@ export default function SucursalesPage({ embedded = false, visibleBlockIds }) {
         await administrationGateway.mutate('archiveBranch', branch.id, branch.version)
         await load()
       } else {
-        deleteLocal(branch.id)
+        throw new Error('La API no está disponible.')
       }
       toast.success('Sucursal archivada')
     } catch (error) {

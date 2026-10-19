@@ -128,7 +128,6 @@ function resolveCategoryId(label, categories) {
 }
 
 export function FlashItemModal({ onClose }) {
-  const addProduct = useCatalogStore((s) => s.addProduct)
   const saveProduct = useCatalogStore((s) => s.saveProduct)
   const addItem = usePosStore((s) => s.addItem)
   const isOnline = useSessionStore((s) => s.status === 'online')
@@ -217,7 +216,6 @@ export function FlashItemModal({ onClose }) {
         canManageCatalog,
         categories,
         configBranches: useConfigStore.getState().branches,
-        addProduct,
         saveProduct,
         addItem,
         hydratePos: usePosStore.getState().hydrateFromApi,

@@ -284,7 +284,7 @@ function normalizeLead(raw) {
     rawSnippet: raw.rawSnippet || '',
     status: raw.status || 'nuevo',
     starRating: starRating == null || starRating === '' ? null : Number(starRating),
-    branchId: raw.branchId || 'charm-dn',
+    branchId: raw.branchId || '',
     assignedUserId: raw.assignedUserId || currentSessionActor().id,
     createdAt: raw.createdAt || now(),
     updatedAt: raw.updatedAt || now(),

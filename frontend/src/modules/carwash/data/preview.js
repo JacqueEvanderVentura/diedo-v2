@@ -32,7 +32,7 @@ export function employeeName(id) {
 
 export function previewData({ isDemo, populated, branchId }) {
   // Only one demo branch has example records, so branch switching has visible effect.
-  const visible = isDemo && populated && branchId === 'charm-dn'
+  const visible = false
   return {
     washes: visible ? PREVIEW_WASHES : [],
     commissions: visible ? PREVIEW_COMMISSIONS : [],

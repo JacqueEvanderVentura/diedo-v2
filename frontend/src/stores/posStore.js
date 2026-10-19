@@ -121,7 +121,6 @@ function mutationAttempt(operation, payload) {
 // Payment methods that DON'T settle immediately -> generate an account receivable (CxC).
 export const RECEIVABLE_METHODS = ['transferencia', 'link', 'cxc']
 
-const DEFAULT_POS_BRANCH = 'charm-dn'
 
 const EMPTY_ONLINE_REGISTER = Object.freeze({
   id: null,
@@ -390,8 +389,8 @@ export const usePosStore = create(
   persist(
     (set, get) => ({
       // ---- cart ----
-      branchId: DEFAULT_POS_BRANCH,
-      cajaBranchId: DEFAULT_POS_BRANCH,
+      branchId: null,
+      cajaBranchId: null,
       registerByBranch: {},
       cajaHydrating: false,
       cxcHydrating: false,
@@ -412,7 +411,7 @@ export const usePosStore = create(
       isFinalized: false,
       activeQuoteId: null,
 
-      ...emptyOnlineData(DEFAULT_POS_BRANCH),
+      ...emptyOnlineData(null),
 
       // ---- online synchronization ----
       apiContext: { hydrated: false, mode: 'offline', branchId: null, lastSyncedAt: null },
@@ -725,8 +724,8 @@ export const usePosStore = create(
         detailRequests.clear()
         useConfigStore.getState().resetPaymentMethods()
         set({
-          branchId: DEFAULT_POS_BRANCH,
-          cajaBranchId: DEFAULT_POS_BRANCH,
+          branchId: null,
+          cajaBranchId: null,
           registerByBranch: {},
           cajaHydrating: false,
           cxcHydrating: false,
@@ -734,7 +733,7 @@ export const usePosStore = create(
           cxcWorkspaceHydrated: false,
           customer: DEFAULT_CUSTOMER,
           ...EMPTY_CART_PATCH,
-          ...emptyOnlineData(DEFAULT_POS_BRANCH),
+          ...emptyOnlineData(null),
           apiContext: { hydrated: false, mode: 'offline', branchId: null, lastSyncedAt: null },
           hydrating: false,
           mutating: null,
@@ -1944,7 +1943,7 @@ export const usePosStore = create(
             id: existing?.id || receivableId,
             appointmentId: appointment.id,
             source: 'agenda',
-            branchId: appointment.branchId || 'charm-dn',
+            branchId: appointment.branchId || get().branchId || null,
             customer,
             amount,
             method: 'agenda',
@@ -2325,14 +2324,14 @@ export const usePosStore = create(
         detailRequests.clear()
         useConfigStore.getState().resetPaymentMethods()
         set({
-          branchId: 'charm-dn',
-          cajaBranchId: 'charm-dn',
+          branchId: null,
+          cajaBranchId: null,
           registerByBranch: {},
           cajaHydrating: false,
           customer: DEFAULT_CUSTOMER,
           ...EMPTY_CART_PATCH,
           cartDrawerOpen: false,
-          ...emptyOnlineData('charm-dn'),
+          ...emptyOnlineData(null),
           apiContext: { hydrated: false, mode: 'cleared', branchId: null, lastSyncedAt: null },
           hydrating: false,
           mutating: null,
@@ -2406,7 +2405,7 @@ export const usePosStore = create(
         if (!state.documentKind) state.documentKind = 'invoice'
         if (state.isFinalized == null) state.isFinalized = false
         if (state.activeQuoteId == null) state.activeQuoteId = null
-        const empty = emptyOnlineData(state.branchId || DEFAULT_POS_BRANCH)
+        const empty = emptyOnlineData(state.branchId || null)
         state.heldCarts = Array.isArray(state.heldCarts) ? state.heldCarts : empty.heldCarts
         state.openQuotes = Array.isArray(state.openQuotes) ? state.openQuotes : empty.openQuotes
         state.sales = Array.isArray(state.sales)

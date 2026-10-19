@@ -18,7 +18,7 @@ export default function CuentasPage() {
   const getAccountStats = useFinanzasStore((s) => s.getAccountStats)
   const branches = useConfigStore((s) => s.branches)
 
-  const [branchFilter, setBranchFilter] = useState('charm-dn')
+  const [branchFilter, setBranchFilter] = useState('')
   const [query, setQuery] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)

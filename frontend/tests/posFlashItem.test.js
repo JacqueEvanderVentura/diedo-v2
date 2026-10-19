@@ -20,7 +20,6 @@ describe('alta rápida de ítems POS', () => {
       canManageCatalog: true,
       categories: [],
       configBranches: [],
-      addProduct: vi.fn(),
       saveProduct,
       addItem,
       hydratePos,
@@ -45,13 +44,28 @@ describe('alta rápida de ítems POS', () => {
       canManageCatalog: false,
       categories: [],
       configBranches: [],
-      addProduct: vi.fn(),
       saveProduct,
       addItem: vi.fn(),
       hydratePos: vi.fn(),
       getPosCatalog: () => [],
     })).rejects.toThrow('No tienes permiso')
 
+    expect(saveProduct).not.toHaveBeenCalled()
+  })
+
+  it('no crea ítems locales cuando la sesión está offline', async () => {
+    const saveProduct = vi.fn()
+    await expect(createFlashItemForPos({
+      data: { name: 'Offline', branchId: 'branch-id' },
+      isOnline: false,
+      canManageCatalog: true,
+      categories: [],
+      configBranches: [],
+      saveProduct,
+      addItem: vi.fn(),
+      hydratePos: vi.fn(),
+      getPosCatalog: () => [],
+    })).rejects.toThrow('La API no está disponible.')
     expect(saveProduct).not.toHaveBeenCalled()
   })
 })

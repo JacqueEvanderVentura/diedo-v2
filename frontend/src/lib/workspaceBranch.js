@@ -29,3 +29,24 @@ export function resolveActiveBranchId({
   }
   return allowed[0].id
 }
+
+export function pickDefaultBranchId(branches = []) {
+  const list = Array.isArray(branches) ? branches : []
+  const active = list.find((b) => b?.active !== false && b?.id)
+  return active?.id || list[0]?.id || ''
+}
+
+export function pickDefaultBranchIds(branches = []) {
+  const id = pickDefaultBranchId(branches)
+  return id ? [id] : []
+}
+
+export function resolveBranchId(value, branches = []) {
+  if (value) return value
+  return pickDefaultBranchId(branches)
+}
+
+export function resolveBranchIds(values, branches = []) {
+  if (Array.isArray(values) && values.length) return values
+  return pickDefaultBranchIds(branches)
+}
