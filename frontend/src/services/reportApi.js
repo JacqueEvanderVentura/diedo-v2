@@ -287,7 +287,7 @@ function localInventoryRows(getProducts, getSales, params) {
         id: product.id,
         name: product.name,
         category: product.category,
-        branchId: branchId || product.branchId || 'charm-dn',
+        branchId: branchId || product.branchId || null,
         cost,
         price,
         stock: product.stock || 0,
@@ -394,7 +394,7 @@ function agendaRows(getAppointments, params) {
   return applyBranchFilter(
     getAppointments().map((appointment) => ({
       ...appointment,
-      branchId: appointment.branchId || 'charm-dn',
+      branchId: appointment.branchId || null,
     })),
     branchFilter(params)
   )

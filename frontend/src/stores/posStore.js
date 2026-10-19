@@ -87,6 +87,11 @@ const mutationAttemptKeys = new Map()
 const detailRequests = new Map()
 
 const isOnlineMode = () => useSessionStore.getState().status === 'online'
+const API_UNAVAILABLE = 'La API no está disponible.'
+
+function assertOnline() {
+  if (!isOnlineMode()) throw new Error(API_UNAVAILABLE)
+}
 
 function serializableAttemptPayload(value) {
   return JSON.stringify(value, (_key, current) => {
@@ -1095,6 +1100,7 @@ export const usePosStore = create(
       retainCart: () => {
         const s = get()
         if (!s.items.length) return false
+        assertOnline()
         if (isOnlineMode()) {
           const currentQuote = s.activeQuoteId
             ? s.heldCarts.find((item) => item.id === s.activeQuoteId)
@@ -1225,6 +1231,7 @@ export const usePosStore = create(
       saveOpenQuote: () => {
         const s = get()
         if (!s.items.length || s.isFinalized) return false
+        assertOnline()
         if (isOnlineMode()) {
           const currentQuote = s.activeQuoteId
             ? s.heldCarts.find((item) => item.id === s.activeQuoteId)
@@ -1315,7 +1322,8 @@ export const usePosStore = create(
       updateQuote: (id, patch) => {
         const quote = get().heldCarts.find((item) => item.id === id)
         if (!quote) return false
-        if (!isOnlineMode() || !quote.apiSynced) {
+        assertOnline()
+        if (!quote.apiSynced) {
           set((state) => ({
             heldCarts: state.heldCarts.map((item) => item.id === id ? { ...item, ...patch } : item),
             openQuotes: state.openQuotes.map((item) => item.id === id ? { ...item, ...patch } : item),
@@ -1526,66 +1534,43 @@ export const usePosStore = create(
 
       // ---- caja actions ----
       openRegister: (openingCash) => {
+        assertOnline()
         const branchId = get().cajaBranchId || get().branchId
-        if (isOnlineMode()) {
-          const payload = registerOpenToApiPayload({
-            branchId,
-            openingCash,
-          })
-          return runOnlineMutation({
-            set,
-            get,
-            operation: `register:open:${branchId}`,
-            payload,
-            refreshScope: 'none',
-            request: (idempotencyKey) => posApi.openRegister(payload, { idempotencyKey }),
-            apply: (response) => {
-              const register = mapRegisterMutationResponse(response, branchId)
-              const snapshot = {
-                register,
-                registerSummary: register.summary || null,
-                cashSales: register.summary?.cashSales || 0,
-                shiftSales: [],
-                shiftIncomes: [],
-                expenses: [],
-                lastCloseSummary: null,
-                pagination: emptyPagination(),
-              }
-              set((state) => ({
-                ...snapshot,
-                registerByBranch: {
-                  ...state.registerByBranch,
-                  [branchId]: pickRegisterSnapshot({ ...state, ...snapshot }, branchId),
-                },
-              }))
-            },
-          }).then((response) => {
-            get().hydrateRegisterHistory({ force: true }).catch(() => null)
-            return response
-          })
-        }
-        const snapshot = {
-          register: {
-            open: true,
-            openedAt: now(),
-            openingCash: Number(openingCash) || 0,
-            closedAt: null,
-            branchId,
+        const payload = registerOpenToApiPayload({
+          branchId,
+          openingCash,
+        })
+        return runOnlineMutation({
+          set,
+          get,
+          operation: `register:open:${branchId}`,
+          payload,
+          refreshScope: 'none',
+          request: (idempotencyKey) => posApi.openRegister(payload, { idempotencyKey }),
+          apply: (response) => {
+            const register = mapRegisterMutationResponse(response, branchId)
+            const snapshot = {
+              register,
+              registerSummary: register.summary || null,
+              cashSales: register.summary?.cashSales || 0,
+              shiftSales: [],
+              shiftIncomes: [],
+              expenses: [],
+              lastCloseSummary: null,
+              pagination: emptyPagination(),
+            }
+            set((state) => ({
+              ...snapshot,
+              registerByBranch: {
+                ...state.registerByBranch,
+                [branchId]: pickRegisterSnapshot({ ...state, ...snapshot }, branchId),
+              },
+            }))
           },
-          cashSales: 0,
-          shiftSales: [],
-          shiftIncomes: [],
-          expenses: [],
-          lastCloseSummary: null,
-        }
-        set((state) => ({
-          ...snapshot,
-          registerByBranch: {
-            ...state.registerByBranch,
-            [branchId]: pickRegisterSnapshot({ ...state, ...snapshot }, branchId),
-          },
-        }))
-        return get().register
+        }).then((response) => {
+          get().hydrateRegisterHistory({ force: true }).catch(() => null)
+          return response
+        })
       },
       closeRegister: (actualCash) => {
         const countedCash = Number(actualCash)
@@ -1598,99 +1583,49 @@ export const usePosStore = create(
         ) {
           return Promise.reject(new Error('Ingresa el efectivo contado para cerrar la caja.'))
         }
-        if (isOnlineMode()) {
-          const register = get().register
-          if (!register?.id) return Promise.reject(new Error('No hay una caja sincronizada para cerrar.'))
-          const branchId = get().cajaBranchId || get().branchId
-          const mapCloseSummary = (response) => mapRegisterHistoryMutationResponse(
-            response,
-            branchId
-          )
-          const payload = registerCloseToApiPayload(register, countedCash)
-          return runOnlineMutation({
-            set,
-            get,
-            operation: `register:close:${register.id}`,
-            payload,
-            refreshScope: 'caja',
-            request: (idempotencyKey) => posApi.closeRegister(register.id, payload, { idempotencyKey }),
-            apply: (response) => {
-              const closed = mapRegisterMutationResponse(response, branchId)
-              const summary = mapCloseSummary(response)
-              const snapshot = {
-                register: { ...closed, open: false },
-                registerSummary: closed.summary || null,
-                lastCloseSummary: summary,
-              }
-              set((state) => ({
-                ...snapshot,
-                registerByBranch: {
-                  ...state.registerByBranch,
-                  [branchId]: pickRegisterSnapshot({ ...state, ...snapshot }, branchId),
-                },
-              }))
-            },
-          }).then((response) => {
-            const summary = mapCloseSummary(response)
-            set({ lastCloseSummary: summary })
-            get().hydrateRegisterHistory({ force: true }).catch(() => null)
-            return response
-          })
+        if (!isOnlineMode()) {
+          return Promise.reject(new Error(API_UNAVAILABLE))
         }
-        set((s) => {
-          const closedAt = now()
-          const activeSales = s.shiftSales.filter((sale) => sale.status !== 'voided')
-          const recognizedShiftSales = s.shiftSales.map((sale) => ({
-            ...sale,
-            recognizedAt: sale.recognizedAt || closedAt,
-          }))
-          const cashExpenses = s.expenses.reduce((a, e) => a + e.amount, 0)
-          const cashIncomes = s.shiftIncomes.reduce((a, i) => a + i.amount, 0)
-          const expected = s.register.openingCash + s.cashSales + cashIncomes - cashExpenses
-          const totalSales = activeSales.reduce((a, sale) => a + sale.total, 0)
-          const branchId = s.cajaBranchId || s.branchId
-          const summary = {
-            openingCash: s.register.openingCash,
-            branchId,
-            cashSales: s.cashSales,
-            cashIncomes,
-            expenses: cashExpenses,
-            totalSales,
-            salesCount: activeSales.length,
-            expected,
-            actual: countedCash,
-            difference: countedCash - expected,
-            closedAt,
-          }
-          const snapshot = {
-            register: { ...s.register, open: false, closedAt, branchId },
-            shiftSales: recognizedShiftSales,
-            lastCloseSummary: summary,
-          }
-          return {
-            ...snapshot,
-            sales: recognizedShiftSales.reduce(
-              (items, sale) => replaceById(items, sale),
-              s.sales
-            ),
-            registerHistory: [
-              {
-                id: genId('close'),
-                openedAt: s.register.openedAt,
-                userName: 'Leonedis Hamburgo',
-                ...summary,
+        const register = get().register
+        if (!register?.id) return Promise.reject(new Error('No hay una caja sincronizada para cerrar.'))
+        const branchId = get().cajaBranchId || get().branchId
+        const mapCloseSummary = (response) => mapRegisterHistoryMutationResponse(
+          response,
+          branchId
+        )
+        const payload = registerCloseToApiPayload(register, countedCash)
+        return runOnlineMutation({
+          set,
+          get,
+          operation: `register:close:${register.id}`,
+          payload,
+          refreshScope: 'caja',
+          request: (idempotencyKey) => posApi.closeRegister(register.id, payload, { idempotencyKey }),
+          apply: (response) => {
+            const closed = mapRegisterMutationResponse(response, branchId)
+            const summary = mapCloseSummary(response)
+            const snapshot = {
+              register: { ...closed, open: false },
+              registerSummary: closed.summary || null,
+              lastCloseSummary: summary,
+            }
+            set((state) => ({
+              ...snapshot,
+              registerByBranch: {
+                ...state.registerByBranch,
+                [branchId]: pickRegisterSnapshot({ ...state, ...snapshot }, branchId),
               },
-              ...s.registerHistory,
-            ],
-            registerByBranch: {
-              ...s.registerByBranch,
-              [branchId]: pickRegisterSnapshot({ ...s, ...snapshot }, branchId),
-            },
-          }
+            }))
+          },
+        }).then((response) => {
+          const summary = mapCloseSummary(response)
+          set({ lastCloseSummary: summary })
+          get().hydrateRegisterHistory({ force: true }).catch(() => null)
+          return response
         })
-        return get().lastCloseSummary
       },
       addIncome: ({ concept, amount, method, reference }) => {
+        assertOnline()
         if (isOnlineMode()) {
           const register = get().register
           if (!register?.id) return Promise.reject(new Error('Abre la caja antes de registrar movimientos.'))
@@ -1723,6 +1658,7 @@ export const usePosStore = create(
         return true
       },
       addExpense: ({ concept, amount, items, method, reference }) => {
+        assertOnline()
         if (isOnlineMode()) {
           const register = get().register
           if (!register?.id) return Promise.reject(new Error('Abre la caja antes de registrar movimientos.'))
@@ -1756,6 +1692,7 @@ export const usePosStore = create(
       },
 
       recordSale: ({ total, method, customer, reference, items, subtotal, discountAmt, discountPct, taxPct, taxAmt }) => {
+        assertOnline()
         if (isOnlineMode()) {
           const data = { total, method, customer, reference, items, subtotal, discountAmt, discountPct, taxPct, taxAmt }
           const state = {
@@ -1840,7 +1777,8 @@ export const usePosStore = create(
         const sale = get().sales.find((item) => item.id === id)
           || get().shiftSales.find((item) => item.id === id)
         if (!sale) return false
-        if (!isOnlineMode() || !sale.apiSynced) {
+        assertOnline()
+        if (!sale.apiSynced) {
           const voidedAt = now()
           set((state) => ({
             sales: state.sales.map((item) => item.id === id
@@ -1885,6 +1823,7 @@ export const usePosStore = create(
       updateReceivable: (id, data) => {
         const current = get().receivables.find((receivable) => receivable.id === id)
         if (!current) return false
+        assertOnline()
         if (isOnlineMode() && current.apiSynced) {
           const payload = receivablePatchToApiPayload(current, data)
           return runOnlineMutation({
@@ -1913,7 +1852,7 @@ export const usePosStore = create(
       },
 
       syncAppointmentReceivable: (appointment) => {
-        if (isOnlineMode()) return
+        if (!isOnlineMode()) return
         if (!appointment?.id) return
         const shouldHave = appointment.pendingPayment && Number(appointment.pendingAmount) > 0
         const receivableId = agendaReceivableId(appointment.id)
@@ -1980,6 +1919,7 @@ export const usePosStore = create(
       addReceivablePayment: (id, { amount, method = 'efectivo', reference, note, proof }) => {
         const paymentAmount = Number(amount) || 0
         if (paymentAmount <= 0) return
+        assertOnline()
         const receivable = get().receivables.find((item) => item.id === id)
         if (isOnlineMode() && receivable?.apiSynced) {
           const data = { amount: paymentAmount, method, reference, note, proof }
@@ -2051,16 +1991,13 @@ export const usePosStore = create(
           reference: extra.reference || null,
         })
         if (extra.proof && !isOnlineMode()) {
-          set((s) => ({
-            receivables: s.receivables.map((x) =>
-              x.id === id ? { ...x, proof: extra.proof, reference: extra.reference || x.reference } : x
-            ),
-          }))
+          throw new Error(API_UNAVAILABLE)
         }
         return result
       },
 
       attachReceivableProof: (id, payload) => {
+        assertOnline()
         if (isOnlineMode()) {
           const receivable = get().receivables.find((item) => item.id === id)
           const file = payload?.proof
@@ -2112,7 +2049,8 @@ export const usePosStore = create(
       voidReceivable: (id, reason) => {
         const receivable = get().receivables.find((item) => item.id === id)
         if (!receivable) return false
-        if (!isOnlineMode() || !receivable.apiSynced) {
+        assertOnline()
+        if (!receivable.apiSynced) {
           set((state) => ({ receivables: state.receivables.filter((item) => item.id !== id) }))
           return true
         }
@@ -2140,15 +2078,7 @@ export const usePosStore = create(
           if (currentPayment) break
         }
         if (!currentPayment) return false
-        if (!isOnlineMode()) {
-          set((state) => ({
-            receivables: state.receivables.map((receivable) => normalizeReceivable({
-              ...receivable,
-              payments: (receivable.payments || []).filter((payment) => payment.id !== paymentId),
-            })),
-          }))
-          return true
-        }
+        assertOnline()
         const payload = voidToApiPayload(currentPayment, reason || 'Pago reversado desde Terminal POS')
         return runOnlineMutation({
           set,

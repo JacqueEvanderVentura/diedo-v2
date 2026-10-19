@@ -672,10 +672,10 @@ describe('store online de Terminal POS', () => {
     })
   })
 
-  it('marca las ventas locales como ingresos reconocidos al cerrar la caja', async () => {
+  it('bloquea el cierre de caja cuando la API no está disponible', async () => {
     useSessionStore.setState({ status: 'degraded', accessToken: null, user: null })
     const sale = {
-      id: 'demo-sale',
+      id: 'local-sale',
       status: 'completed',
       method: 'tarjeta',
       total: 100,
@@ -692,15 +692,8 @@ describe('store online de Terminal POS', () => {
       registerHistory: [],
     })
 
-    await usePosStore.getState().closeRegister(500)
-
-    expect(usePosStore.getState().sales[0]).toMatchObject({
-      id: 'demo-sale',
-      status: 'completed',
-      recognizedAt: expect.any(String),
-    })
-    expect(usePosStore.getState().sales[0].recognizedAt).toBe(
-      usePosStore.getState().lastCloseSummary.closedAt
-    )
+    await expect(usePosStore.getState().closeRegister(500)).rejects.toThrow('La API no está disponible.')
+    expect(usePosStore.getState().sales[0].recognizedAt).toBeNull()
+    expect(mocks.closeRegister).not.toHaveBeenCalled()
   })
 })
