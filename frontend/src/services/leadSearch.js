@@ -38,6 +38,15 @@ export async function searchBusinesses({ q, location, num = 10 }) {
       err.parameter = error.parameter
       throw err
     }
+    if (error?.status === 503 && error?.parameter === 'provider') {
+      const err = new Error(
+        'La búsqueda con inteligencia artificial no está disponible. Favor de contactar al proveedor.',
+      )
+      err.code = 'DISCOVERY_NOT_CONFIGURED'
+      err.status = error.status
+      err.parameter = error.parameter
+      throw err
+    }
     throw error
   }
 }

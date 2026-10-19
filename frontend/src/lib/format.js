@@ -20,3 +20,10 @@ export function formatCompact(value) {
   }
   return `$${n}`
 }
+
+/** Visible label cap — full string when length ≤ maxLength, else first maxLength chars + ellipsis. */
+export function truncateDisplayText(value, maxLength = 40, ellipsis = '....') {
+  const text = String(value ?? '').trim()
+  if (text.length <= maxLength) return text
+  return `${text.slice(0, maxLength)}${ellipsis}`
+}

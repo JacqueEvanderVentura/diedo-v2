@@ -64,6 +64,12 @@ class WorkspaceMembership(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Bas
             unique=True,
             postgresql_where=text("is_default"),
         ),
+        Index(
+            "uq_memberships_one_active_per_user",
+            "platform_user_id",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
     )
 
     workspace_id: Mapped[UUID] = mapped_column(

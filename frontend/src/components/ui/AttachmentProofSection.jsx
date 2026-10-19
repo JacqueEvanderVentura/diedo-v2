@@ -8,6 +8,7 @@ export function AttachmentProofSection({
   items = [],
   loadProof,
   onDownload,
+  onDelete,
   className,
   testId,
 }) {
@@ -39,6 +40,7 @@ export function AttachmentProofSection({
               proof={item}
               loadProof={loadProof}
               onDownload={onDownload}
+              onDelete={onDelete ? () => onDelete(item) : null}
             />
           </div>
         )

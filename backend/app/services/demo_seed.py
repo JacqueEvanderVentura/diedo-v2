@@ -23,7 +23,6 @@ from app.db.models import (
     Branch,
     CrmActivity,
     CrmLead,
-    CrmOpportunity,
     CrmSettings,
     Customer,
     CustomerBranchAssignment,
@@ -2544,6 +2543,9 @@ def _seed_crm(
             "raw_snippet": lead_fixture.raw_snippet,
             "status": lead_fixture.status,
             "star_rating": lead_fixture.star_rating,
+            "pipeline_value": lead_fixture.pipeline_value,
+            "lost_reason": lead_fixture.lost_reason,
+            "pipeline_closed_at": lead_fixture.pipeline_closed_at,
             "converted_customer_id": converted_customer.id if converted_customer else None,
             "converted_at": lead_fixture.updated_at if converted_customer else None,
             "creation_idempotency_key": (
@@ -2590,85 +2592,6 @@ def _seed_crm(
             _assign_demo_values(lead, lead_values)
         leads[lead_fixture.seed_key] = lead
 
-    opportunities: dict[str, CrmOpportunity] = {}
-    for opportunity_fixture in bundle.crm.opportunities:
-        payload = opportunity_fixture.model_dump(mode="json")
-        actor_id = _stable_id(
-            bundle.manifest.seed_version,
-            "platform_user",
-            opportunity_fixture.assigned_user_seed_key,
-        )
-        opportunity_customer = (
-            _required_demo_customer(
-                session,
-                bundle.manifest.seed_version,
-                opportunity_fixture.customer_seed_key,
-            )
-            if opportunity_fixture.customer_seed_key
-            else None
-        )
-        opportunity_values: dict[str, object] = {
-            "workspace_id": workspace_id,
-            "branch_id": branches[opportunity_fixture.branch_code].id,
-            "lead_id": (
-                leads[opportunity_fixture.lead_seed_key].id
-                if opportunity_fixture.lead_seed_key
-                else None
-            ),
-            "customer_id": opportunity_customer.id if opportunity_customer else None,
-            "assigned_membership_id": _stable_id(
-                bundle.manifest.seed_version,
-                "membership",
-                opportunity_fixture.assigned_user_seed_key,
-            ),
-            "title": opportunity_fixture.title,
-            "customer_name": opportunity_fixture.customer_name,
-            "stage": opportunity_fixture.stage,
-            "value": opportunity_fixture.value,
-            "currency_code": opportunity_fixture.currency_code.upper(),
-            "notes": opportunity_fixture.notes,
-            "lost_reason": opportunity_fixture.lost_reason,
-            "closed_at": opportunity_fixture.closed_at,
-            "creation_idempotency_key": (
-                f"demo:{bundle.manifest.seed_version}:opportunity:{opportunity_fixture.seed_key}"
-            ),
-            "request_fingerprint": _checksum(payload),
-            "created_by_platform_user_id": actor_id,
-            "updated_by_platform_user_id": actor_id,
-            "created_at": opportunity_fixture.created_at,
-            "updated_at": opportunity_fixture.updated_at,
-        }
-        entity_id = _stable_id(
-            bundle.manifest.seed_version,
-            "crm_opportunity",
-            opportunity_fixture.seed_key,
-        )
-        opportunity = _registered_entity(
-            session,
-            workspace_id,
-            "crm_opportunity",
-            opportunity_fixture.seed_key,
-            entity_id,
-            payload,
-            CrmOpportunity,
-        )
-        if opportunity is None:
-            opportunity = CrmOpportunity(id=entity_id, **opportunity_values)
-            session.add(opportunity)
-            session.flush()
-            _register(
-                session,
-                workspace_id,
-                "crm_opportunity",
-                opportunity_fixture.seed_key,
-                entity_id,
-                bundle.manifest.seed_version,
-                payload,
-            )
-        else:
-            _assign_demo_values(opportunity, opportunity_values)
-        opportunities[opportunity_fixture.seed_key] = opportunity
-
     for activity_fixture in bundle.crm.activities:
         payload = activity_fixture.model_dump(mode="json")
         actor_id = _stable_id(
@@ -2688,11 +2611,6 @@ def _seed_crm(
             "branch_id": branches[activity_fixture.branch_code].id,
             "lead_id": (
                 leads[activity_fixture.lead_seed_key].id if activity_fixture.lead_seed_key else None
-            ),
-            "opportunity_id": (
-                opportunities[activity_fixture.opportunity_seed_key].id
-                if activity_fixture.opportunity_seed_key
-                else None
             ),
             "customer_id": activity_customer.id if activity_customer else None,
             "assigned_membership_id": _stable_id(
@@ -2746,7 +2664,7 @@ def _seed_crm(
     return (
         len(bundle.crm.customer_profiles),
         len(bundle.crm.leads),
-        len(bundle.crm.opportunities),
+        0,
         len(bundle.crm.activities),
     )
 

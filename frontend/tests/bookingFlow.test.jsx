@@ -9,12 +9,17 @@ import { BookingLinkModal } from '@/modules/agenda/components/BookingLinkModal'
 import { useSessionStore } from '@/stores/sessionStore'
 import { useSelfBookingStore } from '@/stores/selfBookingStore'
 import { publicBookingApi } from '@/services/publicBookingApi'
+import { publicPortalApi } from '@/services/publicPortalApi'
+import { clearPublicSession } from '@/modules/portal/lib/publicSession'
 import { branchDateKey } from '@/modules/agenda/lib/notification'
 
 vi.mock('@/services/publicBookingApi', () => ({ publicBookingApi: {
   getContext: vi.fn(), identify: vi.fn(), listSlots: vi.fn(), book: vi.fn(), sendBookingLink: vi.fn(),
   getAppointment: vi.fn(), managementSlots: vi.fn(), cancelAppointment: vi.fn(), rescheduleAppointment: vi.fn(),
 } }))
+vi.mock('@/services/publicPortalApi', () => ({
+  publicPortalApi: { register: vi.fn().mockResolvedValue({ customerId: 'cust-1' }) },
+}))
 vi.mock('@/components/customers/CustomerPicker', () => ({ CustomerPicker: () => null }))
 vi.mock('@/components/ui/Select', () => ({ Select: ({ value, onChange, options, 'data-testid': testId }) =>
   <select data-testid={testId} value={value} onChange={(event) => onChange(event.target.value)}>
@@ -27,11 +32,20 @@ vi.mock('@/components/ui/DatePicker', () => ({ DatePicker: ({ value, onChange, t
 
 beforeEach(() => {
   vi.resetAllMocks()
-  useSessionStore.setState({ status: 'anonymous', user: null })
+  vi.stubGlobal('requestAnimationFrame', (callback) => {
+    callback()
+    return 0
+  })
+  clearPublicSession()
+  useSessionStore.setState({ status: 'online', user: null })
   useSelfBookingStore.setState({ profiles: [] })
-  publicBookingApi.getContext.mockResolvedValue({ branch: { branchId: 'branch', branchName: 'Norte' },
-    services: [{ id: 'service', name: 'Facial', price: '1250' }],
-    specialists: [{ id: 'employee', displayName: 'Ana Prueba' }], hasResources: true })
+  publicBookingApi.getContext.mockResolvedValue({
+    branch: { branchId: 'branch', branchName: 'Norte', timezone: 'America/Santo_Domingo' },
+    services: [{ id: 'service', name: 'Facial', price: '1250', durationMinutes: 30 }],
+    specialists: [{ id: 'employee', displayName: 'Ana Prueba' }],
+    hasResources: true,
+    workspaceBranches: [{ id: 'branch', name: 'Norte' }],
+  })
   publicBookingApi.identify.mockResolvedValue({ isNew: true })
 })
 afterEach(cleanup)
@@ -43,14 +57,18 @@ it('uses the establishment date when the visitor is in another timezone', () => 
 })
 
 async function selectAppointment() {
-  render(<MemoryRouter initialEntries={['/agendar?branch=branch']}><AgendarPage /></MemoryRouter>)
-  await screen.findByText('Identifícate')
+  render(<MemoryRouter initialEntries={['/agendar?branch=branch&intent=book']}><AgendarPage /></MemoryRouter>)
+  await screen.findByText('Elige tu sucursal')
+  fireEvent.click(screen.getByTestId('branch-confirm'))
+  await screen.findByText(/Ingresa tu documento/)
   fireEvent.change(screen.getByTestId('self-doc-lookup'), { target: { value: '00112345678' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Continuar' }))
+  fireEvent.click(screen.getByText('Regístrate aquí'))
   await screen.findByTestId('self-name')
   fireEvent.change(screen.getByTestId('self-name'), { target: { value: 'Cliente prueba' } })
+  fireEvent.click(screen.getByTestId('pref-invite-invoice'))
   fireEvent.change(screen.getByTestId('self-email'), { target: { value: 'client@example.com' } })
   fireEvent.click(screen.getByTestId('self-save-profile'))
+  await screen.findByTestId('self-service')
   fireEvent.change(screen.getByTestId('self-service'), { target: { value: 'service' } })
   fireEvent.change(screen.getByTestId('self-specialist'), { target: { value: 'employee' } })
 }
@@ -73,6 +91,29 @@ it('shares by email without a phone and never opens WhatsApp automatically', asy
   open.mockRestore()
 })
 
+it('prefills the last service and specialist after identify', async () => {
+  publicBookingApi.identify.mockResolvedValue({
+    isNew: false,
+    customerId: 'cust-1',
+    documentType: 'cedula',
+    documentId: '00112345678',
+    displayName: 'Cliente prueba',
+    email: 'client@example.com',
+    phone: '8294220141',
+    lastServiceId: 'service',
+    lastEmployeeId: 'employee',
+  })
+  render(<MemoryRouter initialEntries={['/agendar?branch=branch&intent=book']}><AgendarPage /></MemoryRouter>)
+  await screen.findByText('Elige tu sucursal')
+  fireEvent.click(screen.getByTestId('branch-confirm'))
+  await screen.findByText(/Ingresa tu documento/)
+  fireEvent.change(screen.getByTestId('self-doc-lookup'), { target: { value: '00112345678' } })
+  fireEvent.click(screen.getByTestId('self-login-search'))
+  await screen.findByTestId('self-service')
+  expect(screen.getByTestId('self-service').value).toBe('service')
+  expect(screen.getByTestId('self-specialist').value).toBe('employee')
+})
+
 it('discards an old slot response after the date changes', async () => {
   let oldResponse
   publicBookingApi.listSlots.mockImplementationOnce(() => new Promise((resolve) => { oldResponse = resolve }))
@@ -80,10 +121,15 @@ it('discards an old slot response after the date changes', async () => {
   await selectAppointment()
   await waitFor(() => expect(publicBookingApi.listSlots).toHaveBeenCalledTimes(1))
   fireEvent.change(screen.getByTestId('self-booking-date'), { target: { value: '2027-02-15' } })
-  await screen.findByTestId('self-slot-13:00')
+  await waitFor(() => expect(publicBookingApi.listSlots).toHaveBeenCalledTimes(2))
+  const timeSelect = await screen.findByTestId('self-booking-time-select')
+  fireEvent.click(timeSelect)
+  await screen.findByTestId('self-booking-time-slot-13:00')
+  fireEvent.click(timeSelect)
   await act(async () => oldResponse({ slots: ['10:00'] }))
-  expect(screen.queryByTestId('self-slot-10:00')).toBeNull()
-  expect(screen.getByTestId('self-slot-13:00')).toBeTruthy()
+  fireEvent.click(timeSelect)
+  await screen.findByTestId('self-booking-time-slot-13:00')
+  expect(screen.queryByTestId('self-booking-time-slot-10:00')).toBeNull()
 })
 
 it('keeps one idempotency key when a reservation response is lost and prevents double clicks', async () => {
@@ -91,7 +137,11 @@ it('keeps one idempotency key when a reservation response is lost and prevents d
   publicBookingApi.book.mockRejectedValueOnce(new Error('Conexión interrumpida'))
     .mockResolvedValue({ appointment: { id: 'appointment', managementToken: 'token', notification: { status: 'failed' } } })
   await selectAppointment()
-  fireEvent.click(await screen.findByTestId('self-slot-10:00'))
+  await waitFor(() => expect(publicBookingApi.listSlots).toHaveBeenCalled())
+  await screen.findByTestId('self-booking-time-select')
+  fireEvent.click(screen.getByTestId('self-booking-time-select'))
+  fireEvent.click(await screen.findByTestId('self-booking-time-slot-10:00'))
+  fireEvent.click(screen.getByTestId('self-booking-continue'))
   fireEvent.click(screen.getByTestId('self-confirm'))
   fireEvent.click(screen.getByTestId('self-confirm'))
   await waitFor(() => expect(screen.getByTestId('self-confirm').disabled).toBe(false))
@@ -99,7 +149,7 @@ it('keeps one idempotency key when a reservation response is lost and prevents d
   fireEvent.click(screen.getByTestId('self-confirm'))
   await screen.findByText('¡Cita confirmada!')
   expect(publicBookingApi.book.mock.calls[0][2]).toBe(publicBookingApi.book.mock.calls[1][2])
-  expect(screen.getByRole('link', { name: 'Gestionar mi cita' }).getAttribute('href')).toContain('token=token')
+  expect(screen.getByRole('link', { name: 'Ir a mi portal' }).getAttribute('href')).toContain('/agendar/portal')
   expect(screen.getByText(/no se pudo completar el correo/)).toBeTruthy()
 })
 

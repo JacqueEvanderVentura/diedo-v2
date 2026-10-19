@@ -14,6 +14,11 @@ from app.schemas.master_data import CustomerDocumentType
 PublicAppointmentStatus = Literal["confirmed", "cancelled"]
 
 
+class PublicWorkspaceBranchOption(ApiModel):
+    id: UUID
+    name: str
+
+
 class PublicBranchContextResponse(ApiModel):
     branch_id: UUID
     branch_name: str
@@ -38,6 +43,7 @@ class PublicBookingContextResponse(ApiModel):
     services: list[PublicServiceOption]
     specialists: list[PublicSpecialistOption]
     has_resources: bool = False
+    workspace_branches: list[PublicWorkspaceBranchOption] = Field(default_factory=list)
 
 
 class EmailNotificationResponse(ApiModel):
@@ -82,6 +88,9 @@ class PublicCustomerProfileResponse(ApiModel):
     wants_invoice: bool = False
     wants_contact: bool = False
     address: str | None = None
+    observaciones: str | None = None
+    last_service_id: UUID | None = None
+    last_employee_id: UUID | None = None
 
 
 class PublicIdentifyResponse(PublicCustomerProfileResponse):
@@ -108,7 +117,6 @@ class PublicBookAppointmentRequest(ApiModel):
     employee_id: UUID
     date: date
     time: TimeValue
-    duration: int = Field(default=30, ge=5, le=480)
 
     @field_validator("display_name")
     @classmethod
@@ -168,6 +176,12 @@ class PublicProfileUpdateRequest(ApiModel):
     wants_invoice: bool = False
     wants_contact: bool = False
 
+    observaciones: str | None = Field(default=None, max_length=1000)
+
+
+class PublicRegisterRequest(PublicProfileUpdateRequest):
+    """Public self-registration without booking an appointment."""
+
 
 class PublicCancelAppointmentRequest(ApiModel):
     management_token: str = Field(min_length=8, max_length=64)
@@ -177,7 +191,6 @@ class PublicRescheduleAppointmentRequest(ApiModel):
     management_token: str = Field(min_length=8, max_length=64)
     date: date
     time: TimeValue
-    duration: int | None = Field(default=None, ge=5, le=480)
 
     @model_validator(mode="after")
     def require_future_slot(self) -> PublicRescheduleAppointmentRequest:

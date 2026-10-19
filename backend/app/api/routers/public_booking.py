@@ -58,7 +58,6 @@ def get_management_slots(
     database: DatabaseSession,
     token: Annotated[str, Query(min_length=8, max_length=64)],
     scheduled_date: Annotated[date, Query(alias="date")],
-    duration: Annotated[int, Query(ge=5, le=480)] = 30,
 ) -> dict[str, list[str]]:
     try:
         return {
@@ -67,7 +66,6 @@ def get_management_slots(
                 appointment_id,
                 token,
                 scheduled_date,
-                duration,
             )
         }
     except AuthorizationErrorPublic as exc:
@@ -130,13 +128,13 @@ def list_slots(
     database: DatabaseSession,
     scheduled_date: Annotated[date, Query(alias="date")],
     employee_id: Annotated[UUID, Query(alias="employeeId")],
-    duration_minutes: Annotated[int, Query(alias="duration", ge=5, le=480)] = 30,
+    service_id: Annotated[UUID, Query(alias="serviceId")],
 ) -> PublicSlotsResponse:
-    slots = PublicBookingService(database).list_slots(
+    slots, duration_minutes = PublicBookingService(database).list_slots(
         branch_id,
         scheduled_date=scheduled_date,
         employee_id=employee_id,
-        duration_minutes=duration_minutes,
+        service_id=service_id,
     )
     return PublicSlotsResponse(
         date=scheduled_date,
@@ -251,7 +249,6 @@ def reschedule_appointment(
                 management_token=payload.management_token,
                 scheduled_date=payload.date,
                 scheduled_time=payload.time,
-                duration=payload.duration,
             )
         )
     except Exception as exc:

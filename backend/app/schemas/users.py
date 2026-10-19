@@ -88,6 +88,7 @@ class UserListItem(ApiModel):
     last_access_at: datetime | None
     status: Literal["active", "inactive"]
     version: int
+    notice: str | None = None
 
 
 class PaginatedUsersResponse(ApiModel):
@@ -140,7 +141,7 @@ SortDirection = Literal["asc", "desc"]
 
 
 class UpdateUserRequest(ApiModel):
-    status: Literal["active", "suspended"] | None = None
+    status: Literal["active", "inactive", "suspended"] | None = None
     role_assignments: list[RoleAssignmentInput] | None = Field(
         default=None,
         min_length=1,
@@ -178,6 +179,7 @@ class InvitationResponse(ApiModel):
     expires_at: datetime
     status: Literal["pending", "accepted", "revoked", "expired"]
     accept_token: str | None = None
+    notice: str | None = None
 
 
 class AcceptInvitationRequest(ApiModel):

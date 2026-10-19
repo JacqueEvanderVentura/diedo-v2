@@ -2,8 +2,10 @@ import { useMemo } from 'react'
 import { toast } from 'sonner'
 import { SearchX } from 'lucide-react'
 import { useCatalogStore, isPosSellable } from '@/stores/catalogStore'
+import { useConfigStore } from '@/stores/configStore'
 import { usePosStore } from '@/stores/posStore'
 import { useSessionStore } from '@/stores/sessionStore'
+import { productMatchesPosCategory } from '../lib/productCategory'
 import { ProductCard } from './ProductCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -12,6 +14,7 @@ export function ProductGrid({ query, category, loading }) {
   const addItem = usePosStore((s) => s.addItem)
   const catalogProducts = useCatalogStore((s) => s.products)
   const posCatalog = usePosStore((s) => s.posCatalog)
+  const categories = useConfigStore((s) => s.categories)
   const isOnline = useSessionStore((s) => s.status === 'online')
   const products = isOnline ? posCatalog : catalogProducts
 
@@ -19,14 +22,14 @@ export function ProductGrid({ query, category, loading }) {
     const q = query.trim().toLowerCase()
     return products.filter((p) => {
       if (!isPosSellable(p)) return false
-      const matchCat = category === 'all' || p.category === category
+      const matchCat = productMatchesPosCategory(p, category, categories)
       const matchQuery =
         !q ||
         p.name.toLowerCase().includes(q) ||
         (p.sku && String(p.sku).toLowerCase().includes(q))
       return matchCat && matchQuery
     })
-  }, [products, query, category])
+  }, [products, query, category, categories])
 
   const handleAdd = (product) => {
     if (product.type === 'product' && product.stock !== null && !product.allowNegativeStock) {

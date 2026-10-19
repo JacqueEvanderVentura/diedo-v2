@@ -1,5 +1,4 @@
-import html2canvas from 'html2canvas'
-import jsPDF from 'jspdf'
+import { isIOS, prefersPdfOpenInNewTab } from '@/lib/printPlatform'
 
 const PRINT_SUPPRESS_STYLES = `
 <style>
@@ -46,53 +45,75 @@ async function preparePdfDocument(doc) {
   }
 }
 
-/** Download styled HTML as a PDF (same layout as print preview). */
-export async function downloadHtmlAsPdf(html, filename) {
-  const { iframe, doc } = mountHtmlDocument(html)
-  try {
-    await preparePdfDocument(doc)
-    const sheet = doc.querySelector('.sheet') || doc.body
-    const canvas = await html2canvas(sheet, {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: '#ffffff',
-      logging: false,
-      windowWidth: PDF_RENDER_WIDTH_PX,
-      onclone: (documentClone) => {
-        documentClone.querySelectorAll('s.strike, .strike').forEach((node) => {
-          node.style.setProperty('text-decoration', 'line-through', 'important')
-          node.style.setProperty('text-decoration-line', 'line-through', 'important')
-          node.style.setProperty('-webkit-text-decoration-line', 'line-through', 'important')
-          node.style.setProperty('display', 'inline-block', 'important')
-          node.style.setProperty('line-height', '1.25', 'important')
-        })
-      },
-    })
+function revokeObjectUrlLater(url) {
+  setTimeout(() => URL.revokeObjectURL(url), 120_000)
+}
 
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-    const pageWidth = pdf.internal.pageSize.getWidth()
-    const pageHeight = pdf.internal.pageSize.getHeight()
-    const margin = 14
-    const contentWidth = pageWidth - margin * 2
-    const imgHeight = (canvas.height * contentWidth) / canvas.width
-    const imgData = canvas.toDataURL('image/png')
-    let heightLeft = imgHeight
-    let position = margin
+function openBlobInNewTab(blob) {
+  const url = URL.createObjectURL(blob)
+  const popup = window.open(url, '_blank', 'noopener,noreferrer')
+  popup?.focus()
+  revokeObjectUrlLater(url)
+  return popup
+}
 
-    pdf.addImage(imgData, 'PNG', margin, position, contentWidth, imgHeight)
-    heightLeft -= pageHeight - margin * 2
+/** Open printable HTML so the user can print or Save as PDF (Safari / offline fallback). */
+export function openHtmlInNewTab(html) {
+  const payload = html.includes('</head>')
+    ? html.replace('</head>', `${PRINT_SUPPRESS_STYLES}</head>`)
+    : `${PRINT_SUPPRESS_STYLES}${html}`
+  const blob = new Blob([payload], { type: 'text/html;charset=utf-8' })
+  openBlobInNewTab(blob)
+}
 
-    while (heightLeft > 0) {
-      position = heightLeft - imgHeight + margin
-      pdf.addPage()
-      pdf.addImage(imgData, 'PNG', margin, position, contentWidth, imgHeight)
-      heightLeft -= pageHeight - margin * 2
-    }
-
-    pdf.save(filename)
-  } finally {
-    iframe.remove()
+/** Print a PDF blob; Safari/iOS opens in a new tab for reliable print/share. */
+export async function printPdfBlob(blob) {
+  if (prefersPdfOpenInNewTab()) {
+    openBlobInNewTab(blob)
+    return
   }
+
+  const url = URL.createObjectURL(blob)
+  const iframe = document.createElement('iframe')
+  iframe.setAttribute('aria-hidden', 'true')
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden'
+  iframe.src = url
+  document.body.appendChild(iframe)
+
+  const cleanup = () => {
+    if (iframe.parentNode) iframe.remove()
+    revokeObjectUrlLater(url)
+  }
+
+  const triggerPrint = () => {
+    try {
+      iframe.contentWindow?.focus()
+      iframe.contentWindow?.print()
+    } catch {
+      openBlobInNewTab(blob)
+    }
+    setTimeout(cleanup, 120_000)
+  }
+
+  iframe.addEventListener('load', () => {
+    requestAnimationFrame(triggerPrint)
+  }, { once: true })
+}
+
+export function savePdfBlob(blob, filename) {
+  if (isIOS()) {
+    openBlobInNewTab(blob)
+    return
+  }
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.rel = 'noopener'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  revokeObjectUrlLater(url)
 }
 
 /** Silent print via hidden iframe (no new browser tab). */
@@ -117,6 +138,18 @@ export function printHtml(html) {
   win.addEventListener('afterprint', cleanup, { once: true })
   setTimeout(cleanup, 120000)
 
-  win.focus()
-  win.print()
+  const applyPrintClearance = () => {
+    const footer = doc.querySelector('.invoice-footer')
+    const header = doc.querySelector('.invoice-print-header') || doc.querySelector('header')
+    const headerH = Math.ceil(header?.getBoundingClientRect().height || 0)
+    const footerH = Math.ceil(footer?.getBoundingClientRect().height || 0)
+    doc.documentElement.style.setProperty('--invoice-header-clearance', `${Math.max(headerH + 20, 188)}px`)
+    doc.documentElement.style.setProperty('--invoice-footer-clearance', `${Math.max(footerH + 16, 150)}px`)
+  }
+
+  win.requestAnimationFrame(() => {
+    applyPrintClearance()
+    win.focus()
+    win.print()
+  })
 }

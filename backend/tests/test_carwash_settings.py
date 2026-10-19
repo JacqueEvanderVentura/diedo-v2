@@ -83,22 +83,25 @@ def setup(client: TestClient) -> Iterator[dict]:
         "/api/v1/catalog/categories", headers=headers, json={"name": f"Carwash {uuid7()}"}
     )
     assert category.status_code == 201, category.text
-    yield {
-        "headers": headers,
-        "branchId": branch_id,
-        "workspaceId": summary.workspace_id,
-        "otherBranchId": str(summary.branch_id),
-        "categoryId": category.json()["id"],
-        "unitOfMeasureId": options.json()["units"][0]["id"],
-    }
-    with session_scope() as session:
-        entitlement = session.scalar(
-            select(ModuleEntitlement).where(
-                ModuleEntitlement.workspace_id == summary.workspace_id,
-                ModuleEntitlement.module_definition_id == definition,
+    try:
+        yield {
+            "headers": headers,
+            "branchId": branch_id,
+            "workspaceId": summary.workspace_id,
+            "otherBranchId": str(summary.branch_id),
+            "categoryId": category.json()["id"],
+            "unitOfMeasureId": options.json()["units"][0]["id"],
+        }
+    finally:
+        with session_scope() as session:
+            entitlement = session.scalar(
+                select(ModuleEntitlement).where(
+                    ModuleEntitlement.workspace_id == summary.workspace_id,
+                    ModuleEntitlement.module_definition_id == definition,
+                )
             )
-        )
-        entitlement.status = "disabled"
+            if entitlement is not None:
+                entitlement.status = "disabled"
 
 
 def new_service(setup: dict, **changes: object) -> dict:

@@ -9,7 +9,7 @@ import { useCrmStore } from '@/stores/crmStore'
 import { usePosStore } from '@/stores/posStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { ProofImagePreview } from '@/modules/pos/components/ProofImagePreview'
-import { ReceivablePaymentLog } from '@/modules/pos/components/ReceivablePaymentLog'
+import { InvoicePaymentLog } from '@/modules/pos/components/InvoicePaymentLog'
 import { getBalance, getPaidAmount } from '@/modules/pos/lib/receivables'
 import { findQuoteReceivable } from '../lib/quoteInvoice'
 import { fmtDateTime, METHOD_ICON, METHOD_LABELS } from '../lib/crm'
@@ -163,17 +163,19 @@ export function QuotePaymentDetailModal({ open, onClose, quote }) {
               />
             )}
 
-            {receivable && (
-              <div>
-                <h4 className="mb-3 font-heading font-semibold text-slate-900">Historial de pagos</h4>
-                <ReceivablePaymentLog
-                  receivable={receivable}
-                  onDownload={handleDownloadProof}
-                />
+            <div data-testid="quote-payment-log">
+              <div className="mb-3 flex items-center gap-2">
+                <Icons.History className="h-4 w-4 text-blue-600" />
+                <h4 className="font-heading font-semibold text-slate-900">Historial de pagos</h4>
               </div>
-            )}
+              <InvoicePaymentLog
+                sale={sale}
+                receivable={receivable}
+                onDownload={handleDownloadProof}
+              />
+            </div>
 
-            {!receivable && !displayProof && (
+            {!receivable && !displayProof && !sale?.tenders?.length && (
               <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
                 Cobro registrado al emitir la factura
                 {reference ? ` · Ref. ${reference}` : ''}.

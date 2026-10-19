@@ -11,14 +11,18 @@ export function SaleInvoiceModal({ open, onClose, invoice }) {
   const { data } = invoice
   const html = invoice.html || buildInvoiceHtml(data)
 
-  const handlePrint = () => {
-    printInvoice(html)
-    toast.success('Enviando a impresión…')
+  const handlePrint = async () => {
+    try {
+      await printInvoice(data, { saleId: invoice.saleId })
+      toast.success('Enviando a impresión…')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo imprimir la factura.')
+    }
   }
 
   const handleDownload = async () => {
     try {
-      await downloadInvoicePdf(data, invoiceFilename(data.id))
+      await downloadInvoicePdf(data, invoiceFilename(data.id), { saleId: invoice.saleId })
       toast.success('Factura descargada')
     } catch (error) {
       toast.error(error.message || 'No se pudo descargar la factura.')

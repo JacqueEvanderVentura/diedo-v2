@@ -103,6 +103,10 @@ class InventoryItemProfile(UuidPrimaryKeyMixin, TimestampMixin, Base):
             name="unit_cost_non_negative",
         ),
         CheckConstraint("tax_rate >= 0 AND tax_rate <= 100", name="tax_rate_range"),
+        CheckConstraint(
+            "duration_minutes >= 5 AND duration_minutes <= 480",
+            name="duration_range",
+        ),
         Index(
             "uq_inventory_item_profiles_idempotency",
             "workspace_id",
@@ -120,6 +124,15 @@ class InventoryItemProfile(UuidPrimaryKeyMixin, TimestampMixin, Base):
     unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     tax_rate: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, default=Decimal("0"), server_default=text("0")
+    )
+    available_in_agenda: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    available_in_pos: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    duration_minutes: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=30, server_default=text("30")
     )
     creation_idempotency_key: Mapped[str | None] = mapped_column(String(128))
     request_fingerprint: Mapped[str | None] = mapped_column(String(64))

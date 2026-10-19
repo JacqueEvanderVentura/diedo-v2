@@ -132,7 +132,10 @@ describe('quoteInvoice helpers', () => {
   })
 
   it('detecta factura pagada al instante o CxC saldada', () => {
-    expect(isQuoteInvoicePaid({ convertedSaleId: 'sale-a' }, [])).toBe(true)
+    expect(isQuoteInvoicePaid(
+      { convertedSaleId: 'sale-a', invoiceCollection: 'collected' },
+      [],
+    )).toBe(true)
     expect(isQuoteInvoicePaid(
       { convertedSaleId: 'sale-a', invoiceCollection: 'receivable' },
       []

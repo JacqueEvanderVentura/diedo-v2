@@ -18,6 +18,7 @@ from app.services.auth import AuthPrincipal, AuthService
 from app.services.authorization import AuthorizationService, PermissionGrant
 from app.services.carwash_rate_limit import CarwashMutationRateLimiter
 from app.services.errors import AuthenticationError, AuthorizationError
+from app.services.pdf_renderer import PdfRenderer, get_pdf_renderer
 
 DatabaseSession = Annotated[Session, Depends(get_session)]
 
@@ -38,6 +39,40 @@ def get_attachment_storage() -> AttachmentStorage:
 
 
 AttachmentStorageDep = Annotated[AttachmentStorage, Depends(get_attachment_storage)]
+
+
+def get_invoice_pdf_renderer() -> PdfRenderer:
+    return get_pdf_renderer()
+
+
+PdfRendererDep = Annotated[PdfRenderer, Depends(get_invoice_pdf_renderer)]
+
+
+def require_invoice_document_grant(
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+) -> PermissionGrant:
+    service = AuthorizationService(database)
+    for permission_code in ("pos.sell", "sales.read", "finance.read"):
+        try:
+            return service.require_permission(principal, permission_code)
+        except AuthorizationError:
+            continue
+    raise AuthorizationError("No tienes permiso para generar documentos de venta.")
+
+
+def require_document_attachment_read(
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+) -> PermissionGrant:
+    service = AuthorizationService(database)
+    for permission_code in ("finance.read", "purchasing.read", "pos.read"):
+        try:
+            return service.require_permission(principal, permission_code)
+        except AuthorizationError:
+            continue
+    raise AuthorizationError("No tienes permiso para ver este adjunto.")
+
 
 _bearer = HTTPBearer(
     auto_error=False,
@@ -200,6 +235,14 @@ PosReceivablesManageGrant = Annotated[
 PosVoidGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("sales.invoice.void")),
+]
+SalesInvoiceEditGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("sales.invoice.edit")),
+]
+SalesInvoiceDeleteGrant = Annotated[
+    PermissionGrant,
+    Depends(require_permission("sales.invoice.delete")),
 ]
 PurchasingReadGrant = Annotated[
     PermissionGrant,

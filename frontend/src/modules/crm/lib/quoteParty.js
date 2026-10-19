@@ -1,13 +1,11 @@
-export function quotePartyLabel(party, { leads = [], customers = [], opportunities = [] } = {}) {
+export function quotePartyLabel(party, { leads = [], customers = [] } = {}) {
   if (!party?.id) return ''
   if (party.type === 'customer') {
     const customer = customers.find((item) => item.id === party.id)
     return customer?.name || ''
   }
   const lead = leads.find((item) => item.id === party.id)
-  if (lead) return (lead.company || lead.name || '').trim()
-  const opp = opportunities.find((item) => item.leadId === party.id)
-  return (opp?.customerName || opp?.title || '').trim()
+  return (lead?.company || lead?.name || '').trim()
 }
 
 export function filterQuoteParties({ query, leads, customers, branchId }) {
@@ -15,7 +13,7 @@ export function filterQuoteParties({ query, leads, customers, branchId }) {
   const matchText = (text) => !q || String(text || '').toLowerCase().includes(q)
 
   const leadRows = (leads || [])
-    .filter((lead) => lead.status !== 'convertido' && lead.status !== 'descartado')
+    .filter((lead) => !['perdido'].includes(lead.status))
     .filter((lead) => !branchId || lead.branchId === branchId)
     .filter((lead) => matchText(lead.name) || matchText(lead.company) || matchText(lead.phone))
     .map((lead) => ({

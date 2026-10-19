@@ -4,7 +4,7 @@ import { AppointmentChip } from './AppointmentChip'
 import { cn } from '@/lib/utils'
 import { todayKey } from '@/stores/agendaStore'
 
-export function MonthView({ cursor, appointments, onDayClick, onAppointmentClick }) {
+export function MonthView({ cursor, appointments, onScheduleDay, onAppointmentClick }) {
   const cells = monthGrid(cursor)
   const byDate = appointments.reduce((acc, a) => {
     ;(acc[a.date] ||= []).push(a)
@@ -26,20 +26,27 @@ export function MonthView({ cursor, appointments, onDayClick, onAppointmentClick
           return (
             <div
               key={key}
+              role={onScheduleDay ? 'button' : undefined}
+              tabIndex={onScheduleDay ? 0 : undefined}
               data-testid={`calendar-month-day-${key}`}
+              onClick={() => onScheduleDay?.(key)}
+              onKeyDown={(event) => {
+                if (!onScheduleDay || event.target !== event.currentTarget) return
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onScheduleDay(key)
+                }
+              }}
               className={cn(
                 'min-h-[120px] rounded-xl border p-2 text-left',
+                onScheduleDay && inMonth && 'cursor-pointer transition-colors hover:border-blue-200 hover:bg-blue-50/30',
                 inMonth ? 'border-slate-100 bg-white' : 'border-transparent bg-slate-50/50 opacity-60',
                 isToday && 'ring-2 ring-blue-200'
               )}
             >
-              <button
-                type="button"
-                onClick={() => onDayClick(key)}
-                className="mb-1 rounded-md px-1 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-50 hover:text-blue-600"
-              >
+              <p className="mb-1 px-1 text-xs font-semibold text-slate-500">
                 {fromKey(key).getDate()}
-              </button>
+              </p>
               {list.slice(0, 3).map((apt) => (
                 <AppointmentChip key={apt.id} apt={apt} compact onClick={onAppointmentClick} />
               ))}

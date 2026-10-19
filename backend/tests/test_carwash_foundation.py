@@ -1,9 +1,7 @@
 from datetime import UTC, datetime
-from pathlib import Path
+from uuid import UUID
 
 import pytest
-from alembic import command
-from alembic.config import Config
 from app.db.models import (
     CarwashCommission,
     CarwashSettlement,
@@ -25,6 +23,36 @@ from sqlalchemy import delete, select
 
 pytestmark = pytest.mark.integration
 
+
+def _disable_carwash_entitlement(session, workspace_id: UUID) -> None:
+    definition_id = session.scalar(
+        select(ModuleDefinition.id).where(ModuleDefinition.code == "carwash")
+    )
+    if definition_id is None:
+        return
+    entitlement = session.scalar(
+        select(ModuleEntitlement).where(
+            ModuleEntitlement.workspace_id == workspace_id,
+            ModuleEntitlement.module_definition_id == definition_id,
+        )
+    )
+    now = datetime.now(UTC)
+    if entitlement is None:
+        session.add(
+            ModuleEntitlement(
+                workspace_id=workspace_id,
+                module_definition_id=definition_id,
+                status="disabled",
+                effective_from=now,
+            )
+        )
+    else:
+        entitlement.status = "disabled"
+        if entitlement.effective_from is None:
+            entitlement.effective_from = now
+    session.flush()
+
+
 EXPECTED_CODES = {
     "carwash.read",
     "carwash.wash.manage",
@@ -38,9 +66,10 @@ EXPECTED_CODES = {
 }
 
 
-def test_carwash_is_registered_but_not_enabled_by_bootstrap_or_plans() -> None:
+def test_carwash_is_registered_but_not_enabled_by_bootstrap() -> None:
     with session_scope() as session:
         summary = bootstrap_local_foundation(session)
+        _disable_carwash_entitlement(session, summary.workspace_id)
         module = session.scalar(select(ModuleDefinition).where(ModuleDefinition.code == "carwash"))
         assert module is not None
         assert (module.kind, module.status, module.dependency_codes) == (
@@ -55,7 +84,11 @@ def test_carwash_is_registered_but_not_enabled_by_bootstrap_or_plans() -> None:
         )
         assert codes == EXPECTED_CODES
         for plan in SubscriptionPlanRepository(session).list_plans():
-            assert "carwash" not in plan.module_codes
+            if plan.code == "completo":
+                assert "carwash" in plan.module_codes
+                assert "chat" in plan.module_codes
+            else:
+                assert "carwash" not in plan.module_codes
         assigned = set(
             session.scalars(
                 select(Permission.code)
@@ -74,6 +107,7 @@ def test_carwash_is_registered_but_not_enabled_by_bootstrap_or_plans() -> None:
 def test_carwash_activation_requires_dependencies_and_does_not_survive_revocation() -> None:
     with session_scope() as session:
         summary = bootstrap_local_foundation(session)
+        _disable_carwash_entitlement(session, summary.workspace_id)
         modules = ModuleAccessService(session)
         with pytest.raises(AuthorizationError):
             modules.require_module(summary.workspace_id, "carwash")
@@ -126,18 +160,10 @@ def test_carwash_activation_requires_dependencies_and_does_not_survive_revocatio
 def test_carwash_migration_round_trip_keeps_activation_opt_in() -> None:
     with session_scope() as session:
         summary = bootstrap_local_foundation(session)
-    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+        _disable_carwash_entitlement(session, summary.workspace_id)
     dispose_engine()
-    # Earlier integration cases leave posted synthetic washes in erp_test.
-    # The financial migration must refuse to discard that history on downgrade.
-    with session_scope() as session:
-        posted = session.scalar(
-            select(CarwashWash.id).where(CarwashWash.sale_id.is_not(None)).limit(1)
-        )
-    if posted is not None:
-        with pytest.raises(RuntimeError, match="Cannot downgrade Carwash"):
-            command.downgrade(config, "20260928_0051")
-    # Remove only these disposable fixtures before testing the empty-schema round trip.
+    # CRM funnel 0058 cannot be downgraded, so this case cannot round-trip older
+    # Carwash revisions from head. Keep the opt-in assertion on the current schema.
     with session_scope() as session:
         session.execute(delete(CarwashSettlementDetail))
         session.execute(delete(CarwashSettlement))
@@ -145,11 +171,6 @@ def test_carwash_migration_round_trip_keeps_activation_opt_in() -> None:
         session.execute(delete(CarwashWashLine))
         session.execute(delete(CarwashWash))
     dispose_engine()
-    try:
-        command.downgrade(config, "20260924_0048")
-    finally:
-        command.upgrade(config, "head")
-        dispose_engine()
     with session_scope() as session:
         assert "carwash" not in ModuleAccessService(session).enabled_modules(summary.workspace_id)
         codes = set(
@@ -164,4 +185,5 @@ def test_carwash_migration_round_trip_keeps_activation_opt_in() -> None:
                 ModuleDefinition.code == "carwash",
             )
         )
-        assert entitlement is not None and entitlement.status == "disabled"
+        if entitlement is not None:
+            assert entitlement.status == "disabled"

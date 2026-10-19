@@ -45,6 +45,7 @@ export default function PerfilWorkspacePanel({ embedded = false, visibleBlockIds
           businessName: mapped.businessName,
           taxDefault: mapped.taxDefault,
           version: mapped.version,
+          billingDocuments: mapped.billingDocuments,
         })
         setBusinessName(mapped.businessName || '')
       }
@@ -82,6 +83,7 @@ export default function PerfilWorkspacePanel({ embedded = false, visibleBlockIds
           businessName: mapped.businessName,
           taxDefault: mapped.taxDefault,
           version: mapped.version,
+          billingDocuments: mapped.billingDocuments,
         })
         setBusinessName(mapped.businessName || '')
       } else {

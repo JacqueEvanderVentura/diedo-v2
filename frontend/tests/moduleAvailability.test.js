@@ -50,7 +50,7 @@ describe('moduleAvailability', () => {
   })
 
   it('Carwash requiere activación explícita y las dependencias POS y RRHH', () => {
-    const enabled = ['carwash', 'pos', 'hr', 'sales', 'inventory']
+    const enabled = ['carwash', 'pos', 'hr']
     expect(isModuleAvailable('carwash', enabled)).toBe(true)
     for (const missing of enabled) {
       expect(isModuleAvailable('carwash', enabled.filter((code) => code !== missing))).toBe(false)

@@ -88,7 +88,7 @@ export function mapEmployeeFromApi(item) {
     phone: item.phone || null,
     position: item.position,
     department: item.department || '',
-    selectableAsSpecialist: item.onlineBookingSelectable ?? false,
+    selectableAsSpecialist: item.onlineBookingSelectable ?? true,
     branchIds,
     branchId: branchIds[0] || null,
     jefeIds: item.supervisorIds || [],
@@ -174,7 +174,7 @@ export function employeeToApiPayload(data, fallbackBranchIds = []) {
     supervisorIds: data.jefeIds || [],
     timezone: data.scheduleTimezone || 'America/Santo_Domingo',
     schedule: data.workSchedule || {},
-    onlineBookingSelectable: data.selectableAsSpecialist ?? false,
+    onlineBookingSelectable: data.selectableAsSpecialist ?? true,
     status: data.active === false ? 'inactive' : data.status || 'active',
   }
 }

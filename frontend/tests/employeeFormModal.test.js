@@ -7,6 +7,7 @@ describe('formulario de empleados', () => {
 
     expect(form.branchIds).toEqual([])
     expect(form.branchIds).not.toContain('charm-dn')
+    expect(form.selectableAsSpecialist).toBe(true)
   })
 
   it('conserva únicamente las sucursales del empleado al editar', () => {

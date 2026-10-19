@@ -2,7 +2,7 @@ import re
 from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
-from uuid import UUID
+from uuid import UUID, uuid7
 
 from pydantic import EmailStr, Field, field_validator, model_validator
 
@@ -19,6 +19,61 @@ PaymentChannel = Literal[
 PaymentSettlementPolicy = Literal["immediate", "pending_confirmation", "receivable"]
 
 
+class BranchBillingDocuments(ApiModel):
+    trade_name: str = Field(default="", max_length=160)
+    legal_name: str = Field(default="", max_length=160)
+    rnc: str = Field(default="", max_length=32)
+    address: str = Field(default="", max_length=300)
+    phone: str = Field(default="", max_length=40)
+    email: EmailStr | None = None
+    logo_data_url: str = Field(default="", max_length=700_000)
+    footer_note: str = Field(default="", max_length=500)
+
+
+class BillingDocumentTemplate(BranchBillingDocuments):
+    id: UUID
+    name: str = Field(min_length=1, max_length=80)
+    branch_ids: list[UUID] = Field(default_factory=list)
+
+
+class WorkspaceBillingDocuments(ApiModel):
+    templates: list[BillingDocumentTemplate] = Field(min_length=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_shape(cls, data: object) -> object:
+        if data is None:
+            data = {}
+        if not isinstance(data, dict):
+            return data
+        if "templates" in data:
+            templates = data.get("templates")
+            if not templates:
+                raise ValueError("Debe existir al menos una plantilla de documento.")
+            return data
+        fields = BranchBillingDocuments.model_validate(data).model_dump()
+        return {
+            "templates": [
+                {
+                    "id": uuid7(),
+                    "name": "Principal",
+                    "branch_ids": [],
+                    **fields,
+                }
+            ]
+        }
+
+    @model_validator(mode="after")
+    def validate_unique_branch_assignments(self) -> WorkspaceBillingDocuments:
+        seen: set[UUID] = set()
+        for template in self.templates:
+            for branch_id in template.branch_ids:
+                if branch_id in seen:
+                    raise ValueError("Cada sucursal solo puede asignarse a una plantilla.")
+                seen.add(branch_id)
+        return self
+
+
 class WorkspaceSettingsResponse(ApiModel):
     id: UUID
     name: str
@@ -26,6 +81,9 @@ class WorkspaceSettingsResponse(ApiModel):
     timezone: str
     locale: str
     tax_default_rate: Decimal
+    billing_documents: WorkspaceBillingDocuments = Field(
+        default_factory=lambda: WorkspaceBillingDocuments.model_validate({})
+    )
     version: int
 
 
@@ -35,6 +93,7 @@ class UpdateWorkspaceSettingsRequest(ApiModel):
     timezone: str | None = Field(default=None, min_length=3, max_length=64)
     locale: str | None = Field(default=None, min_length=2, max_length=16)
     tax_default_rate: Decimal | None = Field(default=None, ge=0, le=100)
+    billing_documents: WorkspaceBillingDocuments | None = None
     version: int = Field(ge=1)
 
     @field_validator("name")
@@ -145,6 +204,7 @@ class BranchDetails(ApiModel):
     schedule: str = Field(default="", max_length=120)
     independent_business: bool = False
     partners: list[BranchPartner] = Field(default_factory=list, max_length=50)
+    billing_documents: BranchBillingDocuments | None = None
 
     @model_validator(mode="after")
     def validate_partner_shares(self) -> BranchDetails:
@@ -161,6 +221,7 @@ class BranchDetailsPatch(ApiModel):
     schedule: str = Field(default="", max_length=120)
     independent_business: bool = False
     partners: list[BranchPartner] = Field(default_factory=list, max_length=50)
+    billing_documents: BranchBillingDocuments | None = None
 
     @model_validator(mode="after")
     def validate_partner_shares(self) -> BranchDetailsPatch:

@@ -125,6 +125,12 @@ def test_inventory_service_validates_item_kinds_branches_and_asset_images() -> N
         InventoryService._validate_update_kind_fields("service", {"unit_cost": Decimal("1")})
     with pytest.raises(InvalidOperationError):
         InventoryService._validate_update_kind_fields("supply", {"sale_price": Decimal("1")})
+    with pytest.raises(InvalidOperationError) as no_channels:
+        InventoryService._validate_service_channel_flags(
+            available_in_agenda=False,
+            available_in_pos=False,
+        )
+    assert no_channels.value.parameter == "availableInAgenda"
 
     with pytest.raises(InvalidOperationError) as empty_files:
         InventoryService._validate_asset_image(
@@ -225,6 +231,16 @@ def test_inventory_schemas_reject_ambiguous_or_unsafe_mutations() -> None:
             unitOfMeasureId=uuid7(),
             branchIds=[item_id, item_id],
             salePrice="900",
+        )
+    with pytest.raises(ValidationError, match="agenda o en venta"):
+        CreateInventoryServiceRequest(
+            name="Sin canal",
+            categoryId=uuid7(),
+            unitOfMeasureId=uuid7(),
+            branchIds=[item_id],
+            salePrice="900",
+            availableInAgenda=False,
+            availableInPos=False,
         )
     with pytest.raises(ValidationError, match="No repitas"):
         UpdateInventoryItemRequest(version=1, branchIds=[item_id, item_id])

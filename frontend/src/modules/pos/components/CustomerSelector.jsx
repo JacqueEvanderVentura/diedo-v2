@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
 import { toast } from 'sonner'
 import { usePosStore } from '@/stores/posStore'
-import { WALK_IN_CUSTOMER, useCustomersStore } from '@/stores/customersStore'
+import { WALK_IN_CUSTOMER } from '@/lib/walkInCustomer'
+import { useCustomersStore } from '@/stores/customersStore'
 import { CustomerPicker } from '@/components/customers/CustomerPicker'
 import { customerActiveAtBranch } from '@/lib/customerScope'
 

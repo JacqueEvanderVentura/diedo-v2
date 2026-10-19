@@ -41,7 +41,7 @@ from app.schemas.agenda import (
 )
 from app.schemas.common import ErrorResponse
 from app.schemas.public_booking import BookingLinkEmailRequest, EmailNotificationResponse
-from app.services.agenda import AgendaService
+from app.services.agenda import AgendaService, appointment_created_by_label
 from app.services.authorization import AuthorizationService
 from app.services.booking_links import send_booking_link
 from app.services.email_notifications import notification_result
@@ -114,12 +114,17 @@ def _opening_hour_item(row: BranchOpeningHour) -> BranchOpeningHourItem:
 
 def _appointment_response(record: AppointmentRecord) -> AppointmentResponse:
     appointment = record.appointment
+    created_by = appointment_created_by_label(appointment, record.created_by_name)
     history = [
         AppointmentHistoryResponse(
             id=event.id,
             at=event.at,
             user_id=event.user_id,
-            user_name=event.user_name,
+            user_name=(
+                created_by
+                if appointment.source == "self" and event.action == "create"
+                else event.user_name
+            ),
             action=("status" if event.action == "status_change" else cast(Any, event.action)),
             changes=[AppointmentHistoryChange.model_validate(change) for change in event.changes],
         )
@@ -172,7 +177,7 @@ def _appointment_response(record: AppointmentRecord) -> AppointmentResponse:
         recurrence_group_id=appointment.recurrence_group_id,
         occurrence_index=appointment.occurrence_index,
         repeat_count=appointment.repeat_count,
-        created_by=record.created_by_name,
+        created_by=created_by,
         updated_by=record.updated_by_name,
         created_at=appointment.created_at,
         updated_at=appointment.updated_at,
@@ -394,6 +399,7 @@ def list_appointments(
     principal: CurrentPrincipal,
     grant: AppointmentReadGrant,
     branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
+    customer_id: Annotated[UUID | None, Query(alias="customerId")] = None,
     date_from: Annotated[date | None, Query(alias="dateFrom")] = None,
     date_to: Annotated[date | None, Query(alias="dateTo")] = None,
     search: Annotated[str | None, Query(max_length=100)] = None,
@@ -411,6 +417,7 @@ def list_appointments(
         principal=principal,
         bypass_resource_acl=bypass_acl,
         branch_id=branch_id,
+        customer_id=customer_id,
         date_from=date_from,
         date_to=date_to,
         search=search,

@@ -94,7 +94,6 @@ const iconBg = {
 export default function CrmOverviewPage() {
   const overview = useCrmStore((s) => s.overview)
   const leads = useCrmStore((s) => s.leads)
-  const opportunities = useCrmStore((s) => s.opportunities)
   const activities = useCrmStore((s) => s.activities)
 
   const stats = useMemo(
@@ -102,10 +101,9 @@ export default function CrmOverviewPage() {
       buildCrmOverviewStats({
         overview,
         leads,
-        opportunities,
         activities,
       }),
-    [leads, opportunities, activities, overview],
+    [leads, activities, overview],
   )
 
   const kpis = useMemo(() => buildCrmOverviewKpis(stats), [stats])

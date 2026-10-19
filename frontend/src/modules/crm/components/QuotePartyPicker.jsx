@@ -8,41 +8,117 @@ import { DropdownPanel } from '@/components/ui/DropdownPanel'
 import { Badge } from '@/components/ui/Badge'
 import { cn } from '@/lib/utils'
 import { filterQuoteParties, quotePartyLabel } from '@/modules/crm/lib/quoteParty'
+import { crmApi } from '@/services/crmApi'
+import { mapCrmCustomerFromApi, mapLeadFromApi } from '@/services/adapters/crm'
+
+function upsertById(items, entity) {
+  if (!entity?.id) return items
+  const map = new Map(items.map((item) => [item.id, item]))
+  map.set(entity.id, entity)
+  return [...map.values()]
+}
 
 export function QuotePartyPicker({
   value,
   onChange,
   branchId = null,
   disabled = false,
+  pinnedLead = null,
+  pinnedCustomer = null,
   testId = 'quote-party-picker',
 }) {
-  const leads = useCrmStore((s) => s.leads)
-  const opportunities = useCrmStore((s) => s.opportunities)
-  const customers = useCustomersStore((s) => s.customers)
+  const storeLeads = useCrmStore((s) => s.leads)
+  const storeCustomers = useCustomersStore((s) => s.customers)
   const user = useSessionStore((s) => s.user)
+  const isOnline = useSessionStore((s) => s.status === 'online')
 
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [remoteLeads, setRemoteLeads] = useState([])
+  const [remoteCustomers, setRemoteCustomers] = useState([])
+  const [searching, setSearching] = useState(false)
   const btnRef = useRef(null)
   const menuRef = useRef(null)
 
   const scopedCustomers = useMemo(
-    () => customersVisibleToSession(customers, user),
-    [customers, user],
+    () => customersVisibleToSession(storeCustomers, user),
+    [storeCustomers, user],
   )
 
-  const options = useMemo(
-    () => filterQuoteParties({
+  const leads = useMemo(() => {
+    let merged = [...storeLeads]
+    remoteLeads.forEach((lead) => { merged = upsertById(merged, lead) })
+    if (pinnedLead?.id) merged = upsertById(merged, pinnedLead)
+    return merged
+  }, [storeLeads, remoteLeads, pinnedLead])
+
+  const customers = useMemo(() => {
+    let merged = [...scopedCustomers]
+    remoteCustomers.forEach((customer) => { merged = upsertById(merged, customer) })
+    if (pinnedCustomer?.id) merged = upsertById(merged, pinnedCustomer)
+    return merged
+  }, [scopedCustomers, remoteCustomers, pinnedCustomer])
+
+  useEffect(() => {
+    if (!open || !isOnline) return undefined
+    const q = query.trim()
+    if (!q) {
+      setRemoteLeads([])
+      setRemoteCustomers([])
+      setSearching(false)
+      return undefined
+    }
+    setSearching(true)
+    const timer = setTimeout(async () => {
+      try {
+        const [leadsRes, customersRes] = await Promise.all([
+          crmApi.leads({
+            search: q,
+            page: 1,
+            pageSize: 20,
+            branchId: branchId || undefined,
+          }),
+          crmApi.customers({
+            search: q,
+            page: 1,
+            pageSize: 20,
+            branchId: branchId || undefined,
+          }),
+        ])
+        setRemoteLeads((leadsRes.items || []).map(mapLeadFromApi))
+        setRemoteCustomers((customersRes.items || []).map(mapCrmCustomerFromApi))
+      } catch {
+        setRemoteLeads([])
+        setRemoteCustomers([])
+      } finally {
+        setSearching(false)
+      }
+    }, 280)
+    return () => clearTimeout(timer)
+  }, [branchId, isOnline, open, query])
+
+  const options = useMemo(() => {
+    const q = query.trim()
+    if (!q) {
+      const seedLeads = pinnedLead ? [pinnedLead] : []
+      const seedCustomers = pinnedCustomer ? [pinnedCustomer] : []
+      return filterQuoteParties({
+        query: '',
+        leads: seedLeads,
+        customers: seedCustomers,
+        branchId,
+      })
+    }
+    return filterQuoteParties({
       query,
       leads,
-      customers: scopedCustomers,
+      customers,
       branchId,
-    }),
-    [query, leads, scopedCustomers, branchId],
-  )
+    })
+  }, [query, leads, customers, branchId, pinnedLead, pinnedCustomer])
 
   const displayName = value?.id
-    ? quotePartyLabel(value, { leads, customers: scopedCustomers, opportunities })
+    ? quotePartyLabel(value, { leads, customers })
     : 'Buscar lead o cliente…'
 
   useEffect(() => {
@@ -106,8 +182,12 @@ export function QuotePartyPicker({
           </div>
         </div>
         <div className="max-h-60 overflow-y-auto p-1.5 scrollbar-thin">
-          {options.length === 0 ? (
-            <p className="px-3 py-4 text-center text-sm text-slate-400">Sin coincidencias</p>
+          {searching ? (
+            <p className="px-3 py-4 text-center text-sm text-slate-400">Buscando…</p>
+          ) : options.length === 0 ? (
+            <p className="px-3 py-4 text-center text-sm text-slate-400">
+              {query.trim() ? 'Sin coincidencias' : 'Escribe para buscar lead o cliente'}
+            </p>
           ) : (
             options.map((row) => (
               <button

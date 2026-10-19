@@ -15,6 +15,7 @@ from app.api.routers import (
     crm,
     dashboard,
     document_attachments,
+    documents,
     finance,
     health,
     hr,
@@ -26,6 +27,7 @@ from app.api.routers import (
     permissions,
     pos,
     public_booking,
+    public_portal,
     purchasing,
     reports,
     users,
@@ -43,6 +45,7 @@ api_router.include_router(carwash_commissions.router)
 api_router.include_router(administration.router)
 api_router.include_router(agenda.router)
 api_router.include_router(public_booking.router)
+api_router.include_router(public_portal.router)
 api_router.include_router(catalog.router)
 api_router.include_router(crm.router)
 api_router.include_router(chat.router)
@@ -51,6 +54,7 @@ api_router.include_router(chat_channel_accounts.oauth_router)
 api_router.include_router(dashboard.router)
 api_router.include_router(finance.router)
 api_router.include_router(document_attachments.router)
+api_router.include_router(documents.router)
 api_router.include_router(master_data.customers_router)
 api_router.include_router(master_data.employees_router)
 api_router.include_router(hr.router)

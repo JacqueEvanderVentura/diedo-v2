@@ -16,21 +16,26 @@ export function getJefeIds(emp) {
   return []
 }
 
-export function employeeWorksAtBranch(emp, branchId) {
-  if (!emp?.active || !branchId) return false
+export function employeeAssignedToBranch(emp, branchId) {
+  if (!emp || !branchId) return false
   return getEmployeeBranchIds(emp).includes(branchId)
 }
 
+export function employeeWorksAtBranch(emp, branchId) {
+  if (!emp?.active) return false
+  return employeeAssignedToBranch(emp, branchId)
+}
+
 export function isSelectableAsSpecialist(employee) {
-  if (!employee?.active) return false
+  if (!employee) return false
   if (typeof employee.selectableAsSpecialist === 'boolean') return employee.selectableAsSpecialist
-  return /especialista/i.test(employee.position || '')
+  return true
 }
 
 export function staffOptionsForBranch(employees, branchId, { bookableOnly = false } = {}) {
   return employees
-    .filter((e) => e.active && employeeWorksAtBranch(e, branchId))
-    .filter((e) => !bookableOnly || isSelectableAsSpecialist(e))
+    .filter((e) => employeeAssignedToBranch(e, branchId))
+    .filter((e) => (bookableOnly ? isSelectableAsSpecialist(e) : e.active))
     .map((e) => ({ id: e.id, name: fullName(e) }))
     .sort((a, b) => a.name.localeCompare(b.name))
 }

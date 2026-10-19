@@ -97,7 +97,7 @@ describe('ProofImagePreview', () => {
     ))
   })
 
-  it('para archivos no imagen conserva la fila de descarga', async () => {
+  it('para PDF muestra el documento embebido y permite descargar', async () => {
     const blob = new Blob(['%PDF'], { type: 'application/pdf' })
     const loadProof = vi.fn().mockResolvedValue(blob)
     const onDownload = vi.fn().mockResolvedValue(undefined)
@@ -110,11 +110,11 @@ describe('ProofImagePreview', () => {
       })
     )
 
-    await waitFor(() => expect(screen.getByText(/Archivo adjunto \(sin vista previa\):/)).toBeTruthy())
-    expect(screen.queryByTestId('proof-image-preview')).toBeNull()
-    expect(screen.getByTestId('proof-preview-file')).toBeTruthy()
-
-    fireEvent.click(screen.getByTitle('Descargar comprobante'))
+    await waitFor(() => expect(screen.getByTestId('proof-image-preview')).toBeTruthy())
+    const preview = screen.getByTestId('proof-preview-open')
+    expect(preview.tagName).toBe('IFRAME')
+    expect(preview.getAttribute('src')).toBe('blob:proof-preview')
+    fireEvent.click(screen.getByTestId('proof-preview-download'))
     await waitFor(() => expect(onDownload).toHaveBeenCalled())
   })
 

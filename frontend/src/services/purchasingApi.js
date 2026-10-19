@@ -47,10 +47,33 @@ export const purchasingApi = {
     `/api/v1/purchasing/requests/${id}/review`,
     payload
   ),
+  payRequest: (id, payload) => apiClient.post(
+    `/api/v1/purchasing/requests/${id}/pay`,
+    payload,
+    idempotencyOptions()
+  ),
   deliverRequest: (id, payload) => apiClient.post(
     `/api/v1/purchasing/requests/${id}/deliver`,
+    payload,
+    idempotencyOptions()
+  ),
+
+  listSupplierCatalog: (supplierId, params) => apiClient.get(
+    `/api/v1/purchasing/suppliers/${supplierId}/catalog`,
+    params
+  ),
+  createSupplierCatalogItem: (supplierId, payload) => apiClient.post(
+    `/api/v1/purchasing/suppliers/${supplierId}/catalog`,
     payload
   ),
+  updateSupplierCatalogItem: (supplierId, itemId, payload) => apiClient.patch(
+    `/api/v1/purchasing/suppliers/${supplierId}/catalog/${itemId}`,
+    payload
+  ),
+  deleteSupplierCatalogItem: (supplierId, itemId) => apiClient.delete(
+    `/api/v1/purchasing/suppliers/${supplierId}/catalog/${itemId}`
+  ),
+  compareCatalog: (params) => apiClient.get('/api/v1/purchasing/catalog/compare', params),
 
   getSettings: () => apiClient.get('/api/v1/purchasing/settings'),
   listApprovers: () => apiClient.get('/api/v1/purchasing/settings/approvers'),

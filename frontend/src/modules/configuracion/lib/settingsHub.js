@@ -27,11 +27,12 @@ export const SETTINGS_SECTIONS = [
       {
         id: 'cotizaciones-facturas',
         title: 'Cotizaciones y Facturas',
-        subtitle: 'Logo, RNC y datos que salen en PDF',
+        subtitle: 'Plantillas, logo, RNC y datos en PDF',
         icon: Receipt,
         kind: 'embed',
         embed: 'billing-documents',
         blocks: [
+          { id: 'templates', title: 'Plantillas', keywords: ['nueva plantilla', 'sucursales'] },
           { id: 'logo', title: 'Logo', keywords: ['subir logo'] },
           { id: 'trade-name', title: 'Nombre comercial' },
           { id: 'legal-name', title: 'Razón social' },

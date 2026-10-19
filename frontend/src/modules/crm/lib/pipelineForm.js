@@ -1,12 +1,17 @@
-export function opportunityCustomerDefaults(opportunity) {
-  const name = opportunity?.customerName?.trim() || ''
+import { leadDisplayTitle } from './pipelineLeads'
+
+export function leadCustomerDefaults(lead) {
+  const name = leadDisplayTitle(lead)
   return {
     name,
     company: name,
     customerType: 'b2b',
-    branchIds: opportunity?.branchId ? [opportunity.branchId] : [],
+    branchIds: lead?.branchId ? [lead.branchId] : [],
   }
 }
+
+/** @deprecated */
+export const opportunityCustomerDefaults = leadCustomerDefaults
 
 export function isOpportunityCreateReady(form) {
   return Boolean(

@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { formatOpportunityOfferText, resolveInstagramUrl } from '@/modules/crm/lib/simplifiedOffer'
+import { formatLeadOfferText, resolveInstagramUrl } from '@/modules/crm/lib/simplifiedOffer'
 
 describe('simplifiedOffer', () => {
   it('formats linked quote text for clipboard', () => {
-    const text = formatOpportunityOfferText([
+    const text = formatLeadOfferText([
       {
         id: 'q1',
-        opportunityId: 'opp-1',
+        leadId: 'lead-1',
         number: 'COT-100',
         status: 'borrador',
         total: 2500,
         items: [{ name: 'Facial', qty: 1, price: 2500 }],
       },
-    ], 'opp-1', { customerName: 'María López' })
+    ], 'lead-1', { customerName: 'María López' })
 
     expect(text).toContain('Hola María,')
     expect(text).toContain('COT-100')

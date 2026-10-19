@@ -22,8 +22,14 @@ def _release_other_test_database_backends() -> None:
     release_backends(settings.database_url)
 
 
+def _skips_integration_tests(session: pytest.Session) -> bool:
+    markexpr = (session.config.option.markexpr or "").strip()
+    return "not" in markexpr and "integration" in markexpr
+
+
 def pytest_sessionstart(session: pytest.Session) -> None:
-    del session
+    if _skips_integration_tests(session):
+        return
     _release_other_test_database_backends()
 
 

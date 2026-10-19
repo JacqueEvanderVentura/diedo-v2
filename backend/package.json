@@ -4,6 +4,7 @@
   "description": "Scripts npm para alinear checks locales con Backend CI",
   "scripts": {
     "prepush": "node scripts/prepush-ci.mjs",
+    "prepush:quick": "node scripts/prepush-ci.mjs --quick",
     "validate:migrations": "node scripts/validate-migrations.mjs",
     "db:test:up": "docker compose up postgres_test -d",
     "db:test:reset": "node scripts/reset-test-database.mjs",

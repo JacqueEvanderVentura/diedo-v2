@@ -87,6 +87,8 @@ def test_reset_workspace_data_happy_path(
             "firstName": "Ana",
             "lastName": "Cliente",
             "email": "ana@example.com",
+            "documentType": "cedula",
+            "documentId": "001-1234567-8",
             "branchIds": [branch_id],
         },
     )

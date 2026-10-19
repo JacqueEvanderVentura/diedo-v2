@@ -57,6 +57,13 @@ describe('adaptadores de Compras', () => {
       priority: 'alta',
       total: '640',
       version: 2,
+      attachments: [{
+        id: 'att-1',
+        originalFilename: 'cotizacion.pdf',
+        contentType: 'application/pdf',
+        previewUrl: '/api/v1/document-attachments/att-1/content',
+        purpose: 'quote',
+      }],
     })
 
     expect(request).toMatchObject({
@@ -65,6 +72,7 @@ describe('adaptadores de Compras', () => {
       total: 640,
       version: 2,
       items: [{ qty: 2, price: 320, subtotal: 640 }],
+      quoteFile: expect.objectContaining({ name: 'cotizacion.pdf', previewUrl: expect.stringContaining('/content') }),
       apiSynced: true,
     })
     expect(purchaseRequestToApiPayload(request)).toMatchObject({

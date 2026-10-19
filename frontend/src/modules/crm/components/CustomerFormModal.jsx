@@ -8,6 +8,7 @@ import { useConfigStore } from '@/stores/configStore'
 import { useCustomersStore } from '@/stores/customersStore'
 import { ACQUISITION_SOURCES, ACQUISITION_SOURCE_LABELS } from '@/data/crm'
 import { DOC_TYPES, formatDocumentInput } from '@/modules/agenda/lib/selfBooking'
+import { validateCustomerDocument } from '@/lib/customerDocuments'
 import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
 import { cn } from '@/lib/utils'
 
@@ -87,6 +88,8 @@ export function CustomerFormModal({ open, onClose, customer, defaults = null, on
   const submit = async () => {
     if (!form.name.trim()) return setErr('Ingresa el nombre del cliente.')
     if (!form.branchIds.length) return setErr('Selecciona al menos una sucursal.')
+    const docErr = validateCustomerDocument(form.docType, form.documentId)
+    if (docErr) return setErr(docErr)
     const payload = {
       name: form.name.trim(),
       company: form.customerType === 'b2b'
@@ -98,8 +101,8 @@ export function CustomerFormModal({ open, onClose, customer, defaults = null, on
       notes: form.notes.trim() || '',
       customerType: form.customerType,
       acquisitionSource: form.acquisitionSource || null,
-      docType: form.documentId.trim() ? form.docType : null,
-      documentId: form.documentId.trim() || null,
+      docType: form.docType,
+      documentId: form.documentId.trim(),
       branchIds: form.branchIds,
     }
     setSaving(true)
@@ -170,9 +173,7 @@ export function CustomerFormModal({ open, onClose, customer, defaults = null, on
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-600">
-              Documento <span className="text-slate-400">(opcional)</span>
-            </label>
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Documento</label>
             <Input
               value={form.documentId}
               onChange={(e) => set('documentId', formatDocumentInput(e.target.value, form.docType))}

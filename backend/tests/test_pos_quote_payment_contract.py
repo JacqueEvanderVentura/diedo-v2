@@ -95,6 +95,7 @@ def test_receivable_response_uses_durable_payment_semantics() -> None:
             currency_code="DOP",
             amount=Decimal("125.00"),
             paid_amount=Decimal("0.00"),
+            approval_pending_amount=Decimal("0.00"),
             reference="TRF-10",
             due_date=local_today - timedelta(days=1),
             created_at=now,

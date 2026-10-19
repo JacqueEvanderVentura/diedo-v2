@@ -48,6 +48,15 @@ from app.services.pos import PosService
 _WEEKDAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 _APPOINTMENT_NOTES_MAX_LENGTH = 60
 logger = logging.getLogger(__name__)
+
+
+def appointment_created_by_label(appointment: Appointment, platform_user_name: str) -> str:
+    """Self-service bookings are attributed to the client, not the platform actor."""
+    if appointment.source == "self":
+        return appointment.customer_name
+    return platform_user_name
+
+
 _FIELD_META = {
     "scheduled_date": ("date", "Fecha"),
     "scheduled_time": ("time", "Hora"),
@@ -164,6 +173,7 @@ class AgendaService:
         principal: AuthPrincipal | None = None,
         bypass_resource_acl: bool = False,
         branch_id: UUID | None,
+        customer_id: UUID | None,
         date_from: date | None,
         date_to: date | None,
         search: str | None,
@@ -198,6 +208,7 @@ class AgendaService:
             workspace_id=grant.workspace_id,
             allowed_branch_ids=grant.allowed_branch_ids,
             branch_id=branch_id,
+            customer_id=customer_id,
             date_from=date_from,
             date_to=date_to,
             search=normalized_search,
@@ -536,7 +547,7 @@ class AgendaService:
                     workspace_id=grant.workspace_id,
                     appointment_id=appointment.id,
                     actor_platform_user_id=principal.platform_user_id,
-                    actor_name=principal.display_name,
+                    actor_name=appointment_created_by_label(appointment, principal.display_name),
                     action="create",
                     changes=changes,
                     request_id=get_request_id(),

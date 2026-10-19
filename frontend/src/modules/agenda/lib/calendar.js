@@ -96,6 +96,19 @@ export function endTime(time, duration) {
   return `${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}`
 }
 
+export function timePeriod(slot) {
+  const [hours] = String(slot).split(':').map(Number)
+  return hours >= 12 ? 'pm' : 'am'
+}
+
+export function formatTime12h(slot) {
+  const [hours, minutes] = String(slot).split(':').map(Number)
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return slot
+  const period = hours >= 12 ? 'PM' : 'AM'
+  const hour12 = hours % 12 || 12
+  return `${hour12}:${String(minutes).padStart(2, '0')} ${period}`
+}
+
 export function timeSlots(startHour = 8, endHour = 20, stepMin = 30) {
   const slots = []
   for (let h = startHour; h < endHour; h++) {

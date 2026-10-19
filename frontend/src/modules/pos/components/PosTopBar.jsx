@@ -69,7 +69,7 @@ function BranchSelector() {
   )
 }
 
-export function PosTopBar({ query, onQueryChange }) {
+export function PosTopBar({ query, onQueryChange, onSearchOpen }) {
   const toggleSidebar = useUiStore((s) => s.toggleSidebar)
   const navigate = useNavigate()
   const registerOpen = usePosStore((s) => resolveBranchRegisterOpen(s, s.branchId))
@@ -99,9 +99,12 @@ export function PosTopBar({ query, onQueryChange }) {
         <input
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
+          onFocus={() => onSearchOpen?.()}
+          onClick={() => onSearchOpen?.()}
+          readOnly={Boolean(onSearchOpen)}
           placeholder="Buscar productos, SKUs o códigos..."
           data-testid="pos-search"
-          className="w-full rounded-xl border-0 bg-slate-50 py-3 pl-10 pr-4 text-sm text-slate-700 ring-1 ring-inset ring-transparent placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-600"
+          className="w-full cursor-pointer rounded-xl border-0 bg-slate-50 py-3 pl-10 pr-4 text-sm text-slate-700 ring-1 ring-inset ring-transparent placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-600"
         />
       </div>
 

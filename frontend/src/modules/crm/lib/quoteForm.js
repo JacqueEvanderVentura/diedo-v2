@@ -7,7 +7,6 @@ export function emptyQuoteDraft() {
     customerId: '',
     leadId: '',
     partyType: '',
-    opportunityId: '',
     branchId: '',
     lines: [emptyQuoteLine()],
   }
@@ -16,7 +15,8 @@ export function emptyQuoteDraft() {
 export function draftFromQuote(quote) {
   return {
     customerId: quote.customerId || '',
-    opportunityId: quote.opportunityId || '',
+    leadId: quote.leadId || '',
+    partyType: quote.leadId ? 'lead' : (quote.customerId ? 'customer' : ''),
     branchId: quote.branchId || '',
     lines: (quote.items?.length ? quote.items : [emptyQuoteLine()]).map((item) => ({
       itemId: item.itemId || item.id || '',
@@ -26,11 +26,12 @@ export function draftFromQuote(quote) {
   }
 }
 
-export function draftFromOpportunity(opportunity) {
+export function draftFromLead(lead) {
   return {
-    customerId: opportunity.customerId || '',
-    opportunityId: opportunity.id,
-    branchId: opportunity.branchId || '',
+    customerId: lead.customerId || '',
+    leadId: lead.id,
+    partyType: 'lead',
+    branchId: lead.branchId || '',
     lines: [emptyQuoteLine()],
   }
 }

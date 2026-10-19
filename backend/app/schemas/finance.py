@@ -376,6 +376,9 @@ class FinanceIncomeResponse(ApiModel):
     adjusted: bool
     editable: bool
     version: int | None
+    item_kind: str | None = None
+    catalog_item_id: UUID | None = None
+    concept: str | None = None
     attachments: list[DocumentAttachmentResponse] = []
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -389,6 +392,9 @@ class PaginatedFinanceIncomesResponse(ApiModel):
     total_pages: int
 
 
+ManualIncomeItemKind = Literal["service", "product", "supply", "general"]
+
+
 class CreateFinanceManualIncomeRequest(ApiModel):
     category: IncomeCategory = "servicios"
     branch_id: UUID
@@ -397,8 +403,14 @@ class CreateFinanceManualIncomeRequest(ApiModel):
     customer: str = Field(default="", max_length=200)
     source: RequiredText = Field(default="Formulario", max_length=48)
     status: PaymentStatus = "pagado"
+    item_kind: ManualIncomeItemKind | None = None
+    catalog_item_id: UUID | None = None
+    concept: str = Field(default="", max_length=200)
 
     _normalize_customer = field_validator("customer", mode="before")(
+        lambda value: "" if value is None else str(value).strip()
+    )
+    _normalize_concept = field_validator("concept", mode="before")(
         lambda value: "" if value is None else str(value).strip()
     )
 
@@ -412,6 +424,13 @@ class UpdateFinanceManualIncomeRequest(ApiModel):
     customer: str | None = Field(default=None, max_length=200)
     source: RequiredText | None = Field(default=None, max_length=48)
     status: PaymentStatus | None = None
+    item_kind: ManualIncomeItemKind | None = None
+    catalog_item_id: UUID | None = None
+    concept: str | None = Field(default=None, max_length=200)
+
+    _normalize_concept = field_validator("concept", mode="before")(
+        lambda value: None if value is None else str(value).strip()
+    )
 
     @model_validator(mode="after")
     def require_change(self) -> UpdateFinanceManualIncomeRequest:
@@ -429,8 +448,14 @@ class UpdateFinanceIncomeRequest(ApiModel):
     customer: str | None = Field(default=None, max_length=200)
     source: RequiredText | None = Field(default=None, max_length=48)
     status: PaymentStatus | None = None
+    item_kind: ManualIncomeItemKind | None = None
+    catalog_item_id: UUID | None = None
+    concept: str | None = Field(default=None, max_length=200)
 
     _normalize_customer = field_validator("customer", mode="before")(
+        lambda value: None if value is None else str(value).strip()
+    )
+    _normalize_concept = field_validator("concept", mode="before")(
         lambda value: None if value is None else str(value).strip()
     )
 

@@ -37,6 +37,7 @@ from app.services.errors import (
     InvalidOperationError,
     ResourceNotFoundError,
 )
+from app.services.membership_access_messages import user_inactive_message
 from app.services.modules import ModuleAccessService
 from app.services.subscription_access import effective_subscription_status
 
@@ -99,21 +100,17 @@ class AuthService:
             raise AuthenticationError("Email o contraseña incorrectos.")
 
         workspaces = self._repository.list_login_workspaces(user.id)
-        usable = [
-            workspace
-            for workspace in workspaces
-            if workspace.membership_status == "active"
-            and workspace.workspace_status in {"active", "onboarding"}
+        active_memberships = [
+            workspace for workspace in workspaces if workspace.membership_status == "active"
         ]
-        if not usable:
-            raise AuthenticationError("Email o contraseña incorrectos.")
-        if len(usable) == 1:
-            selected = usable[0]
-        else:
-            primary_workspaces = [workspace for workspace in usable if workspace.is_default]
-            if len(primary_workspaces) != 1:
-                raise ConflictError("La cuenta no tiene un workspace principal configurado.")
-            selected = primary_workspaces[0]
+        if not active_memberships:
+            raise AuthenticationError(user_inactive_message(user.email))
+        if len(active_memberships) > 1:
+            raise ConflictError("La cuenta tiene más de un acceso activo; contacta soporte.")
+        active_membership = active_memberships[0]
+        if active_membership.workspace_status not in {"active", "onboarding"}:
+            raise AuthenticationError(user_inactive_message(user.email))
+        selected = active_membership
 
         pair = self._issue_session(
             platform_user_id=user.id,

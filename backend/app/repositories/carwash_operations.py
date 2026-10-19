@@ -181,6 +181,7 @@ class CarwashOperationsRepository:
                     ItemCategory.status == "active",
                     UnitOfMeasure.status == "active",
                     InventoryItemProfile.sale_price.is_not(None),
+                    InventoryItemProfile.available_in_pos.is_(True),
                 )
             )
         elif kind == "customers":

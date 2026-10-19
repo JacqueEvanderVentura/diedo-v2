@@ -1,48 +1,40 @@
-export const PIPELINE_EXCLUDED_LEAD_STATUSES = ['convertido', 'descartado']
+export const PIPELINE_STAGES = [
+  'nuevo',
+  'contactado',
+  'propuesta',
+  'negociacion',
+  'cerrado',
+  'perdido',
+]
 
-export function leadStatusToOpportunityStage(status) {
-  if (status === 'convertido') return 'cerrado'
-  if (status === 'descartado') return 'perdido'
-  if (status === 'contactado') return 'contactado'
-  if (status === 'calificado') return 'propuesta'
+export const PIPELINE_OPEN_STAGES = PIPELINE_STAGES.filter(
+  (stage) => !['cerrado', 'perdido'].includes(stage),
+)
+
+/** Etapa del embudo: el status del lead es la etapa. */
+export function leadPipelineStage(lead) {
+  const status = lead?.status
+  if (PIPELINE_STAGES.includes(status)) return status
   return 'nuevo'
 }
 
-/** Etapa del embudo mostrada en Lista (prioriza la oportunidad vinculada). */
-export function leadPipelineStage(lead, opportunity) {
-  if (opportunity?.stage) return opportunity.stage
-  return leadStatusToOpportunityStage(lead?.status)
+export function leadDisplayTitle(lead) {
+  if (!lead) return 'Sin nombre'
+  return lead.company?.trim() || lead.name?.trim() || 'Sin nombre'
 }
 
-export function opportunityStageToLeadStatus(stage) {
-  if (stage === 'perdido') return 'descartado'
-  if (stage === 'cerrado') return 'convertido'
-  if (stage === 'propuesta' || stage === 'negociacion') return 'calificado'
-  if (stage === 'contactado') return 'contactado'
-  return 'nuevo'
+/** Id del lead asociado a un ítem de cola (embudo simplificado o legacy con leadId). */
+export function queueItemLeadId(queueItem) {
+  return queueItem?.leadId || queueItem?.id || null
 }
 
-export function buildOpportunityDraftFromLead(lead, { id, timestamps }) {
-  const createdAt = timestamps?.createdAt
-  const updatedAt = timestamps?.updatedAt
-  return {
-    id,
-    title: `${lead.company || lead.name} — Oportunidad`,
-    leadId: lead.id,
-    customerName: lead.company || lead.name,
-    stage: leadStatusToOpportunityStage(lead.status),
-    value: 0,
-    branchId: lead.branchId,
-    assignedUserId: lead.assignedUserId,
-    notes: '',
-    createdAt,
-    updatedAt,
-  }
+export function resolveLeadFromQueueItem(queueItem, leads = []) {
+  if (!queueItem) return null
+  const leadId = queueItemLeadId(queueItem)
+  if (!leadId) return queueItem
+  return leads.find((item) => item.id === leadId) || queueItem
 }
 
-export function leadsMissingPipeline(leads) {
-  return (leads || []).filter((lead) => (
-    !lead.opportunityId
-    && !PIPELINE_EXCLUDED_LEAD_STATUSES.includes(lead.status)
-  ))
+export function leadsMissingPipeline() {
+  return []
 }

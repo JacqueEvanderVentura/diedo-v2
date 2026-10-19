@@ -81,7 +81,7 @@ export function IncidenciaFormModal({
       .filter((a) => a.status === 'activo' && a.branchId === form.branchId)
       .map((a) => ({ value: a.id, label: `${a.code} — ${a.name}` })),
   ]
-  const activeUsers = users.filter((u) => u.active)
+  const intervenienteUsers = users
   const employeeOptions = [
     { value: '', label: 'Seleccionar empleado…' },
     ...employees
@@ -324,8 +324,9 @@ export function IncidenciaFormModal({
 
         <Field label="Asignar intervinientes">
           <div className="flex flex-wrap gap-2">
-            {activeUsers.map((u) => {
+            {intervenienteUsers.map((u) => {
               const selected = form.intervenientes.some((i) => i.id === u.id)
+              const label = u.active === false ? `${u.name} (Inactivo)` : u.name
               return (
                 <button
                   key={u.id}
@@ -338,7 +339,7 @@ export function IncidenciaFormModal({
                     selected ? 'bg-blue-600 text-white ring-blue-600' : 'bg-white text-slate-600 ring-slate-200 hover:ring-slate-300'
                   )}
                 >
-                  {u.name}
+                  {label}
                 </button>
               )
             })}

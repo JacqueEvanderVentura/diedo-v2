@@ -8,8 +8,21 @@ WORKDIR /app/backend
 
 RUN groupadd --system app && useradd --system --gid app --home-dir /nonexistent app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libpango-1.0-0 \
+        libpangoft2-1.0-0 \
+        libharfbuzz0b \
+        libcairo2 \
+        libgdk-pixbuf-2.0-0 \
+        libffi-dev \
+        shared-mime-info \
+        fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY backend/requirements.txt ./requirements.txt
-RUN python -m pip install --upgrade pip && python -m pip install --requirement requirements.txt
+RUN python -m pip install --upgrade pip \
+    && python -m pip install --requirement requirements.txt
 
 COPY backend/ ./
 COPY demo-data/ /app/demo-data/

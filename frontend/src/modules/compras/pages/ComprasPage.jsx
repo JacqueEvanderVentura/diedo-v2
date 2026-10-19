@@ -5,6 +5,7 @@ import { COMPRAS_TABS } from '@/data/compras'
 import { ProveedoresTab } from '../components/ProveedoresTab'
 import { SolicitudesTab } from '../components/SolicitudesTab'
 import { ConfiguracionTab } from '../components/ConfiguracionTab'
+import { ComparativaTab } from '../components/ComparativaTab'
 import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
@@ -14,6 +15,7 @@ import { useSessionStore } from '@/stores/sessionStore'
 const TAB_COMPONENTS = {
   proveedores: ProveedoresTab,
   solicitudes: SolicitudesTab,
+  comparativa: ComparativaTab,
   configuracion: ConfiguracionTab,
 }
 

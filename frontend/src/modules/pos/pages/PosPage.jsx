@@ -8,6 +8,7 @@ import { CartSidebar } from '../components/CartSidebar'
 import { CartDrawer } from '../components/CartDrawer'
 import { FlashItemModal } from '../components/FlashItemModal'
 import { PosSyncStatus } from '../components/PosSyncStatus'
+import { PosSearchOverlay } from '../components/PosSearchOverlay'
 import { usePosOnlineState } from '../hooks/usePosOnlineState'
 import { useSessionStore } from '@/stores/sessionStore'
 
@@ -15,6 +16,7 @@ export default function PosPage() {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('all')
   const [flashOpen, setFlashOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const { isOnline, hydrated, hydrating, error, refresh } = usePosOnlineState()
   const loading = isOnline && hydrating && !hydrated
   const canManageCatalog = useSessionStore((s) => s.hasPermission('catalog.manage'))
@@ -25,7 +27,11 @@ export default function PosPage() {
   return (
     <div className="relative flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">
       <div className="flex min-w-0 flex-1 flex-col">
-        <PosTopBar query={query} onQueryChange={setQuery} />
+        <PosTopBar
+          query={query}
+          onQueryChange={setQuery}
+          onSearchOpen={() => setSearchOpen(true)}
+        />
         <div className="flex-1 overflow-y-auto scrollbar-thin p-4 sm:p-6">
           <PosSyncStatus
             isOnline={isOnline}
@@ -47,6 +53,12 @@ export default function PosPage() {
 
       <CartDrawer />
       {flashOpen && canManageCatalog && <FlashItemModal onClose={() => setFlashOpen(false)} />}
+      <PosSearchOverlay
+        open={searchOpen}
+        query={query}
+        onQueryChange={setQuery}
+        onClose={() => setSearchOpen(false)}
+      />
       <button
         onClick={openCartDrawer}
         data-testid="pos-cart-fab"

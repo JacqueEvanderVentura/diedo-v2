@@ -11,8 +11,14 @@ import {
   ShoppingBag,
   ChevronRight,
   Ban,
+  Pencil,
+  Trash2,
+  Eye,
 } from 'lucide-react'
+import { SaleEditModal } from '@/modules/crm/components/SaleEditModal'
+import { SaleDetailModal } from '@/modules/crm/components/SaleDetailModal'
 import { usePosStore } from '@/stores/posStore'
+import { useCrmStore } from '@/stores/crmStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { formatDOP } from '@/lib/format'
@@ -44,6 +50,8 @@ import { useCajaBranchState } from '../hooks/useCajaBranchState'
 import { PermissionElevationModal } from '@/components/auth/PermissionElevationModal'
 
 const VOID_INVOICE_PERMISSION = 'sales.invoice.void'
+const EDIT_INVOICE_PERMISSION = 'sales.invoice.edit'
+const DELETE_INVOICE_PERMISSION = 'sales.invoice.delete'
 
 const fmtTime = (iso) =>
   new Date(iso).toLocaleString('es-DO', { hour: '2-digit', minute: '2-digit' })
@@ -218,6 +226,10 @@ export default function CajaPage() {
   const canManageRegister = useSessionStore((s) => s.hasPermission('pos.register.manage'))
   const canManageCash = useSessionStore((s) => s.hasPermission('pos.cash.manage'))
   const canVoidSales = useSessionStore((s) => s.hasPermission(VOID_INVOICE_PERMISSION))
+  const canEditInvoice = useSessionStore((s) => s.hasPermission(EDIT_INVOICE_PERMISSION))
+  const canDeleteInvoice = useSessionStore((s) => s.hasPermission(DELETE_INVOICE_PERMISSION))
+  const deleteSale = usePosStore((s) => s.deleteSale)
+  const ensureSaleDetail = useCrmStore((s) => s.ensureSaleDetail)
 
   const [openInput, setOpenInput] = useState('')
   const [elevationOpen, setElevationOpen] = useState(false)
@@ -226,6 +238,9 @@ export default function CajaPage() {
   const [closeInput, setCloseInput] = useState('')
   const [closeError, setCloseError] = useState('')
   const [saleToVoid, setSaleToVoid] = useState(null)
+  const [saleToEdit, setSaleToEdit] = useState(null)
+  const [saleToDelete, setSaleToDelete] = useState(null)
+  const [saleToView, setSaleToView] = useState(null)
   const [voidReason, setVoidReason] = useState('')
   const [voidError, setVoidError] = useState('')
   const [movementOpen, setMovementOpen] = useState(false)
@@ -253,6 +268,17 @@ export default function CajaPage() {
   const hasMoreCashMovements = isOnline && movementsPage.page < movementsPage.totalPages
   const loadingMore = Boolean(salesPage.loading || movementsPage.loading)
   const selectedBranch = branches.find((branch) => branch.id === cajaBranchId)
+
+  const openSaleDetail = async (saleMeta) => {
+    if (!saleMeta?.id) return
+    setSaleToView(saleMeta)
+    try {
+      const loaded = await ensureSaleDetail(saleMeta.id)
+      if (loaded) setSaleToView(loaded)
+    } catch {
+      /* keep snapshot */
+    }
+  }
 
   const handleLoadMore = async () => {
     try {
@@ -341,6 +367,17 @@ export default function CajaPage() {
       const message = operationError.message || 'No se pudo anular la venta.'
       setVoidError(message)
       toast.error(message)
+    }
+  }
+
+  const handleDeleteSale = async () => {
+    if (!saleToDelete) return
+    try {
+      await deleteSale(saleToDelete.id)
+      toast.success('Factura eliminada')
+      setSaleToDelete(null)
+    } catch (operationError) {
+      toast.error(operationError.message || 'No se pudo eliminar la factura.')
     }
   }
 
@@ -603,7 +640,31 @@ export default function CajaPage() {
                           )}>
                             {isVoided ? '' : isOut ? '−' : '+'}{formatDOP(m.amount)}
                           </span>
-                          {m.type === 'venta' && !isVoided && (
+                          {m.type === 'venta' && (
+                            <button
+                              type="button"
+                              title="Ver detalle"
+                              disabled={Boolean(mutating)}
+                              onClick={() => openSaleDetail(m.meta)}
+                              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                              data-testid={`caja-view-sale-${m.id}`}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                          )}
+                          {m.type === 'venta' && !isVoided && canEditInvoice && (
+                            <button
+                              type="button"
+                              title="Editar factura"
+                              disabled={Boolean(mutating)}
+                              onClick={() => setSaleToEdit(m.meta)}
+                              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+                              data-testid={`caja-edit-sale-${m.id}`}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                          )}
+                          {m.type === 'venta' && !isVoided && canVoidSales && (
                             <button
                               type="button"
                               title="Anular factura"
@@ -613,6 +674,18 @@ export default function CajaPage() {
                               data-testid={`caja-void-sale-${m.id}`}
                             >
                               <Ban className="h-4 w-4" />
+                            </button>
+                          )}
+                          {m.type === 'venta' && !isVoided && canDeleteInvoice && (
+                            <button
+                              type="button"
+                              title="Eliminar factura"
+                              disabled={Boolean(mutating)}
+                              onClick={() => setSaleToDelete(m.meta)}
+                              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                              data-testid={`caja-delete-sale-${m.id}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
                             </button>
                           )}
                           <ChevronRight className="h-4 w-4 text-slate-300 transition-colors group-hover:text-slate-500" />
@@ -779,6 +852,40 @@ export default function CajaPage() {
               </Button>
               <Button variant="dangerSolid" onClick={handleVoidSale} disabled={Boolean(mutating)} data-testid="caja-confirm-void-sale">
                 <Ban className="h-4 w-4" /> Anular factura
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <SaleDetailModal
+        open={Boolean(saleToView)}
+        onClose={() => setSaleToView(null)}
+        sale={saleToView}
+      />
+
+      <SaleEditModal
+        open={Boolean(saleToEdit)}
+        onClose={() => setSaleToEdit(null)}
+        sale={saleToEdit}
+        onSaved={() => setSaleToEdit(null)}
+      />
+
+      <Modal
+        open={Boolean(saleToDelete)}
+        onClose={() => setSaleToDelete(null)}
+        title="Eliminar factura"
+        testId="caja-delete-sale-modal"
+      >
+        {saleToDelete && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              Se eliminará {saleToDelete.number || 'esta factura'} del sistema si no tiene cobros ni movimientos de caja.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setSaleToDelete(null)} disabled={Boolean(mutating)}>Cancelar</Button>
+              <Button variant="dangerSolid" onClick={handleDeleteSale} disabled={Boolean(mutating)} data-testid="caja-confirm-delete-sale">
+                Eliminar
               </Button>
             </div>
           </div>

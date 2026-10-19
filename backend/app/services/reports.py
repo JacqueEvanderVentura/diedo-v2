@@ -65,6 +65,7 @@ from app.schemas.reports import (
     ReportMoneyTotals,
     ReportPeriod,
 )
+from app.services.agenda import appointment_created_by_label
 from app.services.authorization import PermissionGrant
 from app.services.errors import ResourceNotFoundError
 from app.services.modules import ModuleAccessService
@@ -1370,7 +1371,7 @@ class ReportsService:
             service_name=appointment.service_name,
             status=appointment.status,  # type: ignore[arg-type]
             source=appointment.source,  # type: ignore[arg-type]
-            created_by=record.created_by_name,
+            created_by=appointment_created_by_label(appointment, record.created_by_name),
             updated_by=record.updated_by_name,
             created_at=appointment.created_at,
             updated_at=appointment.updated_at,

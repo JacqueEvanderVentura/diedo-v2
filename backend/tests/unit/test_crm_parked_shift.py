@@ -191,6 +191,7 @@ def test_pos_receivable_cash_parks_when_no_branch_register() -> None:
         currency_code="DOP",
         amount=Decimal("100"),
         paid_amount=Decimal("0"),
+        approval_pending_amount=Decimal("0"),
         status="pending",
         version=1,
     )
@@ -269,6 +270,7 @@ def test_pos_receivable_cash_uses_branch_register_when_client_register_wrong_bra
         currency_code="DOP",
         amount=Decimal("100"),
         paid_amount=Decimal("0"),
+        approval_pending_amount=Decimal("0"),
         status="pending",
         version=1,
     )

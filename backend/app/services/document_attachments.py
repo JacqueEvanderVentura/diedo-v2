@@ -34,6 +34,7 @@ _ALLOWED_TYPES = {
     "image/webp": ".webp",
     "image/gif": ".gif",
 }
+_ALLOWED_PURPOSES = {"quote", "invoice", "payment", "receipt"}
 
 
 def _safe_filename(filename: str | None) -> str:
@@ -80,8 +81,11 @@ class DocumentAttachmentService:
         content_type: str | None,
         storage: AttachmentStorage,
         max_bytes: int,
+        purpose: str = "quote",
     ) -> StoredDocumentAttachment:
         self._require_owner(grant, owner_kind, owner_id)
+        if purpose not in _ALLOWED_PURPOSES:
+            raise InvalidOperationError("El tipo de adjunto no es válido.", "purpose")
         normalized_type = self._content_type(content_type)
         self._digest(source, max_bytes=max_bytes)
         attachment_id = uuid7()
@@ -120,11 +124,12 @@ class DocumentAttachmentService:
             size_bytes=blob.size_bytes,
             checksum_sha256=blob.checksum_sha256,
             uploaded_by_platform_user_id=principal.platform_user_id,
+            purpose=purpose,
             **owner_kwargs,
         )
         try:
             self._repository.add(attachment)
-            if owner_kind == "purchase_request":
+            if owner_kind == "purchase_request" and purpose == "quote":
                 request = self._session.get(PurchaseRequest, owner_id)
                 if request is not None and request.workspace_id == grant.workspace_id:
                     request.quote_file_name = attachment.original_filename

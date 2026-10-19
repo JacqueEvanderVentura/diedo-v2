@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeSalesForCustomer, filterOpenOpportunities } from '@/modules/crm/lib/customerContext'
+import { mergeSalesForCustomer, filterOpenPipelineLeads } from '@/modules/crm/lib/customerContext'
 
 describe('customerContext helpers', () => {
   it('fusiona ventas POS y CRM sin duplicar por id', () => {
@@ -16,11 +16,11 @@ describe('customerContext helpers', () => {
     expect(merged[0].id).toBe('s2')
   })
 
-  it('filtra oportunidades abiertas del cliente', () => {
-    const rows = filterOpenOpportunities([
-      { id: 'o1', customerId: 'c1', stage: 'nuevo' },
-      { id: 'o2', customerId: 'c1', stage: 'cerrado' },
-      { id: 'o3', customerId: 'c2', stage: 'contactado' },
+  it('filtra leads abiertos del cliente en pipeline', () => {
+    const rows = filterOpenPipelineLeads([
+      { id: 'o1', customerId: 'c1', status: 'nuevo' },
+      { id: 'o2', customerId: 'c1', status: 'cerrado' },
+      { id: 'o3', customerId: 'c2', status: 'contactado' },
     ], 'c1')
     expect(rows.map((row) => row.id)).toEqual(['o1'])
   })

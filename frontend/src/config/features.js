@@ -15,3 +15,10 @@ export const FEATURES = Object.freeze({
   regionalModules: resolveFeatureFlag(import.meta.env.VITE_FEATURE_REGIONAL_MODULES),
   chat: resolveFeatureFlag(import.meta.env.VITE_FEATURE_CHAT),
 })
+
+/** Chat UI when build flag is on or the workspace has the chat module entitled. */
+export function isChatModuleSurfaceEnabled(enabledModules = []) {
+  if (FEATURES.chat) return true
+  const enabled = enabledModules instanceof Set ? enabledModules : new Set(enabledModules)
+  return enabled.has('chat')
+}

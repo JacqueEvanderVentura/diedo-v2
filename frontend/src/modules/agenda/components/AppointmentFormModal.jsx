@@ -35,12 +35,13 @@ import {
   getAppointmentReceivablePolicy,
 } from '../lib/receivablePermissions'
 import { buildCompletionPayload } from '../lib/completion'
+import { fetchLastVisitBookingDefaults } from '../lib/customerBookingDefaults'
 
 const EMPTY_SLOT = Object.freeze({})
 
 const empty = (date, customerId, slot = {}) => ({
   date: slot.date || date || todayKey(),
-  time: slot.time || '08:00',
+  time: 'time' in slot ? slot.time : '08:00',
   duration: 30,
   customerId: customerId || 'walk-in',
   customerName: '',
@@ -218,6 +219,25 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
       customerName: c.name,
       customerPhone: c.phone || '',
     }))
+    if (editing) return
+    fetchLastVisitBookingDefaults(c.id)
+      .then(({ serviceId, employeeId }) => {
+        setForm((current) => {
+          const next = { ...current }
+          if (serviceId && services.some((service) => service.id === serviceId)) {
+            const selected = services.find((service) => service.id === serviceId)
+            next.serviceId = serviceId
+            next.serviceName = selected?.name || ''
+            next.price = selected?.price ?? 0
+            next.duration = Number(selected?.durationMinutes) || 30
+          }
+          if (employeeId && branchStaff.some((member) => member.id === employeeId)) {
+            next.employeeId = employeeId
+          }
+          return next
+        })
+      })
+      .catch(() => {})
   }
 
   const selectedCustomer = useMemo(
@@ -368,7 +388,18 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Servicio</label>
             <Select
               value={form.serviceId}
-              onChange={(v) => set('serviceId', v)}
+              onChange={(v) => {
+                const next = services.find((service) => service.id === v)
+                setForm((current) => ({
+                  ...current,
+                  serviceId: v,
+                  serviceName: next?.name || '',
+                  price: next?.price ?? 0,
+                  duration: Number(next?.durationMinutes) || 30,
+                  time: '',
+                }))
+                setErr('')
+              }}
               placeholder="Seleccionar Servicio"
               options={services.map((s) => ({ value: s.id, label: `${s.name} — ${formatDOP(s.price)}` }))}
               data-testid="appointment-field-service"

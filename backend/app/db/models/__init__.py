@@ -25,7 +25,6 @@ from app.db.models.crm import (
     CrmActivity,
     CrmDiscoveryUsage,
     CrmLead,
-    CrmOpportunity,
     CrmSettings,
     CustomerCrmProfile,
 )
@@ -104,6 +103,7 @@ from app.db.models.purchasing import (
     PurchasingSettings,
     Supplier,
     SupplierBranchAssignment,
+    SupplierCatalogItem,
 )
 from app.db.models.sales import (
     CustomerPayment,
@@ -116,6 +116,7 @@ from app.db.models.sales import (
     SalesQuote,
     SalesQuoteLine,
     SalesQuoteRevision,
+    SaleTenderLine,
 )
 from app.db.models.subscription import SubscriptionPlan, WorkspaceSubscription
 
@@ -151,7 +152,6 @@ __all__ = [
     "CrmActivity",
     "CrmDiscoveryUsage",
     "CrmLead",
-    "CrmOpportunity",
     "CrmSettings",
     "Customer",
     "CustomerCrmProfile",
@@ -211,6 +211,7 @@ __all__ = [
     "RolePermission",
     "Sale",
     "SaleLine",
+    "SaleTenderLine",
     "SalesDocumentCounter",
     "SalesQuote",
     "SalesQuoteLine",
@@ -218,6 +219,7 @@ __all__ = [
     "SubscriptionPlan",
     "Supplier",
     "SupplierBranchAssignment",
+    "SupplierCatalogItem",
     "Task",
     "Workspace",
     "WorkspaceMembership",

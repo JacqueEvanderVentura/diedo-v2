@@ -14,6 +14,7 @@ describe('documentAttachments', () => {
     ])
     expect(rows[0].name).toBe('factura.pdf')
     expect(rows[0].previewUrl).toContain('/content')
+    expect(rows[0].purpose).toBeNull()
   })
 
   it('merges uploaded files without pending blobs', () => {

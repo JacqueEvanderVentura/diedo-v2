@@ -107,19 +107,12 @@ export const NAV_GROUPS = [
 ]
 
 /** Visible only to Helios platform operators (`isPlatformOperator`). */
-export const BACKOFFICE_NAV = {
-  id: 'backoffice',
-  label: 'Backoffice',
-  icon: 'Shield',
-  /** Platform operators only see this module; sub-routes stay visible without toggling. */
-  alwaysExpanded: true,
-  children: [
-    { label: 'Resumen', to: '/backoffice' },
-    { label: 'Compañías', to: '/backoffice/companias' },
-    { label: 'Usuarios', to: '/backoffice/usuarios' },
-    { label: 'Planes', to: '/backoffice/planes' },
-  ],
-}
+export const BACKOFFICE_NAV_ITEMS = [
+  { id: 'backoffice-resumen', label: 'Resumen', to: '/backoffice', icon: 'LayoutDashboard', end: true },
+  { id: 'backoffice-companias', label: 'Compañías', to: '/backoffice/companias', icon: 'Building2' },
+  { id: 'backoffice-usuarios', label: 'Usuarios', to: '/backoffice/usuarios', icon: 'Users' },
+  { id: 'backoffice-planes', label: 'Planes', to: '/backoffice/planes', icon: 'Layers' },
+]
 
 export const PAGE_META = {
   '/carwash': { title: 'Carwash', subtitle: 'Operaciones' },
@@ -136,8 +129,8 @@ export const PAGE_META = {
   '/crm/workspace': { title: 'Ventas', subtitle: '' },
   '/crm/clientes': { title: 'Clientes', subtitle: 'Directorio de clientes, historial y próximas citas.' },
   '/crm/leads': { title: 'Leads', subtitle: 'Encuentra, puntúa y convierte leads potenciales.' },
-  '/crm/pipeline': { title: 'Pipeline', subtitle: 'Embudo de ventas y oportunidades.' },
-  '/crm/seguimiento': { title: 'Seguimientos', subtitle: 'Actividades y oportunidades cronológicas.' },
+  '/crm/pipeline': { title: 'Pipeline', subtitle: 'Embudo de ventas por lead.' },
+  '/crm/seguimiento': { title: 'Seguimientos', subtitle: 'Actividades y leads en seguimiento.' },
   '/crm/cotizaciones': { title: 'Cotizaciones y facturas', subtitle: 'Cotizaciones, facturación y cuentas por cobrar en un solo lugar.' },
   '/crm/compras': { title: 'Compras por Cliente', subtitle: 'Historial de compras agregado por cliente.' },
   '/crm/ventas': { title: 'Ventas', subtitle: 'Historial de ventas registradas.' },

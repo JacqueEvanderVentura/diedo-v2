@@ -34,6 +34,10 @@ describe('documentos de venta y cotización', () => {
     expect(data.items).toHaveLength(2)
 
     const html = buildInvoiceHtml(data)
+    expect(html).toContain('invoice-footer-branch')
+    expect(html).toContain('invoice-page-number')
+    expect(html).toContain('invoice-print-header')
+    expect(html).toContain('counter(page)')
     expect(html).toContain('Charm DN')
     expect(html).toContain('1 sesión axilas')
     expect(html).toContain('FAC-20260908-0001')

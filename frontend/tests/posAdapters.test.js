@@ -221,6 +221,20 @@ describe('adaptadores de Terminal POS', () => {
     expect(mapped.sales[1]).toMatchObject({ voidedAt: '2026-09-01T12:00:00Z', voidReason: 'Duplicada' })
   })
 
+  it('resta approvalPendingAmount del saldo cuando el API no envía balance', () => {
+    expect(mapReceivableFromApi({
+      id: 'receivable-split',
+      amount: '600',
+      paidAmount: '500',
+      approvalPendingAmount: '100',
+      status: 'partial',
+    })).toMatchObject({
+      paidAmount: 500,
+      approvalPendingAmount: 100,
+      balance: 0,
+    })
+  })
+
   it('fuerza vencida desde el boolean backend sin degradar pagadas ni anuladas', () => {
     expect(mapReceivableFromApi({
       id: 'receivable-overdue',

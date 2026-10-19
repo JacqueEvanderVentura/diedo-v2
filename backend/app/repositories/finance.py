@@ -11,6 +11,7 @@ from uuid import UUID
 from sqlalchemy import (
     Date,
     Integer,
+    String,
     Uuid,
     and_,
     case,
@@ -94,6 +95,9 @@ class IncomeViewRecord:
     adjusted: bool
     editable: bool
     version: int | None
+    item_kind: str | None
+    catalog_item_id: UUID | None
+    concept: str | None
     created_at: datetime | None
     updated_at: datetime | None
 
@@ -593,6 +597,9 @@ class FinanceRepository:
             literal(False).label("adjusted"),
             literal(True).label("editable"),
             FinanceManualIncome.version.label("version"),
+            FinanceManualIncome.item_kind.label("item_kind"),
+            FinanceManualIncome.catalog_item_id.label("catalog_item_id"),
+            FinanceManualIncome.concept.label("concept"),
             FinanceManualIncome.created_at.label("created_at"),
             FinanceManualIncome.updated_at.label("updated_at"),
         ).where(*manual_conditions)
@@ -625,6 +632,12 @@ class FinanceRepository:
                 FinancePosIncomeCorrection.id.is_not(None).label("adjusted"),
                 literal(True).label("editable"),
                 func.coalesce(FinancePosIncomeCorrection.version, Sale.version).label("version"),
+                cast(literal(None), String(16)).label("item_kind"),
+                cast(
+                    literal(None),
+                    FinanceManualIncome.catalog_item_id.type,
+                ).label("catalog_item_id"),
+                cast(literal(None), String(200)).label("concept"),
                 CashRegister.closed_at.label("created_at"),
                 func.coalesce(FinancePosIncomeCorrection.updated_at, CashRegister.closed_at).label(
                     "updated_at"

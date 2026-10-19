@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   customersForOpportunityBranch,
   isOpportunityCreateReady,
-  opportunityCustomerDefaults,
+  leadCustomerDefaults,
 } from '@/modules/crm/lib/pipelineForm'
 
 describe('pipelineForm', () => {
@@ -16,9 +16,9 @@ describe('pipelineForm', () => {
     })).toBe(true)
   })
 
-  it('precarga defaults de cliente desde la oportunidad', () => {
-    expect(opportunityCustomerDefaults({
-      customerName: 'Spa Zen',
+  it('precarga defaults de cliente desde el lead', () => {
+    expect(leadCustomerDefaults({
+      company: 'Spa Zen',
       branchId: 'branch-1',
     })).toMatchObject({
       name: 'Spa Zen',

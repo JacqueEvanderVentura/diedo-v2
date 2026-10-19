@@ -37,6 +37,7 @@ from app.repositories.finance import (
     IncomeViewRecord,
     LiabilityStatsRecord,
 )
+from app.repositories.pos import PosRepository, SaleRecord
 from app.services.auth import AuthPrincipal
 from app.services.authorization import PermissionGrant
 from app.services.errors import (
@@ -878,6 +879,31 @@ class FinanceService:
             sort_direction=sort_direction,
         )
 
+    def get_pos_income_sale_record(
+        self,
+        grant: PermissionGrant,
+        income_id: UUID,
+    ) -> SaleRecord:
+        context = self._repository.get_pos_income(
+            grant.workspace_id,
+            income_id,
+            grant.allowed_branch_ids,
+        )
+        if context is None:
+            manual = self._repository.get_manual_income(
+                grant.workspace_id,
+                income_id,
+                grant.allowed_branch_ids,
+            )
+            if manual is not None:
+                raise ResourceNotFoundError(
+                    "Este ingreso no tiene factura asociada.",
+                    "incomeId",
+                )
+            raise ResourceNotFoundError("El ingreso no existe.", "incomeId")
+        sale, _correction, _register = context
+        return PosRepository(self._session).sale_record(sale)
+
     def update_income(
         self,
         *,
@@ -1079,6 +1105,9 @@ class FinanceService:
             "customer": self._normalize_text(cast(str, values.get("customer", ""))),
             "source": self._normalize_required_text(cast(str, values["source"])),
             "payment_status": values["status"],
+            "item_kind": values.get("item_kind"),
+            "catalog_item_id": values.get("catalog_item_id"),
+            "concept": self._normalize_text(cast(str, values.get("concept", ""))),
         }
         fingerprint = self._fingerprint(persistent)
         return self._create_idempotent(
@@ -1128,12 +1157,17 @@ class FinanceService:
             "customer": "customer",
             "source": "source",
             "status": "payment_status",
+            "item_kind": "item_kind",
+            "catalog_item_id": "catalog_item_id",
+            "concept": "concept",
         }
         self._apply_changes(income, changes, mapping)
         if "customer" in changes:
             income.customer = self._normalize_text(income.customer)
         if "source" in changes:
             income.source = self._normalize_required_text(income.source)
+        if "concept" in changes:
+            income.concept = self._normalize_text(income.concept)
         return self._finish_update(
             income,
             principal,
@@ -1325,6 +1359,9 @@ class FinanceService:
             adjusted=False,
             editable=True,
             version=income.version,
+            item_kind=income.item_kind,
+            catalog_item_id=income.catalog_item_id,
+            concept=income.concept or None,
             created_at=income.created_at,
             updated_at=income.updated_at,
         )
@@ -1362,6 +1399,9 @@ class FinanceService:
             adjusted=correction is not None,
             editable=True,
             version=correction.version if correction is not None else sale.version,
+            item_kind=None,
+            catalog_item_id=None,
+            concept=None,
             created_at=register.closed_at,
             updated_at=correction.updated_at if correction is not None else register.closed_at,
         )

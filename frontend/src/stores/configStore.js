@@ -54,14 +54,21 @@ const DEFAULT_PAYMENT_METHODS = PAYMENT_METHODS.map((m) => ({ ...m, enabled: tru
 
 const EMPTY_SETTINGS = {
   billingDocuments: {
-    tradeName: '',
-    legalName: '',
-    rnc: '',
-    address: '',
-    phone: '',
-    email: '',
-    logoDataUrl: '',
-    footerNote: '',
+    templates: [
+      {
+        id: 'tpl-default',
+        name: 'Principal',
+        branchIds: [],
+        tradeName: '',
+        legalName: '',
+        rnc: '',
+        address: '',
+        phone: '',
+        email: '',
+        logoDataUrl: '',
+        footerNote: '',
+      },
+    ],
   },
 }
 
@@ -93,6 +100,7 @@ export const useConfigStore = create(
       paymentMethods: structuredClone(DEFAULT_PAYMENT_METHODS),
       users: [],
       settings: structuredClone(EMPTY_SETTINGS),
+      workspaceBillingHydrated: false,
       permissions: buildDefaultMatrix(),
       whatsappTemplates: structuredClone(DEFAULT_WHATSAPP_TEMPLATES),
 
@@ -170,11 +178,13 @@ export const useConfigStore = create(
 
       // ---- settings ----
       updateSettings: (data) => set((s) => ({ settings: { ...s.settings, ...data } })),
+      markWorkspaceBillingHydrated: (hydrated = true) => set({ workspaceBillingHydrated: Boolean(hydrated) }),
       updateBillingDocuments: (data) =>
         set((s) => ({
+          workspaceBillingHydrated: true,
           settings: {
             ...s.settings,
-            billingDocuments: { ...s.settings.billingDocuments, ...data },
+            billingDocuments: data,
           },
         })),
 
@@ -242,6 +252,7 @@ export const useConfigStore = create(
           state.whatsappTemplates = mergedWa
         }
         if (Array.isArray(state.users)) state.users = state.users.map(({ password: _password, ...user }) => user)
+        state.workspaceBillingHydrated = false
         return state
       },
     }

@@ -41,6 +41,7 @@ import { downloadQuotePdf, printQuoteDocument, printSaleInvoice } from '../lib/s
 import { QuoteFormModal } from '../components/QuoteFormModal'
 import { QuoteInvoiceModal } from '../components/QuoteInvoiceModal'
 import { isQuoteEditable } from '../lib/quoteForm'
+import { isActiveCrmQuote, isDiscardedCrmQuote } from '@/modules/crm/lib/crmQuoteVisibility'
 import {
   canEmitQuoteInvoice,
   isQuoteInvoiced,
@@ -62,6 +63,16 @@ import { posApi } from '@/services/posApi'
 import { getBalance, receivableHasPaymentEvidence } from '@/modules/pos/lib/receivables'
 import { syncWorkspacePaymentMethods } from '@/lib/paymentMethodsSync'
 import { SimplifiedCrmSectionNav } from '@/modules/crm/components/SimplifiedCrmSectionNav'
+import { DatePeriodFilter } from '@/components/ui/DatePeriodFilter'
+import { IncrementalListFooter } from '@/components/ui/IncrementalListFooter'
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
+import {
+  defaultQuotesDateFilter,
+  quotesUpdatedRange,
+  QUOTES_DATE_PERIODS,
+} from '@/modules/crm/lib/quotesListQuery'
+import { crmApi } from '@/services/crmApi'
+import { mapLeadFromApi } from '@/services/adapters/crm'
 
 export default function CotizacionesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -74,11 +85,13 @@ export default function CotizacionesPage() {
   const settings = useConfigStore((s) => s.settings)
   const paymentMethods = useConfigStore((s) => s.paymentMethods)
   const customers = useCustomersStore((s) => s.customers)
-  const opportunities = useCrmStore((s) => s.opportunities)
   const updateQuote = useCrmStore((s) => s.updateQuote)
   const deleteQuote = useCrmStore((s) => s.deleteQuote)
   const invoiceQuote = useCrmStore((s) => s.invoiceQuote)
   const hydrateQuotesSection = useCrmStore((s) => s.hydrateSection)
+  const fetchQuotesPage = useCrmStore((s) => s.fetchQuotesPage)
+  const loadMoreQuotes = useCrmStore((s) => s.loadMoreQuotes)
+  const quotesListMeta = useCrmStore((s) => s.quotesListMeta)
   const ensureSaleDetail = useCrmStore((s) => s.ensureSaleDetail)
   const receivables = usePosStore((s) => s.receivables)
   const hydrateCxcWorkspace = usePosStore((s) => s.hydrateCxcWorkspace)
@@ -94,6 +107,7 @@ export default function CotizacionesPage() {
   const [editingQuote, setEditingQuote] = useState(null)
   const [initialContext, setInitialContext] = useState(null)
   const [branchIds, setBranchIds] = useState([])
+  const [dateFilter, setDateFilter] = useState(defaultQuotesDateFilter)
   const [invoiceQuoteRow, setInvoiceQuoteRow] = useState(null)
   const [invoiceLoading, setInvoiceLoading] = useState(false)
   const [elevationOpen, setElevationOpen] = useState(false)
@@ -105,9 +119,9 @@ export default function CotizacionesPage() {
   const isStandardCrm = uiMode !== 'simplified'
   const docFilter = parseDocFilter(searchParams.get('doc'))
 
-  const requestedOpportunityId = searchParams.get('opportunityId') || ''
   const requestedCustomerId = searchParams.get('customerId') || ''
   const requestedLeadId = searchParams.get('leadId') || ''
+  const requestedQuoteId = searchParams.get('quoteId') || ''
 
   useEffect(() => {
     const load = async () => {
@@ -124,6 +138,19 @@ export default function CotizacionesPage() {
     load()
   }, [hydrateCxcWorkspace, hydrateQuotesSection])
 
+  useEffect(() => {
+    if (!isOnline) return
+    const range = quotesUpdatedRange(dateFilter)
+    const branchId = branchIds.length === 1 ? branchIds[0] : null
+    fetchQuotesPage({
+      page: 1,
+      branchId,
+      updatedAfter: range?.start?.toISOString() || null,
+      updatedBefore: range?.end?.toISOString() || null,
+      append: false,
+    }).catch(() => {})
+  }, [branchIds, dateFilter, fetchQuotesPage, isOnline])
+
   const setDocFilter = (id) => {
     const next = new URLSearchParams(searchParams)
     if (id === 'all') next.delete('doc')
@@ -132,54 +159,90 @@ export default function CotizacionesPage() {
   }
 
   useEffect(() => {
-    if (!requestedOpportunityId) return
-    const opportunity = opportunities.find((item) => item.id === requestedOpportunityId)
-    if (!opportunity) return
-    setEditingQuote(null)
-    setInitialContext({
-      opportunityId: opportunity.id,
-      customerId: opportunity.customerId || '',
-      branchId: opportunity.branchId || '',
-    })
-    setFormOpen(true)
-    const nextParams = new URLSearchParams(searchParams)
-    nextParams.delete('opportunityId')
-    setSearchParams(nextParams, { replace: true })
-  }, [opportunities, requestedOpportunityId, searchParams, setSearchParams])
+    if (!requestedQuoteId) return
+    let cancelled = false
+    const run = async () => {
+      try {
+        await hydrateQuotesSection('quotes')
+      } catch {
+        /* cached quotes */
+      }
+      const store = useCrmStore.getState()
+      let quote = store.quotes.find((item) => item.id === requestedQuoteId)
+      try {
+        if (!quote) {
+          quote = await store.ensureQuoteDetail(requestedQuoteId)
+        }
+      } catch {
+        quote = null
+      }
+      if (!cancelled) {
+        if (quote && isDiscardedCrmQuote(quote)) {
+          toast.info('Esta cotización fue descartada.')
+        } else if (quote && isActiveCrmQuote(quote)) {
+          const el = document.querySelector(`[data-testid="quote-print-${quote.id}"]`)
+            || document.querySelector(`[data-testid="cotizaciones-quote-row-${quote.id}"]`)
+          el?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' })
+        } else {
+          toast.error('La cotización ya no existe.')
+        }
+        const nextParams = new URLSearchParams(searchParams)
+        nextParams.delete('quoteId')
+        setSearchParams(nextParams, { replace: true })
+      }
+    }
+    run()
+    return () => { cancelled = true }
+  }, [requestedQuoteId, hydrateQuotesSection, searchParams, setSearchParams])
 
   useEffect(() => {
-    if (requestedOpportunityId || requestedCustomerId || !requestedLeadId) return
-    const lead = useCrmStore.getState().leads.find((item) => item.id === requestedLeadId)
-    const opportunity = useCrmStore.getState().opportunities.find((item) => item.leadId === requestedLeadId)
-    if (!lead) return
-    setEditingQuote(null)
-    setInitialContext({
-      leadId: lead.id,
-      customerId: opportunity?.customerId || '',
-      opportunityId: opportunity?.id || '',
-      branchId: lead.branchId || opportunity?.branchId || '',
-    })
-    setFormOpen(true)
-    const nextParams = new URLSearchParams(searchParams)
-    nextParams.delete('leadId')
-    setSearchParams(nextParams, { replace: true })
-  }, [requestedLeadId, requestedOpportunityId, requestedCustomerId, searchParams, setSearchParams])
+    if (requestedQuoteId || requestedCustomerId || !requestedLeadId) return
+    let cancelled = false
+    const openForLead = async () => {
+      let lead = useCrmStore.getState().leads.find((item) => item.id === requestedLeadId)
+      if (!lead && isOnline) {
+        try {
+          const response = await crmApi.getLead(requestedLeadId)
+          lead = mapLeadFromApi(response)
+          useCrmStore.setState((state) => ({
+            leads: state.leads.some((item) => item.id === lead.id)
+              ? state.leads
+              : [lead, ...state.leads],
+          }))
+        } catch {
+          lead = null
+        }
+      }
+      if (cancelled || !lead) return
+      setEditingQuote(null)
+      setInitialContext({
+        leadId: lead.id,
+        customerId: lead.customerId || '',
+        branchId: lead.branchId || '',
+      })
+      setFormOpen(true)
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.delete('leadId')
+      setSearchParams(nextParams, { replace: true })
+    }
+    openForLead()
+    return () => { cancelled = true }
+  }, [requestedLeadId, requestedCustomerId, requestedQuoteId, searchParams, setSearchParams, isOnline])
 
   useEffect(() => {
-    if (requestedOpportunityId || !requestedCustomerId || requestedLeadId) return
+    if (requestedQuoteId || !requestedCustomerId || requestedLeadId) return
     const customer = customers.find((item) => item.id === requestedCustomerId)
     if (!customer) return
     setEditingQuote(null)
     setInitialContext({
       customerId: customer.id,
-      opportunityId: '',
       branchId: customer.branchIds?.[0] || customer.branchId || '',
     })
     setFormOpen(true)
     const nextParams = new URLSearchParams(searchParams)
     nextParams.delete('customerId')
     setSearchParams(nextParams, { replace: true })
-  }, [customers, requestedCustomerId, requestedOpportunityId, searchParams, setSearchParams])
+  }, [customers, requestedCustomerId, requestedLeadId, requestedQuoteId, searchParams, setSearchParams])
 
   const enrichedQuotes = useMemo(
     () => quotes.map((quote) => resolveQuoteBilling(quote, receivables, sales)),
@@ -189,6 +252,7 @@ export default function CotizacionesPage() {
   const visibleQuotes = useMemo(() => {
     return enrichedQuotes
       .filter((q) => !isQuoteInvoiced(q))
+      .filter((q) => isActiveCrmQuote(q))
       .filter((q) => matchesBranches(q, branchIds, (row) => (row.branchId ? [row.branchId] : [])))
   }, [enrichedQuotes, branchIds])
 
@@ -261,22 +325,26 @@ export default function CotizacionesPage() {
     }
   }
 
-  const cancelQuote = async (quoteId) => {
+  const removeQuote = async (quoteId) => {
     try {
       await deleteQuote(quoteId)
-      toast.success('Cotización cancelada')
+      toast.success('Cotización descartada')
     } catch (error) {
-      toast.error(error.message || 'No se pudo cancelar la cotización')
+      toast.error(error.message || 'No se pudo descartar la cotización')
     }
   }
 
   const printQuote = (quote) => {
-    printQuoteDocument(quote, documentCtx)
+    printQuoteDocument(quote, documentCtx).catch((error) => {
+      toast.error(error.message || 'No se pudo imprimir la cotización.')
+    })
     toast.success('Enviando cotización a impresión…')
   }
 
   const downloadQuote = (quote) => {
-    downloadQuotePdf(quote, documentCtx)
+    downloadQuotePdf(quote, documentCtx).catch((error) => {
+      toast.error(error.message || 'No se pudo descargar la cotización.')
+    })
     toast.success('Cotización descargada')
   }
 
@@ -319,8 +387,16 @@ export default function CotizacionesPage() {
       if (result?.sale) {
         setSelectedSale(result.sale)
       }
+      const meta = useCrmStore.getState().quotesListMeta
       await Promise.all([
-        hydrateQuotesSection('quotes'),
+        fetchQuotesPage({
+          page: 1,
+          pageSize: meta.pageSize,
+          branchId: meta.branchId,
+          updatedAfter: meta.updatedAfter,
+          updatedBefore: meta.updatedBefore,
+          append: false,
+        }),
         useCrmStore.getState().hydrateSection('sales'),
       ])
       await hydrateCxcWorkspace({ force: true })
@@ -392,13 +468,31 @@ export default function CotizacionesPage() {
     return found
   }
 
+  const refreshQuotesList = async () => {
+    const meta = useCrmStore.getState().quotesListMeta
+    await fetchQuotesPage({
+      page: 1,
+      pageSize: meta.pageSize,
+      branchId: meta.branchId,
+      updatedAfter: meta.updatedAfter,
+      updatedBefore: meta.updatedBefore,
+      append: false,
+    })
+  }
+
   const refreshAfterCollect = async () => {
     await Promise.all([
-      hydrateQuotesSection('quotes'),
+      refreshQuotesList(),
       useCrmStore.getState().hydrateSection('sales'),
       hydrateCxcWorkspace({ force: true }),
     ])
   }
+
+  const quotesHasMore = quotesListMeta.page < quotesListMeta.totalPages
+  const quotesScrollSentinelRef = useInfiniteScroll({
+    enabled: isOnline && quotesHasMore && !quotesListMeta.loading && !quotesListMeta.loadingMore,
+    onLoadMore: () => loadMoreQuotes().catch(() => {}),
+  })
 
   const handleConfirmReceivable = async (row, payload = {}) => {
     if (!canCollectReceivables) {
@@ -477,7 +571,9 @@ export default function CotizacionesPage() {
       toast.error('No se encontró la factura asociada')
       return
     }
-    printSaleInvoice(sale, documentCtx)
+    printSaleInvoice(sale, documentCtx).catch((error) => {
+      toast.error(error.message || 'No se pudo imprimir la factura.')
+    })
     toast.success('Enviando factura a impresión…')
   }
 
@@ -495,6 +591,14 @@ export default function CotizacionesPage() {
           </p>
         </div>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+          <DatePeriodFilter
+            period={dateFilter.period}
+            dateFrom={dateFilter.dateFrom}
+            dateTo={dateFilter.dateTo}
+            onChange={setDateFilter}
+            periods={QUOTES_DATE_PERIODS}
+            testId="cotizaciones-date-filter"
+          />
           <BranchMultiSelect
             branches={branches}
             branchIds={branchIds}
@@ -842,8 +946,8 @@ export default function CotizacionesPage() {
                     {canManage && !isQuoteInvoiced(q) && (
                       <button
                         type="button"
-                        onClick={() => cancelQuote(q.id)}
-                        aria-label={`Cancelar ${q.number}`}
+                        onClick={() => removeQuote(q.id)}
+                        aria-label={`Eliminar ${q.number}`}
                         className="rounded-lg p-2 text-red-500 hover:bg-red-50"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -857,6 +961,19 @@ export default function CotizacionesPage() {
       </div>
       )}
 
+      {isStandardCrm && isOnline && (
+        <>
+          <div ref={quotesScrollSentinelRef} className="h-1 w-full shrink-0" aria-hidden />
+          <IncrementalListFooter
+            loaded={quotes.length}
+            total={quotesListMeta.totalItems}
+            loading={quotesListMeta.loading || quotesListMeta.loadingMore}
+            hasMore={quotesHasMore}
+            className="px-1"
+          />
+        </>
+      )}
+
       <SaleDetailModal
         open={Boolean(selectedSale)}
         onClose={() => setSelectedSale(null)}
@@ -868,6 +985,7 @@ export default function CotizacionesPage() {
         onClose={closeForm}
         quote={editingQuote}
         initialContext={initialContext}
+        onSaved={() => refreshQuotesList().catch(() => {})}
       />
 
       <QuoteInvoiceModal

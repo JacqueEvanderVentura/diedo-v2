@@ -64,6 +64,29 @@ def test_phase1_administration_crud_and_optimistic_concurrency(client: TestClien
     )
     assert updated_settings.status_code == 200
     assert float(updated_settings.json()["taxDefaultRate"]) == 18
+    billing_patch = client.patch(
+        "/api/v1/workspace/settings",
+        headers=headers,
+        json={
+            "version": updated_settings.json()["version"],
+            "billingDocuments": {
+                "tradeName": "Helios Spa",
+                "legalName": "Helios Spa SRL",
+                "rnc": "1-3290890-2",
+                "phone": "8095550000",
+                "email": "facturacion@example.com",
+                "address": "Av. Principal 1",
+                "footerNote": "Gracias por su compra",
+            },
+        },
+    )
+    assert billing_patch.status_code == 200, billing_patch.text
+    billing_body = billing_patch.json()
+    templates = billing_body["billingDocuments"]["templates"]
+    assert len(templates) == 1
+    assert templates[0]["tradeName"] == "Helios Spa"
+    assert templates[0]["rnc"] == "1-3290890-2"
+    assert templates[0]["name"] == "Principal"
     stale_settings = client.patch(
         "/api/v1/workspace/settings",
         headers=headers,

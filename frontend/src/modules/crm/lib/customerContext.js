@@ -10,11 +10,14 @@ export function mergeSalesForCustomer(posSales, crmSales, customerId) {
   )
 }
 
-export function filterOpenOpportunities(opportunities, customerId) {
-  return opportunities.filter(
-    (row) => row.customerId === customerId && !['cerrado', 'perdido'].includes(row.stage),
+export function filterOpenPipelineLeads(leads, customerId) {
+  return (leads || []).filter(
+    (row) => row.customerId === customerId && !['cerrado', 'perdido'].includes(row.status),
   )
 }
+
+/** @deprecated */
+export const filterOpenOpportunities = (opportunities, customerId) => filterOpenPipelineLeads(opportunities, customerId)
 
 export function filterCustomerQuotes(quotes, customerId) {
   return quotes

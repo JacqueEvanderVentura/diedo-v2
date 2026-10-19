@@ -188,6 +188,8 @@ const CUSTOMER_IMPORT_KEYS = new Set([
   'email',
   'phone',
   'acquisitionSource',
+  'documentType',
+  'documentId',
 ])
 
 const ACTIVITY_IMPORT_KEYS = new Set([
@@ -207,6 +209,8 @@ const PIPELINE_IMPORT_KEYS = new Set([
   'website',
   'location',
   'acquisitionSource',
+  'documentType',
+  'documentId',
   'stage',
   'value',
   'notes',

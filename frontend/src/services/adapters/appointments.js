@@ -42,9 +42,17 @@ function actorName(actor, fallback) {
   return actor?.displayName || actor?.name || fallback || ''
 }
 
+function resolveAppointmentCreatedBy(item) {
+  const customerName =
+    item.customerName || item.customer?.name || item.customer?.displayName || ''
+  if (item.source === 'self' && customerName) return customerName
+  return actorName(item.createdBy, item.createdByName)
+}
+
 export function mapAppointmentFromApi(item) {
   const resource = item.resource || null
   const status = appointmentStatusFromApi(item.status)
+  const createdBy = resolveAppointmentCreatedBy(item)
   return {
     id: item.id,
     branchId: item.branchId,
@@ -77,7 +85,7 @@ export function mapAppointmentFromApi(item) {
     reminderSent: item.reminderSent === true,
     notification: item.notification || null,
     source: item.source || 'staff',
-    createdBy: actorName(item.createdBy, item.createdByName),
+    createdBy,
     updatedBy: actorName(item.updatedBy, item.updatedByName),
     createdAt: item.createdAt || null,
     updatedAt: item.updatedAt || null,

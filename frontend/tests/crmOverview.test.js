@@ -32,16 +32,13 @@ describe('buildCrmOverviewStats', () => {
   })
 
   it('calcula fallback local sin overview', () => {
+    const closedAt = new Date().toISOString()
     const stats = buildCrmOverviewStats({
       overview: null,
       leads: [
         { status: 'nuevo', updatedAt: '2026-01-01' },
-        { status: 'calificado', updatedAt: '2026-01-01' },
-        { status: 'convertido', updatedAt: new Date().toISOString() },
-      ],
-      opportunities: [
-        { stage: 'propuesta', value: 1000 },
-        { stage: 'cerrado', value: 500 },
+        { status: 'propuesta', updatedAt: '2026-01-01', pipelineValue: 1000 },
+        { status: 'cerrado', updatedAt: closedAt, pipelineClosedAt: closedAt },
       ],
       activities: [{ status: 'pendiente' }, { status: 'completada' }],
     })
@@ -49,7 +46,7 @@ describe('buildCrmOverviewStats', () => {
     expect(stats.qualifiedLeads).toBe(1)
     expect(stats.convertedMonth).toBe(1)
     expect(stats.pipelineValue).toBe(1000)
-    expect(stats.openOpportunities).toBe(1)
+    expect(stats.openOpportunities).toBe(2)
     expect(stats.salesValueThisMonth).toBeNull()
     expect(stats.pendingActivities).toBe(1)
   })

@@ -49,6 +49,7 @@ export function getEmployeeAppointmentsOnDate(appointments, { employeeId, date, 
 export const DOC_TYPES = [
   { id: 'cedula', label: 'Cédula' },
   { id: 'pasaporte', label: 'Pasaporte' },
+  { id: 'rnc', label: 'RNC' },
 ]
 
 export function normalizeDocumentId(value, docType = 'cedula') {
@@ -63,8 +64,13 @@ export function formatCedulaInput(value) {
   return `${digits.slice(0, 3)}-${digits.slice(3, 10)}-${digits.slice(10)}`
 }
 
+function formatRncInput(value) {
+  return normalizeDocumentId(value, 'rnc').slice(0, 9)
+}
+
 export function formatDocumentInput(value, docType = 'cedula') {
   if (docType === 'cedula') return formatCedulaInput(value)
+  if (docType === 'rnc') return formatRncInput(value)
   return String(value || '').trim()
 }
 
@@ -84,10 +90,12 @@ export function buildBookingUrl(branchId = 'charm-dn') {
   return `${base}${path}/agendar?branch=${branchId}`
 }
 
-export function buildProfileUrl(documentId) {
+export function buildProfileUrl(documentId, branchId = '') {
   const base = typeof window !== 'undefined' ? window.location.origin : ''
   const path = import.meta.env.BASE_URL?.replace(/\/$/, '') || ''
-  return `${base}${path}/agendar/perfil?doc=${normalizeDocumentId(documentId)}`
+  const doc = normalizeDocumentId(documentId)
+  const query = branchId ? `branch=${branchId}&doc=${doc}` : `doc=${doc}`
+  return `${base}${path}/agendar/portal?${query}`
 }
 
 export function getAvailableSlots({

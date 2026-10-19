@@ -21,6 +21,7 @@ describe('crmSales helpers', () => {
   it('detecta origen pipeline', () => {
     expect(saleOriginKey({ origin: 'pipeline' })).toBe('pipeline')
     expect(saleOriginKey({ channel: 'crm' })).toBe('pipeline')
+    expect(saleOriginKey({ channelOrigin: 'pipeline' })).toBe('pipeline')
     expect(saleOriginKey({})).toBe('pos')
   })
 

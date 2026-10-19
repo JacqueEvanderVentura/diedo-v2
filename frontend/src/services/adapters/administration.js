@@ -1,3 +1,8 @@
+import {
+  DEFAULT_BILLING_DOCUMENTS,
+  normalizeBillingDocumentsState,
+} from '../../modules/configuracion/lib/billingDocuments'
+
 function optionalText(value) {
   const normalized = String(value || '').trim()
   return normalized || null
@@ -34,6 +39,59 @@ export function mapLegalEntityFromApi(entity) {
   }
 }
 
+
+export function mapBillingDocumentsFromApi(raw) {
+  if (!raw) return { ...DEFAULT_BILLING_DOCUMENTS }
+  return {
+    tradeName: raw.tradeName || raw.trade_name || '',
+    legalName: raw.legalName || raw.legal_name || '',
+    rnc: raw.rnc || '',
+    address: raw.address || '',
+    phone: raw.phone || '',
+    email: raw.email || '',
+    logoDataUrl: raw.logoDataUrl || raw.logo_data_url || '',
+    footerNote: raw.footerNote || raw.footer_note || '',
+  }
+}
+
+export function mapWorkspaceBillingDocumentsFromApi(raw) {
+  return normalizeBillingDocumentsState(raw)
+}
+
+function billingTemplateFieldsToApi(template = {}) {
+  return {
+    trade_name: template.tradeName?.trim() || '',
+    legal_name: template.legalName?.trim() || '',
+    rnc: template.rnc?.trim() || '',
+    address: template.address?.trim() || '',
+    phone: template.phone?.trim() || '',
+    email: optionalText(template.email),
+    logo_data_url: template.logoDataUrl || '',
+    footer_note: template.footerNote?.trim() || '',
+  }
+}
+
+export function billingDocumentsToApi(billingDocuments = {}) {
+  const state = normalizeBillingDocumentsState(billingDocuments)
+  return {
+    templates: state.templates.map((template) => ({
+      id: template.id,
+      name: template.name?.trim() || 'Plantilla',
+      branch_ids: template.branchIds || [],
+      ...billingTemplateFieldsToApi(template),
+    })),
+  }
+}
+
+export function billingTemplateToApi(template = {}) {
+  return {
+    id: template.id,
+    name: template.name?.trim() || 'Plantilla',
+    branch_ids: template.branchIds || [],
+    ...billingTemplateFieldsToApi(template),
+  }
+}
+
 export function mapBranchFromApi(branch, legalEntities = []) {
   const entity = legalEntities.find((item) => item.id === branch.legalEntityId) || null
   const details = branch.details || {}
@@ -60,6 +118,7 @@ export function mapBranchFromApi(branch, legalEntities = []) {
     fiscalEffectiveFrom: entity?.taxIdentity?.validFrom || '',
     legalEntityVersion: entity?.version || null,
     sharing: entity?.sharing || { branchCount: 0, shared: false },
+    billingDocuments: mapBillingDocumentsFromApi(details.billingDocuments || details.billing_documents),
     source: 'api',
   }
 }

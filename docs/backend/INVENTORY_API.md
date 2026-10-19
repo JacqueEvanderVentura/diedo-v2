@@ -54,8 +54,11 @@ Common create fields are `name`, optional `description` and `sku`, `categoryId`,
 `warehouseId`. Product fields add
 `salePrice`, `unitCost`, `taxRate`, `stock`, and `minimumStock`. Supplies require `unitCost` and
 accept `stock` and `minimumStock`; they have no sale price or tax. Services require `salePrice`,
-accept `taxRate`, require one to 100 unique `branchIds`, and never create a stock balance. A service
-is one workspace-scoped catalog item shared by its assigned branches; those branches may belong to
+accept `taxRate`, require one to 100 unique `branchIds`, and never create a stock balance. Services
+also accept `availableInAgenda` and `availableInPos` (both default to `true`; at least one must be
+`true`). `availableInAgenda` controls agenda and public booking lists; `availableInPos` controls POS,
+pipeline checkout, and manual finance incomes that pick catalog services. A service is one
+workspace-scoped catalog item shared by its assigned branches; those branches may belong to
 different legal entities in that workspace. Sharing never crosses workspace boundaries.
 
 An initial quantity greater than zero creates an `opening` ledger movement. Item PATCH requires
@@ -65,7 +68,9 @@ auditable.
 
 For services, item PATCH accepts `branchIds` and synchronizes the active assignments: newly selected
 branches are activated and removed branches are made inactive so existing operational history keeps
-its references. `branchIds` is rejected for stock-tracked products and supplies.
+its references. Service PATCH may also update `availableInAgenda` and `availableInPos` (at least one
+must remain `true`). Those channel fields are rejected for products and supplies. `branchIds` is
+rejected for stock-tracked products and supplies.
 
 ## Assets
 

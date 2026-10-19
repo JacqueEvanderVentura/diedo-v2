@@ -54,7 +54,7 @@ export default function DirectorioPage() {
       return
     }
     let cancelled = false
-    usersApi.list({ pageSize: 100, status: 'active' })
+    usersApi.list({ pageSize: 100, sortBy: 'displayName' })
       .then((response) => {
         if (cancelled) return
         setPlatformUsers(response.items.map((user) => ({

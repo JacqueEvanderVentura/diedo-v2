@@ -2,7 +2,7 @@
  * KPIs y tarjetas de navegación del overview CRM (embudo comercial).
  */
 
-export function buildCrmOverviewStats({ overview, leads = [], opportunities = [], activities = [] }) {
+export function buildCrmOverviewStats({ overview, leads = [], activities = [] }) {
   if (overview) {
     return {
       totalLeads: overview.totalLeads ?? 0,
@@ -15,15 +15,15 @@ export function buildCrmOverviewStats({ overview, leads = [], opportunities = []
     }
   }
 
-  const qualified = leads.filter((l) => l.status === 'calificado').length
+  const qualified = leads.filter((l) => ['propuesta', 'negociacion'].includes(l.status)).length
   const now = new Date()
   const convertedMonth = leads.filter((l) => {
-    if (l.status !== 'convertido') return false
-    const d = new Date(l.updatedAt)
+    if (l.status !== 'cerrado') return false
+    const d = new Date(l.pipelineClosedAt || l.updatedAt)
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
   }).length
-  const openOpps = opportunities.filter((o) => !['cerrado', 'perdido'].includes(o.stage))
-  const pipelineValue = openOpps.reduce((a, o) => a + (o.value || 0), 0)
+  const openOpps = leads.filter((l) => !['cerrado', 'perdido'].includes(l.status))
+  const pipelineValue = openOpps.reduce((a, l) => a + (l.pipelineValue || 0), 0)
   const pendingActivities = activities.filter((a) => a.status !== 'completada').length
 
   return {

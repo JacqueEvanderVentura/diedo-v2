@@ -1,6 +1,7 @@
 import { Toaster } from 'sonner'
 import { useEffect } from 'react'
 import { AppRoutes } from './router'
+import { useDeployReload } from './lib/useDeployReload'
 import { useLenis } from './lib/useLenis'
 import { useSessionStore } from './stores/sessionStore'
 import { useCustomersStore } from './stores/customersStore'
@@ -9,8 +10,10 @@ import { useAgendaStore } from './stores/agendaStore'
 import { useCatalogStore } from './stores/catalogStore'
 import { configFacade } from './services/configFacade'
 import { WorkspaceScopeSync } from '@/components/branch/WorkspaceScopeSync'
+import { hydrateWorkspaceBillingSettings } from '@/modules/configuracion/lib/workspaceSettings'
 
 export default function App() {
+  useDeployReload()
   useLenis(false)
   const bootstrap = useSessionStore((s) => s.bootstrap)
   const initialized = useSessionStore((s) => s.initialized)
@@ -34,6 +37,9 @@ export default function App() {
     if (isPlatformOperator || status !== 'online' || !workspaceId) return
     const session = useSessionStore.getState()
     const requests = []
+    if (status === 'online') {
+      requests.push(hydrateWorkspaceBillingSettings({ force: true }))
+    }
     if (session.hasModule('crm') && session.hasPermission('customer.read')) {
       requests.push(hydrateCustomers({ force: false }))
     }

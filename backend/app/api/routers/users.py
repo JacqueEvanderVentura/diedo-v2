@@ -120,6 +120,7 @@ def _user_response(user: UserRecord) -> UserListItem:
         last_access_at=user.last_access_at,
         status=user.status,
         version=user.version,
+        notice=user.notice,
     )
 
 
@@ -214,7 +215,7 @@ def create_user(
     principal: CurrentPrincipal,
     grant: MembershipManageGrant,
 ) -> UserListItem:
-    user = UsersService(database).create_user(
+    result = UsersService(database).create_user(
         principal=principal,
         grant=grant,
         display_name=payload.display_name,
@@ -222,7 +223,7 @@ def create_user(
         password=payload.password.get_secret_value(),
         role_assignments=[_assignment_spec(item) for item in payload.role_assignments],
     )
-    return _user_response(user)
+    return _user_response(result.user)
 
 
 @router.post(
@@ -239,7 +240,7 @@ def create_invitation(
     grant: MembershipManageGrant,
 ) -> InvitationResponse:
     _require_invitations_enabled()
-    invitation, email, raw_token = UsersService(database).create_invitation(
+    invitation, email, raw_token, notice = UsersService(database).create_invitation(
         principal=principal,
         grant=grant,
         display_name=payload.display_name,
@@ -253,6 +254,7 @@ def create_invitation(
         expires_at=invitation.expires_at,
         status="pending",
         accept_token=raw_token if settings.expose_demo_invitation_tokens else None,
+        notice=notice,
     )
 
 

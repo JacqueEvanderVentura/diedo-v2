@@ -92,4 +92,5 @@ export const EMPTY_CART_PATCH = {
   documentKind: 'invoice',
   isFinalized: false,
   activeQuoteId: null,
+  checkoutTenders: null,
 }

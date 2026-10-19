@@ -48,6 +48,7 @@ describe('master data adapters', () => {
       scheduleVersion: 3,
       version: 4,
       api: true,
+      selectableAsSpecialist: true,
     })
   })
 
@@ -71,6 +72,7 @@ describe('master data adapters', () => {
 
     expect(customerPayload.branchIds).toEqual(['branch-uuid'])
     expect(employeePayload.branchIds).toEqual(['branch-uuid'])
+    expect(employeePayload.onlineBookingSelectable).toBe(true)
     expect(employeePayload).not.toHaveProperty('salary')
     expect(employeePayload).not.toHaveProperty('bankAccountNumber')
   })

@@ -73,21 +73,20 @@ test('CRM-09: supervisor no puede abrir creación de cotización sin permiso', a
 test('CRM-08: cerrar desde pipeline reutiliza la factura existente', async ({ page, request }) => {
   const headers = await auth(request)
   const quotes = (await (await request.get(`${api}/crm/quotes?pageSize=200`, { headers })).json()).items
-  const opportunities = (await (await request.get(`${api}/crm/opportunities?pageSize=200`, { headers })).json()).items
-  const quote = quotes.find(q => (q.convertedSaleId || q.quote?.convertedSaleId)
-    && opportunities.some(o => o.id === q.opportunityId && o.stage !== 'cerrado'))
-  // Make the fixture independent of prior runs: a won opportunity can be reopened for this local test.
-  const selected = quote || quotes.find(q => (q.convertedSaleId || q.quote?.convertedSaleId) && q.opportunityId)
+  const leads = (await (await request.get(`${api}/crm/leads?pageSize=200`, { headers })).json()).items
+  const quote = quotes.find((q) => (q.convertedSaleId || q.quote?.convertedSaleId)
+    && leads.some((lead) => lead.id === q.leadId && lead.status !== 'cerrado'))
+  const selected = quote || quotes.find((q) => (q.convertedSaleId || q.quote?.convertedSaleId) && q.leadId)
   expect(selected).toBeTruthy()
-  const opportunity = opportunities.find(o => o.id === selected.opportunityId)
-  const reopened = await request.patch(`${api}/crm/opportunities/${opportunity.id}`, {
-    headers, data: { version: opportunity.version, stage: 'nuevo' },
+  const lead = leads.find((row) => row.id === selected.leadId)
+  const reopened = await request.patch(`${api}/crm/leads/${lead.id}`, {
+    headers, data: { version: lead.version, status: 'nuevo' },
   })
   expect(reopened.ok()).toBeTruthy()
   await login(page)
   await page.setViewportSize({ width: 2200, height: 1100 })
   await page.goto('/crm/pipeline')
-  const card = page.getByTestId(`pipeline-opportunity-${opportunity.id}`)
+  const card = page.getByTestId(`pipeline-lead-${lead.id}`)
   await card.scrollIntoViewIfNeeded()
   const from = await card.boundingBox()
   const to = await page.locator('[data-pipeline-stage-header="cerrado"]').boundingBox()
@@ -99,12 +98,12 @@ test('CRM-08: cerrar desde pipeline reutiliza la factura existente', async ({ pa
   await expect(modal).toBeVisible()
   await expect(modal.getByText('Se vinculará la factura existente', { exact: false })).toBeVisible()
   const invoiceRequests = []
-  page.on('request', r => { if (r.method() === 'POST' && /\/checkout$|\/invoice$/.test(r.url())) invoiceRequests.push(r.url()) })
+  page.on('request', (r) => { if (r.method() === 'POST' && /\/checkout$|\/invoice$/.test(r.url())) invoiceRequests.push(r.url()) })
   await page.getByTestId('pipeline-close-confirm').click()
   await expect(modal).toHaveCount(0)
   expect(invoiceRequests).toEqual([])
-  const saved = await (await request.get(`${api}/crm/opportunities/${opportunity.id}`, { headers })).json()
-  expect(saved.stage).toBe('cerrado')
+  const saved = await (await request.get(`${api}/crm/leads/${lead.id}`, { headers })).json()
+  expect(saved.status).toBe('cerrado')
 })
 
 test('CRM-06: búsqueda encuentra un lead fuera de la primera página de 200', async ({ page, request }) => {

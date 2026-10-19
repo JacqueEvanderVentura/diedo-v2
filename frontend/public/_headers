@@ -10,6 +10,10 @@
   Cache-Control: no-store
   Content-Type: text/plain; charset=utf-8
 
+/version.json
+  Cache-Control: no-store
+  Content-Type: application/json; charset=utf-8
+
 /privacidad
   Cache-Control: public, max-age=300
   X-Robots-Tag: index, follow

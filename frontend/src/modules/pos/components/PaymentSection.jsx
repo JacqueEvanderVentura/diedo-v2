@@ -3,6 +3,7 @@ import { Banknote, CreditCard, ArrowLeftRight, Link2, Clock, Wallet, Upload, Che
 import { useConfigStore } from '@/stores/configStore'
 import { usePosStore } from '@/stores/posStore'
 import { cn } from '@/lib/utils'
+import { SplitTenderSection } from './SplitTenderSection'
 import { POS_PROOF_ACCEPT } from '../lib/receivables'
 
 const ICONS = { Banknote, CreditCard, ArrowLeftRight, Link2, Clock, Wallet }
@@ -15,7 +16,7 @@ const REF_LABELS = {
   cxc: 'N° de referencia (opcional)',
 }
 
-export function PaymentSection({ error }) {
+export function PaymentSection({ error, checkoutTotal = 0 }) {
   const allMethods = useConfigStore((s) => s.paymentMethods)
   const paymentMethods = useMemo(() => allMethods.filter((m) => m.enabled), [allMethods])
   const paymentMethod = usePosStore((s) => s.paymentMethod)
@@ -24,6 +25,8 @@ export function PaymentSection({ error }) {
   const setTransferProof = usePosStore((s) => s.setTransferProof)
   const paymentReference = usePosStore((s) => s.paymentReference)
   const setPaymentReference = usePosStore((s) => s.setPaymentReference)
+  const checkoutTenders = usePosStore((s) => s.checkoutTenders)
+  const splitEnabled = Array.isArray(checkoutTenders) && checkoutTenders.length > 0
   const fileRef = useRef(null)
 
   // Si el método seleccionado se desactivó en Configuración, reconcilia al primero activo.
@@ -42,6 +45,15 @@ export function PaymentSection({ error }) {
   // the generated receivable immediately after checkout and is never persisted.
   const transferMissing = isTransfer && !transferProof && !paymentReference.trim()
   const showRefError = isTransfer && error && transferMissing
+
+  if (splitEnabled) {
+    return (
+      <div data-testid="pos-payment-section" className="min-w-0 overflow-hidden">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Método de pago</p>
+        <SplitTenderSection total={checkoutTotal} />
+      </div>
+    )
+  }
 
   return (
     <div data-testid="pos-payment-section" className="min-w-0 overflow-hidden">
@@ -142,6 +154,7 @@ export function PaymentSection({ error }) {
           )}
         </div>
       )}
+      <SplitTenderSection total={checkoutTotal} />
     </div>
   )
 }

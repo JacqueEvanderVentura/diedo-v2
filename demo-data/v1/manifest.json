@@ -36,7 +36,7 @@
     },
     {
       "name": "crm.json",
-      "sha256": "6e740841a9091b16a1ec3190fae87ce4d82831cef77f219ae11eb6433add12e5",
+      "sha256": "abb50772424e8f2f99f03f822c9000b496054600fc328704b4ffc65628fb508b",
       "count": 27
     },
     {
@@ -71,7 +71,7 @@
     },
     {
       "name": "iam.json",
-      "sha256": "f6212b27d2e43cb40982dc0eb785fed434cc7cc8f84b6f1891110d0752adefa5",
+      "sha256": "b1862b1b6b57fdede0ac2966b1a09b43be76bc1d6de1526025ab3cdcb18cb458",
       "count": 8
     },
     {
@@ -86,7 +86,7 @@
     },
     {
       "name": "pos.json",
-      "sha256": "7dd042fcc0c83937e7c1b61079b9ad77a038d0bb8a5be9c06633658942321dd8",
+      "sha256": "81c2b2d851784cee34b8239f2c3eb0097aac615975f1e88db66d50f8c23233ad",
       "count": 39
     },
     {

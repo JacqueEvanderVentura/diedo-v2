@@ -226,6 +226,17 @@ class InventoryService:
             stock=stock,
             minimum_stock=minimum_stock,
         )
+        available_in_agenda = True
+        available_in_pos = True
+        duration_minutes = 30
+        if item_type == "service":
+            available_in_agenda = bool(values.get("available_in_agenda", True))
+            available_in_pos = bool(values.get("available_in_pos", True))
+            duration_minutes = int(values.get("duration_minutes", 30))
+            self._validate_service_channel_flags(
+                available_in_agenda=available_in_agenda,
+                available_in_pos=available_in_pos,
+            )
         item_id = self._repository.create_item(
             workspace_id=grant.workspace_id,
             actor_platform_user_id=principal.platform_user_id,
@@ -246,6 +257,9 @@ class InventoryService:
             idempotency_key=idempotency_key,
             request_fingerprint=fingerprint,
             request_id=get_request_id(),
+            available_in_agenda=available_in_agenda,
+            available_in_pos=available_in_pos,
+            duration_minutes=duration_minutes,
         )
         return self.get_item(grant, item_id)
 
@@ -308,6 +322,22 @@ class InventoryService:
             )
         self._validate_update_kind_fields(item.item_type, changes)
         profile = self._repository.ensure_profile(grant.workspace_id, item.id)
+        if (
+            "available_in_agenda" in changes
+            or "available_in_pos" in changes
+            or "duration_minutes" in changes
+        ):
+            if item.item_type != "service":
+                raise InvalidOperationError(
+                    "Los canales de servicio solo aplican a servicios.",
+                    "availableInAgenda",
+                )
+            agenda = bool(changes.get("available_in_agenda", profile.available_in_agenda))
+            pos = bool(changes.get("available_in_pos", profile.available_in_pos))
+            self._validate_service_channel_flags(
+                available_in_agenda=agenda,
+                available_in_pos=pos,
+            )
         balance = None
         if "minimum_stock" in changes:
             branch_id = cast(UUID, changes.pop("branch_id"))
@@ -825,6 +855,18 @@ class InventoryService:
             raise InvalidOperationError("Los servicios no controlan existencias ni costo unitario.")
         if item_type == "supply" and ({"sale_price", "tax_rate"} & changes.keys()):
             raise InvalidOperationError("Los insumos no tienen precio de venta ni impuesto.")
+
+    @staticmethod
+    def _validate_service_channel_flags(
+        *,
+        available_in_agenda: bool,
+        available_in_pos: bool,
+    ) -> None:
+        if not available_in_agenda and not available_in_pos:
+            raise InvalidOperationError(
+                "El servicio debe estar disponible en agenda o en venta.",
+                "availableInAgenda",
+            )
 
     @staticmethod
     def _require_visible_branch(grant: PermissionGrant, branch_id: UUID | None) -> None:
