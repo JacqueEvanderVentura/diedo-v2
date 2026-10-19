@@ -39,7 +39,7 @@ function cartSnapshotToRow(snapshot, { kind, taxPct }) {
     status: kind === 'open-quote' ? 'open-quote' : 'held',
     dueDate: snapshot.updatedAt || createdAt,
     createdAt,
-    branchId: snapshot.branchId || 'charm-dn',
+    branchId: snapshot.branchId || '',
     reference: kind === 'open-quote' ? 'Cuenta abierta' : 'Venta retenida',
     items: snapshot.items || [],
     label: snapshot.label,

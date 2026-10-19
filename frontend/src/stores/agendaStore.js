@@ -17,7 +17,7 @@ const genLogId = () => `log-${Date.now().toString(36)}-${Math.floor(Math.random(
 const appointmentReads = new Map()
 
 export const MOCK_USER = 'Alex Demo'
-const DEFAULT_BRANCH_ID = 'charm-dn'
+const DEFAULT_BRANCH_ID = ''
 
 export const toKey = (date) => {
   const value = date instanceof Date ? date : new Date(date)

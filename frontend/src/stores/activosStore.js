@@ -253,7 +253,7 @@ export const useActivosStore = create(
           value: Number(data.value) || 0,
           status: data.status || 'activo',
           location: data.location || '',
-          branchId: data.branchId || 'charm-dn',
+          branchId: data.branchId || '',
           purchaseDate: data.purchaseDate || '',
           notes: data.notes || '',
           attachments,

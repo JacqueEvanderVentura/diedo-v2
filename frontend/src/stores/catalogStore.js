@@ -12,7 +12,6 @@ import {
   resolveApiBranchIds,
   resolveCategoryId,
 } from '@/lib/catalogSync'
-
 export const LOW_STOCK_THRESHOLD = 5
 const genId = () => `prod-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 
@@ -203,35 +202,15 @@ export const useCatalogStore = create(
         return merged.id
       },
 
-      addProduct: (data) => {
-        const type = data.type || 'product'
-        const isSupply = type === 'supply'
-        const product = {
-          id: genId(),
-          sku: data.sku || null,
-          name: data.name,
-          price: isSupply ? 0 : Number(data.price) || 0,
-          category: data.category || (isSupply ? 'insumos' : 'otros'),
-          type,
-          stock: type === 'service' ? null : Number(data.stock) || 0,
-          taxPct: isSupply ? 0 : data.appliesTax === false ? 0 : Number(data.taxPct) || 18,
-          branchId: data.branchId || data.branchIds?.[0] || 'charm-dn',
-          branchIds: data.branchIds || (data.branchId ? [data.branchId] : ['charm-dn']),
-          subtype: isSupply ? 'raw' : data.subtype || 'sale',
-          cost: Number(data.cost) || 0,
-          minStock: Number(data.minStock) || 0,
-          requiresSize: !!data.requiresSize,
-          isMembership: !!data.isMembership,
-          unit: data.unit || 'ud',
-          dynamicPrice: !!data.dynamicPrice,
-          allowNegativeStock: !!data.allowNegativeStock,
-          image: data.image || null,
-          availableInAgenda: type === 'service' ? data.availableInAgenda !== false : undefined,
-          availableInPos: type === 'service' ? data.availableInPos !== false : undefined,
-          durationMinutes: type === 'service' ? Number(data.durationMinutes) || 30 : undefined,
+      deleteProduct: async (id, { isOnline = true } = {}) => {
+        if (!isOnline) throw new Error(API_UNAVAILABLE)
+        const current = get().products.find((p) => p.id === id)
+        if (!current) throw new Error('Producto no encontrado.')
+        if (!current.apiSynced || !current.version) {
+          throw new Error('Vuelve a cargar el catálogo antes de eliminar este ítem.')
         }
-        set((s) => ({ products: [product, ...s.products] }))
-        return product
+        await inventoryApi.updateItem(id, { version: current.version, status: 'archived' })
+        set((s) => ({ products: s.products.filter((p) => p.id !== id) }))
       },
 
       updateProduct: (id, data) =>
@@ -252,8 +231,6 @@ export const useCatalogStore = create(
             }
           }),
         })),
-
-      deleteProduct: (id) => set((s) => ({ products: s.products.filter((p) => p.id !== id) })),
 
       setStock: (id, stock) =>
         set((s) => ({ products: s.products.map((p) => (p.id === id ? { ...p, stock: Math.max(0, Number(stock) || 0) } : p)) })),
@@ -297,8 +274,14 @@ export const useCatalogStore = create(
     {
       name: 'diedo-catalog',
       storage: ephemeralJsonStorage,
-      version: 2,
-      migrate: (persisted) => persisted ?? {},
+      version: 3,
+      migrate: (persisted) => {
+        if (!persisted || typeof persisted !== 'object') return {}
+        const products = Array.isArray(persisted.products)
+          ? persisted.products.filter((p) => p?.apiSynced)
+          : []
+        return { ...persisted, products, apiContext: { hydrated: false } }
+      },
       partialize: (s) => ({ products: s.products, apiContext: { hydrated: false } }),
     },
   ),

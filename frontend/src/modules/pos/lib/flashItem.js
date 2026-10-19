@@ -1,19 +1,18 @@
+const API_UNAVAILABLE = 'La API no está disponible.'
+
 export async function createFlashItemForPos({
   data,
   isOnline,
   canManageCatalog,
   categories,
   configBranches,
-  addProduct,
   saveProduct,
   addItem,
   hydratePos,
   getPosCatalog,
 }) {
   if (!isOnline) {
-    const product = addProduct(data)
-    addItem(product)
-    return product
+    throw new Error(API_UNAVAILABLE)
   }
 
   if (!canManageCatalog) {

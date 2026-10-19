@@ -230,4 +230,29 @@ describe('store de catálogo conectado al inventario', () => {
       stock: null,
     })
   })
+
+  it('archiva ítems sincronizados en la API al eliminar', async () => {
+    const product = {
+      id: '4e10aecc-7885-4d0c-a308-f8a62e9ef82d',
+      name: 'Vitamina C',
+      apiSynced: true,
+      version: 3,
+    }
+    useCatalogStore.setState({ products: [product] })
+    mocks.updateItem.mockResolvedValue({ ...product, status: 'archived', version: 4 })
+
+    await useCatalogStore.getState().deleteProduct(product.id, { isOnline: true })
+
+    expect(mocks.updateItem).toHaveBeenCalledWith(product.id, {
+      version: 3,
+      status: 'archived',
+    })
+    expect(useCatalogStore.getState().products).toEqual([])
+  })
+
+  it('rechaza eliminar sin API online', async () => {
+    await expect(
+      useCatalogStore.getState().deleteProduct('any-id', { isOnline: false })
+    ).rejects.toThrow('La API no está disponible.')
+  })
 })

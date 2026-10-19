@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useCatalogStore, LOW_STOCK_THRESHOLD } from '@/stores/catalogStore'
 import { useConfigStore } from '@/stores/configStore'
+import { useSessionStore } from '@/stores/sessionStore'
 import { formatDOP } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -54,6 +55,7 @@ export function ProductosTab() {
   const deleteProduct = useCatalogStore((s) => s.deleteProduct)
   const branches = useConfigStore((s) => s.branches)
   const categories = useConfigStore((s) => s.categories)
+  const isOnline = useSessionStore((s) => s.status === 'online')
 
   const [query, setQuery] = useState('')
   const [branchId, setBranchId] = useState('all')
@@ -104,9 +106,13 @@ export function ProductosTab() {
     setEditing(p)
     setModalOpen(true)
   }
-  const handleDelete = (p) => {
-    deleteProduct(p.id)
-    toast.success(`"${p.name}" eliminado`)
+  const handleDelete = async (p) => {
+    try {
+      await deleteProduct(p.id, { isOnline })
+      toast.success(`"${p.name}" eliminado`)
+    } catch (error) {
+      toast.error(error.message || 'No se pudo eliminar el producto.')
+    }
   }
 
   return (

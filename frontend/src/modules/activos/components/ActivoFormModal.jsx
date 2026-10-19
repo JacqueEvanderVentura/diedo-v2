@@ -11,7 +11,7 @@ import { useSessionStore } from '@/stores/sessionStore'
 import { buildBranchFilterOptions } from '@/lib/branches'
 import { cn } from '@/lib/utils'
 
-const EMPTY = { name: '', code: '', category: 'mobiliario', value: '', status: 'activo', location: '', branchId: 'charm-dn', purchaseDate: '', notes: '', attachments: [] }
+const EMPTY = { name: '', code: '', category: 'mobiliario', value: '', status: 'activo', location: '', branchId: '', purchaseDate: '', notes: '', attachments: [] }
 
 export function ActivoFormModal({ open, onClose, activo }) {
   const saveActivo = useActivosStore((s) => s.saveActivo)

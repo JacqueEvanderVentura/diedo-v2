@@ -84,7 +84,7 @@ export function formatDocumentDisplay(value, docType = 'cedula') {
   return String(value || '').trim()
 }
 
-export function buildBookingUrl(branchId = 'charm-dn') {
+export function buildBookingUrl(branchId = '') {
   const base = typeof window !== 'undefined' ? window.location.origin : ''
   const path = import.meta.env.BASE_URL?.replace(/\/$/, '') || ''
   return `${base}${path}/agendar?branch=${branchId}`

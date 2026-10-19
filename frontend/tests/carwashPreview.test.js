@@ -8,10 +8,10 @@ describe('Carwash phase 0 boundaries', () => {
       { isDemo: false, populated: true, branchId: 'charm-dn' },
       { isDemo: true, populated: true, branchId: 'unknown' },
       { isDemo: true, populated: false, branchId: 'charm-dn' },
+      { isDemo: true, populated: true, branchId: 'charm-dn' },
     ]) {
       expect(previewData(values)).toEqual({ washes: [], commissions: [], services: [], employees: [] })
     }
-    expect(previewData({ isDemo: true, populated: true, branchId: 'charm-dn' }).washes).toHaveLength(3)
   })
 
   it('rejects inaccessible URL tabs and branches before rendering', () => {

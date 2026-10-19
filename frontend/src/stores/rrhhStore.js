@@ -17,7 +17,7 @@ function normalizeEmployee(data) {
     ? data.branchIds
     : data.branchId
       ? [data.branchId]
-      : ['charm-dn']
+      : []
   const jefeIds = Array.isArray(data.jefeIds)
     ? data.jefeIds.filter(Boolean)
     : data.jefeId
@@ -35,7 +35,7 @@ function normalizeEmployee(data) {
     position: data.position?.trim() || '',
     department: data.department?.trim() || '',
     branchIds,
-    branchId: branchIds[0] || 'charm-dn',
+    branchId: branchIds[0] || '',
     jefeIds,
     jefeId: jefeIds[0] || null,
     contractType: data.contractType?.trim() || 'Indefinido',

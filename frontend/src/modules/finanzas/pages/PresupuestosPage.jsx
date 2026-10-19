@@ -80,12 +80,12 @@ export default function PresupuestosPage() {
   const getBudgetStats = useFinanzasStore((s) => s.getBudgetStats)
   const branches = useConfigStore((s) => s.branches)
 
-  const [branchFilter, setBranchFilter] = useState('charm-dn')
+  const [branchFilter, setBranchFilter] = useState('')
   const [groupFilter, setGroupFilter] = useState('all')
   const [query, setQuery] = useState('')
   const [expanded, setExpanded] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
-  const [form, setForm] = useState({ name: '', group: 'operaciones', monthlyLimit: '', branchId: 'charm-dn' })
+  const [form, setForm] = useState({ name: '', group: 'operaciones', monthlyLimit: '', branchId: '' })
 
   const branchOptions = branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))
   const groupOptions = [{ value: 'all', label: 'Todas las Categorías' }, ...BUDGET_GROUPS.map((g) => ({ value: g.id, label: g.name }))]
