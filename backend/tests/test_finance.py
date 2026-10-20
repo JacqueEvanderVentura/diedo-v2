@@ -290,8 +290,9 @@ def test_finance_complete_http_contract_projections_scope_and_audit(
     cashier_headers, _ = _login(client, "demo.paz.cashier@example.com")
     assert client.get("/api/v1/finance/overview", headers=cashier_headers).status_code == 403
     supervisor_headers, supervisor = _login(client, "demo.luz.supervisor@example.com")
+    assert "finance.read" not in supervisor["effectivePermissionCodes"]
     supervisor_overview = client.get("/api/v1/finance/overview", headers=supervisor_headers)
-    assert supervisor_overview.status_code == 200, supervisor_overview.text
+    assert supervisor_overview.status_code == 403, supervisor_overview.text
     assert len(supervisor["visibleBranches"]) == 1
     forbidden_write = client.post(
         "/api/v1/finance/accounts",
