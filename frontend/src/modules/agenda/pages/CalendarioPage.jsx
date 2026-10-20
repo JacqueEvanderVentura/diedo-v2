@@ -11,6 +11,8 @@ import { BranchSchedulesModal } from '../components/BranchSchedulesModal'
 import { WeekView } from '../components/calendar/WeekView'
 import { DayView } from '../components/calendar/DayView'
 import { MonthView } from '../components/calendar/MonthView'
+import { CalendarStatsBar } from '../components/calendar/CalendarStatsBar'
+import { computeCalendarStats } from '../lib/calendarStats'
 import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
 import { DataSourceNotice } from '@/components/ui/DataSourceNotice'
 import { useAgendaPolling } from '../hooks/useAgendaPolling'
@@ -32,6 +34,7 @@ import { isAppointmentConflict } from '@/services/adapters/appointments'
 import { sortResources } from '@/modules/configuracion/lib/agendaCabinas'
 import { boundsForDate } from '../lib/branchOpeningHours'
 import { explainAppointmentResourceMove } from '../lib/calendarResourceMove'
+import { normalizeAppointmentStatus } from '../lib/completion'
 
 const VIEWS = [
   { id: 'day', label: 'Día' },
@@ -100,15 +103,28 @@ export default function CalendarioPage() {
     [openingHours, cursor],
   )
 
+  const branchAppointments = useMemo(
+    () => appointments.filter((a) => !a.branchId || a.branchId === branchId),
+    [appointments, branchId],
+  )
+
+  const calendarStats = useMemo(
+    () => computeCalendarStats({
+      appointments: branchAppointments,
+      view,
+      cursor,
+    }),
+    [branchAppointments, view, cursor],
+  )
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return appointments.filter((a) => {
-      if (a.branchId && a.branchId !== branchId) return false
-      if (!showCancelled && a.status === 'cancelada') return false
+    return branchAppointments.filter((a) => {
+      if (!showCancelled && normalizeAppointmentStatus(a.status) === 'cancelada') return false
       if (!q) return true
       return a.customerName.toLowerCase().includes(q) || (a.serviceName || '').toLowerCase().includes(q)
     }).map((a) => ({ ...a, branchName: branches.find((b) => b.id === a.branchId)?.name || '' }))
-  }, [appointments, search, showCancelled, branchId, branches])
+  }, [branchAppointments, search, showCancelled, branches])
 
   const step = (dir) => {
     if (view === 'month') setCursor((c) => addMonthsKey(c, dir))
@@ -287,6 +303,8 @@ export default function CalendarioPage() {
         </div>
       </div>
 
+      <CalendarStatsBar stats={calendarStats} />
+
       <AnimatedTabPanel panelKey={view}>
         {view === 'week' && (
           <WeekView
@@ -306,6 +324,7 @@ export default function CalendarioPage() {
             onSlotClick={canManage ? openNew : undefined}
             onAppointmentClick={openEdit}
             canDrag={canManage}
+            showCancelled={showCancelled}
             onResourceMove={handleResourceMove}
           />
         )}

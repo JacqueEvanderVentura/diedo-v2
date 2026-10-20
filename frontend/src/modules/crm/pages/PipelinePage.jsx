@@ -19,7 +19,7 @@ import { usePointerKanban } from '@/modules/crm/hooks/usePointerKanban'
 import { CloseLeadInvoiceModal } from '@/modules/crm/components/CloseOpportunityInvoiceModal'
 import { PermissionElevationModal } from '@/components/auth/PermissionElevationModal'
 import { downloadSaleInvoicePdf } from '@/modules/crm/lib/sales'
-import { findLeadLinkedQuote, PIPELINE_INVOICE_PERMISSION } from '@/modules/crm/lib/pipelineInvoice'
+import { findLeadLinkedQuote, PIPELINE_INVOICE_PERMISSION, syncPipelineCloseCustomer } from '@/modules/crm/lib/pipelineInvoice'
 import {
   effectiveLeadCustomerId,
   leadCompanyLabel,
@@ -39,7 +39,7 @@ import {
   customersForOpportunityBranch,
   leadCustomerDefaults,
 } from '../lib/pipelineForm'
-import { ensureCustomerForQuote } from '../lib/quoteCustomer'
+import { ensureCustomerForQuote, preparePipelineCloseCustomer } from '../lib/quoteCustomer'
 import { leadMatchesQuery } from '../lib/pipelineSearch'
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
 import { IncrementalListFooter } from '@/components/ui/IncrementalListFooter'
@@ -480,7 +480,13 @@ export default function PipelinePage() {
       toast.error('Selecciona un cliente válido')
       return
     }
-    await attachCustomerToLead(pendingLead, customer, { closeLinkModal: false })
+    await syncPipelineCloseCustomer({
+      leadId: pendingLead.id,
+      customerId: customer.id,
+      quotes,
+      updateQuote,
+      updateLead,
+    })
   }
 
   const convertLeadForClose = async () => {
@@ -491,13 +497,16 @@ export default function PipelinePage() {
     }
     setCloseConvertBusy(true)
     try {
-      const customer = await convertToCustomer(pendingLead.id)
-      if (customer?.id) {
-        await attachCustomerToLead(pendingLead, customer, { closeLinkModal: false })
-      }
-      toast.success('Lead convertido a cliente')
+      await preparePipelineCloseCustomer({
+        lead: pendingLead,
+        addCustomer: useCustomersStore.getState().addCustomer,
+        updateLead,
+        updateQuote,
+        quotes,
+      })
+      toast.success('Cliente listo para facturar')
     } catch (error) {
-      toast.error(error.message || 'No se pudo convertir el lead')
+      toast.error(error.message || 'No se pudo preparar el cliente')
     } finally {
       setCloseConvertBusy(false)
     }
@@ -505,15 +514,30 @@ export default function PipelinePage() {
 
   const handleLeadConverted = async (customer, lead) => {
     if (customer?.id && lead?.id && lead.id === pendingLead?.id) {
-      await attachCustomerToLead(pendingLead, customer, { closeLinkModal: false })
+      await syncPipelineCloseCustomer({
+        leadId: pendingLead.id,
+        customerId: customer.id,
+        quotes,
+        updateQuote,
+        updateLead,
+      })
+      toast.success('Cliente listo para facturar')
+    } else if (customer?.id && lead?.id) {
+      await attachCustomerToLead(lead, customer, { closeLinkModal: false })
+      toast.success('Lead convertido a cliente')
     }
-    toast.success('Lead convertido a cliente')
     setConvertModalLead(null)
   }
 
   const handleCustomerCreated = async (customer) => {
     if (customerFormTarget === 'close-invoice' && pendingLead) {
-      await attachCustomerToLead(pendingLead, customer, { closeLinkModal: false })
+      await syncPipelineCloseCustomer({
+        leadId: pendingLead.id,
+        customerId: customer.id,
+        quotes,
+        updateQuote,
+        updateLead,
+      })
       return
     }
     if (customerFormTarget === 'link' && linkingLead) {
@@ -804,6 +828,7 @@ export default function PipelinePage() {
       <LeadConvertModal
         open={Boolean(convertModalLead)}
         lead={convertModalLead}
+        forPipelineClose={Boolean(convertModalLead && pendingLead?.id === convertModalLead.id)}
         onClose={() => setConvertModalLead(null)}
         onConverted={handleLeadConverted}
       />

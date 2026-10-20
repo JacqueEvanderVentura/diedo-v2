@@ -168,7 +168,7 @@ class AppointmentHistoryResponse(ApiModel):
 class AppointmentResponse(ApiModel):
     id: UUID
     branch_id: UUID
-    resource: AppointmentResourceResponse
+    resource: AppointmentResourceResponse | None
     customer: AppointmentReference | None
     employee: AppointmentReference | None
     service: AppointmentReference | None
@@ -220,9 +220,10 @@ class CreatedAppointmentsResponse(ApiModel):
 
 class CreateAppointmentRequest(ApiModel):
     branch_id: UUID
-    resource_id: UUID
+    resource_id: UUID | None = None
     customer_id: UUID | None = None
     employee_id: UUID | None = None
+    any_available: bool = False
     service_id: UUID | None = None
     date: DateValue
     time: TimeValue
@@ -258,6 +259,13 @@ class CreateAppointmentRequest(ApiModel):
 
     @model_validator(mode="after")
     def validate_money_and_recurrence(self) -> Self:
+        if self.any_available:
+            if self.employee_id is not None or self.resource_id is not None:
+                raise ValueError(
+                    "No indiques empleado ni cabina cuando eliges cualquiera disponible."
+                )
+        elif self.resource_id is None:
+            raise ValueError("Selecciona una cabina o recurso.")
         if not self.customer_name:
             raise ValueError("El nombre del cliente es obligatorio.")
         if self.pending_amount > self.price:
@@ -277,6 +285,7 @@ class UpdateAppointmentRequest(ApiModel):
     resource_id: UUID | None = None
     customer_id: UUID | None = None
     employee_id: UUID | None = None
+    any_available: bool | None = None
     service_id: UUID | None = None
     date: DateValue | None = None
     time: TimeValue | None = None
@@ -315,6 +324,15 @@ class UpdateAppointmentRequest(ApiModel):
         return _normalize_optional_text(value)
 
     @model_validator(mode="after")
+    def validate_any_available(self) -> Self:
+        if self.any_available:
+            if self.employee_id is not None or self.resource_id is not None:
+                raise ValueError(
+                    "No indiques empleado ni cabina cuando eliges cualquiera disponible."
+                )
+        return self
+
+    @model_validator(mode="after")
     def validate_completion(self) -> Self:
         if self.status == "fulfilled":
             punctuality = self.completion_punctuality
@@ -345,6 +363,10 @@ class UpdateAppointmentRequest(ApiModel):
             "free_trial",
             "reminder_sent",
         }
-        if any(name in changed and getattr(self, name) is None for name in non_nullable):
+        skip_null = {"resource_id"} if self.any_available is True else set()
+        if any(
+            name in changed and getattr(self, name) is None and name not in skip_null
+            for name in non_nullable
+        ):
             raise ValueError("Este campo no puede ser nulo.")
         return self

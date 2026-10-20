@@ -153,11 +153,18 @@ export function buildCrmNavCards({ crmDiscovery = false, includeCommerce = true 
       navKey: 'compras',
     },
     {
+      title: 'Reporte Pipeline',
+      desc: 'Origen de leads, pérdidas por canal y tiempo en cada etapa.',
+      to: '/reportes/pipeline',
+      tone: 'indigo',
+      navKey: 'reportes',
+    },
+    {
       title: 'Reporte Consolidado',
       desc: 'Vista unificada de ingresos por origen y sucursal.',
       to: '/reportes/generales',
-      tone: 'indigo',
-      navKey: 'reportes',
+      tone: 'slate',
+      navKey: 'reportes-generales',
     },
   ]
   if (includeCommerce) return cards

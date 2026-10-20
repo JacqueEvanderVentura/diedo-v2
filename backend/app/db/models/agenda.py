@@ -256,7 +256,9 @@ class Appointment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             ("branch_id", "="),
             ("resource_id", "="),
             ("scheduled_period", "&&"),
-            where=text("record_status = 'active' AND status = 'confirmed'"),
+            where=text(
+                "resource_id IS NOT NULL AND record_status = 'active' AND status = 'confirmed'"
+            ),
             using="gist",
             name="excl_appointments_resource_period",
         ),
@@ -294,7 +296,7 @@ class Appointment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
         ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
     )
     branch_id: Mapped[UUID] = mapped_column(nullable=False)
-    resource_id: Mapped[UUID] = mapped_column(nullable=False)
+    resource_id: Mapped[UUID | None] = mapped_column(nullable=True)
     customer_id: Mapped[UUID | None] = mapped_column(nullable=True)
     employee_id: Mapped[UUID | None] = mapped_column(nullable=True)
     service_id: Mapped[UUID | None] = mapped_column(nullable=True)

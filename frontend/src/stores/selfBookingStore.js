@@ -82,7 +82,7 @@ export const useSelfBookingStore = create(
         })),
 
       bookAppointment: async ({ profile, branchId, service, date, time, employeeId, idempotencyKey }) => {
-        const response = await publicBookingApi.book(branchId, {
+        const payload = {
           customerId: profile.customerId || null,
           documentType: profile.docType || 'cedula',
           documentId: profile.documentId,
@@ -93,10 +93,11 @@ export const useSelfBookingStore = create(
           wantsInvoice: profile.wantsInvoice,
           wantsContact: profile.wantsContact,
           serviceId: service.id,
-          employeeId,
           date,
           time,
-        }, idempotencyKey)
+        }
+        if (employeeId) payload.employeeId = employeeId
+        const response = await publicBookingApi.book(branchId, payload, idempotencyKey)
         return response.appointment
       },
 
@@ -155,11 +156,9 @@ export const useSelfBookingStore = create(
       },
 
       fetchRemoteSlots: async ({ branchId, date, employeeId, serviceId }) => {
-        const result = await publicBookingApi.listSlots(branchId, {
-          date,
-          employeeId,
-          serviceId,
-        })
+        const params = { date, serviceId }
+        if (employeeId) params.employeeId = employeeId
+        const result = await publicBookingApi.listSlots(branchId, params)
         return result.slots || []
       },
 

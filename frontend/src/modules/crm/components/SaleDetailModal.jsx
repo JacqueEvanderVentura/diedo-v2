@@ -380,14 +380,25 @@ export function SaleDetailModal({ open, onClose, sale }) {
                 <tr>
                   <td colSpan={4} className="px-4 py-6 text-center text-slate-400">Cargando líneas…</td>
                 </tr>
-              ) : invoice.items.map((item, idx) => (
-                <tr key={idx}>
-                  <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
-                  <td className="px-4 py-3 text-center text-slate-600">{item.qty}</td>
-                  <td className="px-4 py-3 text-right text-slate-600"><ItemPrice item={item} /></td>
-                  <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatDOP(item.price * item.qty)}</td>
-                </tr>
-              ))}
+              ) : invoice.items.map((item, idx) => {
+                if (item.kind === 'section') {
+                  return (
+                    <tr key={idx} className="bg-slate-50">
+                      <td colSpan={4} className="px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-700">
+                        {item.title || item.name}
+                      </td>
+                    </tr>
+                  )
+                }
+                return (
+                  <tr key={idx}>
+                    <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
+                    <td className="px-4 py-3 text-center text-slate-600">{item.qty}</td>
+                    <td className="px-4 py-3 text-right text-slate-600"><ItemPrice item={item} /></td>
+                    <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatDOP(item.price * item.qty)}</td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

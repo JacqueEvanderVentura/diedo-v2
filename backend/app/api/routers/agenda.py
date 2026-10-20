@@ -133,7 +133,7 @@ def _appointment_response(record: AppointmentRecord) -> AppointmentResponse:
     return AppointmentResponse(
         id=appointment.id,
         branch_id=appointment.branch_id,
-        resource=_resource_response(record.resource),
+        resource=_resource_response(record.resource) if record.resource is not None else None,
         customer=(
             AppointmentReference(id=appointment.customer_id, name=appointment.customer_name)
             if appointment.customer_id is not None

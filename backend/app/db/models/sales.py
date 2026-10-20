@@ -241,7 +241,11 @@ class SalesQuoteLine(UuidPrimaryKeyMixin, Base):
             name="fk_sales_quote_lines_workspace_item",
         ),
         CheckConstraint("position >= 1", name="position_positive"),
-        CheckConstraint("quantity > 0", name="quantity_positive"),
+        CheckConstraint(
+            "(line_kind = 'section' AND quantity = 0) OR (line_kind = 'item' AND quantity > 0)",
+            name="quantity_positive",
+        ),
+        CheckConstraint("line_kind IN ('item', 'section')", name="line_kind_values"),
         CheckConstraint("unit_price >= 0", name="unit_price_non_negative"),
         CheckConstraint("list_price >= 0", name="list_price_non_negative"),
         CheckConstraint("discount_amount >= 0", name="discount_amount_non_negative"),
@@ -257,6 +261,9 @@ class SalesQuoteLine(UuidPrimaryKeyMixin, Base):
     )
     quote_id: Mapped[UUID] = mapped_column(nullable=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
+    line_kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="item", server_default=text("'item'")
+    )
     item_id: Mapped[UUID | None] = mapped_column(nullable=True)
     item_name: Mapped[str] = mapped_column(String(160), nullable=False)
     item_sku: Mapped[str | None] = mapped_column(String(64))
@@ -509,7 +516,11 @@ class SaleLine(UuidPrimaryKeyMixin, Base):
             name="fk_sale_lines_workspace_item",
         ),
         CheckConstraint("position >= 1", name="position_positive"),
-        CheckConstraint("quantity > 0", name="quantity_positive"),
+        CheckConstraint(
+            "(line_kind = 'section' AND quantity = 0) OR (line_kind = 'item' AND quantity > 0)",
+            name="quantity_positive",
+        ),
+        CheckConstraint("line_kind IN ('item', 'section')", name="line_kind_values"),
         CheckConstraint("list_price >= 0", name="list_price_non_negative"),
         CheckConstraint("unit_price >= 0", name="unit_price_non_negative"),
         CheckConstraint(
@@ -529,6 +540,9 @@ class SaleLine(UuidPrimaryKeyMixin, Base):
     )
     sale_id: Mapped[UUID] = mapped_column(nullable=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
+    line_kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="item", server_default=text("'item'")
+    )
     item_id: Mapped[UUID | None] = mapped_column(nullable=True)
     item_name: Mapped[str] = mapped_column(String(160), nullable=False)
     item_sku: Mapped[str | None] = mapped_column(String(64))

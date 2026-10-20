@@ -4,6 +4,7 @@ import { formatLongDate, timeSlots } from '../../lib/calendar'
 import { AppointmentChip } from './AppointmentChip'
 import {
   activeAppointmentsForResource,
+  appointmentsForResource,
   assignAppointmentLanes,
   appointmentStartsAtSlot,
   appointmentsOverlappingSlot,
@@ -24,6 +25,7 @@ export function DayView({
   onAppointmentClick,
   onResourceMove,
   canDrag = false,
+  showCancelled = false,
   startHour = 8,
   endHour = 20,
 }) {
@@ -44,11 +46,13 @@ export function DayView({
   const laneLayoutByResource = useMemo(() => {
     const map = new Map()
     for (const resource of resources) {
-      const resourceAppointments = activeAppointmentsForResource(appointments, dateKey, resource.id)
+      const resourceAppointments = appointmentsForResource(appointments, dateKey, resource.id, {
+        includeCancelled: showCancelled,
+      })
       map.set(resource.id, assignAppointmentLanes(resourceAppointments))
     }
     return map
-  }, [appointments, dateKey, resources])
+  }, [appointments, dateKey, resources, showCancelled])
 
   const handleChipClick = (apt) => {
     if (consumeChipClick()) return
@@ -109,13 +113,18 @@ export function DayView({
                   </div>
                   {resources.map((c) => {
                     const canBook = c.access !== 'view'
-                    const resourceAppointments = activeAppointmentsForResource(appointments, dateKey, c.id)
+                    const displayAppointments = appointmentsForResource(appointments, dateKey, c.id, {
+                      includeCancelled: showCancelled,
+                    })
+                    const blockingAppointments = activeAppointmentsForResource(appointments, dateKey, c.id)
                     const { assignment, laneCount } = laneLayoutByResource.get(c.id) || {
                       assignment: new Map(),
                       laneCount: 1,
                     }
-                    const overlapping = appointmentsOverlappingSlot(resourceAppointments, slot)
-                    const busy = overlapping.length > 0
+                    const overlapping = appointmentsOverlappingSlot(displayAppointments, slot)
+                    const blockingOverlap = appointmentsOverlappingSlot(blockingAppointments, slot)
+                    const busy = blockingOverlap.length > 0
+                    const showLanes = overlapping.length > 0
                     const dropActive = hoverTarget?.resourceId === c.id && hoverTarget?.slot === slot
 
                     return (
@@ -126,12 +135,12 @@ export function DayView({
                         data-calendar-slot={slot}
                         className={cn(
                           'relative overflow-visible border-b border-l border-slate-100 p-1',
-                          busy && 'bg-blue-50/25',
+                          (busy || showLanes) && 'bg-blue-50/25',
                           dropActive && 'bg-blue-50/80 ring-2 ring-inset ring-blue-200'
                         )}
                         style={{ minHeight: SLOT_CELL_MIN_PX }}
                       >
-                        {busy ? (
+                        {showLanes ? (
                           <div
                             className="flex h-full gap-0.5 overflow-visible"
                             style={{ minHeight: SLOT_CELL_MIN_PX - 8 }}

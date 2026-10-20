@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { CreatablePicker } from '@/components/ui/CreatablePicker'
@@ -54,6 +54,7 @@ export function SupplierCatalogPanel({ supplierId }) {
   const [newUnitName, setNewUnitName] = useState('')
   const [creatingCategory, setCreatingCategory] = useState(false)
   const [creatingUnit, setCreatingUnit] = useState(false)
+  const [editingItem, setEditingItem] = useState(null)
 
   useEffect(() => {
     if (!supplierId || !isOnline) {
@@ -150,6 +151,22 @@ export function SupplierCatalogPanel({ supplierId }) {
     }
   }
 
+  const startEdit = (item) => {
+    const category = supplyCategories.find((row) => row.id === item.categoryId)
+    setEditingItem(item)
+    setForm({
+      name: item.name || '',
+      unit: item.unit || 'Unidad',
+      unitPrice: item.unitPrice != null ? String(item.unitPrice) : '',
+      categoryName: category?.name || '',
+    })
+  }
+
+  const cancelEdit = () => {
+    setEditingItem(null)
+    setForm(emptyForm())
+  }
+
   const handleAdd = async () => {
     const category = matchCategory(form.categoryName, supplyCategories)
     if (!form.name.trim() || !category) {
@@ -160,18 +177,28 @@ export function SupplierCatalogPanel({ supplierId }) {
     try {
       await saveSupplierCatalogItem(
         supplierId,
-        {
-          name: form.name.trim(),
-          unit: form.unit.trim() || 'Unidad',
-          unitPrice: Number(form.unitPrice) || 0,
-          categoryId: category.id,
-        },
+        editingItem
+          ? {
+            id: editingItem.id,
+            version: editingItem.version,
+            name: form.name.trim(),
+            unit: form.unit.trim() || 'Unidad',
+            unitPrice: Number(form.unitPrice) || 0,
+            categoryId: category.id,
+          }
+          : {
+            name: form.name.trim(),
+            unit: form.unit.trim() || 'Unidad',
+            unitPrice: Number(form.unitPrice) || 0,
+            categoryId: category.id,
+          },
         { isOnline }
       )
       const rows = await fetchSupplierCatalog(supplierId, { isOnline })
       setItems(rows)
       setForm(emptyForm())
-      toast.success('Producto agregado al catálogo')
+      setEditingItem(null)
+      toast.success(editingItem ? 'Producto actualizado' : 'Producto agregado al catálogo')
     } catch (error) {
       toast.error(error.message || 'No se pudo guardar el producto')
     } finally {
@@ -228,14 +255,27 @@ export function SupplierCatalogPanel({ supplierId }) {
                   {categoryName(item.categoryId)} · {item.unit} · {formatDOP(item.unitPrice)}
                 </p>
               </div>
-              <button
-                type="button"
-                className="rounded p-1 text-slate-400 hover:text-red-500"
-                onClick={() => handleArchive(item)}
-                disabled={busy}
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              <div className="flex shrink-0 gap-1">
+                <button
+                  type="button"
+                  className="rounded p-1 text-slate-400 hover:text-blue-600"
+                  onClick={() => startEdit(item)}
+                  disabled={busy}
+                  aria-label="Editar producto"
+                  data-testid={`supplier-catalog-edit-${item.id}`}
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  className="rounded p-1 text-slate-400 hover:text-red-500"
+                  onClick={() => handleArchive(item)}
+                  disabled={busy}
+                  aria-label="Quitar del catálogo"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             </li>
           ))}
         </ul>
@@ -278,9 +318,22 @@ export function SupplierCatalogPanel({ supplierId }) {
           onChange={(e) => setForm((prev) => ({ ...prev, unitPrice: e.target.value }))}
         />
       </div>
-      <Button size="sm" onClick={handleAdd} disabled={busy}>
-        <Plus className="h-4 w-4" /> Agregar al catálogo
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" onClick={handleAdd} disabled={busy} data-testid="supplier-catalog-save">
+          {editingItem ? (
+            'Guardar cambios'
+          ) : (
+            <>
+              <Plus className="h-4 w-4" /> Agregar al catálogo
+            </>
+          )}
+        </Button>
+        {editingItem && (
+          <Button size="sm" variant="secondary" onClick={cancelEdit} disabled={busy}>
+            Cancelar edición
+          </Button>
+        )}
+      </div>
 
       <Modal
         open={categoryModalOpen}

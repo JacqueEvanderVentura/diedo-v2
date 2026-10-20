@@ -3,13 +3,17 @@ export function leadCompanyLabel(lead) {
   return (lead.company || lead.name || '').trim()
 }
 
-function normalizeName(value) {
+export function normalizePartyName(value) {
   return String(value || '')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function normalizeName(value) {
+  return normalizePartyName(value)
 }
 
 export function resolveCustomerForLead(lead, customers = []) {

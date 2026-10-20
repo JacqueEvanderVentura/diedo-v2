@@ -6,11 +6,23 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { useCrmStore } from '@/stores/crmStore'
+import { useCustomersStore } from '@/stores/customersStore'
 import { DOC_TYPES, formatDocumentInput } from '@/modules/agenda/lib/selfBooking'
 import { validateCustomerDocument } from '@/lib/customerDocuments'
+import { preparePipelineCloseCustomer } from '@/modules/crm/lib/quoteCustomer'
 
-export function LeadConvertModal({ open, onClose, lead, onConverted }) {
+export function LeadConvertModal({
+  open,
+  onClose,
+  lead,
+  onConverted,
+  forPipelineClose = false,
+}) {
   const convertToCustomer = useCrmStore((state) => state.convertToCustomer)
+  const updateLead = useCrmStore((state) => state.updateLead)
+  const updateQuote = useCrmStore((state) => state.updateQuote)
+  const quotes = useCrmStore((state) => state.quotes)
+  const addCustomer = useCustomersStore((state) => state.addCustomer)
   const [form, setForm] = useState({ docType: 'cedula', documentId: '' })
   const [submitting, setSubmitting] = useState(false)
 
@@ -31,14 +43,24 @@ export function LeadConvertModal({ open, onClose, lead, onConverted }) {
     if (docErr) return toast.error(docErr)
     setSubmitting(true)
     try {
-      const customer = await convertToCustomer(lead.id, {
+      const documentOverride = {
         docType: form.docType,
         documentId: form.documentId.trim(),
-      })
+      }
+      const customer = forPipelineClose
+        ? await preparePipelineCloseCustomer({
+          lead,
+          addCustomer,
+          updateLead,
+          updateQuote,
+          quotes,
+          documentOverride,
+        })
+        : await convertToCustomer(lead.id, documentOverride)
       onConverted?.(customer, lead)
       onClose()
     } catch (error) {
-      toast.error(error.message || 'No se pudo convertir el lead')
+      toast.error(error.message || (forPipelineClose ? 'No se pudo crear el cliente' : 'No se pudo convertir el lead'))
     } finally {
       setSubmitting(false)
     }
@@ -47,10 +69,16 @@ export function LeadConvertModal({ open, onClose, lead, onConverted }) {
   const displayName = (lead?.company || lead?.name || '').trim() || 'Lead'
 
   return (
-    <Modal open={open} onClose={onClose} title="Convertir lead a cliente" testId="lead-convert-modal">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={forPipelineClose ? 'Cliente para facturar' : 'Convertir lead a cliente'}
+      testId="lead-convert-modal"
+    >
       <p className="mb-4 text-sm text-slate-600">
-        Para crear el cliente de <span className="font-medium text-slate-800">{displayName}</span>,
-        ingresa el documento de identidad.
+        {forPipelineClose
+          ? `Crea la ficha de ${displayName} para facturar sin cerrar el lead todavía.`
+          : `Para crear el cliente de ${displayName}, ingresa el documento de identidad.`}
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <div>

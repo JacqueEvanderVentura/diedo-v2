@@ -141,6 +141,26 @@ describe('adaptadores de Agenda', () => {
     })
   })
 
+  it('envía anyAvailable cuando el staff elige cualquiera disponible', () => {
+    expect(appointmentToApiPayload({
+      branchId: '01a03144-dff3-70d8-aedc-70a77395c0a2',
+      cabinaId: '01a053b5-13dc-7c05-8de8-9830b78282b1',
+      date: '2026-08-30',
+      time: '16:00',
+      customerName: 'Juan',
+      serviceName: 'Facial',
+      price: 900,
+      status: 'confirmada',
+      employeeId: '',
+      anyAvailable: true,
+      recurrence: 'none',
+    })).toMatchObject({
+      employeeId: null,
+      resourceId: null,
+      anyAvailable: true,
+    })
+  })
+
   it('protege saldo y cancelación de citas con CxC según sesión y permiso', () => {
     const appointment = { pendingPayment: true, pendingAmount: 500 }
 

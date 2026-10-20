@@ -46,6 +46,45 @@ export function getEmployeeAppointmentsOnDate(appointments, { employeeId, date, 
   )
 }
 
+export function getResourceAppointmentsOnDate(
+  appointments,
+  { resourceId, date, excludeAppointmentId = null },
+) {
+  if (!resourceId || !date) return []
+  return appointments.filter((appointment) => {
+    const cabinaId = appointment.cabinaId || appointment.resourceId
+    return (
+      appointment.id !== excludeAppointmentId
+      && cabinaId === resourceId
+      && appointment.date === date
+      && appointmentBlocksAvailability(appointment)
+    )
+  })
+}
+
+export function getResourceOnlySlots({
+  date,
+  duration = 30,
+  appointments = [],
+  resources = [],
+  excludeAppointmentId = null,
+}) {
+  if (!date || !resources.length) return []
+  const candidates = timeSlots(8, 20, 30)
+  return candidates.filter((slot) =>
+    resources.some((resource) => {
+      const busy = getResourceAppointmentsOnDate(appointments, {
+        resourceId: resource.id,
+        date,
+        excludeAppointmentId,
+      })
+      return !busy.some((appointment) =>
+        timeRangesOverlap(slot, duration, appointment.time, appointment.duration),
+      )
+    }),
+  )
+}
+
 export const DOC_TYPES = [
   { id: 'cedula', label: 'Cédula' },
   { id: 'pasaporte', label: 'Pasaporte' },
@@ -100,6 +139,50 @@ export function buildProfileUrl(documentId, branchId = '') {
   const doc = normalizeDocumentId(documentId)
   const query = branchId ? `branch=${branchId}&doc=${doc}` : `doc=${doc}`
   return `${base}${path}/agendar/portal?${query}`
+}
+
+export const ANY_AVAILABLE_EMPLOYEE_OPTION = Object.freeze({
+  value: '',
+  label: 'Cualquiera disponible',
+})
+
+export function getAvailableSlotsForAny({
+  date,
+  duration = 30,
+  appointments = [],
+  employees = [],
+  resources = [],
+  vacationRequests = [],
+  excludeAppointmentId = null,
+}) {
+  if (!date || !employees.length) return []
+  const merged = new Set()
+  for (const employee of employees) {
+    if (!employee?.id) continue
+    for (const slot of getAvailableSlots({
+      date,
+      employeeId: employee.id,
+      duration,
+      appointments,
+      employee,
+      vacationRequests,
+      excludeAppointmentId,
+    })) {
+      merged.add(slot)
+    }
+  }
+  const specialistSlots = [...merged].sort()
+  if (!resources.length) return specialistSlots
+  const resourceSlots = new Set(
+    getResourceOnlySlots({
+      date,
+      duration,
+      appointments,
+      resources,
+      excludeAppointmentId,
+    }),
+  )
+  return specialistSlots.filter((slot) => resourceSlots.has(slot))
 }
 
 export function getAvailableSlots({

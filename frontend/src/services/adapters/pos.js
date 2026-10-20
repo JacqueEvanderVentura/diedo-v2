@@ -200,12 +200,29 @@ export function mapPaymentProofMutationResponse(response) {
 }
 
 export function mapPosLineFromApi(line) {
+  const kind = line.kind || line.lineKind || (line.item == null && line.title ? 'section' : 'item')
+  if (kind === 'section') {
+    const title = first(line.title, line.name, line.itemName, 'Sección')
+    return {
+      id: line.id,
+      lineId: line.id || null,
+      kind: 'section',
+      title,
+      name: title,
+      qty: 0,
+      price: 0,
+      listPrice: 0,
+      apiSynced: true,
+    }
+  }
   const item = line.item || line.catalogItem || {}
   const quantity = numberValue(first(line.quantity, line.qty), 1)
   const price = numberValue(first(line.unitPrice, line.price, line.unit_price))
   return {
     id: first(line.itemId, line.catalogItemId, item.id, line.id),
     lineId: line.id || null,
+    kind: 'item',
+    itemId: first(line.itemId, item.id),
     name: first(line.itemName, line.name, line.description, line.nameSnapshot, item.name, 'Artículo'),
     sku: first(line.itemSku, line.sku, line.skuSnapshot, item.sku, null),
     qty: quantity,

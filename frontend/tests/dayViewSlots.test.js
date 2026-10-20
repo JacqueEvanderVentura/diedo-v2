@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   activeAppointmentsForResource,
+  appointmentsForResource,
   appointmentStartingAtSlot,
   appointmentsOverlappingSlot,
   assignAppointmentLanes,
@@ -39,6 +40,11 @@ describe('dayViewSlots', () => {
     const list = activeAppointmentsForResource(appointments, DATE, CAB)
     expect(list).toHaveLength(1)
     expect(list[0].id).toBe('a1')
+  })
+
+  it('includes cancelled when includeCancelled is true', () => {
+    const list = appointmentsForResource(appointments, DATE, CAB, { includeCancelled: true })
+    expect(list.map((a) => a.id).sort()).toEqual(['a1', 'a2'])
   })
 
   it('marks continuation slots as blocked', () => {

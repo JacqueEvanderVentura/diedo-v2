@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session, aliased
 from app.db.models import (
     Appointment,
     Branch,
+    CrmActivity,
+    CrmLead,
     Customer,
     Employee,
     EmployeeBranchAssignment,
@@ -726,3 +728,40 @@ class ReportsRepository:
                 )
             )
         return tuple(records)
+
+    def pipeline_leads(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID | None,
+        allowed_branch_ids: frozenset[UUID] | None,
+        starts_at: datetime | None,
+        ends_at: datetime | None,
+    ) -> tuple[CrmLead, ...]:
+        filters = [CrmLead.workspace_id == workspace_id]
+        visible = self._visible_branch_ids(branch_id, allowed_branch_ids)
+        if visible is not None:
+            filters.append(CrmLead.branch_id.in_(visible))
+        if starts_at is not None and ends_at is not None:
+            filters.append(CrmLead.created_at >= starts_at)
+            filters.append(CrmLead.created_at < ends_at)
+        return tuple(self._session.scalars(select(CrmLead).where(*filters)))
+
+    def pipeline_stage_move_activities(
+        self,
+        *,
+        workspace_id: UUID,
+        lead_ids: frozenset[UUID],
+    ) -> tuple[CrmActivity, ...]:
+        if not lead_ids:
+            return ()
+        return tuple(
+            self._session.scalars(
+                select(CrmActivity).where(
+                    CrmActivity.workspace_id == workspace_id,
+                    CrmActivity.lead_id.in_(lead_ids),
+                    CrmActivity.activity_type == "nota",
+                    CrmActivity.title.like("Movido de %"),
+                )
+            )
+        )

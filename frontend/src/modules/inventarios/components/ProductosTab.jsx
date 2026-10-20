@@ -151,8 +151,14 @@ export function ProductosTab() {
             >
               <ArrowDownToLine className="h-4 w-4" /> Salida Múltiple
             </button>
+            <Button variant="secondary" onClick={() => openNew('product')} data-testid="inventory-new-product" className="shrink-0">
+              <Plus className="h-4 w-4" /> Producto
+            </Button>
+            <Button variant="secondary" onClick={() => openNew('service')} data-testid="inventory-new-service" className="shrink-0">
+              <Plus className="h-4 w-4" /> Servicio
+            </Button>
             <Button variant="secondary" onClick={() => openNew('supply')} data-testid="inventory-new-supply" className="shrink-0">
-              <Plus className="h-4 w-4" /> Nuevo
+              <Plus className="h-4 w-4" /> Insumo
             </Button>
             <Button onClick={() => navigate('/configuracion/categorias')} data-testid="inventory-catalog-btn" className="shrink-0">
               <Plus className="h-4 w-4" /> Gestionar Catálogo

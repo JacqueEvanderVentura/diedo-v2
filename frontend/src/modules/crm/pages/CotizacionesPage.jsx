@@ -871,7 +871,9 @@ export default function CotizacionesPage() {
                     {q.items?.length > 0 && (
                       <ul className="mt-2 text-sm text-slate-600">
                         {q.items.map((it, i) => (
-                          <li key={i}>{it.name} × {it.qty} — {formatDOP(it.price)}</li>
+                          it.kind === 'section'
+                            ? <li key={i} className="mt-1 font-semibold uppercase text-slate-500">{it.title || it.name}</li>
+                            : <li key={i}>{it.name} × {it.qty} — {formatDOP(it.price)}</li>
                         ))}
                       </ul>
                     )}

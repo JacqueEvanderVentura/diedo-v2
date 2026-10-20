@@ -1,6 +1,7 @@
 import { useSearchParams } from 'react-router-dom'
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Search, Pencil, Mail, Phone, Users, Clock } from 'lucide-react'
+import { Plus, Search, Pencil, Mail, Phone, Users, Clock, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { useRrhhStore } from '@/stores/rrhhStore'
 import { useConfigStore } from '@/stores/configStore'
 import { Card } from '@/components/ui/Card'
@@ -12,6 +13,7 @@ import { countEmployeesByBranch, getDirectReports, getEmployeeBranchIds, getJefe
 import { hasConfiguredSchedule, summarizeSchedule } from '../lib/schedule'
 import { cn } from '@/lib/utils'
 import { DataSourceNotice } from '@/components/ui/DataSourceNotice'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { usersApi } from '@/services/usersApi'
 import { useSessionStore } from '@/stores/sessionStore'
 
@@ -37,6 +39,7 @@ export default function DirectorioPage() {
   const hydrateEmployees = useRrhhStore((s) => s.hydrateEmployees)
   const addEmployee = useRrhhStore((s) => s.addEmployee)
   const updateEmployee = useRrhhStore((s) => s.updateEmployee)
+  const deleteEmployee = useRrhhStore((s) => s.deleteEmployee)
   const branches = useConfigStore((s) => s.branches)
   const sessionStatus = useSessionStore((s) => s.status)
   const hasPermission = useSessionStore((s) => s.hasPermission)
@@ -47,6 +50,8 @@ export default function DirectorioPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [platformUsers, setPlatformUsers] = useState([])
+  const [archiveTarget, setArchiveTarget] = useState(null)
+  const [archiving, setArchiving] = useState(false)
 
   useEffect(() => {
     if (sessionStatus !== 'online' || !hasPermission('membership.read')) {
@@ -89,6 +94,21 @@ export default function DirectorioPage() {
     : addEmployee(data)
 
   const jefeName = (id) => fullName(employees.find((e) => e.id === id))
+
+  const runArchiveEmployee = async () => {
+    if (!archiveTarget) return
+    setArchiving(true)
+    try {
+      await deleteEmployee(archiveTarget.id)
+      await hydrateEmployees({ force: true })
+      toast.success('Empleado archivado')
+      setArchiveTarget(null)
+    } catch (error) {
+      toast.error(error.message || 'No se pudo archivar el empleado')
+    } finally {
+      setArchiving(false)
+    }
+  }
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="rrhh-directorio">
@@ -142,9 +162,22 @@ export default function DirectorioPage() {
                     <p className="text-sm text-slate-500">{emp.position}</p>
                   </div>
                 </div>
-                <button type="button" onClick={() => openEdit(emp)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-blue-600">
-                  <Pencil className="h-4 w-4" />
-                </button>
+                <div className="flex shrink-0 gap-1">
+                  <button type="button" onClick={() => openEdit(emp)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-blue-600" aria-label="Editar empleado">
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  {emp.active && (
+                    <button
+                      type="button"
+                      onClick={() => setArchiveTarget(emp)}
+                      className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-red-600"
+                      aria-label="Archivar empleado"
+                      data-testid={`employee-archive-${emp.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="mt-3 flex flex-wrap gap-1.5">
@@ -199,6 +232,17 @@ export default function DirectorioPage() {
         employees={employees}
         platformUsers={platformUsers}
         onSubmit={handleSubmit}
+      />
+
+      <ConfirmDialog
+        open={Boolean(archiveTarget)}
+        onClose={() => !archiving && setArchiveTarget(null)}
+        onConfirm={runArchiveEmployee}
+        title="Archivar empleado"
+        description={archiveTarget ? `¿Archivar a ${fullName(archiveTarget)}? Dejará de aparecer como activo en el directorio.` : ''}
+        confirmLabel="Archivar"
+        busy={archiving}
+        testId="employee-archive-confirm"
       />
     </div>
   )

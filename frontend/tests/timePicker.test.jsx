@@ -5,6 +5,14 @@ import { TimePicker } from '@/components/ui/TimePicker'
 
 afterEach(cleanup)
 
+it('shows a disabled placeholder when availability is not ready yet', () => {
+  render(<TimePicker value="" pending testId="picker" placeholder="Seleccionar hora" />)
+  const trigger = screen.getByTestId('picker-select')
+  expect(trigger.disabled).toBe(true)
+  expect(trigger.textContent).toContain('Seleccionar hora')
+  expect(screen.queryByTestId('picker-empty')).toBeNull()
+})
+
 it('uses a dropdown with AM/PM labels on options', () => {
   const onChange = vi.fn()
   render(

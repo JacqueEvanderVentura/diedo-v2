@@ -12,13 +12,23 @@ function appointmentStartMinutes(appointment) {
   return hours * 60 + minutes
 }
 
+function matchesResource(appointment, resourceId) {
+  const cabina = appointment.cabinaId || appointment.resourceId
+  return cabina === resourceId
+}
+
+export function appointmentsForResource(appointments, dateKey, resourceId, { includeCancelled = false } = {}) {
+  return appointments.filter((appointment) => {
+    if (appointment.date !== dateKey) return false
+    if (!matchesResource(appointment, resourceId)) return false
+    if (!includeCancelled && normalizeAppointmentStatus(appointment.status) === 'cancelada') return false
+    return true
+  })
+}
+
+/** Appointments that block scheduling (excludes cancelled). */
 export function activeAppointmentsForResource(appointments, dateKey, resourceId) {
-  return appointments.filter(
-    (appointment) =>
-      appointment.date === dateKey
-      && appointment.cabinaId === resourceId
-      && normalizeAppointmentStatus(appointment.status) !== 'cancelada'
-  )
+  return appointmentsForResource(appointments, dateKey, resourceId, { includeCancelled: false })
 }
 
 export function appointmentStartingAtSlot(appointments, slot) {

@@ -13,6 +13,7 @@ horaria del workspace o de la sucursal: `today`, `week`, `month` y `quarter`.
 | GET | `/api/v1/reports/general/transactions` | Ventas, ingresos manuales y gastos paginados |
 | GET | `/api/v1/reports/general/expense-categories` | Gastos agrupados por categoría |
 | GET | `/api/v1/reports/memberships` | Vigencia, MRR, crecimiento y listado de membresías |
+| GET | `/api/v1/reports/pipeline/summary` | Embudo CRM: leads por origen, win/loss por canal, tiempos en etapa |
 | GET | `/api/v1/reports/agenda/summary` | Asistencia, estados, fuentes y desempeño por empleado |
 | GET | `/api/v1/reports/agenda/appointments` | Listado auditable de citas |
 | GET | `/api/v1/reports/inventory/summary` | Existencias, valorización, mínimos y márgenes |
@@ -32,6 +33,11 @@ corresponda. Inventario usa `categoryId`; agenda acepta además el período `all
   pagos de gastos fijos, y distribuyen la utilidad neta (puede ser negativa) según participación.
   El summary incluye `byBranch` (bruto, gastos, neto, socios) y `byPartner` (total y sucursales).
   Nombre, documento y porcentaje se leen de `branch.configuration.partners`.
+- El reporte de pipeline agrupa leads **creados en el período** (cohorte) por `acquisition_source`
+  (`whatsapp`, `instagram`, `ai`, etc.; sin valor cuenta como desconocido salvo discovery `serp`/`serper` → `ai`).
+  Las tasas de pérdida/ganancia se calculan sobre cerrados (`cerrado` + `perdido`) por origen. Los tiempos en
+  etapa se reconstruyen desde actividades `nota` con título `Movido de … a …`; leads sin movimientos no
+  aportan muestras al promedio. Período `all` incluye todo el historial de leads.
 - El consolidado clasifica ventas completadas con cotización `origin=crm` como Ventas (CRM)
   y el resto (POS directo o hold de caja) como Comercio (POS). El origen de captación sale de
   `customers.acquisition_source`; un pago POS sin origen cuenta como comercio/mostrador.

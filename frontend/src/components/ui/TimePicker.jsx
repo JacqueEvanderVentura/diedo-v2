@@ -15,13 +15,14 @@ export function TimePicker({
   placeholder = 'Seleccionar hora',
   label,
   disabled = false,
+  pending = false,
 }) {
-  const options = slots ?? timeSlots(8, 20, 30)
   const [open, setOpen] = useState(false)
   const [menuStyle, setMenuStyle] = useState({ top: 0, left: 0, width: 0 })
   const rootRef = useRef(null)
   const triggerRef = useRef(null)
   const menuRef = useRef(null)
+  const options = useMemo(() => slots ?? timeSlots(8, 20, 30), [slots])
 
   const selectedLabel = value ? formatTime12h(value) : null
 
@@ -80,6 +81,33 @@ export function TimePicker({
   const pick = (slot) => {
     onChange?.(slot)
     setOpen(false)
+  }
+
+  if (pending) {
+    return (
+      <div ref={rootRef} className={cn('relative', className)}>
+        {label ? <p className="mb-1.5 text-sm font-medium text-slate-600">{label}</p> : null}
+        <button
+          ref={triggerRef}
+          type="button"
+          role="combobox"
+          aria-expanded={false}
+          disabled
+          data-testid={`${testId}-select`}
+          className={cn(
+            'flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-sm shadow-sm',
+            'disabled:cursor-not-allowed disabled:opacity-50',
+            'font-medium text-slate-400',
+          )}
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <Clock className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+            <span className="truncate">{placeholder}</span>
+          </span>
+          <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+        </button>
+      </div>
+    )
   }
 
   if (options.length === 0) {

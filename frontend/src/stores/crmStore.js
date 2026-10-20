@@ -50,6 +50,7 @@ import {
   sumQuoteLines,
   validatePipelineClose,
 } from '@/modules/crm/lib/pipelineInvoice'
+import { mapQuoteItemToApiLine } from '@/modules/crm/lib/quoteApiLines'
 import {
   findQuoteReceivable,
   invoiceCollectionFromSalePolicy,
@@ -269,10 +270,17 @@ function isWorkspaceSettingsVersionConflict(error) {
 
 function normalizeLead(raw) {
   const starRating = raw.starRating ?? null
+  const customerType = raw.customerType === 'b2b' || raw.customerType === 'b2c'
+    ? raw.customerType
+    : null
+  const company = customerType === 'b2c'
+    ? (raw.company || '')
+    : (raw.company ?? raw.name ?? '')
   return {
     id: raw.id || genId('lead'),
     name: raw.name || '',
-    company: raw.company ?? raw.name ?? '',
+    company,
+    customerType: customerType || (company && company !== (raw.name || '').trim() ? 'b2b' : 'b2c'),
     email: raw.email || null,
     phone: raw.phone || null,
     website: raw.website || null,
@@ -908,7 +916,10 @@ export const useCrmStore = create(
         if (isOnline()) {
           try {
             const response = await crmApi.createLead(leadPayload(lead))
-            const saved = mapLeadFromApi(response)
+            const saved = {
+              ...mapLeadFromApi(response),
+              customerType: lead.customerType || normalizeLead(mapLeadFromApi(response)).customerType,
+            }
             set((s) => ({ leads: [saved, ...s.leads] }))
             return saved
           } catch (error) {
@@ -951,7 +962,9 @@ export const useCrmStore = create(
         set((s) => ({
           leads: s.leads.map((l) => {
             if (l.id !== id) return l
-            return { ...l, ...data, updatedAt: now() }
+            const merged = { ...l, ...data, updatedAt: now() }
+            if (data.customerType) merged.customerType = data.customerType
+            return merged
           }),
         }))
         if (isOnline()) {
@@ -1258,11 +1271,7 @@ export const useCrmStore = create(
               leadId: quote.leadId || null,
               customerId: quote.customerId,
               branchId: quote.branchId,
-              lines: quote.items.map((item) => ({
-                itemId: item.itemId || item.id,
-                quantity: item.qty || 1,
-                unitPrice: item.price,
-              })),
+              lines: quote.items.map(mapQuoteItemToApiLine),
               notes: quote.notes || null,
               validUntil: quote.validUntil || null,
               status: quote.status,
@@ -1304,11 +1313,7 @@ export const useCrmStore = create(
           if (data.branchId !== undefined) payload.branchId = data.branchId
           const lineSource = data.lines ?? data.items
           if (lineSource !== undefined) {
-            payload.lines = lineSource.map((item) => ({
-              itemId: item.itemId || item.id,
-              quantity: item.qty || 1,
-              unitPrice: Number(item.price) || 0,
-            }))
+            payload.lines = lineSource.map(mapQuoteItemToApiLine)
           }
           const statusOnlyUpdate = Object.keys(data).length === 1 && data.status !== undefined
           try {
@@ -1332,13 +1337,27 @@ export const useCrmStore = create(
         const lineSource = data.lines ?? data.items
         let items = current.items
         if (lineSource !== undefined) {
-          items = lineSource.map((item) => ({
-            id: item.itemId || item.id,
-            itemId: item.itemId || item.id,
-            name: item.name || 'Ítem',
-            qty: item.qty || 1,
-            price: Number(item.price) || 0,
-          }))
+          items = lineSource.map((item) => {
+            if (item.kind === 'section') {
+              const title = item.title || item.name || 'Sección'
+              return {
+                id: item.id || item.key,
+                kind: 'section',
+                title,
+                name: title,
+                qty: 0,
+                price: 0,
+              }
+            }
+            return {
+              id: item.id || item.key || item.itemId,
+              kind: 'item',
+              itemId: item.itemId || item.id,
+              name: item.name || 'Ítem',
+              qty: item.qty || 1,
+              price: Number(item.price) || 0,
+            }
+          })
         }
         const updated = {
           ...current,

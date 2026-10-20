@@ -68,6 +68,7 @@ import AgendaReportPage from '@/modules/reportes/pages/AgendaReportPage'
 import MembresiasPage from '@/modules/reportes/pages/MembresiasPage'
 import DividendosPage from '@/modules/reportes/pages/DividendosPage'
 import PersonalPage from '@/modules/reportes/pages/PersonalPage'
+import PipelineReportPage from '@/modules/reportes/pages/PipelineReportPage'
 
 import SucursalesPage from '@/modules/configuracion/pages/SucursalesPage'
 
@@ -226,6 +227,8 @@ export function AppRoutes() {
           <Route path="/reportes" element={<Navigate to="/reportes/generales" replace />} />
 
           <Route path="/reportes/generales" element={<GeneralesPage />} />
+
+          <Route path="/reportes/pipeline" element={<PipelineReportPage />} />
 
           <Route path="/reportes/membresias" element={<MembresiasPage />} />
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Phone, Search, CheckSquare, Square } from 'lucide-react'
+import { Phone, Plus, Search, CheckSquare, Square } from 'lucide-react'
 import { useCustomersStore } from '@/stores/customersStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
@@ -134,9 +134,19 @@ export function SimplifiedCustomersPanel() {
     }
   }
 
+  const openNew = () => {
+    setEditing(null)
+    setFormOpen(true)
+  }
+
   const openEdit = (customer) => {
     setEditing(customer)
     setFormOpen(true)
+  }
+
+  const handleCustomerCreated = (saved) => {
+    if (saved?.id) setSelectedId(saved.id)
+    fetchCustomersPage({ page: 1, search: query.trim(), branchIds }).catch(() => {})
   }
 
   return (
@@ -153,6 +163,9 @@ export function SimplifiedCustomersPanel() {
           />
         </div>
         <BranchMultiSelect branches={branches} branchIds={branchIds} onChange={setBranchIds} className="w-full sm:max-w-xs" />
+        <Button type="button" onClick={openNew} data-testid="crm-simplified-customers-new-btn" className="shrink-0">
+          <Plus className="h-4 w-4" /> Nuevo cliente
+        </Button>
         {can.customer && (
           <Button
             type="button"
@@ -191,7 +204,14 @@ export function SimplifiedCustomersPanel() {
           </div>
           <ul className="min-h-0 flex-1 divide-y divide-slate-50 overflow-y-auto">
             {filtered.length === 0 ? (
-              <li className="px-4 py-8 text-center text-sm text-slate-500">Sin clientes con esos filtros.</li>
+              <li className="flex flex-col items-center gap-3 px-4 py-8 text-center">
+                <p className="text-sm text-slate-500">
+                  {query.trim() || branchIds.length ? 'Sin clientes con esos filtros.' : 'Aún no hay clientes en el directorio.'}
+                </p>
+                <Button type="button" size="sm" variant="secondary" onClick={openNew} data-testid="crm-simplified-customers-empty-new">
+                  <Plus className="h-4 w-4" /> Nuevo cliente
+                </Button>
+              </li>
             ) : (
               filtered.map((c) => (
                 <li key={c.id} className="flex items-stretch">
@@ -280,7 +300,12 @@ export function SimplifiedCustomersPanel() {
         </Card>
       )}
 
-      <CustomerFormModal open={formOpen} onClose={() => setFormOpen(false)} customer={editing} />
+      <CustomerFormModal
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        customer={editing}
+        onCreated={handleCustomerCreated}
+      />
       <QuoteFormModal
         open={quoteOpen}
         onClose={() => { setQuoteOpen(false); setQuoteContext(null) }}

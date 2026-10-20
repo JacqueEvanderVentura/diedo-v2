@@ -12,3 +12,11 @@ it('sends availability query parameters directly rather than an object named par
   expect(Object.fromEntries(url.searchParams)).toEqual({ employeeId: 'employee', date: '2027-02-15', serviceId: 'service' })
   expect(fetch.mock.calls[0][1].headers.Authorization).toBeUndefined()
 })
+
+it('omits employeeId from slot queries when cualquiera disponible is selected', async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ slots: [] }), { status: 200 }))
+  vi.stubGlobal('fetch', fetch)
+  await publicBookingApi.listSlots('branch', { employeeId: '', date: '2027-02-15', serviceId: 'service' })
+  const url = new URL(fetch.mock.calls[0][0], 'http://localhost')
+  expect(Object.fromEntries(url.searchParams)).toEqual({ date: '2027-02-15', serviceId: 'service' })
+})

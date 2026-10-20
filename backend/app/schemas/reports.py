@@ -408,3 +408,74 @@ class PersonalReportResponse(ApiModel):
     incident_metrics: list[PersonalIncidentMetricsResponse]
     incident_distribution: list[CountPoint]
     supply_usage: list[PersonalSupplyUsageResponse]
+
+
+PipelineReportPeriod = AgendaReportPeriod
+
+
+class PipelineOriginPoint(ApiModel):
+    id: str
+    label: str
+    count: int = Field(ge=0)
+    share_pct: DecimalString
+    won: int = Field(ge=0)
+    lost: int = Field(ge=0)
+    open: int = Field(ge=0)
+    win_rate: DecimalString | None = None
+    loss_rate: DecimalString | None = None
+    avg_won_value: DecimalString | None = None
+    avg_lost_value: DecimalString | None = None
+
+
+class PipelineStageSnapshot(ApiModel):
+    stage: str
+    label: str
+    count: int = Field(ge=0)
+
+
+class PipelineStageDwellPoint(ApiModel):
+    stage: str
+    label: str
+    sample_count: int = Field(ge=0)
+    avg_hours: DecimalString | None = None
+    median_hours: DecimalString | None = None
+
+
+class PipelineOriginDwellStats(ApiModel):
+    sample_count: int = Field(ge=0)
+    avg_hours: DecimalString | None = None
+    median_hours: DecimalString | None = None
+
+
+class PipelineOriginDwellPoint(ApiModel):
+    id: str
+    label: str
+    nuevo: PipelineOriginDwellStats
+    contactado: PipelineOriginDwellStats
+
+
+class PipelineLostReasonPoint(ApiModel):
+    reason: str
+    count: int = Field(ge=0)
+
+
+class PipelineReportSummaryResponse(ApiModel):
+    period: PipelineReportPeriod
+    branch_id: UUID | None
+    starts_at: datetime
+    ends_at: datetime
+    generated_at: datetime
+    total_leads: int = Field(ge=0)
+    with_origin_count: int = Field(ge=0)
+    with_origin_pct: DecimalString
+    won_count: int = Field(ge=0)
+    lost_count: int = Field(ge=0)
+    loss_rate: DecimalString | None = None
+    win_rate: DecimalString | None = None
+    open_pipeline_count: int = Field(ge=0)
+    open_pipeline_value: DecimalString
+    by_origin: list[PipelineOriginPoint]
+    by_stage: list[PipelineStageSnapshot]
+    stage_dwell: list[PipelineStageDwellPoint]
+    stage_dwell_by_origin: list[PipelineOriginDwellPoint]
+    lost_reasons: list[PipelineLostReasonPoint]

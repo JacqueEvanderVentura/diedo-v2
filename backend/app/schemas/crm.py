@@ -624,9 +624,49 @@ class CrmStateResponse(ApiModel):
 
 
 class CrmQuoteLineRequest(ApiModel):
-    item_id: UUID
-    quantity: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
+    kind: Literal["item", "section"] = "item"
+    item_id: UUID | None = None
+    title: str | None = Field(default=None, max_length=80)
+    quantity: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=3)
     unit_price: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+    @model_validator(mode="after")
+    def validate_line(self) -> Self:
+        if self.kind == "section":
+            if not self.title:
+                raise ValueError("Indica el nombre de la sección.")
+            if self.item_id is not None:
+                raise ValueError("Las secciones no llevan artículo de catálogo.")
+            return self
+        if self.item_id is None:
+            raise ValueError("Debes seleccionar un artículo.")
+        if self.quantity is None:
+            raise ValueError("La cantidad es obligatoria.")
+        return self
+
+
+def _reject_duplicate_quote_item_lines(
+    value: list[CrmQuoteLineRequest],
+) -> list[CrmQuoteLineRequest]:
+    seen_in_section: set[UUID] = set()
+    for line in value:
+        if line.kind == "section":
+            seen_in_section = set()
+            continue
+        if line.kind != "item" or line.item_id is None:
+            continue
+        if line.item_id in seen_in_section:
+            raise ValueError("No repitas el mismo artículo en varias líneas.")
+        seen_in_section.add(line.item_id)
+    return value
 
 
 class CreateCrmQuoteRequest(ApiModel):
@@ -644,11 +684,10 @@ class CreateCrmQuoteRequest(ApiModel):
 
     @field_validator("lines")
     @classmethod
-    def reject_duplicate_items(cls, value: list[CrmQuoteLineRequest]) -> list[CrmQuoteLineRequest]:
-        item_ids = [line.item_id for line in value]
-        if len(item_ids) != len(set(item_ids)):
-            raise ValueError("No repitas ítems en la cotización.")
-        return value
+    def validate_lines(cls, value: list[CrmQuoteLineRequest]) -> list[CrmQuoteLineRequest]:
+        if not any(line.kind == "item" for line in value):
+            raise ValueError("Agrega al menos un producto o servicio.")
+        return _reject_duplicate_quote_item_lines(value)
 
 
 class UpdateCrmQuoteRequest(ApiModel):
@@ -664,6 +703,18 @@ class UpdateCrmQuoteRequest(ApiModel):
     notes: str | None = Field(default=None, max_length=1000)
     valid_until: datetime | None = None
     status: CrmQuoteStatus | None = None
+
+    @field_validator("lines")
+    @classmethod
+    def validate_lines(
+        cls,
+        value: list[CrmQuoteLineRequest] | None,
+    ) -> list[CrmQuoteLineRequest] | None:
+        if value is None:
+            return None
+        if not any(line.kind == "item" for line in value):
+            raise ValueError("Agrega al menos un producto o servicio.")
+        return _reject_duplicate_quote_item_lines(value)
 
 
 class CrmQuoteResponse(ApiModel):

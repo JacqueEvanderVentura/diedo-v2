@@ -102,11 +102,24 @@ def build_invoice_document_html(data: InvoiceDocumentRequest) -> str:
     tax_label = (data.tax_label or "").strip() or f"ITBIS ({data.tax_pct}%)"
     line_rows: list[dict[str, Any]] = []
     for item in data.items:
+        if item.kind == "section":
+            line_rows.append(
+                {
+                    "kind": "section",
+                    "name": item.name,
+                    "sku": None,
+                    "qty": "",
+                    "price_html": "",
+                    "line_total": "",
+                }
+            )
+            continue
         unit = Decimal(item.price)
         list_price = Decimal(item.list_price if item.list_price is not None else item.price)
         qty = Decimal(item.qty)
         line_rows.append(
             {
+                "kind": "item",
                 "name": item.name,
                 "sku": item.sku,
                 "qty": _escape(qty),

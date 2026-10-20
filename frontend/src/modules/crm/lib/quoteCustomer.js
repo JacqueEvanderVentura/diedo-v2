@@ -1,5 +1,6 @@
 import { buildLeadOfflineCustomer } from './leadConversion'
 import { leadCustomerDefaults } from './pipelineForm'
+import { syncPipelineCloseCustomer } from './pipelineInvoice'
 
 export async function ensureCustomerForLeadQuote({
   lead,
@@ -41,6 +42,42 @@ export async function ensureCustomerForQuote({
     customerStatus: 'prospecto',
   })
 
+  return customer
+}
+
+/** Crea o reutiliza cliente para cerrar el pipeline sin marcar el lead como ganado todavía. */
+export async function preparePipelineCloseCustomer({
+  lead,
+  addCustomer,
+  updateLead,
+  updateQuote,
+  quotes = [],
+  documentOverride = null,
+}) {
+  if (!lead?.id) return null
+  let customer = null
+  if (documentOverride) {
+    customer = await addCustomer({
+      ...buildLeadOfflineCustomer(lead, documentOverride),
+      branchId: lead.branchId,
+    })
+  } else {
+    customer = await ensureCustomerForQuote({
+      customerId: null,
+      lead,
+      addCustomer,
+      updateLead,
+    })
+  }
+  if (customer?.id) {
+    await syncPipelineCloseCustomer({
+      leadId: lead.id,
+      customerId: customer.id,
+      quotes,
+      updateQuote,
+      updateLead,
+    })
+  }
   return customer
 }
 

@@ -28,12 +28,34 @@ export function findBillableQuote(quotes, leadId) {
   return ranked.find((quote) => BILLABLE_STATUSES.includes(quote.status)) || null
 }
 
+export async function syncPipelineCloseCustomer({
+  leadId,
+  customerId,
+  quotes,
+  updateQuote,
+  updateLead,
+}) {
+  if (!leadId || !customerId) return
+  const quote = findBillableQuote(quotes, leadId) || findLeadLinkedQuote(quotes, leadId)
+  if (quote && quote.customerId !== customerId) {
+    await updateQuote(quote.id, { customerId })
+  }
+  if (updateLead) {
+    try {
+      await updateLead(leadId, { customerId })
+    } catch {
+      /* La API solo persiste cliente en el lead al convertir; la cotización es la fuente de verdad. */
+    }
+  }
+}
+
 export function validatePipelineClose({ lead, quotes }) {
   if (!lead) return 'Lead no encontrado.'
   if (!lead.customerId) return 'Vincula un cliente antes de cerrar el lead.'
   const quote = findBillableQuote(quotes, lead.id)
   if (!quote) return 'Crea una cotización con ítems antes de cerrar el lead.'
-  if (!quote.items?.length) return 'La cotización debe incluir al menos un ítem.'
+  const productLines = (quote.items || []).filter((item) => item.kind !== 'section')
+  if (!productLines.length) return 'La cotización debe incluir al menos un ítem.'
   return null
 }
 
@@ -42,7 +64,10 @@ export function previewInvoiceNumber(date = new Date()) {
 }
 
 export function sumQuoteLines(items = []) {
-  return items.reduce((total, item) => total + (Number(item.price) || 0) * (Number(item.qty) || 1), 0)
+  return items.reduce((total, item) => {
+    if (item.kind === 'section') return total
+    return total + (Number(item.price) || 0) * (Number(item.qty) || 1)
+  }, 0)
 }
 
 export function buildDemoSaleFromPipeline({ lead, quote, customer, paymentMethod = 'efectivo' }) {
@@ -103,11 +128,18 @@ export function buildPipelineCheckoutPayload({
     throw new Error('No hay una caja abierta en esta sucursal.')
   }
   const lines = (quote.items || []).map((item) => {
+    if (item.kind === 'section') {
+      return {
+        kind: 'section',
+        title: item.title || item.name,
+      }
+    }
     const itemId = item.itemId || item.id
     if (!itemId) {
       throw new Error('La cotización contiene ítems sin identificador de catálogo.')
     }
     return {
+      kind: 'item',
       itemId,
       quantity: item.qty || 1,
       unitPrice: Number(item.price) || 0,

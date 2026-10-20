@@ -144,8 +144,8 @@ def list_slots(
     branch_id: UUID,
     database: DatabaseSession,
     scheduled_date: Annotated[date, Query(alias="date")],
-    employee_id: Annotated[UUID, Query(alias="employeeId")],
     service_id: Annotated[UUID, Query(alias="serviceId")],
+    employee_id: Annotated[UUID | None, Query(alias="employeeId")] = None,
 ) -> PublicSlotsResponse:
     slots, duration_minutes = PublicBookingService(database).list_slots(
         branch_id,

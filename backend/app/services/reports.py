@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from math import ceil
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -62,6 +62,14 @@ from app.schemas.reports import (
     PersonalSupplyUsageResponse,
     PersonalTotalsResponse,
     PersonalUserResponse,
+    PipelineLostReasonPoint,
+    PipelineOriginDwellPoint,
+    PipelineOriginDwellStats,
+    PipelineOriginPoint,
+    PipelineReportPeriod,
+    PipelineReportSummaryResponse,
+    PipelineStageDwellPoint,
+    PipelineStageSnapshot,
     ReportMoneyTotals,
     ReportPeriod,
 )
@@ -69,6 +77,7 @@ from app.services.agenda import appointment_created_by_label
 from app.services.authorization import PermissionGrant
 from app.services.errors import ResourceNotFoundError
 from app.services.modules import ModuleAccessService
+from app.services.pipeline_report import build_pipeline_report_payload
 
 _T = TypeVar("_T")
 _MONTHS = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic")
@@ -84,6 +93,7 @@ _EMPLOYEE_INCIDENT_NAMES = {
 _MONEY = Decimal("0.01")
 _PCT = Decimal("0.01")
 _QUANTITY = Decimal("0.001")
+_HOUR = Decimal("0.01")
 
 
 @dataclass(frozen=True)
@@ -448,6 +458,114 @@ class ReportsService:
                 CountPoint(id="staff", name="Equipo", value=staff),
                 CountPoint(id="self", name="Auto-agendado", value=self_booked),
             ],
+        )
+
+    def pipeline_summary(
+        self,
+        grant: PermissionGrant,
+        *,
+        period: PipelineReportPeriod,
+        branch_id: UUID | None,
+        now: datetime | None = None,
+    ) -> PipelineReportSummaryResponse:
+        all_time = period == "all"
+        effective_period: ReportPeriod = "quarter" if all_time else cast(ReportPeriod, period)
+        context = self._context(grant, period=effective_period, branch_id=branch_id, now=now)
+        starts_at = None if all_time else context.starts_at
+        ends_at = None if all_time else context.ends_at
+        leads = self._repository.pipeline_leads(
+            workspace_id=grant.workspace_id,
+            branch_id=branch_id,
+            allowed_branch_ids=grant.allowed_branch_ids,
+            starts_at=starts_at,
+            ends_at=ends_at,
+        )
+        lead_ids = frozenset(lead.id for lead in leads)
+        activities = self._repository.pipeline_stage_move_activities(
+            workspace_id=grant.workspace_id,
+            lead_ids=lead_ids,
+        )
+        payload = build_pipeline_report_payload(leads, activities)
+
+        def optional_rate(value: float | Decimal | None) -> Decimal | None:
+            if value is None:
+                return None
+            return self._percent(Decimal(str(value)), Decimal("1"))
+
+        def dwell_stats(stats: dict) -> PipelineOriginDwellStats:
+            return PipelineOriginDwellStats(
+                sample_count=stats["sample_count"],
+                avg_hours=self._hours(stats.get("avg_hours")),
+                median_hours=self._hours(stats.get("median_hours")),
+            )
+
+        report_starts = context.starts_at if not all_time else datetime(2000, 1, 1, tzinfo=UTC)
+        report_ends = context.ends_at if not all_time else context.generated_at
+
+        return PipelineReportSummaryResponse(
+            period=period,
+            branch_id=branch_id,
+            starts_at=report_starts,
+            ends_at=report_ends,
+            generated_at=context.generated_at,
+            total_leads=payload["total_leads"],
+            with_origin_count=payload["with_origin_count"],
+            with_origin_pct=self._percent(
+                Decimal(payload["with_origin_count"]), Decimal(payload["total_leads"] or 1)
+            ),
+            won_count=payload["won_count"],
+            lost_count=payload["lost_count"],
+            loss_rate=optional_rate(payload["loss_rate"]),
+            win_rate=optional_rate(payload["win_rate"]),
+            open_pipeline_count=payload["open_pipeline_count"],
+            open_pipeline_value=self._money(payload["open_pipeline_value"]),
+            by_origin=[
+                PipelineOriginPoint(
+                    id=row["id"],
+                    label=row["label"],
+                    count=row["count"],
+                    share_pct=self._percent(
+                        Decimal(row["count"]), Decimal(payload["total_leads"] or 1)
+                    ),
+                    won=row["won"],
+                    lost=row["lost"],
+                    open=row["open"],
+                    win_rate=optional_rate(row["win_rate"]),
+                    loss_rate=optional_rate(row["loss_rate"]),
+                    avg_won_value=(
+                        self._money(row["avg_won_value"])
+                        if row["avg_won_value"] is not None
+                        else None
+                    ),
+                    avg_lost_value=(
+                        self._money(row["avg_lost_value"])
+                        if row["avg_lost_value"] is not None
+                        else None
+                    ),
+                )
+                for row in payload["by_origin"]
+            ],
+            by_stage=[PipelineStageSnapshot(**row) for row in payload["by_stage"]],
+            stage_dwell=[
+                PipelineStageDwellPoint(
+                    stage=row["stage"],
+                    label=row["label"],
+                    sample_count=row["sample_count"],
+                    avg_hours=self._hours(row.get("avg_hours")),
+                    median_hours=self._hours(row.get("median_hours")),
+                )
+                for row in payload["stage_dwell"]
+            ],
+            stage_dwell_by_origin=[
+                PipelineOriginDwellPoint(
+                    id=row["id"],
+                    label=row["label"],
+                    nuevo=dwell_stats(row["nuevo"]),
+                    contactado=dwell_stats(row["contactado"]),
+                )
+                for row in payload["stage_dwell_by_origin"]
+            ],
+            lost_reasons=[PipelineLostReasonPoint(**row) for row in payload["lost_reasons"]],
         )
 
     def agenda_items(
@@ -1484,6 +1602,12 @@ class ReportsService:
         if total <= 0:
             return Decimal("0.00")
         return (value / total * Decimal("100")).quantize(_PCT, rounding=ROUND_HALF_UP)
+
+    @staticmethod
+    def _hours(value: float | None) -> Decimal | None:
+        if value is None:
+            return None
+        return Decimal(str(value)).quantize(_HOUR, rounding=ROUND_HALF_UP)
 
     @staticmethod
     def _sort(rows: list[_T], accessor: Callable[[_T], Any], direction: str) -> list[_T]:

@@ -27,6 +27,13 @@ import { useAgendaPolling } from '../hooks/useAgendaPolling'
 import { useSessionStore } from '@/stores/sessionStore'
 import { getAppointmentReceivablePolicy } from '../lib/receivablePermissions'
 import { emailResultMessage } from '../lib/notification'
+import { DatePeriodFilter } from '@/components/ui/DatePeriodFilter'
+import {
+  defaultGestionCitasDateFilter,
+  gestionCitasAppointmentParams,
+  gestionCitasMatchesDate,
+  GESTION_CITAS_DATE_PERIODS,
+} from '../lib/gestionCitasQuery'
 
 function AppointmentStatusControl({ apt, canManage, changing, onChange, online, canManageReceivables }) {
   const currentStatus = statusMeta(apt.status)
@@ -171,6 +178,7 @@ export default function GestionCitasPage() {
   const online = useSessionStore((s) => s.status === 'online')
 
   const [search, setSearch] = useState('')
+  const [dateFilter, setDateFilter] = useState(defaultGestionCitasDateFilter)
   const [employeeId, setEmployeeId] = useState('all')
   const [branchId, setBranchId] = useState('all')
   const [status, setStatus] = useState('all')
@@ -183,10 +191,10 @@ export default function GestionCitasPage() {
   const [completing, setCompleting] = useState(null)
   const [savingCompletion, setSavingCompletion] = useState(false)
 
-  const appointmentQuery = useMemo(
-    () => branchId === 'all' ? {} : { branchId },
-    [branchId]
-  )
+  const appointmentQuery = useMemo(() => ({
+    ...(branchId === 'all' ? {} : { branchId }),
+    ...gestionCitasAppointmentParams(dateFilter),
+  }), [branchId, dateFilter])
   useAgendaPolling(appointmentQuery)
 
   const staffName = (id) => resolveStaffName(id, rrhhEmployees)
@@ -205,6 +213,7 @@ export default function GestionCitasPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return appointments
+      .filter((a) => gestionCitasMatchesDate(a.date, dateFilter))
       .filter((a) => employeeId === 'all' || a.employeeId === employeeId)
       .filter((a) => branchId === 'all' || a.branchId === branchId)
       .filter((a) => status === 'all' || a.status === status)
@@ -216,7 +225,7 @@ export default function GestionCitasPage() {
           (a.customerPhone || '').includes(q)
         )
       })
-  }, [appointments, search, employeeId, branchId, status])
+  }, [appointments, search, dateFilter, employeeId, branchId, status])
 
   const { rows: displayRows, sortKey, sortDir, toggleSort } = useSortedRows(filtered, {
     defaultSort: { key: 'date', dir: 'desc' },
@@ -318,6 +327,17 @@ export default function GestionCitasPage() {
         <Button onClick={openNew} disabled={!canManage} data-testid="gestion-new">
           <Plus className="h-4 w-4" /> Nueva cita
         </Button>
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <DatePeriodFilter
+          period={dateFilter.period}
+          dateFrom={dateFilter.dateFrom}
+          dateTo={dateFilter.dateTo}
+          onChange={setDateFilter}
+          periods={GESTION_CITAS_DATE_PERIODS}
+          testId="gestion-date-filter"
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">

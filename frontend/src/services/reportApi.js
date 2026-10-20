@@ -15,6 +15,8 @@ import {
   inPeriod,
   incomeDistribution,
 } from '@/modules/reportes/lib/reportes'
+import { enrichAgendaSummary } from '@/modules/reportes/lib/agendaReportMetrics'
+import { mapPipelineSummaryFromApi } from '@/modules/reportes/lib/pipelineReport'
 import { applyBranchFilter, branchIdFromSelection, matchesBranches } from '@/lib/branches'
 import apiClient from '@/services/apiClient'
 import { catName } from '@/stores/finanzasStore'
@@ -102,6 +104,27 @@ function filterMemberships(all, filters) {
     if (status && row.status !== status) return false
     if (plan && row.plan !== plan) return false
     return matchesSearch(`${row.clientName} ${row.plan}`, search)
+  })
+}
+
+export async function fetchPipelineSummary(params) {
+  if (isOnline()) {
+    const data = await apiClient.get(`${REPORTS_BASE}/pipeline/summary`, apiReportParams(params))
+    return mapPipelineSummaryFromApi(data)
+  }
+  await delay()
+  return mapPipelineSummaryFromApi({
+    totalLeads: 0,
+    withOriginPct: '0',
+    wonCount: 0,
+    lostCount: 0,
+    openPipelineCount: 0,
+    openPipelineValue: '0',
+    byOrigin: [],
+    byStage: [],
+    stageDwell: [],
+    stageDwellByOrigin: [],
+    lostReasons: [],
   })
 }
 
@@ -414,7 +437,7 @@ export async function fetchAgendaSummary(getAppointments, getEmployees, params) 
       ...params,
       status: FRONT_TO_API_STATUS[params.status] || params.status,
     })
-    return {
+    return enrichAgendaSummary({
       total: data.totalAppointments || 0,
       attended: data.attendedCount || 0,
       noShow: data.noShowCount || 0,
@@ -432,7 +455,7 @@ export async function fetchAgendaSummary(getAppointments, getEmployees, params) 
       })),
       byEmployee: data.byEmployee || [],
       bySource: data.bySource || [],
-    }
+    }, params)
   }
   await delay()
   const rows = agendaRows(getAppointments, params)
@@ -468,7 +491,7 @@ export async function fetchAgendaSummary(getAppointments, getEmployees, params) 
       'No-show': dayRows.filter((row) => row.status === 'noshow').length,
     }
   })
-  return {
+  return enrichAgendaSummary({
     total: rows.length,
     attended: attended.length,
     noShow,
@@ -484,7 +507,7 @@ export async function fetchAgendaSummary(getAppointments, getEmployees, params) 
       { id: 'staff', name: 'Equipo', value: rows.filter((row) => row.source !== 'self').length },
       { id: 'self', name: 'Auto-agendado', value: rows.filter((row) => row.source === 'self').length },
     ],
-  }
+  }, params)
 }
 
 export async function fetchAgendaReport(getAppointments, params) {

@@ -1,6 +1,18 @@
 import { useState, useMemo, useCallback } from 'react'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
-import { CalendarCheck, UserX, CalendarClock, Percent, Globe, Ban, Eye, Pencil } from 'lucide-react'
+import {
+  CalendarCheck,
+  UserX,
+  CalendarClock,
+  Percent,
+  Globe,
+  Ban,
+  Eye,
+  Pencil,
+  TrendingUp,
+  Clock3,
+} from 'lucide-react'
+import { formatNumber } from '@/lib/format'
 import { useAgendaStore, statusMeta } from '@/stores/agendaStore'
 import { useRrhhStore } from '@/stores/rrhhStore'
 import { ReportFilterBar } from '../components/ReportFilterBar'
@@ -78,10 +90,21 @@ export default function AgendaReportPage() {
   const summary = useReportSummary(summaryFetcher, {
     total: 0,
     attended: 0,
+    pending: 0,
+    completed: 0,
     noShow: 0,
     cancelled: 0,
     selfBooking: 0,
     attendanceRate: 0,
+    periodDays: null,
+    avgTotalPerDay: null,
+    avgPendingPerDay: null,
+    avgCompletedPerDay: null,
+    avgCancelledPerDay: null,
+    avgNoShowPerDay: null,
+    cancellationRate: 0,
+    completionRate: 0,
+    pendingRate: 0,
     statusDistribution: [],
     weekly: [],
     byEmployee: [],
@@ -89,20 +112,32 @@ export default function AgendaReportPage() {
   })
   const {
     total,
-    attended,
+    pending,
+    completed,
     noShow,
     cancelled,
     selfBooking,
     attendanceRate,
+    periodDays,
+    avgTotalLabel,
+    avgPendingLabel,
+    avgCompletedLabel,
+    avgCancelledLabel,
+    avgNoShowLabel,
+    cancellationRate,
+    completionRate,
+    pendingRate,
     statusDistribution,
     weekly,
     byEmployee,
     bySource: sourceData,
   } = summary.data
 
-  const attendedVsTotal = total > 0
-    ? `${attended} / ${total} (${((attended / total) * 100).toFixed(2)}%)`
-    : '0 / 0'
+  const periodDaysLabel = periodDays ? `${periodDays} días en el período` : 'Todo el historial'
+  const subWithAvg = (avgLabel, extra) => {
+    const parts = [avgLabel, extra].filter(Boolean)
+    return parts.length ? parts.join(' · ') : undefined
+  }
   const bySource = sourceData
     .filter((item) => item.value > 0)
     .map((item) => ({
@@ -143,13 +178,70 @@ export default function AgendaReportPage() {
         onRefresh={() => { summary.reload(); listReport.reload() }}
       />
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard label="Citas (período)" value={total} icon={CalendarClock} tone="brand" testId="report-stat-citas" />
-        <StatCard label="Citas atendidas / total" value={attendedVsTotal} icon={CalendarCheck} tone="emerald" testId="report-stat-attended-ratio" />
-        <StatCard label="No-show" value={noShow} icon={UserX} tone="red" testId="report-stat-noshow" />
-        <StatCard label="Canceladas" value={cancelled} icon={Ban} tone="amber" testId="report-stat-canceladas" />
-        <StatCard label="Auto-agendadas" value={selfBooking} icon={Globe} tone="violet" testId="report-stat-self" />
-        <StatCard label="Tasa de asistencia" value={`${Number(attendanceRate).toFixed(2)}%`} icon={Percent} tone="slate" sub="Cumplidas vs no-show" testId="report-stat-asistencia" />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <StatCard
+          label="Citas (período)"
+          value={formatNumber(total)}
+          icon={CalendarClock}
+          tone="brand"
+          sub={subWithAvg(avgTotalLabel, periodDaysLabel)}
+          testId="report-stat-citas"
+        />
+        <StatCard
+          label="Pendientes"
+          value={formatNumber(pending)}
+          icon={Clock3}
+          tone="brand"
+          sub={subWithAvg(avgPendingLabel, `${pendingRate}% del total`)}
+          testId="report-stat-pending"
+        />
+        <StatCard
+          label="Cumplidas"
+          value={formatNumber(completed)}
+          icon={CalendarCheck}
+          tone="emerald"
+          sub={subWithAvg(avgCompletedLabel, `${completionRate}% del total`)}
+          testId="report-stat-completed"
+        />
+        <StatCard
+          label="No-show"
+          value={formatNumber(noShow)}
+          icon={UserX}
+          tone="red"
+          sub={subWithAvg(avgNoShowLabel, 'Citas no asistidas')}
+          testId="report-stat-noshow"
+        />
+        <StatCard
+          label="Canceladas"
+          value={formatNumber(cancelled)}
+          icon={Ban}
+          tone="amber"
+          sub={subWithAvg(avgCancelledLabel, `${cancellationRate}% del total`)}
+          testId="report-stat-canceladas"
+        />
+        <StatCard
+          label="Promedio citas / día"
+          value={avgTotalLabel || '—'}
+          icon={TrendingUp}
+          tone="slate"
+          sub={periodDaysLabel}
+          testId="report-stat-avg-total"
+        />
+        <StatCard
+          label="Auto-agendadas"
+          value={formatNumber(selfBooking)}
+          icon={Globe}
+          tone="violet"
+          testId="report-stat-self"
+        />
+        <StatCard
+          label="Tasa de asistencia"
+          value={`${Number(attendanceRate).toFixed(1)}%`}
+          icon={Percent}
+          tone="slate"
+          sub="Cumplidas vs no-show (excl. pendientes)"
+          testId="report-stat-asistencia"
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

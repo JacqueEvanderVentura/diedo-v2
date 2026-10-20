@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   buildBookingUrl,
   getAvailableSlots,
+  getAvailableSlotsForAny,
+  getResourceOnlySlots,
   isSlotAvailable,
   timeRangesOverlap,
   normalizeAppointmentTime,
@@ -93,5 +95,59 @@ describe('selfBooking availability', () => {
       employee: null,
       vacationRequests: [],
     })).toBe(true)
+  })
+
+  it('unions available slots across employees for cualquiera disponible', () => {
+    const employeeA = {
+      id: 'emp-a',
+      workSchedule: { mon: [{ start: '09:00', end: '12:00' }] },
+    }
+    const employeeB = {
+      id: 'emp-b',
+      workSchedule: { mon: [{ start: '14:00', end: '17:00' }] },
+    }
+    const monday = '2026-09-14'
+    const slots = getAvailableSlotsForAny({
+      date: monday,
+      duration: 30,
+      appointments: [],
+      employees: [employeeA, employeeB],
+      vacationRequests: [],
+    })
+    expect(slots).toContain('09:00')
+    expect(slots).toContain('14:00')
+  })
+
+  it('intersects specialist and cabin availability for cualquiera disponible', () => {
+    const employeeA = {
+      id: 'emp-a',
+      workSchedule: { mon: [{ start: '09:00', end: '12:00' }] },
+    }
+    const monday = '2026-09-14'
+    const appointments = [
+      {
+        id: 'busy-cab',
+        date: monday,
+        time: '09:00',
+        duration: 60,
+        cabinaId: 'cab-1',
+        status: 'confirmada',
+      },
+    ]
+    const slots = getAvailableSlotsForAny({
+      date: monday,
+      duration: 30,
+      appointments,
+      employees: [employeeA],
+      resources: [{ id: 'cab-1' }],
+      vacationRequests: [],
+    })
+    expect(slots).not.toContain('09:00')
+    expect(getResourceOnlySlots({
+      date: monday,
+      duration: 30,
+      appointments,
+      resources: [{ id: 'cab-1' }],
+    })).toContain('10:00')
   })
 })

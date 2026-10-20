@@ -171,6 +171,13 @@ export function buildInvoiceHtml(data) {
 
   const rows = items
     .map((item) => {
+      if (item.kind === 'section') {
+        return `<tr class="section-row">
+        <td colspan="4">
+          <div class="section-title">${escapeHtml(item.name || item.title || 'Sección')}</div>
+        </td>
+      </tr>`
+      }
       const line = itemUnitPrice(item) * item.qty
       return `<tr>
         <td>
@@ -255,6 +262,19 @@ export function buildInvoiceHtml(data) {
     th.num, td.num { text-align: right; white-space: nowrap; }
     td { padding: 10px 0; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
     .item-name { font-weight: 600; }
+    tr.section-row td {
+      padding-top: 16px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #e2e8f0;
+      background: #f8fafc;
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: #0f172a;
+      text-transform: uppercase;
+    }
     .muted { color: #94a3b8; font-size: 11px; margin-top: 2px; }
     .strike, s.strike {
       display: inline-block;

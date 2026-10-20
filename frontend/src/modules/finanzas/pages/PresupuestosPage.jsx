@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, ChevronDown, ChevronUp, Pencil, Trash2 } from 'lucide-react'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { useFinanzasStore } from '@/stores/finanzasStore'
 import { useConfigStore } from '@/stores/configStore'
 import { formatDOP } from '@/lib/format'
@@ -77,6 +78,8 @@ export default function PresupuestosPage() {
   const budgets = useFinanzasStore((s) => s.budgets)
   const expenses = useFinanzasStore((s) => s.expenses)
   const addBudget = useFinanzasStore((s) => s.addBudget)
+  const updateBudget = useFinanzasStore((s) => s.updateBudget)
+  const deleteBudget = useFinanzasStore((s) => s.deleteBudget)
   const getBudgetStats = useFinanzasStore((s) => s.getBudgetStats)
   const branches = useConfigStore((s) => s.branches)
 
@@ -85,6 +88,9 @@ export default function PresupuestosPage() {
   const [query, setQuery] = useState('')
   const [expanded, setExpanded] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
+  const [editingBudget, setEditingBudget] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
+  const [deleting, setDeleting] = useState(false)
   const [form, setForm] = useState({ name: '', group: 'operaciones', monthlyLimit: '', branchId: '' })
 
   const branchOptions = branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))
@@ -108,16 +114,53 @@ export default function PresupuestosPage() {
     }
   }, [branchFilter, branchOptions])
 
+  const openCreateModal = () => {
+    setEditingBudget(null)
+    setForm({ name: '', group: 'operaciones', monthlyLimit: '', branchId: branchFilter })
+    setModalOpen(true)
+  }
+
+  const openEditModal = (budget) => {
+    setEditingBudget(budget)
+    setForm({
+      name: budget.name,
+      group: budget.group || 'operaciones',
+      monthlyLimit: String(budget.monthlyLimit ?? ''),
+      branchId: budget.branchId || branchFilter,
+    })
+    setModalOpen(true)
+  }
+
   const submit = async () => {
     if (!form.name.trim()) return toast.error('Ingresa el nombre')
     if (!form.monthlyLimit || Number(form.monthlyLimit) <= 0) return toast.error('Ingresa una meta mensual válida')
     try {
-      await addBudget({ ...form, branchId: branchFilter })
-      toast.success('Categoría de presupuesto creada')
+      if (editingBudget) {
+        await updateBudget(editingBudget.id, { ...form, branchId: branchFilter })
+        toast.success('Categoría de presupuesto actualizada')
+      } else {
+        await addBudget({ ...form, branchId: branchFilter })
+        toast.success('Categoría de presupuesto creada')
+      }
       setModalOpen(false)
+      setEditingBudget(null)
       setForm({ name: '', group: 'operaciones', monthlyLimit: '', branchId: branchFilter })
     } catch (error) {
-      toast.error(error.message || 'No se pudo crear el presupuesto')
+      toast.error(error.message || 'No se pudo guardar el presupuesto')
+    }
+  }
+
+  const runDeleteBudget = async (budget) => {
+    setDeleting(true)
+    try {
+      await deleteBudget(budget.id)
+      toast.success('Categoría eliminada')
+      if (expanded === budget.id) setExpanded(null)
+      setConfirmDelete(null)
+    } catch (error) {
+      toast.error(error.message || 'No se pudo eliminar el presupuesto')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -128,7 +171,7 @@ export default function PresupuestosPage() {
           <Select value={branchFilter} onChange={setBranchFilter} options={branchOptions} className="w-48" menuMinWidth={180} />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar categorías..." className="rounded-xl border-0 bg-slate-50 px-4 py-2.5 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-600" />
         </div>
-        <Button onClick={() => setModalOpen(true)} data-testid="presupuestos-new-btn"><Plus className="h-4 w-4" /> Configurar Categorías</Button>
+        <Button onClick={openCreateModal} data-testid="presupuestos-new-btn"><Plus className="h-4 w-4" /> Configurar Categorías</Button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -157,8 +200,8 @@ export default function PresupuestosPage() {
           const open = expanded === b.id
           return (
             <Card key={b.id} className="overflow-hidden" data-testid={`budget-card-${b.id}`}>
-              <button type="button" onClick={() => setExpanded(open ? null : b.id)} className="flex w-full items-start justify-between p-5 text-left">
-                <div className="min-w-0 flex-1">
+              <div className="flex w-full items-start justify-between gap-2 p-5">
+                <button type="button" onClick={() => setExpanded(open ? null : b.id)} className="min-w-0 flex-1 text-left">
                   <h4 className="font-heading font-bold text-slate-900">{b.name}</h4>
                   <p className="mt-1 text-sm text-slate-500">{formatDOP(spent)} / {formatDOP(b.monthlyLimit)}</p>
                   <p className="mt-0.5 text-xs text-emerald-600">Disponible: {formatDOP(over ? 0 : remaining)}</p>
@@ -174,9 +217,31 @@ export default function PresupuestosPage() {
                     </Badge>
                     <span className="text-xs text-slate-400">{txs.length} transacciones</span>
                   </div>
+                </button>
+                <div className="flex shrink-0 items-start gap-1">
+                  <button
+                    type="button"
+                    className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-blue-600"
+                    aria-label="Editar categoría"
+                    data-testid={`budget-edit-${b.id}`}
+                    onClick={() => openEditModal(b)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-red-600"
+                    aria-label="Eliminar categoría"
+                    data-testid={`budget-delete-${b.id}`}
+                    onClick={() => setConfirmDelete(b)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                  <button type="button" className="rounded-lg p-2 text-slate-400 hover:bg-slate-50" onClick={() => setExpanded(open ? null : b.id)} aria-label={open ? 'Contraer' : 'Expandir'}>
+                    {open ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                  </button>
                 </div>
-                {open ? <ChevronUp className="h-5 w-5 text-slate-400" /> : <ChevronDown className="h-5 w-5 text-slate-400" />}
-              </button>
+              </div>
               {open && txs.length > 0 && (
                 <div className="border-t border-slate-100 px-5 pb-5">
                   <BudgetTransactionsTable transactions={txs} />
@@ -187,14 +252,34 @@ export default function PresupuestosPage() {
         })}
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Nueva Categoría de Presupuesto">
+      <Modal
+        open={modalOpen}
+        onClose={() => {
+          setModalOpen(false)
+          setEditingBudget(null)
+        }}
+        title={editingBudget ? 'Editar categoría de presupuesto' : 'Nueva Categoría de Presupuesto'}
+      >
         <div className="space-y-4">
           <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Nombre</label><Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} /></div>
           <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Meta mensual</label><Input type="number" value={form.monthlyLimit} onChange={(e) => setForm((f) => ({ ...f, monthlyLimit: e.target.value }))} /></div>
           <div><label className="mb-1.5 block text-sm font-medium text-slate-600">Grupo</label><Select value={form.group} onChange={(v) => setForm((f) => ({ ...f, group: v }))} options={BUDGET_GROUPS.map((g) => ({ value: g.id, label: g.name }))} /></div>
-          <Button className="w-full" onClick={submit}>Crear categoría</Button>
+          <Button className="w-full" onClick={submit} data-testid="presupuestos-save-btn">
+            {editingBudget ? 'Guardar cambios' : 'Crear categoría'}
+          </Button>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={Boolean(confirmDelete)}
+        onClose={() => !deleting && setConfirmDelete(null)}
+        onConfirm={() => confirmDelete && runDeleteBudget(confirmDelete)}
+        title="Eliminar categoría"
+        description={confirmDelete ? `¿Eliminar la categoría "${confirmDelete.name}"? Los gastos vinculados conservarán su historial.` : ''}
+        confirmLabel="Eliminar"
+        busy={deleting}
+        testId="presupuestos-confirm-delete"
+      />
     </div>
   )
 }
