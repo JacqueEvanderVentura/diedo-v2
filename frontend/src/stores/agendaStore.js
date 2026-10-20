@@ -159,7 +159,11 @@ function mergeScopedAppointments(current, incoming, params = {}) {
   const incomingIds = new Set(incoming.map((appointment) => appointment.id))
   const hasScope = Boolean(params.branchId || params.dateFrom || params.dateTo || params.employeeId || params.status)
   const retained = hasScope
-    ? current.filter((appointment) => !matchesScope(appointment, params) && !incomingIds.has(appointment.id))
+    ? current.filter((appointment) => {
+      if (incomingIds.has(appointment.id)) return false
+      if (!matchesScope(appointment, params)) return true
+      return normalizeAppointmentStatus(appointment.status) === 'cancelada'
+    })
     : []
   return [...incoming, ...retained]
 }

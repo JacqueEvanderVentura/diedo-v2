@@ -1,4 +1,10 @@
-import { Calendar, CalendarDays, CalendarRange, TrendingUp } from 'lucide-react'
+import {
+  Ban,
+  CalendarCheck,
+  CalendarClock,
+  CalendarRange,
+  UserX,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatNumber } from '@/lib/format'
 
@@ -6,8 +12,9 @@ function StatTile({ label, value, icon: Icon, tone = 'brand', sub, testId }) {
   const tones = {
     brand: 'text-blue-600 bg-blue-50',
     emerald: 'text-emerald-600 bg-emerald-50',
+    amber: 'text-amber-600 bg-amber-50',
+    red: 'text-red-600 bg-red-50',
     slate: 'text-slate-600 bg-slate-100',
-    violet: 'text-violet-600 bg-violet-50',
   }
   return (
     <div
@@ -31,58 +38,56 @@ function StatTile({ label, value, icon: Icon, tone = 'brand', sub, testId }) {
   )
 }
 
-export function CalendarStatsBar({ stats, view }) {
+export function CalendarStatsBar({ stats }) {
+  const scope = stats.rangeScopeLabel
   const tiles = [
     {
-      key: 'month',
-      show: true,
-      label: 'Citas del mes',
-      value: formatNumber(stats.monthCount),
+      key: 'total',
+      label: 'Citas en rango',
+      value: formatNumber(stats.total),
       icon: CalendarRange,
       tone: 'brand',
-      testId: 'calendar-stat-month',
+      sub: scope,
+      testId: 'calendar-stat-total',
     },
     {
-      key: 'week',
-      show: view === 'week',
-      label: 'Citas de la semana',
-      value: formatNumber(stats.weekCount),
-      icon: CalendarDays,
-      tone: 'violet',
-      testId: 'calendar-stat-week',
+      key: 'pending',
+      label: 'Pendientes',
+      value: formatNumber(stats.pending),
+      icon: CalendarClock,
+      tone: 'brand',
+      sub: 'Confirmadas',
+      testId: 'calendar-stat-pending',
     },
     {
-      key: 'day',
-      show: view === 'day',
-      label: 'Citas del día',
-      value: formatNumber(stats.dayCount),
-      icon: Calendar,
+      key: 'completed',
+      label: 'Cumplidas',
+      value: formatNumber(stats.completed),
+      icon: CalendarCheck,
       tone: 'emerald',
-      testId: 'calendar-stat-day',
+      testId: 'calendar-stat-completed',
     },
     {
-      key: 'average',
-      show: view === 'week' || view === 'month',
-      label: 'Promedio / día',
-      value: formatNumber(stats.averagePerDay),
-      icon: TrendingUp,
-      tone: 'slate',
-      sub: view === 'week' ? 'En la semana visible' : `En ${stats.rangeDays} días del mes`,
-      testId: 'calendar-stat-average',
+      key: 'noshow',
+      label: 'No-show',
+      value: formatNumber(stats.noShow),
+      icon: UserX,
+      tone: 'red',
+      testId: 'calendar-stat-noshow',
     },
-  ].filter((t) => t.show)
-
-  if (tiles.length === 0) return null
+    {
+      key: 'cancelled',
+      label: 'Canceladas',
+      value: formatNumber(stats.cancelled),
+      icon: Ban,
+      tone: 'amber',
+      testId: 'calendar-stat-cancelled',
+    },
+  ]
 
   return (
     <div
-      className={cn(
-        'grid gap-3',
-        tiles.length === 1 && 'grid-cols-1 sm:grid-cols-1',
-        tiles.length === 2 && 'grid-cols-1 sm:grid-cols-2',
-        tiles.length === 3 && 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
-        tiles.length >= 4 && 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4',
-      )}
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
       data-testid="calendar-stats-bar"
     >
       {tiles.map((tile) => (

@@ -4,28 +4,22 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { CalendarStatsBar } from '@/modules/agenda/components/calendar/CalendarStatsBar'
 
 const stats = {
-  monthCount: 12,
-  rangeCount: 5,
-  rangeDays: 7,
-  averagePerDay: 0.7,
-  dayCount: 3,
-  weekCount: 5,
+  rangeScopeLabel: 'de la semana visible',
+  total: 12,
+  pending: 5,
+  completed: 4,
+  noShow: 1,
+  cancelled: 2,
 }
 
 afterEach(cleanup)
 
-it('shows month and week stats in week view', () => {
-  render(<CalendarStatsBar stats={stats} view="week" />)
-  expect(screen.getByTestId('calendar-stat-month')).toBeTruthy()
-  expect(screen.getByTestId('calendar-stat-week')).toBeTruthy()
-  expect(screen.getByTestId('calendar-stat-average')).toBeTruthy()
-  expect(screen.queryByTestId('calendar-stat-day')).toBeNull()
-})
-
-it('shows day stat in day view without average', () => {
-  render(<CalendarStatsBar stats={stats} view="day" />)
-  expect(screen.getByTestId('calendar-stat-month')).toBeTruthy()
-  expect(screen.getByTestId('calendar-stat-day')).toBeTruthy()
-  expect(screen.queryByTestId('calendar-stat-average')).toBeNull()
-  expect(screen.queryByTestId('calendar-stat-week')).toBeNull()
+it('shows operational status cards for the visible range', () => {
+  render(<CalendarStatsBar stats={stats} />)
+  expect(screen.getByTestId('calendar-stat-total')).toBeTruthy()
+  expect(screen.getByTestId('calendar-stat-pending')).toBeTruthy()
+  expect(screen.getByTestId('calendar-stat-completed')).toBeTruthy()
+  expect(screen.getByTestId('calendar-stat-noshow')).toBeTruthy()
+  expect(screen.getByTestId('calendar-stat-cancelled')).toBeTruthy()
+  expect(screen.getByTestId('calendar-stat-cancelled-value').textContent).toBe('2')
 })

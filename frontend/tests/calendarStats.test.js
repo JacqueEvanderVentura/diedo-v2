@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { computeCalendarStats } from '@/modules/agenda/lib/calendarStats'
+import {
+  computeCalendarStats,
+  rangeKeysForView,
+} from '@/modules/agenda/lib/calendarStats'
 
 const base = (overrides = {}) => ({
   id: '1',
@@ -10,79 +13,60 @@ const base = (overrides = {}) => ({
 })
 
 describe('computeCalendarStats', () => {
-  it('counts month by calendar month, not month grid spillover', () => {
+  it('month range uses calendar month days only', () => {
     const appointments = [
       base({ id: 'a', date: '2026-09-30' }),
       base({ id: 'b', date: '2026-10-01' }),
       base({ id: 'c', date: '2026-10-31' }),
       base({ id: 'd', date: '2026-11-01' }),
     ]
+    const keys = rangeKeysForView('month', '2026-10-05')
+    expect(keys).toContain('2026-10-01')
+    expect(keys).not.toContain('2026-09-30')
+
     const stats = computeCalendarStats({
       appointments,
       view: 'month',
       cursor: '2026-10-05',
-      showCancelled: false,
     })
-    expect(stats.monthCount).toBe(2)
-    expect(stats.rangeCount).toBe(2)
-    expect(stats.rangeDays).toBe(31)
-    expect(stats.averagePerDay).toBe(0.1)
+    expect(stats.total).toBe(2)
+    expect(stats.pending).toBe(2)
+    expect(stats.rangeScopeLabel).toBe('del mes visible')
   })
 
-  it('computes week average over 7 days', () => {
+  it('breaks down statuses in week range', () => {
     const appointments = [
-      base({ id: 'a', date: '2026-10-05' }),
-      base({ id: 'b', date: '2026-10-06' }),
-      base({ id: 'c', date: '2026-10-07' }),
-      base({ id: 'd', date: '2026-10-08' }),
+      base({ id: 'a', date: '2026-10-05', status: 'confirmada' }),
+      base({ id: 'b', date: '2026-10-06', status: 'cumplida' }),
+      base({ id: 'c', date: '2026-10-07', status: 'cancelada' }),
+      base({ id: 'd', date: '2026-10-08', status: 'noshow' }),
+      base({ id: 'e', date: '2026-11-01', status: 'confirmada' }),
     ]
     const stats = computeCalendarStats({
       appointments,
       view: 'week',
       cursor: '2026-10-08',
-      showCancelled: false,
     })
-    expect(stats.weekCount).toBe(4)
-    expect(stats.rangeCount).toBe(4)
-    expect(stats.averagePerDay).toBe(0.6)
+    expect(stats.total).toBe(4)
+    expect(stats.pending).toBe(1)
+    expect(stats.completed).toBe(1)
+    expect(stats.cancelled).toBe(1)
+    expect(stats.noShow).toBe(1)
   })
 
-  it('excludes cancelled unless showCancelled is true', () => {
+  it('counts all statuses on day view including cancelled', () => {
     const appointments = [
       base({ id: 'a', date: '2026-10-10' }),
       base({ id: 'b', date: '2026-10-10', status: 'cancelada' }),
-    ]
-    const hidden = computeCalendarStats({
-      appointments,
-      view: 'day',
-      cursor: '2026-10-10',
-      showCancelled: false,
-    })
-    expect(hidden.dayCount).toBe(1)
-
-    const shown = computeCalendarStats({
-      appointments,
-      view: 'day',
-      cursor: '2026-10-10',
-      showCancelled: true,
-    })
-    expect(shown.dayCount).toBe(2)
-  })
-
-  it('day view sets dayCount and zero average', () => {
-    const appointments = [
-      base({ id: 'a', date: '2026-10-20' }),
-      base({ id: 'b', date: '2026-10-20' }),
-      base({ id: 'c', date: '2026-10-21' }),
+      base({ id: 'c', date: '2026-10-11' }),
     ]
     const stats = computeCalendarStats({
       appointments,
       view: 'day',
-      cursor: '2026-10-20',
-      showCancelled: false,
+      cursor: '2026-10-10',
     })
-    expect(stats.dayCount).toBe(2)
-    expect(stats.averagePerDay).toBe(0)
-    expect(stats.rangeCount).toBe(2)
+    expect(stats.total).toBe(2)
+    expect(stats.pending).toBe(1)
+    expect(stats.cancelled).toBe(1)
   })
 })

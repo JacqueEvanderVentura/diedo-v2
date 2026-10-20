@@ -15,6 +15,7 @@ import {
   inPeriod,
   incomeDistribution,
 } from '@/modules/reportes/lib/reportes'
+import { enrichAgendaSummary } from '@/modules/reportes/lib/agendaReportMetrics'
 import { applyBranchFilter, branchIdFromSelection, matchesBranches } from '@/lib/branches'
 import apiClient from '@/services/apiClient'
 import { catName } from '@/stores/finanzasStore'
@@ -414,7 +415,7 @@ export async function fetchAgendaSummary(getAppointments, getEmployees, params) 
       ...params,
       status: FRONT_TO_API_STATUS[params.status] || params.status,
     })
-    return {
+    return enrichAgendaSummary({
       total: data.totalAppointments || 0,
       attended: data.attendedCount || 0,
       noShow: data.noShowCount || 0,
@@ -432,7 +433,7 @@ export async function fetchAgendaSummary(getAppointments, getEmployees, params) 
       })),
       byEmployee: data.byEmployee || [],
       bySource: data.bySource || [],
-    }
+    }, params)
   }
   await delay()
   const rows = agendaRows(getAppointments, params)
@@ -468,7 +469,7 @@ export async function fetchAgendaSummary(getAppointments, getEmployees, params) 
       'No-show': dayRows.filter((row) => row.status === 'noshow').length,
     }
   })
-  return {
+  return enrichAgendaSummary({
     total: rows.length,
     attended: attended.length,
     noShow,
@@ -484,7 +485,7 @@ export async function fetchAgendaSummary(getAppointments, getEmployees, params) 
       { id: 'staff', name: 'Equipo', value: rows.filter((row) => row.source !== 'self').length },
       { id: 'self', name: 'Auto-agendado', value: rows.filter((row) => row.source === 'self').length },
     ],
-  }
+  }, params)
 }
 
 export async function fetchAgendaReport(getAppointments, params) {

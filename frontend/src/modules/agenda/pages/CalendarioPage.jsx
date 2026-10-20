@@ -34,6 +34,7 @@ import { isAppointmentConflict } from '@/services/adapters/appointments'
 import { sortResources } from '@/modules/configuracion/lib/agendaCabinas'
 import { boundsForDate } from '../lib/branchOpeningHours'
 import { explainAppointmentResourceMove } from '../lib/calendarResourceMove'
+import { normalizeAppointmentStatus } from '../lib/completion'
 
 const VIEWS = [
   { id: 'day', label: 'Día' },
@@ -112,15 +113,14 @@ export default function CalendarioPage() {
       appointments: branchAppointments,
       view,
       cursor,
-      showCancelled,
     }),
-    [branchAppointments, view, cursor, showCancelled],
+    [branchAppointments, view, cursor],
   )
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return branchAppointments.filter((a) => {
-      if (!showCancelled && a.status === 'cancelada') return false
+      if (!showCancelled && normalizeAppointmentStatus(a.status) === 'cancelada') return false
       if (!q) return true
       return a.customerName.toLowerCase().includes(q) || (a.serviceName || '').toLowerCase().includes(q)
     }).map((a) => ({ ...a, branchName: branches.find((b) => b.id === a.branchId)?.name || '' }))
@@ -303,7 +303,7 @@ export default function CalendarioPage() {
         </div>
       </div>
 
-      <CalendarStatsBar stats={calendarStats} view={view} />
+      <CalendarStatsBar stats={calendarStats} />
 
       <AnimatedTabPanel panelKey={view}>
         {view === 'week' && (
@@ -324,6 +324,7 @@ export default function CalendarioPage() {
             onSlotClick={canManage ? openNew : undefined}
             onAppointmentClick={openEdit}
             canDrag={canManage}
+            showCancelled={showCancelled}
             onResourceMove={handleResourceMove}
           />
         )}
