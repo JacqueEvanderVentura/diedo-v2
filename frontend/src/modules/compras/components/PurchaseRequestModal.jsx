@@ -37,7 +37,21 @@ const emptyItem = () => ({
   categoryId: '',
 })
 
-export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 'Usuario actual' }) {
+function mapRequestItemToForm(item) {
+  return {
+    name: item.name || '',
+    qty: item.qty ?? 1,
+    unit: item.unit || 'Unidad',
+    price: item.price ?? 0,
+    catalogItemId: item.catalogItemId || '',
+    supplyProductId: item.supplyProductId || '',
+    supplyCategoryId: item.supplyCategoryId || '',
+    categoryId: item.categoryId || item.supplyCategoryId || '',
+  }
+}
+
+export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 'Usuario actual', request = null }) {
+  const editing = Boolean(request)
   const suppliers = useComprasStore((s) => s.suppliers)
   const branches = useConfigStore((s) => s.branches)
   const posBranchId = usePosStore((s) => s.branchId)
@@ -88,15 +102,26 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
 
   useEffect(() => {
     if (!open) return
-    setSupplierId(supplierOptions[0]?.id || '')
-    setBranchId(posBranchId || branches[0]?.id || '')
-    setPriority('normal')
-    setNotes('')
-    setItems([emptyItem()])
-    setQuoteAttachments([])
+    if (request) {
+      setSupplierId(request.supplierId || supplierOptions[0]?.id || '')
+      setBranchId(request.branchId || posBranchId || branches[0]?.id || '')
+      setPriority(request.priority || 'normal')
+      setNotes(request.notes || '')
+      setItems(
+        (request.items?.length ? request.items.map(mapRequestItemToForm) : [emptyItem()])
+      )
+      setQuoteAttachments(request.quoteFile ? [request.quoteFile] : [])
+    } else {
+      setSupplierId(supplierOptions[0]?.id || '')
+      setBranchId(posBranchId || branches[0]?.id || '')
+      setPriority('normal')
+      setNotes('')
+      setItems([emptyItem()])
+      setQuoteAttachments([])
+    }
     setErr('')
     setSaving(false)
-  }, [open, supplierOptions, posBranchId, branches])
+  }, [open, request, supplierOptions, posBranchId, branches])
 
   const linkSupply = (idx, supplyProductId) => {
     const supply = supplyProductId
@@ -168,7 +193,7 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
         notes: notes.trim(),
         quoteFile,
       })
-      toast.success('Solicitud creada')
+      toast.success(editing ? 'Solicitud actualizada' : 'Solicitud creada')
       onClose()
     } catch (error) {
       setErr(error.message || 'No se pudo crear la solicitud.')
@@ -178,7 +203,7 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Nueva solicitud de compra" xlarge testId="purchase-request-modal">
+    <Modal open={open} onClose={onClose} title={editing ? 'Editar solicitud de compra' : 'Nueva solicitud de compra'} xlarge testId="purchase-request-modal">
       {err && <p className="mb-4 text-sm text-red-500">{err}</p>}
       <div className="space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -345,7 +370,9 @@ export function PurchaseRequestModal({ open, onClose, onSubmit, requesterName = 
       </div>
       <div className="mt-6 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose} disabled={saving}>Cancelar</Button>
-        <Button onClick={submit} disabled={saving}>{saving ? 'Creando…' : 'Crear solicitud'}</Button>
+        <Button onClick={submit} disabled={saving}>
+          {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear solicitud'}
+        </Button>
       </div>
     </Modal>
   )

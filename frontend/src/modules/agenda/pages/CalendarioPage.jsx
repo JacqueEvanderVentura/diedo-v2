@@ -11,6 +11,8 @@ import { BranchSchedulesModal } from '../components/BranchSchedulesModal'
 import { WeekView } from '../components/calendar/WeekView'
 import { DayView } from '../components/calendar/DayView'
 import { MonthView } from '../components/calendar/MonthView'
+import { CalendarStatsBar } from '../components/calendar/CalendarStatsBar'
+import { computeCalendarStats } from '../lib/calendarStats'
 import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
 import { DataSourceNotice } from '@/components/ui/DataSourceNotice'
 import { useAgendaPolling } from '../hooks/useAgendaPolling'
@@ -100,15 +102,29 @@ export default function CalendarioPage() {
     [openingHours, cursor],
   )
 
+  const branchAppointments = useMemo(
+    () => appointments.filter((a) => !a.branchId || a.branchId === branchId),
+    [appointments, branchId],
+  )
+
+  const calendarStats = useMemo(
+    () => computeCalendarStats({
+      appointments: branchAppointments,
+      view,
+      cursor,
+      showCancelled,
+    }),
+    [branchAppointments, view, cursor, showCancelled],
+  )
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return appointments.filter((a) => {
-      if (a.branchId && a.branchId !== branchId) return false
+    return branchAppointments.filter((a) => {
       if (!showCancelled && a.status === 'cancelada') return false
       if (!q) return true
       return a.customerName.toLowerCase().includes(q) || (a.serviceName || '').toLowerCase().includes(q)
     }).map((a) => ({ ...a, branchName: branches.find((b) => b.id === a.branchId)?.name || '' }))
-  }, [appointments, search, showCancelled, branchId, branches])
+  }, [branchAppointments, search, showCancelled, branches])
 
   const step = (dir) => {
     if (view === 'month') setCursor((c) => addMonthsKey(c, dir))
@@ -286,6 +302,8 @@ export default function CalendarioPage() {
           </button>
         </div>
       </div>
+
+      <CalendarStatsBar stats={calendarStats} view={view} />
 
       <AnimatedTabPanel panelKey={view}>
         {view === 'week' && (

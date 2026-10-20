@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Search, FileText, CheckCircle, Package, Clock, Upload, Eye } from 'lucide-react'
+import { Plus, Search, FileText, CheckCircle, Package, Clock, Upload, Eye, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -67,6 +67,7 @@ export function SolicitudesTab() {
   const suppliers = useComprasStore((s) => s.suppliers)
   const purchaseRequests = useComprasStore((s) => s.purchaseRequests)
   const addPurchaseRequest = useComprasStore((s) => s.addPurchaseRequest)
+  const updatePurchaseRequest = useComprasStore((s) => s.updatePurchaseRequest)
   const reviewPurchaseRequest = useComprasStore((s) => s.reviewPurchaseRequest)
   const payPurchaseRequest = useComprasStore((s) => s.payPurchaseRequest)
   const markRequestDelivered = useComprasStore((s) => s.markRequestDelivered)
@@ -85,6 +86,7 @@ export function SolicitudesTab() {
   const [branchFilter, setBranchFilter] = useState('all')
   const [selectedId, setSelectedId] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
+  const [editingRequest, setEditingRequest] = useState(null)
   const [busyAction, setBusyAction] = useState(null)
   const [documentModal, setDocumentModal] = useState(null)
   const [documentUploads, setDocumentUploads] = useState({})
@@ -214,7 +216,13 @@ export function SolicitudesTab() {
             data-testid="solicitudes-branch-filter"
           />
         </div>
-        <Button className="w-full shrink-0 sm:w-auto" onClick={() => setModalOpen(true)}>
+        <Button
+          className="w-full shrink-0 sm:w-auto"
+          onClick={() => {
+            setEditingRequest(null)
+            setModalOpen(true)
+          }}
+        >
           <Plus className="h-4 w-4" /> Nueva Solicitud
         </Button>
       </div>
@@ -400,6 +408,20 @@ export function SolicitudesTab() {
 
               <div className="flex flex-wrap gap-2">
                 {selected.status === 'pendiente' && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={Boolean(busyAction)}
+                    data-testid="purchase-request-edit"
+                    onClick={() => {
+                      setEditingRequest(mergePurchaseRequestExtras(selected))
+                      setModalOpen(true)
+                    }}
+                  >
+                    <Pencil className="h-3.5 w-3.5" /> Editar
+                  </Button>
+                )}
+                {selected.status === 'pendiente' && (
                   <>
                     <Button size="sm" disabled={Boolean(busyAction)} onClick={() => handleApprove(selected.id)}>
                       {busyAction === `approve:${selected.id}` ? 'Aprobando…' : 'Aprobar'}
@@ -429,8 +451,18 @@ export function SolicitudesTab() {
 
       <PurchaseRequestModal
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onSubmit={(data) => addPurchaseRequest(data, { isOnline })}
+        onClose={() => {
+          setModalOpen(false)
+          setEditingRequest(null)
+        }}
+        request={editingRequest}
+        onSubmit={async (data) => {
+          if (editingRequest) {
+            await updatePurchaseRequest(editingRequest.id, data, { isOnline })
+          } else {
+            await addPurchaseRequest(data, { isOnline })
+          }
+        }}
       />
 
       <PurchaseDocumentModal
