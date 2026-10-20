@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Trash2, UserPlus, Package, Loader2 } from 'lucide-react'
+import { Plus, Trash2, UserPlus, Package, Loader2, ChevronUp, ChevronDown, LayoutList } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -16,11 +16,15 @@ import { isProductAvailableAtBranch } from '@/lib/catalogSync'
 import { formatDOP } from '@/lib/format'
 import { sumQuoteLines } from '../lib/pipelineInvoice'
 import {
+  countQuoteProductLines,
   draftFromLead,
   draftFromQuote,
   emptyQuoteDraft,
   emptyQuoteLine,
+  emptyQuoteSection,
+  hasQuoteSections,
   isQuoteEditable,
+  isQuoteSectionLine,
   quoteLinesToItems,
 } from '../lib/quoteForm'
 import { CustomerFormModal } from './CustomerFormModal'
@@ -58,6 +62,7 @@ export function QuoteFormModal({
   const [customerModalOpen, setCustomerModalOpen] = useState(false)
   const [catalogLoading, setCatalogLoading] = useState(false)
   const [contextLead, setContextLead] = useState(null)
+  const [focusSectionKey, setFocusSectionKey] = useState(null)
 
   const editing = Boolean(quote)
   const canManage = useSessionStore((s) => s.status === 'online' && s.hasPermission('crm.manage') && s.hasPermission('sales.quote.manage'))
@@ -210,10 +215,28 @@ export function QuoteFormModal({
     setDraft((current) => ({ ...current, lines: [...current.lines, emptyQuoteLine()] }))
   }
 
+  const addSection = () => {
+    const section = emptyQuoteSection()
+    setFocusSectionKey(section.key)
+    setDraft((current) => ({ ...current, lines: [...current.lines, section] }))
+  }
+
   const removeLine = (index) => {
     setDraft((current) => {
       const next = current.lines.filter((_, i) => i !== index)
-      return { ...current, lines: next.length ? next : [emptyQuoteLine()] }
+      const hasProduct = next.some((line) => !isQuoteSectionLine(line) && line.itemId)
+      return { ...current, lines: hasProduct ? next : [emptyQuoteLine()] }
+    })
+  }
+
+  const moveLine = (index, direction) => {
+    setDraft((current) => {
+      const target = index + direction
+      if (target < 0 || target >= current.lines.length) return current
+      const lines = [...current.lines]
+      const [row] = lines.splice(index, 1)
+      lines.splice(target, 0, row)
+      return { ...current, lines }
     })
   }
 
@@ -272,16 +295,15 @@ export function QuoteFormModal({
         return
       }
       const items = quoteLinesToItems(draft.lines, catalogById)
-      if (!items.length) {
+      if (countQuoteProductLines(items) < 1) {
         toast.error('Agrega al menos un producto o servicio')
         return
       }
-      const duplicateIds = items.map((item) => item.itemId)
-      if (duplicateIds.length !== new Set(duplicateIds).size) {
-        toast.error('No repitas el mismo producto; ajusta la cantidad en una sola línea')
+      if (draft.lines.some((line) => isQuoteSectionLine(line) && !String(line.title || '').trim())) {
+        toast.error('Escribe el nombre de cada sección o elimínala')
         return
       }
-      for (const item of items) {
+      for (const item of items.filter((row) => row.kind !== 'section')) {
         if (!isProductAvailableAtBranch(catalogById.get(item.itemId), branchId)) {
           toast.error(`«${item.name}» no está disponible en la sucursal seleccionada`)
           return
@@ -424,22 +446,80 @@ export function QuoteFormModal({
           ) : (
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Ítems</p>
+              {!hasQuoteSections(draft.lines) && (
+                <p className="text-xs text-slate-500">
+                  Opcional: agrupa por habitación (Sala, Habitación principal…). El título se verá en la cotización y en la factura.
+                </p>
+              )}
               <div className="space-y-2">
                 {draft.lines.map((line, index) => {
-                  const usedElsewhere = new Set(
-                    draft.lines.map((row, i) => (i === index ? null : row.itemId)).filter(Boolean),
-                  )
+                  const reorderControls = editable && draft.lines.length > 1 ? (
+                    <div className="flex flex-col gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => moveLine(index, -1)}
+                        disabled={index === 0}
+                        className="flex h-5 w-8 items-center justify-center rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30"
+                        aria-label="Subir fila"
+                      >
+                        <ChevronUp className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveLine(index, 1)}
+                        disabled={index === draft.lines.length - 1}
+                        className="flex h-5 w-8 items-center justify-center rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30"
+                        aria-label="Bajar fila"
+                      >
+                        <ChevronDown className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : null
+
+                  if (isQuoteSectionLine(line)) {
+                    return (
+                      <div
+                        key={line.key}
+                        className="grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[auto_1fr_36px]"
+                        data-testid="quote-section-row"
+                      >
+                        {reorderControls}
+                        <Input
+                          value={line.title}
+                          onChange={(e) => setLine(index, { title: e.target.value })}
+                          placeholder="Ej. Sala"
+                          disabled={!editable}
+                          autoFocus={focusSectionKey === line.key}
+                          onFocus={() => {
+                            if (focusSectionKey === line.key) setFocusSectionKey(null)
+                          }}
+                          aria-label="Nombre de la sección"
+                          className="font-medium"
+                        />
+                        {editable && (
+                          <button
+                            type="button"
+                            onClick={() => removeLine(index)}
+                            className="flex h-10 items-center justify-center rounded-lg text-red-500 hover:bg-red-50"
+                            aria-label="Quitar sección"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  }
+
                   const options = [
                     { value: '', label: 'Producto o servicio…' },
-                    ...sellableForBranch
-                      .filter((product) => !usedElsewhere.has(product.id) || product.id === line.itemId)
-                      .map((product) => ({ value: product.id, label: product.name })),
+                    ...sellableForBranch.map((product) => ({ value: product.id, label: product.name })),
                   ]
                   return (
                     <div
-                      key={index}
-                      className="grid grid-cols-1 gap-2 rounded-xl border border-slate-100 p-3 sm:grid-cols-[1fr_72px_100px_36px]"
+                      key={line.key}
+                      className="grid grid-cols-1 gap-2 rounded-xl border border-slate-100 p-3 sm:grid-cols-[auto_1fr_72px_100px_36px]"
                     >
+                      {reorderControls}
                       <Select
                         value={line.itemId}
                         onChange={(value) => {
@@ -467,7 +547,7 @@ export function QuoteFormModal({
                         disabled={!editable}
                         aria-label="Precio"
                       />
-                      {editable && draft.lines.length > 1 && (
+                      {editable && (
                         <button
                           type="button"
                           onClick={() => removeLine(index)}
@@ -482,15 +562,26 @@ export function QuoteFormModal({
                 })}
               </div>
               {editable && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="w-full"
-                  onClick={addLine}
-                  data-testid="quote-add-line"
-                >
-                  <Plus className="h-4 w-4" /> Añadir producto
-                </Button>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full"
+                    onClick={addLine}
+                    data-testid="quote-add-line"
+                  >
+                    <Plus className="h-4 w-4" /> Añadir producto
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full"
+                    onClick={addSection}
+                    data-testid="quote-add-section"
+                  >
+                    <LayoutList className="h-4 w-4" /> Añadir sección
+                  </Button>
+                </div>
               )}
               <p className="text-right font-heading text-lg font-bold text-emerald-600">
                 Subtotal {formatDOP(total)}<span className="block text-xs font-normal text-slate-500">Impuestos y descuentos se calculan al guardar.</span>

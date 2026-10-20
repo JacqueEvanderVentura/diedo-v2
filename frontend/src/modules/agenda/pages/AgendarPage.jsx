@@ -21,11 +21,13 @@ import { useBranchBookableStaff } from '@/modules/rrhh/lib/staff'
 import { formatDOP } from '@/lib/format'
 import { formatLongDate, endTime, formatTime12h } from '../lib/calendar'
 import {
+  ANY_AVAILABLE_EMPLOYEE_OPTION,
   DOC_TYPES,
   normalizeDocumentId,
   formatDocumentDisplay,
   formatDocumentInput,
   getAvailableSlots,
+  getAvailableSlotsForAny,
   isSlotAvailable,
 } from '../lib/selfBooking'
 import { todayKey } from '@/stores/agendaStore'
@@ -123,7 +125,11 @@ export default function AgendarPage() {
   const selectedEmployee = employees.find((e) => e.id === form.employeeId)
   const appointmentDuration = Number(service?.durationMinutes) || 30
 
-  const appointments = useAvailabilityAppointments(isDemo ? form.date : null, isDemo ? form.employeeId : null)
+  const appointments = useAvailabilityAppointments(
+    isDemo ? form.date : null,
+    isDemo ? form.employeeId : null,
+    isDemo ? branch?.id || branchId : null,
+  )
 
   useEffect(() => {
     if (!linkedCustomerId) return
@@ -224,7 +230,7 @@ export default function AgendarPage() {
     let active = true
     setRemoteSlots(null)
     setSlotError('')
-    if (isDemo || !branch?.id || !form.employeeId || !form.date || !form.serviceId) {
+    if (isDemo || !branch?.id || !form.date || !form.serviceId) {
       setSlotLoading(false)
       return
     }
@@ -250,22 +256,41 @@ export default function AgendarPage() {
   useEffect(() => {
     if (!form.employeeId) return
     if (!bookableStaff.some((member) => member.id === form.employeeId)) {
-      set('employeeId', bookableStaff[0]?.id || '')
+      set('employeeId', '')
     }
   }, [bookableStaff, form.employeeId])
 
   const slots = useMemo(() => {
-    if (!form.employeeId || !form.date) return []
+    if (!form.date) return []
     if (!isDemo) return remoteSlots || []
-    return getAvailableSlots({
+    if (form.employeeId) {
+      return getAvailableSlots({
+        date: form.date,
+        employeeId: form.employeeId,
+        duration: appointmentDuration,
+        appointments,
+        employee: selectedEmployee,
+        vacationRequests,
+      })
+    }
+    return getAvailableSlotsForAny({
       date: form.date,
-      employeeId: form.employeeId,
       duration: appointmentDuration,
       appointments,
-      employee: selectedEmployee,
+      employees: bookableStaff,
       vacationRequests,
     })
-  }, [form.employeeId, form.date, appointments, selectedEmployee, vacationRequests, appointmentDuration, isDemo, remoteSlots])
+  }, [
+    form.employeeId,
+    form.date,
+    appointments,
+    selectedEmployee,
+    vacationRequests,
+    appointmentDuration,
+    isDemo,
+    remoteSlots,
+    bookableStaff,
+  ])
 
   const applyProfileToForm = (found, docType) => {
     setForm((current) => applyBranchBookingDefaults({
@@ -409,15 +434,27 @@ export default function AgendarPage() {
     })
   }
 
+  const timeAvailabilityPending = useMemo(() => {
+    if (!form.serviceId || !form.date) return true
+    if (!isDemo && remoteSlots === null && !slotLoading) return true
+    return false
+  }, [form.date, form.serviceId, isDemo, remoteSlots, slotLoading])
+
   const timeSlotsForPicker = useMemo(() => {
-    if (!form.employeeId || !form.date) return []
+    if (timeAvailabilityPending) return []
     if (slotLoading) return []
     return slots
-  }, [form.date, form.employeeId, slotLoading, slots])
+  }, [slotLoading, slots, timeAvailabilityPending])
+
+  const assignedSpecialistName = useMemo(() => {
+    const employeeId = savedAppointment?.employeeId
+    if (!employeeId) return ''
+    const match = bookableStaff.find((member) => member.id === employeeId)
+    return match?.name || ''
+  }, [bookableStaff, savedAppointment?.employeeId])
 
   const continueToConfirm = () => {
     if (!form.serviceId) return toast.error('Selecciona un servicio')
-    if (!form.employeeId) return toast.error('Selecciona un especialista')
     if (!form.time) return toast.error('Selecciona una hora')
     if (!isDemo && (slotLoading || !remoteSlots?.includes(form.time))) {
       return toast.error('Ese horario ya no está disponible. Elige otro cupo.')
@@ -427,16 +464,18 @@ export default function AgendarPage() {
 
   const confirm = async () => {
     if (savingRef.current) return
-    if (!service || !form.time || !form.employeeId) return toast.error('Completa la cita')
-    const stillAvailable = isSlotAvailable({
-      date: form.date,
-      employeeId: form.employeeId,
-      duration: appointmentDuration,
-      time: form.time,
-      appointments,
-      employee: selectedEmployee,
-      vacationRequests,
-    })
+    if (!service || !form.time) return toast.error('Completa la cita')
+    const stillAvailable = form.employeeId
+      ? isSlotAvailable({
+        date: form.date,
+        employeeId: form.employeeId,
+        duration: appointmentDuration,
+        time: form.time,
+        appointments,
+        employee: selectedEmployee,
+        vacationRequests,
+      })
+      : slots.includes(form.time)
     if (isDemo && !stillAvailable) return toast.error('Ese horario ya no está disponible. Elige otro cupo.')
     if (!isDemo && (slotLoading || !remoteSlots?.includes(form.time))) {
       return toast.error('Ese horario ya no está disponible. Elige otro cupo.')
@@ -532,6 +571,15 @@ export default function AgendarPage() {
           <p className="mt-2 text-slate-600">
             {service?.name} · {formatLongDate(form.date)} · {form.time}
           </p>
+          {assignedSpecialistName ? (
+            <p className="mt-1 text-sm text-slate-600">
+              Especialista: <strong>{assignedSpecialistName}</strong>
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-slate-600">
+              Especialista y cabina: <strong>pendientes de asignación</strong>
+            </p>
+          )}
           <p className="mt-4 text-sm text-slate-500">
             {isDemo ? 'Modo demo: no se enviaron correos reales.' : emailResultMessage(savedAppointment?.notification)}
           </p>
@@ -730,13 +778,14 @@ export default function AgendarPage() {
                   <TimePicker
                     value={form.time}
                     onChange={(time) => set('time', time)}
+                    pending={timeAvailabilityPending}
                     slots={timeSlotsForPicker}
                     emptyMessage={
                       slotLoading
                         ? 'Consultando horarios…'
-                        : !form.employeeId
-                          ? 'Selecciona un especialista.'
-                          : 'No hay cupos según el horario del especialista.'
+                        : form.employeeId
+                          ? 'No hay cupos según el horario del especialista.'
+                          : 'No hay cupos disponibles con el personal de la sucursal.'
                     }
                     testId="self-booking-time"
                   />
@@ -763,11 +812,17 @@ export default function AgendarPage() {
                   }}
                   data-testid="self-specialist"
                   placeholder="Seleccionar especialista"
-                  options={bookableStaff.map((e) => ({ value: e.id, label: e.name.split(' ').slice(0, 2).join(' ') }))}
+                  options={[
+                    ANY_AVAILABLE_EMPLOYEE_OPTION,
+                    ...bookableStaff.map((e) => ({
+                      value: e.id,
+                      label: e.name.split(' ').slice(0, 2).join(' '),
+                    })),
+                  ]}
                 />
               </div>
             </div>
-            <Button className="w-full" onClick={continueToConfirm} disabled={!form.time || !form.employeeId} data-testid="self-booking-continue">
+            <Button className="w-full" onClick={continueToConfirm} disabled={!form.time} data-testid="self-booking-continue">
               Continuar <ChevronRight className="h-4 w-4" />
             </Button>
             <Button variant="secondary" className="w-full" onClick={goBack}>
@@ -790,6 +845,12 @@ export default function AgendarPage() {
                 {formatTime12h(form.time)} – {formatTime12h(endTime(form.time, appointmentDuration))}
               </p>
               <p><span className="text-slate-400">Sucursal:</span> {branch?.name}</p>
+              <p>
+                <span className="text-slate-400">Especialista:</span>{' '}
+                {form.employeeId
+                  ? (bookableStaff.find((member) => member.id === form.employeeId)?.name || '—')
+                  : 'Pendiente de asignación por el equipo'}
+              </p>
             </div>
             <Button className="w-full" onClick={confirm} disabled={saving || (!isDemo && (slotLoading || !remoteSlots?.includes(form.time)))} data-testid="self-confirm">
               {saving ? 'Guardando cita…' : 'Confirmar cita'}

@@ -1172,7 +1172,7 @@ class CrmService:
             raise ConflictError("La cotización ya fue facturada.", "quoteId")
         if record.quote.status != "open" and not replaying:
             raise ConflictError("La cotización ya fue procesada.", "quoteId")
-        if not record.lines:
+        if not any(line.line_kind == "item" for line in record.lines):
             raise InvalidOperationError("La cotización debe incluir al menos un ítem.", "lines")
         if not replaying:
             self._require_version(record.quote.version, expected_version)
@@ -1188,14 +1188,19 @@ class CrmService:
             raise InvalidOperationError(
                 "La cotización debe tener un cliente antes de facturar.", "customerId"
             )
-        lines = [
-            {
-                "item_id": line.item_id,
-                "quantity": line.quantity,
-                "unit_price": line.unit_price,
-            }
-            for line in record.lines
-        ]
+        lines: list[dict[str, Any]] = []
+        for line in record.lines:
+            if line.line_kind == "section":
+                lines.append({"kind": "section", "title": line.item_name})
+                continue
+            lines.append(
+                {
+                    "kind": "item",
+                    "item_id": line.item_id,
+                    "quantity": line.quantity,
+                    "unit_price": line.unit_price,
+                }
+            )
         checkout_values: dict[str, Any] = {
             "branch_id": record.quote.branch_id,
             "customer_id": record.quote.customer_id,

@@ -372,9 +372,25 @@ def _register_list_response(record: CashRegisterRecord) -> RegisterListItemRespo
 
 
 def _quote_line_response(line: Any) -> QuoteLineResponse:
+    kind = getattr(line, "line_kind", "item") or "item"
+    if kind == "section":
+        return QuoteLineResponse(
+            id=line.id,
+            kind="section",
+            title=line.item_name,
+            item=None,
+            quantity=line.quantity,
+            unit_price=line.unit_price,
+            subtotal=Decimal("0"),
+            discount_amount=line.discount_amount,
+            tax_rate=line.tax_rate,
+            tax_amount=line.tax_amount,
+            total=line.line_total,
+        )
     subtotal = money(line.quantity * line.unit_price)
     return QuoteLineResponse(
         id=line.id,
+        kind="item",
         item=_item_snapshot_response(line.item_id, line.item_name, line.item_sku),
         quantity=line.quantity,
         unit_price=line.unit_price,
@@ -448,8 +464,24 @@ def _quote_detail_response(record: QuoteRecord) -> QuoteDetailResponse:
 
 
 def _sale_line_response(line: Any) -> SaleLineResponse:
+    kind = getattr(line, "line_kind", "item") or "item"
+    if kind == "section":
+        return SaleLineResponse(
+            id=line.id,
+            kind="section",
+            title=line.item_name,
+            item=None,
+            quantity=line.quantity,
+            unit_price=line.unit_price,
+            subtotal=Decimal("0"),
+            discount_amount=line.discount_amount,
+            tax_rate=line.tax_rate,
+            tax_amount=line.tax_amount,
+            total=line.line_total,
+        )
     return SaleLineResponse(
         id=line.id,
+        kind="item",
         item=_item_snapshot_response(line.item_id, line.item_name, line.item_sku),
         quantity=line.quantity,
         unit_price=line.unit_price,

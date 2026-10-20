@@ -16,9 +16,9 @@ export function isQuoteInvoiced(quote) {
 export function canEmitQuoteInvoice(quote) {
   if (!quote || quote.status !== 'aceptada') return false
   if (isQuoteInvoiced(quote)) return false
-  const lineCount = quote.items?.length || 0
+  const productCount = (quote.items || []).filter((item) => item.kind !== 'section').length
   const total = Number(quote.total) || 0
-  return lineCount > 0 || total > 0
+  return productCount > 0 || total > 0
 }
 
 export function listCheckoutPaymentMethods(methods) {

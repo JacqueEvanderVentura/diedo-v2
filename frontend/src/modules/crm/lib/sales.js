@@ -9,16 +9,32 @@ import { ensureWorkspaceBillingSettings } from '@/modules/configuracion/lib/work
 import { getBalance, getPaidAmount } from '@/modules/pos/lib/receivables'
 
 function normalizeLineItems(items = []) {
-  return items.map((item) => ({
-    ...item,
-    qty: item.qty || 1,
-    price: Number(item.price) || 0,
-    listPrice: Number(item.listPrice ?? item.price) || 0,
-  }))
+  return items.map((item) => {
+    if (item.kind === 'section') {
+      return {
+        ...item,
+        kind: 'section',
+        name: item.name || item.title || 'Sección',
+        qty: 0,
+        price: 0,
+        listPrice: 0,
+      }
+    }
+    return {
+      ...item,
+      kind: item.kind || 'item',
+      qty: item.qty || 1,
+      price: Number(item.price) || 0,
+      listPrice: Number(item.listPrice ?? item.price) || 0,
+    }
+  })
 }
 
 function sumLines(items) {
-  return items.reduce((total, item) => total + item.price * item.qty, 0)
+  return items.reduce((total, item) => {
+    if (item.kind === 'section') return total
+    return total + item.price * item.qty
+  }, 0)
 }
 
 function resolveTax(subtotal, discountAmt, taxPct, taxAmt, total) {

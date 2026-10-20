@@ -149,7 +149,7 @@ describe('flujo conectado del store CRM', () => {
       leadId,
       customerId,
       branchId,
-      lines: [{ itemId: 'item-id', quantity: 1, unitPrice: 25000 }],
+      lines: [{ kind: 'item', itemId: 'item-id', quantity: 1, unitPrice: 25000 }],
     }))
     expect(useCrmStore.getState().quotes[0]).toMatchObject({ id: quoteId, leadId, total: 25000 })
   })
@@ -199,8 +199,8 @@ describe('flujo conectado del store CRM', () => {
       version: 2,
       leadId: linkedLeadId,
       lines: [
-        { itemId: 'item-a', quantity: 1, unitPrice: 1000 },
-        { itemId: 'item-b', quantity: 2, unitPrice: 1000 },
+        { kind: 'item', itemId: 'item-a', quantity: 1, unitPrice: 1000 },
+        { kind: 'item', itemId: 'item-b', quantity: 2, unitPrice: 1000 },
       ],
     })
     expect(useCrmStore.getState().quotes[0].leadId).toBe(linkedLeadId)

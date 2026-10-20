@@ -119,21 +119,59 @@ it('prefills the last service and specialist after identify', async () => {
 })
 
 it('discards an old slot response after the date changes', async () => {
-  let oldResponse
-  publicBookingApi.listSlots.mockImplementationOnce(() => new Promise((resolve) => { oldResponse = resolve }))
+  let staleResponse
+  publicBookingApi.listSlots
+    .mockResolvedValueOnce({ slots: ['12:00'] })
+    .mockResolvedValueOnce({ slots: ['12:00'] })
+    .mockImplementationOnce(() => new Promise((resolve) => { staleResponse = resolve }))
     .mockResolvedValue({ slots: ['13:00'] })
   await selectAppointment()
-  await waitFor(() => expect(publicBookingApi.listSlots).toHaveBeenCalledTimes(1))
-  fireEvent.change(screen.getByTestId('self-booking-date'), { target: { value: '2027-02-15' } })
   await waitFor(() => expect(publicBookingApi.listSlots).toHaveBeenCalledTimes(2))
+  fireEvent.change(screen.getByTestId('self-booking-date'), { target: { value: '2027-02-15' } })
+  fireEvent.change(screen.getByTestId('self-booking-date'), { target: { value: '2027-02-16' } })
+  await waitFor(() => expect(publicBookingApi.listSlots).toHaveBeenCalledTimes(4))
   const timeSelect = await screen.findByTestId('self-booking-time-select')
   fireEvent.click(timeSelect)
   await screen.findByTestId('self-booking-time-slot-13:00')
   fireEvent.click(timeSelect)
-  await act(async () => oldResponse({ slots: ['10:00'] }))
+  await act(async () => staleResponse({ slots: ['10:00'] }))
   fireEvent.click(timeSelect)
   await screen.findByTestId('self-booking-time-slot-13:00')
   expect(screen.queryByTestId('self-booking-time-slot-10:00')).toBeNull()
+})
+
+it('allows booking with cualquiera disponible without sending employeeId', async () => {
+  publicBookingApi.listSlots.mockResolvedValue({ slots: ['10:00'] })
+  publicBookingApi.book.mockResolvedValue({
+    appointment: {
+      id: 'appointment',
+      managementToken: 'token',
+      notification: { status: 'disabled' },
+    },
+  })
+  render(<MemoryRouter initialEntries={['/agendar?branch=branch&intent=book']}><AgendarPage /></MemoryRouter>)
+  await screen.findByText('Elige tu sucursal')
+  fireEvent.click(screen.getByTestId('branch-confirm'))
+  await screen.findByText(/Ingresa tu documento/)
+  fireEvent.change(screen.getByTestId('self-doc-lookup'), { target: { value: '00112345678' } })
+  fireEvent.click(screen.getByText('Regístrate aquí'))
+  await screen.findByTestId('self-name')
+  fireEvent.change(screen.getByTestId('self-name'), { target: { value: 'Cliente prueba' } })
+  fireEvent.click(screen.getByTestId('pref-invite-invoice'))
+  fireEvent.change(screen.getByTestId('self-email'), { target: { value: 'client@example.com' } })
+  fireEvent.click(screen.getByTestId('self-save-profile'))
+  await screen.findByTestId('self-service')
+  fireEvent.change(screen.getByTestId('self-service'), { target: { value: 'service' } })
+  expect(screen.getByTestId('self-specialist').value).toBe('')
+  await waitFor(() => expect(publicBookingApi.listSlots).toHaveBeenCalled())
+  fireEvent.click(screen.getByTestId('self-booking-time-select'))
+  fireEvent.click(await screen.findByTestId('self-booking-time-slot-10:00'))
+  fireEvent.click(screen.getByTestId('self-booking-continue'))
+  expect(screen.getByText(/Pendiente de asignación por el equipo/)).toBeTruthy()
+  fireEvent.click(screen.getByTestId('self-confirm'))
+  await screen.findByText('¡Cita confirmada!')
+  expect(publicBookingApi.book.mock.calls[0][1].employeeId).toBeUndefined()
+  expect(screen.getByText(/pendientes de asignación/i)).toBeTruthy()
 })
 
 it('keeps one idempotency key when a reservation response is lost and prevents double clicks', async () => {

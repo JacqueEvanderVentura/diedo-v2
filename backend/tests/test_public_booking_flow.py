@@ -312,6 +312,72 @@ def test_schedule_timezone_leave_and_expired_email_retry(client, booking_setup, 
 
 
 @pytest.mark.integration
+def test_public_booking_any_available_specialist(client, booking_setup):
+    headers, _, branch, employee, service = booking_setup
+    base = f"/api/v1/public/booking/branches/{branch}"
+    body = payload_for(employee, service)
+    _set_service_duration(client, headers, service, 30)
+    body.pop("employeeId", None)
+    merged_slots = client.get(
+        f"{base}/slots",
+        params={"date": body["date"], "serviceId": service},
+    ).json()["slots"]
+    employee_slots = client.get(
+        f"{base}/slots",
+        params=_slot_params({**body, "employeeId": employee}, employee, service),
+    ).json()["slots"]
+    assert merged_slots
+    assert set(employee_slots).issubset(set(merged_slots))
+    pick = "10:00" if "10:00" in merged_slots else merged_slots[0]
+    booked = client.post(
+        f"{base}/appointments",
+        json={**body, "time": pick},
+        headers={"Idempotency-Key": str(uuid7())},
+    )
+    assert booked.status_code == 201, booked.text
+    appointment = booked.json()["appointment"]
+    assert not appointment.get("employeeId")
+    assert not appointment.get("resourceId")
+    assert appointment["time"] == pick
+
+
+@pytest.mark.integration
+def test_staff_any_available_leaves_unassigned(client, booking_setup):
+    headers, _, branch, employee, service = booking_setup
+    body = payload_for(employee, service)
+    resources = client.get(
+        "/api/v1/appointment-resources", headers=headers, params={"branchId": branch}
+    ).json()["items"]
+    resource_id = resources[0]["id"]
+    created = client.post(
+        "/api/v1/appointments",
+        headers={**headers, "Idempotency-Key": str(uuid7())},
+        json={
+            "branchId": branch,
+            "resourceId": resource_id,
+            "employeeId": None,
+            "anyAvailable": True,
+            "serviceId": service,
+            "date": body["date"],
+            "time": "11:30",
+            "duration": 45,
+            "customerName": "Cliente cualquiera",
+            "serviceName": "Servicio test",
+            "price": "1250.00",
+            "status": "confirmed",
+            "pendingPayment": False,
+            "pendingAmount": "0.00",
+            "recurrence": "none",
+            "repeatCount": 1,
+        },
+    )
+    assert created.status_code == 201, created.text
+    item = created.json()["items"][0]
+    assert item.get("employee") is None
+    assert item.get("resource") is None
+
+
+@pytest.mark.integration
 def test_booking_price_idempotency_and_token_management(client, booking_setup):
     headers, me, branch, employee, service = booking_setup
     base = f"/api/v1/public/booking/branches/{branch}"

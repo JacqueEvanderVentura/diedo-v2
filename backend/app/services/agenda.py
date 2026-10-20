@@ -436,8 +436,12 @@ class AgendaService:
                 )
             return existing
 
-        resource_id = cast(UUID, values["resource_id"])
+        any_available = cast(bool, values.get("any_available", False))
+        resource_id = cast(UUID | None, values.get("resource_id"))
         employee_id = cast(UUID | None, values.get("employee_id"))
+        if any_available:
+            employee_id = None
+            resource_id = None
         customer_id = cast(UUID | None, values.get("customer_id"))
         service_id = cast(UUID | None, values.get("service_id"))
         self._validate_references(
@@ -448,12 +452,13 @@ class AgendaService:
             customer_id=customer_id,
             service_id=service_id,
         )
-        self._require_resource_use(
-            workspace_id=grant.workspace_id,
-            branch_id=branch_id,
-            resource_id=resource_id,
-            platform_user_id=principal.platform_user_id,
-        )
+        if resource_id is not None:
+            self._require_resource_use(
+                workspace_id=grant.workspace_id,
+                branch_id=branch_id,
+                resource_id=resource_id,
+                platform_user_id=principal.platform_user_id,
+            )
         self._validate_money(values)
 
         recurrence = cast(str, values["recurrence"])
@@ -476,9 +481,10 @@ class AgendaService:
                     duration_minutes=cast(int, values["duration"]),
                     timezone=branch.timezone,
                 )
+                occurrence_employee_id = employee_id
                 self._validate_employee_availability(
                     workspace_id=grant.workspace_id,
-                    employee_id=employee_id,
+                    employee_id=occurrence_employee_id,
                     scheduled_date=scheduled_date,
                     starts_at=starts_at,
                     ends_at=ends_at,
@@ -487,7 +493,7 @@ class AgendaService:
                     workspace_id=grant.workspace_id,
                     branch_id=branch_id,
                     resource_id=resource_id,
-                    employee_id=employee_id,
+                    employee_id=occurrence_employee_id,
                     starts_at=starts_at,
                     ends_at=ends_at,
                 )
@@ -501,7 +507,7 @@ class AgendaService:
                     branch_id=branch_id,
                     resource_id=resource_id,
                     customer_id=customer_id,
-                    employee_id=employee_id,
+                    employee_id=occurrence_employee_id,
                     service_id=service_id,
                     scheduled_date=scheduled_date,
                     scheduled_time=cast(time, values["time"]),
@@ -641,12 +647,18 @@ class AgendaService:
         if "notes" in changes:
             self._validate_notes(changes["notes"], existing=appointment.notes)
 
+        any_available = changes.pop("any_available", None)
+        if any_available is True and changes.get("employee_id") is not None:
+            raise InvalidOperationError(
+                "No indiques un empleado cuando eliges cualquiera disponible.", "employeeId"
+            )
+
         branch_id = cast(UUID, changes.get("branch_id", appointment.branch_id))
         self._require_branch_access(grant, branch_id)
         branch = self._repository.branch(grant.workspace_id, branch_id)
         if branch is None:
             raise ResourceNotFoundError("La sucursal no existe o no está activa.", "branchId")
-        resource_id = cast(UUID, changes.get("resource_id", appointment.resource_id))
+        resource_id = cast(UUID | None, changes.get("resource_id", appointment.resource_id))
         employee_id = cast(UUID | None, changes.get("employee_id", appointment.employee_id))
         customer_id = cast(UUID | None, changes.get("customer_id", appointment.customer_id))
         service_id = cast(UUID | None, changes.get("service_id", appointment.service_id))
@@ -665,7 +677,7 @@ class AgendaService:
             or "time" in changes
             or "duration" in changes
         )
-        if schedule_changed or resource_id != appointment.resource_id:
+        if resource_id is not None and (schedule_changed or resource_id != appointment.resource_id):
             self._require_resource_use(
                 workspace_id=grant.workspace_id,
                 branch_id=branch_id,
@@ -689,6 +701,9 @@ class AgendaService:
             duration_minutes=duration,
             timezone=branch.timezone,
         )
+        if any_available is True:
+            employee_id = None
+            resource_id = None
         status = cast(str, changes.get("status", appointment.status))
         reminder_schedule_changed = (
             scheduled_date != appointment.scheduled_date
@@ -954,12 +969,15 @@ class AgendaService:
         *,
         workspace_id: UUID,
         branch_id: UUID,
-        resource_id: UUID,
+        resource_id: UUID | None,
         employee_id: UUID | None,
         customer_id: UUID | None,
         service_id: UUID | None,
     ) -> None:
-        if self._repository.resource(workspace_id, branch_id, resource_id) is None:
+        if (
+            resource_id is not None
+            and self._repository.resource(workspace_id, branch_id, resource_id) is None
+        ):
             raise ResourceNotFoundError(
                 "La cabina o recurso no pertenece a la sucursal.", "resourceId"
             )
@@ -1232,9 +1250,11 @@ class AgendaService:
         *,
         workspace_id: UUID,
         branch_id: UUID,
-        resource_id: UUID,
+        resource_id: UUID | None,
         platform_user_id: UUID,
     ) -> bool:
+        if resource_id is None:
+            return True
         resources_with_acl = self._repository.resource_ids_with_acl_rows(workspace_id, branch_id)
         acl_rows = self._repository.acl_rows_for_branch(workspace_id, branch_id)
         acl_by_resource: dict[UUID, dict[UUID, str]] = {}
@@ -1255,9 +1275,11 @@ class AgendaService:
         *,
         workspace_id: UUID,
         branch_id: UUID,
-        resource_id: UUID,
+        resource_id: UUID | None,
         platform_user_id: UUID,
     ) -> None:
+        if resource_id is None:
+            return
         resources_with_acl = self._repository.resource_ids_with_acl_rows(workspace_id, branch_id)
         acl_rows = self._repository.acl_rows_for_branch(workspace_id, branch_id)
         acl_by_resource: dict[UUID, dict[UUID, str]] = {}

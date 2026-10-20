@@ -100,33 +100,44 @@ export function SaleEditModal({ open, onClose, sale, onSaved }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {form.items.map((item, index) => (
-                <tr key={`${item.id}-${index}`}>
-                  <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
-                  <td className="px-4 py-3 text-center">
-                    <input
-                      type="number"
-                      min="0.001"
-                      step="0.001"
-                      value={item.qty}
-                      onChange={(event) => updateLine(index, { qty: Number(event.target.value) })}
-                      className="w-20 rounded-lg border-0 bg-white px-2 py-1 text-center text-sm ring-1 ring-inset ring-slate-200"
-                      data-testid={`sale-edit-qty-${index}`}
-                    />
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={item.price}
-                      onChange={(event) => updateLine(index, { price: Number(event.target.value) })}
-                      className="w-28 rounded-lg border-0 bg-white px-2 py-1 text-right text-sm ring-1 ring-inset ring-slate-200"
-                      data-testid={`sale-edit-price-${index}`}
-                    />
-                  </td>
-                </tr>
-              ))}
+              {form.items.map((item, index) => {
+                if (item.kind === 'section') {
+                  return (
+                    <tr key={`${item.id}-${index}`} className="bg-slate-50">
+                      <td colSpan={3} className="px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-700">
+                        {item.title || item.name}
+                      </td>
+                    </tr>
+                  )
+                }
+                return (
+                  <tr key={`${item.id}-${index}`}>
+                    <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
+                    <td className="px-4 py-3 text-center">
+                      <input
+                        type="number"
+                        min="0.001"
+                        step="0.001"
+                        value={item.qty}
+                        onChange={(event) => updateLine(index, { qty: Number(event.target.value) })}
+                        className="w-20 rounded-lg border-0 bg-white px-2 py-1 text-center text-sm ring-1 ring-inset ring-slate-200"
+                        data-testid={`sale-edit-qty-${index}`}
+                      />
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={item.price}
+                        onChange={(event) => updateLine(index, { price: Number(event.target.value) })}
+                        className="w-28 rounded-lg border-0 bg-white px-2 py-1 text-right text-sm ring-1 ring-inset ring-slate-200"
+                        data-testid={`sale-edit-price-${index}`}
+                      />
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

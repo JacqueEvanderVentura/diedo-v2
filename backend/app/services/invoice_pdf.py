@@ -67,6 +67,7 @@ def sale_to_invoice_request(
     balance = max(Decimal("0"), total - paid)
     items = [
         InvoiceLineItemRequest(
+            kind="section" if line.line_kind == "section" else "item",
             name=line.item_name,
             qty=line.quantity,
             price=line.unit_price,
@@ -137,6 +138,7 @@ def quote_to_invoice_request(record: QuoteRecord, workspace: Workspace) -> Invoi
     total = quote.total
     items = [
         InvoiceLineItemRequest(
+            kind="section" if line.line_kind == "section" else "item",
             name=line.item_name,
             qty=line.quantity,
             price=line.unit_price,

@@ -507,7 +507,7 @@ export function CloseLeadInvoiceModal({
 
                     <UserCheck className="h-3.5 w-3.5" />
 
-                    {convertLeadBusy ? 'Convirtiendo…' : 'Convertir lead a cliente'}
+                    {convertLeadBusy ? 'Preparando…' : 'Crear cliente para facturar'}
 
                   </Button>
 

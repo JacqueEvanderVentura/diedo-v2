@@ -8,9 +8,13 @@ from app.schemas.common import ApiModel
 InvoiceDocumentKind = Literal["sale", "quote", "expense"]
 
 
+InvoiceDocumentLineKind = Literal["item", "section"]
+
+
 class InvoiceLineItemRequest(ApiModel):
+    kind: InvoiceDocumentLineKind = "item"
     name: str = Field(min_length=1, max_length=160)
-    qty: Decimal = Field(gt=0)
+    qty: Decimal = Field(ge=0)
     price: Decimal = Field(ge=0)
     list_price: Decimal | None = Field(default=None, ge=0)
     sku: str | None = Field(default=None, max_length=64)

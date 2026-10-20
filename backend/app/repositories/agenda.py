@@ -45,7 +45,7 @@ class AppointmentHistoryRecord:
 @dataclass(frozen=True)
 class AppointmentRecord:
     appointment: Appointment
-    resource: AppointmentResource
+    resource: AppointmentResource | None
     employee_name: str | None
     created_by_name: str
     updated_by_name: str
@@ -525,17 +525,27 @@ class AgendaRepository:
         *,
         workspace_id: UUID,
         branch_id: UUID,
-        resource_id: UUID,
+        resource_id: UUID | None,
         employee_id: UUID | None,
         starts_at: datetime,
         ends_at: datetime,
         exclude_appointment_id: UUID | None = None,
     ) -> Appointment | None:
-        resources: list[ColumnElement[bool]] = [
-            (Appointment.branch_id == branch_id) & (Appointment.resource_id == resource_id)
-        ]
+        resources: list[ColumnElement[bool]] = []
+        if resource_id is not None:
+            resources.append(
+                (Appointment.branch_id == branch_id) & (Appointment.resource_id == resource_id)
+            )
+        elif employee_id is None:
+            resources.append(
+                (Appointment.branch_id == branch_id)
+                & Appointment.resource_id.is_(None)
+                & Appointment.employee_id.is_(None)
+            )
         if employee_id is not None:
             resources.append(Appointment.employee_id == employee_id)
+        if not resources:
+            return None
         statement = select(Appointment).where(
             Appointment.workspace_id == workspace_id,
             Appointment.record_status == "active",
@@ -605,7 +615,7 @@ class AgendaRepository:
     @staticmethod
     def _base_record_statement(
         created_user: Any, updated_user: Any
-    ) -> Select[tuple[Appointment, AppointmentResource, str | None, str, str]]:
+    ) -> Select[tuple[Appointment, AppointmentResource | None, str | None, str, str]]:
         employee_name = func.concat(Employee.first_name, " ", Employee.last_name)
         return (
             select(
@@ -615,7 +625,7 @@ class AgendaRepository:
                 created_user.display_name,
                 updated_user.display_name,
             )
-            .join(
+            .outerjoin(
                 AppointmentResource,
                 (AppointmentResource.workspace_id == Appointment.workspace_id)
                 & (AppointmentResource.branch_id == Appointment.branch_id)
@@ -632,7 +642,7 @@ class AgendaRepository:
 
     def _record_statement(
         self,
-    ) -> Select[tuple[Appointment, AppointmentResource, str | None, str, str]]:
+    ) -> Select[tuple[Appointment, AppointmentResource | None, str | None, str, str]]:
         created_user = aliased(PlatformUser)
         updated_user = aliased(PlatformUser)
         return self._base_record_statement(created_user, updated_user)

@@ -1,3 +1,5 @@
+import { normalizePartyName } from './leadCustomer'
+
 export function quotePartyLabel(party, { leads = [], customers = [] } = {}) {
   if (!party?.id) return ''
   if (party.type === 'customer') {
@@ -11,18 +13,6 @@ export function quotePartyLabel(party, { leads = [], customers = [] } = {}) {
 export function filterQuoteParties({ query, leads, customers, branchId }) {
   const q = query.trim().toLowerCase()
   const matchText = (text) => !q || String(text || '').toLowerCase().includes(q)
-
-  const leadRows = (leads || [])
-    .filter((lead) => !['perdido'].includes(lead.status))
-    .filter((lead) => !branchId || lead.branchId === branchId)
-    .filter((lead) => matchText(lead.name) || matchText(lead.company) || matchText(lead.phone))
-    .map((lead) => ({
-      type: 'lead',
-      id: lead.id,
-      title: (lead.company || lead.name || 'Lead sin nombre').trim(),
-      subtitle: lead.phone || lead.email || '',
-      badge: 'Lead',
-    }))
 
   const customerRows = (customers || [])
     .filter((customer) => !customer.isDefault)
@@ -38,7 +28,30 @@ export function filterQuoteParties({ query, leads, customers, branchId }) {
       title: customer.name,
       subtitle: customer.phone || customer.email || '',
       badge: 'Cliente',
+      partyKey: normalizePartyName(customer.name),
     }))
 
-  return [...leadRows, ...customerRows].sort((a, b) => a.title.localeCompare(b.title, 'es'))
+  const customerKeys = new Set(customerRows.map((row) => row.partyKey).filter(Boolean))
+
+  const leadRows = (leads || [])
+    .filter((lead) => !['perdido', 'cerrado'].includes(lead.status))
+    .filter((lead) => !lead.customerId)
+    .filter((lead) => !branchId || lead.branchId === branchId)
+    .filter((lead) => matchText(lead.name) || matchText(lead.company) || matchText(lead.phone))
+    .map((lead) => ({
+      type: 'lead',
+      id: lead.id,
+      title: (lead.company || lead.name || 'Lead sin nombre').trim(),
+      subtitle: lead.phone || lead.email || '',
+      badge: 'Lead',
+      partyKey: normalizePartyName(lead.company || lead.name),
+    }))
+    .filter((lead) => {
+      if (!lead.partyKey) return true
+      return !customerKeys.has(lead.partyKey)
+    })
+
+  return [...customerRows, ...leadRows]
+    .map(({ partyKey: _ignored, ...row }) => row)
+    .sort((a, b) => a.title.localeCompare(b.title, 'es'))
 }

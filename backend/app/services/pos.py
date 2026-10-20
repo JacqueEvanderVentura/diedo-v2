@@ -150,6 +150,27 @@ class _PricedCatalogLine:
 
 
 @dataclass(frozen=True)
+class _SectionLine:
+    title: str
+
+
+DocumentLinePayload = _PricedCatalogLine | _SectionLine
+
+
+def _raw_line_kind(raw: dict[str, Any]) -> str:
+    kind = cast(str | None, raw.get("kind") or raw.get("line_kind"))
+    if kind in ("item", "section"):
+        return kind
+    if raw.get("item_id") is None and raw.get("title"):
+        return "section"
+    return "item"
+
+
+def _catalog_lines_only(lines: Sequence[DocumentLinePayload]) -> tuple[_PricedCatalogLine, ...]:
+    return tuple(line for line in lines if isinstance(line, _PricedCatalogLine))
+
+
+@dataclass(frozen=True)
 class _ResolvedCheckoutTender:
     position: int
     method: PaymentMethod
@@ -918,7 +939,7 @@ class PosService:
             "amount" if discount_type == "fixed" else "pct"
         ) != quote.discount_mode or money(discount_value) != quote.discount_value
         reprice = branch_changed or "lines" in changes or discount_changed
-        priced_lines: tuple[_PricedCatalogLine, ...] | None = None
+        priced_lines: tuple[DocumentLinePayload, ...] | None = None
         if reprice:
             current = self._repository.quote_record(quote)
             raw_lines = cast(
@@ -926,16 +947,24 @@ class PosService:
                 changes.get(
                     "lines",
                     [
-                        {
-                            "item_id": line.item_id,
-                            "quantity": line.quantity,
-                            "unit_price": line.unit_price,
-                        }
+                        (
+                            {"kind": "section", "title": line.item_name}
+                            if line.line_kind == "section"
+                            else {
+                                "kind": "item",
+                                "item_id": line.item_id,
+                                "quantity": line.quantity,
+                                "unit_price": line.unit_price,
+                            }
+                        )
                         for line in current.lines
                     ],
                 ),
             )
-            if any(line.get("item_id") is None for line in raw_lines):
+            if any(
+                line.get("item_id") is None and _raw_line_kind(line) != "section"
+                for line in raw_lines
+            ):
                 raise InvalidOperationError(
                     "La cotización contiene una línea histórica que ya no puede editarse.",
                     "lines",
@@ -1373,7 +1402,7 @@ class PosService:
                 "Selecciona un cliente registrado para crear una cuenta por cobrar.",
                 "customerId",
             )
-        priced_lines: tuple[_PricedCatalogLine, ...] = ()
+        priced_lines: tuple[DocumentLinePayload, ...] = ()
         if snapshot is None:
             priced, priced_lines = self._price_lines(
                 principal=principal,
@@ -1399,7 +1428,8 @@ class PosService:
                     )
             priced_lines = snapshot.extra_stock_lines
         if customer is None and any(
-            line.catalog.item.item_type == "membership" for line in priced_lines
+            line.catalog.item.item_type == "membership"
+            for line in _catalog_lines_only(priced_lines)
         ):
             raise InvalidOperationError(
                 "Selecciona un cliente registrado para vender una membresía.",
@@ -1431,7 +1461,7 @@ class PosService:
             workspace_id=grant.workspace_id,
             branch_id=branch_id,
             sale_number=sale_number,
-            lines=priced_lines,
+            lines=_catalog_lines_only(priced_lines),
             idempotency_key=idempotency_key,
             request_fingerprint=fingerprint,
         )
@@ -2687,7 +2717,8 @@ class PosService:
             discount_value=cast(Decimal | None, values.get("discount_value")),
         )
         if customer is None and any(
-            line.catalog.item.item_type == "membership" for line in priced_lines
+            line.catalog.item.item_type == "membership"
+            for line in _catalog_lines_only(priced_lines)
         ):
             raise InvalidOperationError(
                 "Selecciona un cliente registrado para vender una membresía.",
@@ -2726,7 +2757,7 @@ class PosService:
             workspace_id=grant.workspace_id,
             branch_id=branch_id,
             sale_number=sale.sale_number,
-            lines=priced_lines,
+            lines=_catalog_lines_only(priced_lines),
             idempotency_key=idempotency_key,
             request_fingerprint=fingerprint,
         )
@@ -3331,9 +3362,15 @@ class PosService:
         raw_lines: list[dict[str, Any]],
         discount_type: str | None,
         discount_value: Decimal | None,
-    ) -> tuple[PricedDocument, tuple[_PricedCatalogLine, ...]]:
+    ) -> tuple[PricedDocument, tuple[DocumentLinePayload, ...]]:
         self._require_active_branch(grant.workspace_id, branch_id)
-        item_ids = {cast(UUID, line["item_id"]) for line in raw_lines}
+        item_raws = [raw for raw in raw_lines if _raw_line_kind(raw) == "item"]
+        if not item_raws:
+            raise InvalidOperationError(
+                "Agrega al menos un producto o servicio.",
+                "lines",
+            )
+        item_ids = {cast(UUID, line["item_id"]) for line in item_raws}
         records = self._repository.catalog(
             workspace_id=grant.workspace_id,
             branch_id=branch_id,
@@ -3347,7 +3384,7 @@ class PosService:
         pricing_inputs: list[PricingInput] = []
         selected_prices: list[tuple[PosCatalogRecord, Decimal, Decimal]] = []
         override_requested = False
-        for raw in raw_lines:
+        for raw in item_raws:
             record = by_id[cast(UUID, raw["item_id"])]
             if record.profile.sale_price is None:
                 raise InvalidOperationError(
@@ -3377,7 +3414,7 @@ class PosService:
             discount_type=normalized_type,
             discount_value=normalized_discount,
         )
-        lines = tuple(
+        priced_items = iter(
             _PricedCatalogLine(
                 catalog=record,
                 quantity=priced_line.quantity,
@@ -3392,7 +3429,16 @@ class PosService:
                 selected_prices, priced.lines, strict=True
             )
         )
-        return priced, lines
+        merged: list[DocumentLinePayload] = []
+        for raw in raw_lines:
+            if _raw_line_kind(raw) == "section":
+                title = cast(str, raw.get("title") or "").strip()
+                if not title:
+                    raise InvalidOperationError("Indica el nombre de la sección.", "lines")
+                merged.append(_SectionLine(title=title))
+                continue
+            merged.append(next(priced_items))
+        return priced, tuple(merged)
 
     @staticmethod
     def _document_values(priced: PricedDocument, values: dict[str, Any]) -> dict[str, Any]:
@@ -3411,53 +3457,102 @@ class PosService:
     @staticmethod
     def _quote_lines(
         workspace_id: UUID,
-        lines: tuple[_PricedCatalogLine, ...],
+        lines: tuple[DocumentLinePayload, ...],
     ) -> tuple[SalesQuoteLine, ...]:
-        return tuple(
-            SalesQuoteLine(
-                workspace_id=workspace_id,
-                position=position,
-                item_id=line.catalog.item.id,
-                item_name=line.catalog.item.name,
-                item_sku=line.catalog.item.sku,
-                item_type=line.catalog.item.item_type,
-                unit_symbol=line.catalog.unit.symbol,
-                quantity=line.quantity,
-                list_price=line.list_price,
-                unit_price=line.unit_price,
-                discount_amount=line.discount_amount,
-                tax_rate=line.tax_rate,
-                tax_amount=line.tax_amount,
-                line_total=line.line_total,
+        buffer: list[SalesQuoteLine] = []
+        for position, line in enumerate(lines, start=1):
+            if isinstance(line, _SectionLine):
+                buffer.append(
+                    SalesQuoteLine(
+                        workspace_id=workspace_id,
+                        position=position,
+                        line_kind="section",
+                        item_id=None,
+                        item_name=line.title[:160],
+                        item_sku=None,
+                        item_type="section",
+                        unit_symbol="ud",
+                        quantity=Decimal("0"),
+                        list_price=Decimal("0"),
+                        unit_price=Decimal("0"),
+                        discount_amount=Decimal("0"),
+                        tax_rate=Decimal("0"),
+                        tax_amount=Decimal("0"),
+                        line_total=Decimal("0"),
+                    )
+                )
+                continue
+            buffer.append(
+                SalesQuoteLine(
+                    workspace_id=workspace_id,
+                    position=position,
+                    line_kind="item",
+                    item_id=line.catalog.item.id,
+                    item_name=line.catalog.item.name,
+                    item_sku=line.catalog.item.sku,
+                    item_type=line.catalog.item.item_type,
+                    unit_symbol=line.catalog.unit.symbol,
+                    quantity=line.quantity,
+                    list_price=line.list_price,
+                    unit_price=line.unit_price,
+                    discount_amount=line.discount_amount,
+                    tax_rate=line.tax_rate,
+                    tax_amount=line.tax_amount,
+                    line_total=line.line_total,
+                )
             )
-            for position, line in enumerate(lines, start=1)
-        )
+        return tuple(buffer)
 
     @staticmethod
     def _sale_lines(
         workspace_id: UUID,
-        lines: tuple[_PricedCatalogLine, ...],
+        lines: tuple[DocumentLinePayload, ...],
     ) -> tuple[SaleLine, ...]:
-        return tuple(
-            SaleLine(
-                workspace_id=workspace_id,
-                position=position,
-                item_id=line.catalog.item.id,
-                item_name=line.catalog.item.name,
-                item_sku=line.catalog.item.sku,
-                item_type=line.catalog.item.item_type,
-                unit_symbol=line.catalog.unit.symbol,
-                quantity=line.quantity,
-                list_price=line.list_price,
-                unit_price=line.unit_price,
-                unit_cost_snapshot=line.catalog.profile.unit_cost,
-                discount_amount=line.discount_amount,
-                tax_rate=line.tax_rate,
-                tax_amount=line.tax_amount,
-                line_total=line.line_total,
+        buffer: list[SaleLine] = []
+        for position, line in enumerate(lines, start=1):
+            if isinstance(line, _SectionLine):
+                buffer.append(
+                    SaleLine(
+                        workspace_id=workspace_id,
+                        position=position,
+                        line_kind="section",
+                        item_id=None,
+                        item_name=line.title[:160],
+                        item_sku=None,
+                        item_type="section",
+                        unit_symbol="ud",
+                        quantity=Decimal("0"),
+                        list_price=Decimal("0"),
+                        unit_price=Decimal("0"),
+                        unit_cost_snapshot=None,
+                        discount_amount=Decimal("0"),
+                        tax_rate=Decimal("0"),
+                        tax_amount=Decimal("0"),
+                        line_total=Decimal("0"),
+                    )
+                )
+                continue
+            buffer.append(
+                SaleLine(
+                    workspace_id=workspace_id,
+                    position=position,
+                    line_kind="item",
+                    item_id=line.catalog.item.id,
+                    item_name=line.catalog.item.name,
+                    item_sku=line.catalog.item.sku,
+                    item_type=line.catalog.item.item_type,
+                    unit_symbol=line.catalog.unit.symbol,
+                    quantity=line.quantity,
+                    list_price=line.list_price,
+                    unit_price=line.unit_price,
+                    unit_cost_snapshot=line.catalog.profile.unit_cost,
+                    discount_amount=line.discount_amount,
+                    tax_rate=line.tax_rate,
+                    tax_amount=line.tax_amount,
+                    line_total=line.line_total,
+                )
             )
-            for position, line in enumerate(lines, start=1)
-        )
+        return tuple(buffer)
 
     def _consume_stock(
         self,
@@ -3470,10 +3565,15 @@ class PosService:
         idempotency_key: str,
         request_fingerprint: str,
     ) -> UUID | None:
-        tracked = {
-            line.catalog.item.id: line for line in lines if line.catalog.item.item_type == "product"
-        }
-        if not tracked:
+        tracked_qty: dict[UUID, Decimal] = {}
+        tracked_name: dict[UUID, str] = {}
+        for line in lines:
+            if line.catalog.item.item_type != "product":
+                continue
+            item_id = line.catalog.item.id
+            tracked_qty[item_id] = tracked_qty.get(item_id, Decimal("0")) + line.quantity
+            tracked_name[item_id] = line.catalog.item.name
+        if not tracked_qty:
             return None
         warehouse = self._repository.default_warehouse(workspace_id, branch_id)
         if warehouse is None:
@@ -3484,19 +3584,19 @@ class PosService:
             workspace_id=workspace_id,
             branch_id=branch_id,
             warehouse_id=warehouse.id,
-            item_ids=set(tracked),
+            item_ids=set(tracked_qty),
         )
         by_id = {record.item.id: record for record in locked}
-        if set(by_id) != set(tracked):
+        if set(by_id) != set(tracked_qty):
             raise ConflictError("Un producto no tiene balance de inventario inicializado.", "lines")
         changes: list[tuple[LockedStockRecord, Decimal]] = []
-        for item_id in sorted(tracked, key=str):
-            line = tracked[item_id]
+        for item_id in sorted(tracked_qty, key=str):
+            needed = tracked_qty[item_id]
             record = by_id[item_id]
             current = quantity(record.balance.quantity)
-            if line.quantity > current:
-                raise ConflictError(f"Stock insuficiente para {record.item.name}.", "lines")
-            changes.append((record, quantity(current - line.quantity)))
+            if needed > current:
+                raise ConflictError(f"Stock insuficiente para {tracked_name[item_id]}.", "lines")
+            changes.append((record, quantity(current - needed)))
         return self._inventory.create_movement(
             workspace_id=workspace_id,
             branch_id=branch_id,
@@ -3522,12 +3622,12 @@ class PosService:
         request_fingerprint: str,
         reason: str,
     ) -> UUID | None:
-        tracked = {
-            line.item_id: line
-            for line in lines
-            if line.item_type == "product" and line.item_id is not None
-        }
-        if not tracked:
+        tracked_qty: dict[UUID, Decimal] = {}
+        for line in lines:
+            if line.item_type != "product" or line.item_id is None:
+                continue
+            tracked_qty[line.item_id] = tracked_qty.get(line.item_id, Decimal("0")) + line.quantity
+        if not tracked_qty:
             return None
         if sale.inventory_movement_id is None:
             raise ConflictError("La venta no tiene movimiento de inventario asociado.")
@@ -3540,18 +3640,18 @@ class PosService:
             workspace_id=sale.workspace_id,
             branch_id=sale.branch_id,
             warehouse_id=original.warehouse_id,
-            item_ids=set(tracked),
+            item_ids=set(tracked_qty),
             require_active_items=False,
         )
         by_id = {record.item.id: record for record in locked}
-        if set(by_id) != set(tracked):
+        if set(by_id) != set(tracked_qty):
             raise ConflictError("No se pudo bloquear todo el inventario para revertir la venta.")
         changes = [
             (
                 by_id[item_id],
-                quantity(by_id[item_id].balance.quantity + tracked[item_id].quantity),
+                quantity(by_id[item_id].balance.quantity + tracked_qty[item_id]),
             )
-            for item_id in sorted(tracked, key=str)
+            for item_id in sorted(tracked_qty, key=str)
         ]
         return self._inventory.create_movement(
             workspace_id=sale.workspace_id,

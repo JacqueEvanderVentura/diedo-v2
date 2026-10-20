@@ -21,7 +21,13 @@ import {
   REPEAT_COUNTS,
 } from '@/data/agenda'
 import { useBranchStaff } from '@/modules/rrhh/lib/staff'
-import { getAvailableSlots, fitsInSchedule, isSlotAvailable } from '../lib/selfBooking'
+import {
+  ANY_AVAILABLE_EMPLOYEE_OPTION,
+  getAvailableSlots,
+  getAvailableSlotsForAny,
+  fitsInSchedule,
+  isSlotAvailable,
+} from '../lib/selfBooking'
 import { useAvailabilityAppointments } from '../hooks/useAvailabilityAppointments'
 import { formatDOP } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -80,7 +86,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
   const [form, setForm] = useState(empty())
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
-  const appointments = useAvailabilityAppointments(form.date, form.employeeId)
+  const appointments = useAvailabilityAppointments(form.date, form.employeeId, form.branchId)
   const editing = !!appointment
   const notesLength = Array.from(form.notes || '').length
   const originalNotes = appointment?.notes || ''
@@ -142,29 +148,39 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     [employees, form.employeeId]
   )
 
-  const availableSlots = useMemo(
-    () =>
-      form.employeeId && form.date
-        ? getAvailableSlots({
-            date: form.date,
-            employeeId: form.employeeId,
-            duration: form.duration,
-            appointments,
-            employee: selectedEmployee,
-            vacationRequests,
-            excludeAppointmentId: appointment?.id,
-          })
-        : [],
-    [
-      form.employeeId,
-      form.date,
-      form.duration,
+  const availableSlots = useMemo(() => {
+    if (!form.date) return []
+    if (form.employeeId) {
+      return getAvailableSlots({
+        date: form.date,
+        employeeId: form.employeeId,
+        duration: form.duration,
+        appointments,
+        employee: selectedEmployee,
+        vacationRequests,
+        excludeAppointmentId: appointment?.id,
+      })
+    }
+    return getAvailableSlotsForAny({
+      date: form.date,
+      duration: form.duration,
       appointments,
-      selectedEmployee,
+      employees: branchStaff,
+      resources: branchResources,
       vacationRequests,
-      appointment?.id,
-    ]
-  )
+      excludeAppointmentId: appointment?.id,
+    })
+  }, [
+    form.employeeId,
+    form.date,
+    form.duration,
+    appointments,
+    selectedEmployee,
+    vacationRequests,
+    appointment?.id,
+    branchStaff,
+    branchResources,
+  ])
 
   useEffect(() => {
     if (!form.employeeId) return
@@ -179,7 +195,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
   }, [form.branchId, hydrateResources, open])
 
   useEffect(() => {
-    if (!open || !form.branchId || resourcesLoading) return
+    if (!open || !form.branchId || resourcesLoading || !form.employeeId) return
     const currentResourceIsValid = branchResources.some(
       (resource) => resource.id === form.cabinaId
     )
@@ -191,7 +207,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
         resourceId: fallbackId,
       }))
     }
-  }, [branchResources, form.branchId, form.cabinaId, open, resourcesLoading])
+  }, [branchResources, form.branchId, form.cabinaId, form.employeeId, open, resourcesLoading])
 
   useEffect(() => {
     if (!open || !servicesReady || !form.serviceId) return
@@ -252,12 +268,17 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
 
   const buildPayload = () => {
     const customer = customers.find((c) => c.id === form.customerId)
+    const anyAvailable = !form.employeeId
     return {
       ...form,
       customerName: form.customerName || customer?.name || 'Cliente',
       customerPhone: form.customerPhone || customer?.phone || '',
       serviceName: selectedService?.name || form.serviceName || '',
       price,
+      employeeId: anyAvailable ? '' : form.employeeId,
+      cabinaId: anyAvailable ? '' : form.cabinaId,
+      resourceId: anyAvailable ? '' : form.cabinaId || form.resourceId,
+      anyAvailable,
     }
   }
 
@@ -267,7 +288,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     if (!resourcesLoading && branchResources.length === 0) {
       return setErr('La sucursal seleccionada no tiene cabinas o recursos activos.')
     }
-    if (!form.cabinaId) return setErr('Selecciona una cabina o recurso.')
+    if (form.employeeId && !form.cabinaId) return setErr('Selecciona una cabina o recurso.')
     if (!selectedService) return setErr('Selecciona un servicio disponible en esa sucursal.')
     if (!form.date) return setErr('Selecciona una fecha.')
     if (!form.time) return setErr('Selecciona una hora.')
@@ -285,8 +306,12 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     ) {
       return setErr('La hora seleccionada está fuera del horario del empleado.')
     }
-    if (form.employeeId && !availableSlots.includes(form.time)) {
-      return setErr('Ese horario ya no está disponible para el empleado.')
+    if (!availableSlots.includes(form.time)) {
+      return setErr(
+        form.employeeId
+          ? 'Ese horario ya no está disponible para el empleado.'
+          : 'Ese horario ya no está disponible para ningún empleado.'
+      )
     }
     let payload = buildPayload()
     if (payload.status === 'cumplida' && !payload.completionPunctuality) {
@@ -332,7 +357,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     [form, customers, selectedService, price, appointment]
   )
 
-  const timeSlotsForPicker = form.employeeId && form.date ? availableSlots : null
+  const timeSlotsForPicker = form.date ? availableSlots : null
 
   return (
     <Modal open={open} onClose={onClose} title={editing ? 'Editar cita' : 'Nueva Cita'} testId="appointment-form-modal" wide={wide}>
@@ -371,7 +396,11 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
               value={form.time}
               onChange={(time) => set('time', time)}
               slots={timeSlotsForPicker}
-              emptyMessage="No hay cupos según el horario del empleado."
+              emptyMessage={
+                form.employeeId
+                  ? 'No hay cupos según el horario del empleado.'
+                  : 'No hay cupos disponibles con el personal de la sucursal.'
+              }
               testId="appointment-field-time"
             />
           </div>
@@ -433,9 +462,38 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Empleado</label>
             <Select
               value={form.employeeId}
-              onChange={(v) => set('employeeId', v)}
+              onChange={(v) => {
+                if (!v) {
+                  setForm((current) => {
+                    const slots = getAvailableSlotsForAny({
+                      date: current.date,
+                      duration: current.duration,
+                      appointments,
+                      employees: branchStaff,
+                      resources: branchResources,
+                      vacationRequests,
+                      excludeAppointmentId: appointment?.id,
+                    })
+                    const next = {
+                      ...current,
+                      employeeId: '',
+                      cabinaId: '',
+                      resourceId: '',
+                    }
+                    if (current.time && current.date && !slots.includes(current.time)) {
+                      next.time = ''
+                    }
+                    return next
+                  })
+                  return
+                }
+                set('employeeId', v)
+              }}
               placeholder="Seleccionar Empleado"
-              options={branchStaff.map((e) => ({ value: e.id, label: e.name }))}
+              options={[
+                ANY_AVAILABLE_EMPLOYEE_OPTION,
+                ...branchStaff.map((e) => ({ value: e.id, label: e.name })),
+              ]}
               data-testid="appointment-field-employee"
             />
           </div>
@@ -455,9 +513,10 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Cabina</label>
             <Select
-              value={form.cabinaId}
+              value={form.employeeId ? form.cabinaId : ''}
               onChange={(v) => setForm((current) => ({ ...current, cabinaId: v, resourceId: v }))}
-              placeholder="Seleccionar Cabina"
+              placeholder={form.employeeId ? 'Seleccionar Cabina' : 'Sin asignar'}
+              disabled={!form.employeeId}
               options={branchResources.map((resource) => ({ value: resource.id, label: resource.name }))}
               data-testid="appointment-field-cabina"
             />

@@ -13,7 +13,11 @@ export const publicBookingApi = {
   getEntryContext: () => publicGet('/api/v1/public/booking/context'),
   getContext: (branchId) => publicGet(`${base(branchId)}/context`),
   identify: (branchId, payload) => publicPost(`${base(branchId)}/identify`, payload),
-  listSlots: (branchId, params) => publicGet(`${base(branchId)}/slots`, { params }),
+  listSlots: (branchId, params) => {
+    const query = { ...params }
+    if (!query.employeeId) delete query.employeeId
+    return publicGet(`${base(branchId)}/slots`, { params: query })
+  },
   book: (branchId, payload, idempotencyKey) =>
     publicPost(`${base(branchId)}/appointments`, payload, {
       headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,

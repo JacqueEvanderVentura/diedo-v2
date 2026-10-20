@@ -3,7 +3,6 @@ from uuid import uuid4, uuid7
 
 import pytest
 from app.core.security import hash_password
-from app.db.models import Branch
 from app.db.session import session_scope
 from app.schemas.invoice_documents import InvoiceDocumentRequest, InvoiceLineItemRequest
 from app.services.invoice_html import build_invoice_document_html
@@ -20,20 +19,7 @@ _PASSWORD = "invoice-pdf-test-password-not-a-secret"
 def _auth(client: TestClient) -> tuple[dict[str, str], str]:
     with session_scope() as session:
         summary = bootstrap_local_foundation(session, hash_password(_PASSWORD))
-        suffix = uuid7().hex[-12:]
-        branch = Branch(
-            workspace_id=summary.workspace_id,
-            legal_entity_id=summary.legal_entity_id,
-            code=f"inv-pdf-{suffix}",
-            name=f"Invoice PDF {suffix}",
-            status="active",
-            timezone="America/Santo_Domingo",
-        )
-        session.add(branch)
-        session.flush()
-        branch_id = branch.id
-    with session_scope() as session:
-        bootstrap_local_foundation(session, hash_password(_PASSWORD))
+        branch_id = summary.branch_id
     login = client.post(
         "/api/v1/auth/login",
         json={"email": _OWNER_EMAIL, "password": _PASSWORD},
@@ -204,6 +190,33 @@ def test_build_invoice_document_html_includes_billing_footer() -> None:
     assert "@bottom-right" in html
     assert "counter(page)" in html
     assert '<s class="strike">' in html
+
+
+def test_build_invoice_document_html_renders_section_rows() -> None:
+    payload = InvoiceDocumentRequest(
+        id="COT-SEC",
+        kind="quote",
+        issued_at="7 oct 2026",
+        business_name="Charm Test",
+        customer_name="Cliente",
+        payment_method="Pendiente",
+        items=[
+            InvoiceLineItemRequest(
+                kind="section",
+                name="Sala",
+                qty=Decimal("0"),
+                price=Decimal("0"),
+            ),
+            InvoiceLineItemRequest(name="Cortina", qty=Decimal("2"), price=Decimal("100")),
+        ],
+        subtotal=Decimal("200"),
+        tax_amt=Decimal("0"),
+        total=Decimal("200"),
+    )
+    html = build_invoice_document_html(payload)
+    assert "section-row" in html
+    assert "Sala" in html
+    assert "Cortina" in html
 
 
 def test_build_invoice_document_html_renders_logo_without_escaping() -> None:

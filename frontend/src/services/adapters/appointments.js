@@ -137,7 +137,13 @@ export function appointmentToApiPayload(data) {
     serviceId: optionalApiReference(data.serviceId),
     serviceName: data.serviceName?.trim() || '',
     employeeId: optionalApiReference(data.employeeId),
-    resourceId: data.cabinaId || data.resourceId || null,
+    anyAvailable: data.anyAvailable === true,
+    resourceId: (() => {
+      if (data.anyAvailable === true) return null
+      const raw = data.cabinaId || data.resourceId
+      if (!raw) return null
+      return optionalApiReference(raw) ?? raw
+    })(),
     price: Number(data.price) || 0,
     status: appointmentStatusToApi(status),
     notes: data.notes?.trim() || null,
@@ -185,6 +191,7 @@ export function appointmentPatchToApiPayload(data, version) {
     pendingAmount: payload.pendingAmount,
     firstTime: payload.firstTime,
     freeTrial: payload.freeTrial,
+    anyAvailable: payload.anyAvailable,
     version,
   }
 }

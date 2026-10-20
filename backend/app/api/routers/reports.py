@@ -20,6 +20,8 @@ from app.schemas.reports import (
     PaginatedInventoryReportResponse,
     PaginatedMembershipReportResponse,
     PersonalReportResponse,
+    PipelineReportPeriod,
+    PipelineReportSummaryResponse,
     ReportPeriod,
     SortDirection,
 )
@@ -170,6 +172,27 @@ def list_memberships(
         page_size=page_size,
         sort_key=sort_key,
         sort_direction=sort_direction,
+    )
+    _no_store(response)
+    return result
+
+
+@router.get(
+    "/pipeline/summary",
+    summary="Obtener KPIs del embudo CRM por origen y tiempos en etapa",
+    responses=_SECURITY_RESPONSES,
+)
+def get_pipeline_summary(
+    database: DatabaseSession,
+    grant: ReportReadGrant,
+    response: Response,
+    period: Annotated[PipelineReportPeriod, Query()] = "month",
+    branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
+) -> PipelineReportSummaryResponse:
+    result = ReportsService(database).pipeline_summary(
+        grant,
+        period=period,
+        branch_id=branch_id,
     )
     _no_store(response)
     return result

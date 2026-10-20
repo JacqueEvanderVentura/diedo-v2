@@ -103,6 +103,16 @@ export function LeadQuoteManageModal({
                 <li className="px-4 py-3 text-sm text-slate-500">Sin ítems en la cotización.</li>
               ) : (
                 (detail?.items || []).map((item, index) => {
+                  if (item.kind === 'section') {
+                    return (
+                      <li
+                        key={item.id || `section-${index}`}
+                        className="border-t border-slate-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-700 first:border-t-0"
+                      >
+                        {item.title || item.name}
+                      </li>
+                    )
+                  }
                   const qty = item.qty ?? item.quantity ?? 1
                   const price = Number(item.price ?? item.unitPrice) || 0
                   return (

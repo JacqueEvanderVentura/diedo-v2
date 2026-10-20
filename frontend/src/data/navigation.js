@@ -89,6 +89,7 @@ export const NAV_GROUPS = [
     permission: 'report.read',
     children: [
       { label: 'Generales', to: '/reportes/generales', permission: 'report.read' },
+      { label: 'Pipeline CRM', to: '/reportes/pipeline', module: 'crm', permission: 'report.read' },
       { label: 'Membresías', to: '/reportes/membresias', permission: 'report.read' },
       { label: 'Agenda', to: '/reportes/agenda', module: 'appointments', permission: 'report.read' },
       { label: 'Inventario', to: '/reportes/inventario', permission: 'report.read' },
@@ -153,6 +154,10 @@ export const PAGE_META = {
   '/finanzas/cuentas': { title: 'Cuentas', subtitle: 'Gestión de cuentas bancarias, inversión y accionistas.' },
   '/finanzas/ingresos': { title: 'Ingresos', subtitle: 'Seguimiento de transacciones y facturación.' },
   '/reportes/generales': { title: 'Reportes · Generales', subtitle: 'Ventas (CRM) vs Comercio (POS) y quién paga.' },
+  '/reportes/pipeline': {
+    title: 'Reportes · Pipeline CRM',
+    subtitle: 'Origen de leads, pérdidas por canal y tiempo en cada etapa.',
+  },
   '/reportes/membresias': { title: 'Reportes · Membresías', subtitle: 'Control de ingresos recurrentes y clientes activos.' },
   '/reportes/inventario': { title: 'Reportes · Inventario', subtitle: 'Stock y rotación estimada.' },
   '/reportes/agenda': { title: 'Reportes · Agenda', subtitle: 'Citas cumplidas vs no-show.' },

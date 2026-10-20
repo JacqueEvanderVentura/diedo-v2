@@ -119,6 +119,14 @@ def test_seeded_reports_cover_every_submodule() -> None:
                 search=None,
                 now=_FIXED_NOW,
             )
+            pipeline = reports.pipeline_summary(
+                grant,
+                period="month",
+                branch_id=None,
+                now=_FIXED_NOW,
+            )
+            assert pipeline.total_leads >= 0
+            assert pipeline.by_stage
             inventory = reports.inventory_summary(
                 grant, branch_id=None, category_id=None, search=None
             )
@@ -349,6 +357,7 @@ def test_report_endpoints_require_auth_and_return_live_contracts(client: TestCli
         ("/api/v1/reports/inventory/items", {}),
         ("/api/v1/reports/dividends", {"period": "quarter"}),
         ("/api/v1/reports/personal", {"period": "quarter"}),
+        ("/api/v1/reports/pipeline/summary", {"period": "month"}),
     )
     responses = []
     with patch("app.services.reports.datetime", _FixedReportDateTime):
@@ -373,6 +382,8 @@ def test_report_endpoints_require_auth_and_return_live_contracts(client: TestCli
     assert responses[10]["incidentMetrics"]
     assert responses[10]["incidentDistribution"]
     assert responses[10]["supplyUsage"]
+    assert "byOrigin" in responses[11]
+    assert "stageDwell" in responses[11]
 
     personal_incidents = client.get(
         "/api/v1/incidents",

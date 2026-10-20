@@ -18,6 +18,7 @@ import {
   fetchInventorySummary,
   fetchMembershipReport,
   fetchPersonalPerformanceReport,
+  fetchPipelineSummary,
   fetchTransactionsReport,
 } from '@/services/reportApi'
 
@@ -57,6 +58,9 @@ describe('cliente API de Reportes', () => {
       if (path.endsWith('/personal')) {
         return { totals: { salesTotal: '0.00' }, byUser: [], byEmployee: [], supplyUsage: [] }
       }
+      if (path.endsWith('/pipeline/summary')) {
+        return { totalLeads: 0, byOrigin: [], byStage: [], stageDwell: [], stageDwellByOrigin: [] }
+      }
       return {
         items: [],
         page: 1,
@@ -81,6 +85,7 @@ describe('cliente API de Reportes', () => {
       fetchInventoryReport(empty, empty, { page: 1 }),
       fetchDividendReport(empty, { page: 1, period: 'month' }),
       fetchPersonalPerformanceReport(data, { period: 'month' }),
+      fetchPipelineSummary({ period: 'month' }),
     ])
 
     expect(mocks.get.mock.calls.map(([path]) => path)).toEqual(
@@ -96,6 +101,7 @@ describe('cliente API de Reportes', () => {
         '/api/v1/reports/inventory/items',
         '/api/v1/reports/dividends',
         '/api/v1/reports/personal',
+        '/api/v1/reports/pipeline/summary',
       ])
     )
   })

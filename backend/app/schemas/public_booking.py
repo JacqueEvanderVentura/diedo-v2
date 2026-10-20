@@ -104,7 +104,7 @@ class PublicIdentifyResponse(PublicCustomerProfileResponse):
 
 class PublicSlotsResponse(ApiModel):
     date: date
-    employee_id: UUID
+    employee_id: UUID | None = None
     duration_minutes: int
     slots: list[str]
 
@@ -120,7 +120,7 @@ class PublicBookAppointmentRequest(ApiModel):
     wants_invoice: bool = False
     wants_contact: bool = False
     service_id: UUID
-    employee_id: UUID
+    employee_id: UUID | None = None
     date: date
     time: TimeValue
 

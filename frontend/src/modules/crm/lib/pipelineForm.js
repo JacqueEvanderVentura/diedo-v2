@@ -1,11 +1,13 @@
+import { inferLeadCustomerType } from './leadForm'
 import { leadDisplayTitle } from './pipelineLeads'
 
 export function leadCustomerDefaults(lead) {
-  const name = leadDisplayTitle(lead)
+  const customerType = inferLeadCustomerType(lead)
+  const title = leadDisplayTitle(lead)
   return {
-    name,
-    company: name,
-    customerType: 'b2b',
+    name: customerType === 'b2c' ? (lead?.name || title) : title,
+    company: customerType === 'b2b' ? (lead?.company || title) : '',
+    customerType,
     branchIds: lead?.branchId ? [lead.branchId] : [],
   }
 }

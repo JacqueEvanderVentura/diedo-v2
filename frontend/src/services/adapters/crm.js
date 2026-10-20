@@ -49,13 +49,28 @@ export function mapCrmQuoteFromApi(record) {
     status: record?.crmStatus || quote.crmStatus || 'borrador',
     structuralStatus: quote.status,
     total: numberValue(quote.total),
-    items: lines.map((line) => ({
-      id: line.id || line.itemId || line.item?.id,
-      itemId: line.itemId || line.item?.id,
-      name: line.name || line.itemName || line.item?.name || 'Ítem sin nombre',
-      qty: numberValue(line.quantity ?? line.qty),
-      price: numberValue(line.unitPrice ?? line.price),
-    })),
+    items: lines.map((line) => {
+      const kind = line.kind || line.lineKind || (line.item == null && line.title ? 'section' : 'item')
+      if (kind === 'section') {
+        const title = line.title || line.name || line.itemName || 'Sección'
+        return {
+          id: line.id,
+          kind: 'section',
+          title,
+          name: title,
+          qty: 0,
+          price: 0,
+        }
+      }
+      return {
+        id: line.id || line.itemId || line.item?.id,
+        kind: 'item',
+        itemId: line.itemId || line.item?.id,
+        name: line.name || line.itemName || line.item?.name || 'Ítem sin nombre',
+        qty: numberValue(line.quantity ?? line.qty),
+        price: numberValue(line.unitPrice ?? line.price),
+      }
+    }),
     validUntil: quote.dueAt || quote.expiresAt || null,
     createdAt: quote.createdAt,
     updatedAt: quote.updatedAt || quote.createdAt,
