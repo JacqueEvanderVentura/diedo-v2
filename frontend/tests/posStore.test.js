@@ -629,6 +629,8 @@ describe('store online de Terminal POS', () => {
     expect(mocks.getQuote).toHaveBeenCalledWith('held-1')
     expect(usePosStore.getState().customer).toMatchObject({ id: 'customer-uuid', name: 'Enid' })
     expect(usePosStore.getState().items).toHaveLength(1)
+    expect(usePosStore.getState().heldCarts).toHaveLength(0)
+    expect(usePosStore.getState().activeQuoteId).toBe('held-1')
   })
 
   it('conserva cuatro retenciones con líneas tras hidratar con listado sin líneas', async () => {

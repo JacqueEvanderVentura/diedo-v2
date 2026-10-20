@@ -137,7 +137,7 @@ export function appointmentToApiPayload(data) {
     serviceId: optionalApiReference(data.serviceId),
     serviceName: data.serviceName?.trim() || '',
     employeeId: optionalApiReference(data.employeeId),
-    resourceId: data.resourceId || data.cabinaId || null,
+    resourceId: data.cabinaId || data.resourceId || null,
     price: Number(data.price) || 0,
     status: appointmentStatusToApi(status),
     notes: data.notes?.trim() || null,

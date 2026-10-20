@@ -52,6 +52,30 @@ class PublicBookingService:
         self._agenda = AgendaRepository(session)
         self._master_data = MasterDataRepository(session)
 
+    def get_entry_context(self) -> dict[str, Any]:
+        rows = self._session.scalars(
+            select(Branch)
+            .where(
+                Branch.status == "active",
+                Branch.online_booking_selectable.is_(True),
+            )
+            .order_by(Branch.name)
+        ).all()
+        if not rows:
+            raise InvalidOperationError(
+                "No hay sucursales disponibles para agendar en línea.",
+                "branchId",
+            )
+        workspace_id = rows[0].workspace_id
+        workspace_rows = [row for row in rows if row.workspace_id == workspace_id]
+        workspace = self._session.scalar(select(Workspace).where(Workspace.id == workspace_id))
+        if workspace is None:
+            raise ResourceNotFoundError("El workspace no existe.", "branchId")
+        return {
+            "workspace_name": workspace.name,
+            "workspace_branches": [{"id": row.id, "name": row.name} for row in workspace_rows],
+        }
+
     def get_context(self, branch_id: UUID) -> dict[str, Any]:
         branch, workspace = self._resolve_branch(branch_id)
         _principal, grant = self._system_access(branch.workspace_id)
@@ -555,6 +579,11 @@ class PublicBookingService:
         )
         if branch is None:
             raise ResourceNotFoundError("La sucursal no existe.", "branchId")
+        if not branch.online_booking_selectable:
+            raise InvalidOperationError(
+                "Esta sucursal no está disponible para agendar en línea.",
+                "branchId",
+            )
         workspace = self._session.scalar(
             select(Workspace).where(Workspace.id == branch.workspace_id)
         )
@@ -604,6 +633,52 @@ class PublicBookingService:
             raise InvalidOperationError("documentId inválido.", "documentId")
         return normalized
 
+    def _resolve_existing_customer(
+        self,
+        *,
+        workspace_id: UUID,
+        document_key: str,
+        payload: dict[str, Any],
+    ) -> Any | None:
+        customer_id = payload.get("customer_id")
+        if customer_id is not None:
+            existing = self._master_data.get_customer(workspace_id, cast(UUID, customer_id), None)
+            if existing is not None:
+                return existing
+        existing = self._master_data.customer_by_document(workspace_id, document_key)
+        if existing is not None:
+            return existing
+        normalized_email = (payload.get("email") or "").strip().casefold() or None
+        if normalized_email:
+            by_email = self._master_data.customer_by_normalized_email(
+                workspace_id, normalized_email, None
+            )
+            if by_email is not None and self._customer_accepts_booking_document(
+                by_email, document_key
+            ):
+                return by_email
+        phone = payload.get("phone")
+        if phone:
+            from app.services.master_data import normalize_phone
+
+            normalized_phone = normalize_phone(str(phone))
+            if normalized_phone:
+                by_phone = self._master_data.customer_by_normalized_phone(
+                    workspace_id, normalized_phone, None
+                )
+                if by_phone is not None and self._customer_accepts_booking_document(
+                    by_phone, document_key
+                ):
+                    return by_phone
+        return None
+
+    @staticmethod
+    def _customer_accepts_booking_document(customer: Any, document_key: str) -> bool:
+        stored = cast(str | None, getattr(customer, "normalized_document_id", None))
+        if not stored:
+            return True
+        return stored == document_key
+
     def _upsert_customer(
         self,
         *,
@@ -622,7 +697,11 @@ class PublicBookingService:
         if normalized_id is None:
             raise InvalidOperationError("El documento del cliente no es válido.", "documentId")
         document_key = normalized_id
-        existing = self._master_data.customer_by_document(workspace_id, document_key)
+        existing = self._resolve_existing_customer(
+            workspace_id=workspace_id,
+            document_key=document_key,
+            payload=payload,
+        )
         values = {
             "customer_type": "person",
             "display_name": payload["display_name"],
@@ -868,6 +947,7 @@ class PublicBookingService:
             .where(
                 Branch.workspace_id == workspace_id,
                 Branch.status == "active",
+                Branch.online_booking_selectable.is_(True),
             )
             .order_by(Branch.name)
         ).all()

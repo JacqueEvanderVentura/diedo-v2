@@ -199,7 +199,6 @@ class CrmService:
             idempotency_key=idempotency_key,
             fingerprint=fingerprint,
         )
-        self._require_manual_lead_document(lead)
         if lead.normalized_document_id:
             assert_document_available_in_workspace(
                 self._session,
@@ -371,7 +370,6 @@ class CrmService:
             lead.lost_reason = lost_reason
         if not lead.name and not lead.company:
             raise InvalidOperationError("El lead requiere nombre o empresa.", "name")
-        self._require_manual_lead_document(lead)
         lead.updated_by_platform_user_id = principal.platform_user_id
         lead.version += 1
         audit_details: dict[str, Any] = {
@@ -1265,14 +1263,6 @@ class CrmService:
             now=generated_at,
         )
         return OverviewRecord(branch_id, values, generated_at)
-
-    @staticmethod
-    def _require_manual_lead_document(lead: CrmLead) -> None:
-        if lead.source == "manual" and not lead.normalized_document_id:
-            raise InvalidOperationError(
-                "El documento es obligatorio para leads manuales.",
-                "documentId",
-            )
 
     @staticmethod
     def _apply_lead_document_values(lead: CrmLead, values: dict[str, Any]) -> None:

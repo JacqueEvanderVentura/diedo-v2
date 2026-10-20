@@ -21,7 +21,7 @@ class CarwashIndicators(ApiModel):
     generated_at: datetime
     active_washes: int
     completed_today: int
-    billed_today: Decimal
+    billed_today: Decimal | None
     pending_commissions: Decimal | None
 
 

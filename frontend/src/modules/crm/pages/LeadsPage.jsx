@@ -25,6 +25,8 @@ import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
 import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
 import { cn } from '@/lib/utils'
 import { LeadFormModal } from '../components/LeadFormModal'
+import { LeadConvertModal } from '../components/LeadConvertModal'
+import { leadHasDocument } from '../lib/leadConversion'
 import { LeadHandoffStrip } from '../components/LeadHandoffStrip'
 import { FEATURES } from '@/config/features'
 import { useSessionStore } from '@/stores/sessionStore'
@@ -74,6 +76,7 @@ function LeadsListaTab({ onEditLead }) {
   const [branchIds, setBranchIds] = useState([])
   const [starSort, setStarSort] = useState('none')
   const [handoff, setHandoff] = useState(null)
+  const [convertLeadTarget, setConvertLeadTarget] = useState(null)
 
   useEffect(() => {
     if (!online) return undefined
@@ -196,9 +199,14 @@ function LeadsListaTab({ onEditLead }) {
   }
 
   const convertLead = async (leadId) => {
+    const lead = useCrmStore.getState().leads.find((item) => item.id === leadId)
+    if (!lead) return
+    if (!leadHasDocument(lead)) {
+      setConvertLeadTarget(lead)
+      return
+    }
     try {
       const customer = await convertToCustomer(leadId)
-      const lead = useCrmStore.getState().leads.find((item) => item.id === leadId)
       setHandoff({
         leadId,
         customerId: customer?.id || lead?.customerId || null,
@@ -207,6 +215,15 @@ function LeadsListaTab({ onEditLead }) {
     } catch (error) {
       toast.error(error.message || 'No se pudo convertir el lead')
     }
+  }
+
+  const handleLeadConverted = (customer, lead) => {
+    setHandoff({
+      leadId: lead.id,
+      customerId: customer?.id || lead?.customerId || null,
+    })
+    toast.success('Lead convertido a cliente')
+    setConvertLeadTarget(null)
   }
 
   return (
@@ -380,6 +397,12 @@ function LeadsListaTab({ onEditLead }) {
         confirmLabel="Eliminar"
         busy={deleting}
         testId="leads-confirm-delete"
+      />
+      <LeadConvertModal
+        open={Boolean(convertLeadTarget)}
+        lead={convertLeadTarget}
+        onClose={() => setConvertLeadTarget(null)}
+        onConverted={handleLeadConverted}
       />
     </div>
   )

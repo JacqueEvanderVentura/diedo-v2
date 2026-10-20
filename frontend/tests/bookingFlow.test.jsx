@@ -14,7 +14,7 @@ import { clearPublicSession } from '@/modules/portal/lib/publicSession'
 import { branchDateKey } from '@/modules/agenda/lib/notification'
 
 vi.mock('@/services/publicBookingApi', () => ({ publicBookingApi: {
-  getContext: vi.fn(), identify: vi.fn(), listSlots: vi.fn(), book: vi.fn(), sendBookingLink: vi.fn(),
+  getContext: vi.fn(), getEntryContext: vi.fn(), identify: vi.fn(), listSlots: vi.fn(), book: vi.fn(), sendBookingLink: vi.fn(),
   getAppointment: vi.fn(), managementSlots: vi.fn(), cancelAppointment: vi.fn(), rescheduleAppointment: vi.fn(),
 } }))
 vi.mock('@/services/publicPortalApi', () => ({
@@ -76,12 +76,16 @@ async function selectAppointment() {
 it('shares by email without a phone and never opens WhatsApp automatically', async () => {
   const open = vi.spyOn(window, 'open').mockImplementation(() => null)
   publicBookingApi.sendBookingLink.mockResolvedValue({ status: 'disabled', message: 'Correo desactivado.' })
-  render(<MemoryRouter><BookingLinkModal open branchId="branch" branchName="Norte" onClose={() => {}} /></MemoryRouter>)
+  publicBookingApi.getEntryContext.mockResolvedValue({
+    workspaceName: 'Mi establecimiento',
+    workspaceBranches: [{ id: 'branch', name: 'Norte' }],
+  })
+  render(<MemoryRouter><BookingLinkModal open onClose={() => {}} /></MemoryRouter>)
   fireEvent.change(screen.getByTestId('booking-link-name'), { target: { value: 'Cliente prueba' } })
   fireEvent.change(screen.getByTestId('booking-link-email'), { target: { value: 'client@example.com' } })
   fireEvent.click(screen.getByTestId('booking-link-send-email'))
   await screen.findByText('Correo desactivado.')
-  expect(publicBookingApi.sendBookingLink).toHaveBeenCalledWith({ branchId: 'branch', name: 'Cliente prueba', email: 'client@example.com' }, expect.any(String))
+  expect(publicBookingApi.sendBookingLink).toHaveBeenCalledWith({ name: 'Cliente prueba', email: 'client@example.com' }, expect.any(String))
   expect(open).not.toHaveBeenCalled()
   expect(screen.getByTestId('booking-link-phone').value).toBe('')
   fireEvent.change(screen.getByTestId('booking-link-phone'), { target: { value: '8294220141' } })

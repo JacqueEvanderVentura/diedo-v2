@@ -31,6 +31,8 @@ import { isProductAvailableAtBranch } from '@/lib/catalogSync'
 import { PipelineStageHeaders, PIPELINE_COLUMN_WIDTH_CLASS } from '../components/PipelineStageHeaders'
 import { ActivityFormModal } from '../components/ActivityFormModal'
 import { CustomerFormModal } from '../components/CustomerFormModal'
+import { LeadConvertModal } from '../components/LeadConvertModal'
+import { leadHasDocument } from '../lib/leadConversion'
 import { QuoteFormModal } from '../components/QuoteFormModal'
 import { QuoteDocumentHandoffModal } from '../components/QuoteDocumentHandoffModal'
 import {
@@ -172,6 +174,7 @@ export default function PipelinePage() {
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false)
   const [followUpLeadId, setFollowUpLeadId] = useState('')
   const [customerFormOpen, setCustomerFormOpen] = useState(false)
+  const [convertModalLead, setConvertModalLead] = useState(null)
   const [customerFormDefaults, setCustomerFormDefaults] = useState(null)
   const [customerFormTarget, setCustomerFormTarget] = useState(null)
 
@@ -415,6 +418,10 @@ export default function PipelinePage() {
 
   const convertPipelineLead = async (lead) => {
     if (!lead?.id) return
+    if (!leadHasDocument(lead)) {
+      setConvertModalLead(lead)
+      return
+    }
     setBusyLeadId(lead.id)
     try {
       await convertToCustomer(lead.id)
@@ -478,6 +485,10 @@ export default function PipelinePage() {
 
   const convertLeadForClose = async () => {
     if (!pendingLead?.id) return
+    if (!leadHasDocument(pendingLead)) {
+      setConvertModalLead(pendingLead)
+      return
+    }
     setCloseConvertBusy(true)
     try {
       const customer = await convertToCustomer(pendingLead.id)
@@ -490,6 +501,14 @@ export default function PipelinePage() {
     } finally {
       setCloseConvertBusy(false)
     }
+  }
+
+  const handleLeadConverted = async (customer, lead) => {
+    if (customer?.id && lead?.id && lead.id === pendingLead?.id) {
+      await attachCustomerToLead(pendingLead, customer, { closeLinkModal: false })
+    }
+    toast.success('Lead convertido a cliente')
+    setConvertModalLead(null)
   }
 
   const handleCustomerCreated = async (customer) => {
@@ -781,6 +800,13 @@ export default function PipelinePage() {
           </div>
         </div>
       </Modal>
+
+      <LeadConvertModal
+        open={Boolean(convertModalLead)}
+        lead={convertModalLead}
+        onClose={() => setConvertModalLead(null)}
+        onConverted={handleLeadConverted}
+      />
 
       <CustomerFormModal
         open={customerFormOpen}

@@ -11,9 +11,48 @@ function pushRecord(rows, headers, cells) {
   rows.push(row)
 }
 
-export function parseCsv(text) {
+export const IMPORT_CSV_TEMPLATES = {
+  pipeline: `externalId,name,company,email,phone,website,location,acquisitionSource,stage,value,notes,lostReason,convert
+sample-1,Juan Pérez,,juan@example.com,8095550001,,,whatsapp,contactado,0,,,false`,
+  customers: `externalId,customerType,displayName,firstName,lastName,businessName,email,phone,acquisitionSource
+sample-c-1,person,Juan Pérez,Juan,Pérez,,juan@example.com,8095550001,otros`,
+  activities: `externalId,leadExternalId,contactName,title,description,dueAt
+sample-a-1,sample-1,Juan Pérez,Llamada de seguimiento,Notas,2026-09-20T10:00:00.000Z`,
+}
+
+export const IMPORT_TEMPLATE_FORMAT_ERROR =
+  'El archivo no usa el formato de la plantilla. Descarga la plantilla con el botón Plantilla, justo arriba de Subir CSV, y vuelve a intentarlo.'
+
+export function normalizeCsvHeaderKey(key) {
+  const trimmed = (key ?? '').replace(/^\uFEFF/, '').trim()
+  if (!trimmed) return ''
+  if (trimmed.includes('_') || trimmed.includes('-')) {
+    return trimmed
+      .replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())
+      .replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
+  }
+  return trimmed.charAt(0).toLowerCase() + trimmed.slice(1)
+}
+
+export function getImportTemplateColumns(kind) {
+  const template = IMPORT_CSV_TEMPLATES[kind]
+  if (!template) return []
+  return template.split('\n')[0].split(',').map((column) => column.trim()).filter(Boolean)
+}
+
+export function validateImportTemplateHeaders(kind, headers) {
+  const required = getImportTemplateColumns(kind)
+  const present = new Set(headers.map((header) => normalizeCsvHeaderKey(header)).filter(Boolean))
+  const missing = required.filter((column) => !present.has(column))
+  if (missing.length > 0) {
+    return { ok: false, missing }
+  }
+  return { ok: true, missing: [] }
+}
+
+export function parseCsvWithHeaders(text) {
   const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-  if (!normalized.trim()) return []
+  if (!normalized.trim()) return { headers: [], rows: [] }
 
   const rows = []
   let headers = null
@@ -68,7 +107,11 @@ export function parseCsv(text) {
     }
   }
 
-  return rows
+  return { headers: headers ?? [], rows }
+}
+
+export function parseCsv(text) {
+  return parseCsvWithHeaders(text).rows
 }
 
 const IMPORT_FIELD_LABELS = {
@@ -145,6 +188,9 @@ export function batchErrorResults(batch, chunkIndex, chunkSize, error) {
   const failedIndex = indexMatch ? Number(indexMatch[1]) : null
   return batch.map((row, rowIndex) => ({
     externalId: row.externalId ?? null,
+    displayName: row.displayName ?? null,
+    phone: row.phone ?? null,
+    email: row.email ?? null,
     status: 'error',
     message: failedIndex === null || failedIndex === rowIndex
       ? message

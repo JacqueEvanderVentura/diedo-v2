@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildBookingUrl,
   getAvailableSlots,
   isSlotAvailable,
   timeRangesOverlap,
@@ -10,6 +11,13 @@ const TUESDAY = '2026-09-16'
 const PEPE = 'emp-pepe'
 
 describe('selfBooking availability', () => {
+  it('buildBookingUrl omits branch when no sucursal is preselected', () => {
+    expect(buildBookingUrl()).toBe('/agendar')
+    expect(buildBookingUrl('branch-a')).toContain('branch=branch-a')
+    expect(buildBookingUrl(null, 'cust-1')).toContain('customer=cust-1')
+    expect(buildBookingUrl(null, 'cust-1')).not.toContain('branch=')
+  })
+
   it('normalizes appointment times with seconds', () => {
     expect(normalizeAppointmentTime('10:00:00')).toBe('10:00')
     expect(normalizeAppointmentTime('15:30')).toBe('15:30')

@@ -3,10 +3,12 @@ import {
   chunkRows,
   deriveCustomerDisplayName,
   formatImportApiError,
+  getImportTemplateColumns,
   mapCsvRowToApi,
   parseCsv,
   prepareActivityRows,
   prepareCustomerRows,
+  validateImportTemplateHeaders,
 } from '@/modules/configuracion/lib/csvImport'
 
 describe('csvImport', () => {
@@ -93,5 +95,17 @@ describe('csvImport', () => {
     const rows = parseCsv('externalId,name,notes\n1,Ana,"linea 1\nlinea 2"\n')
     expect(rows).toHaveLength(1)
     expect(rows[0].notes).toBe('linea 1\nlinea 2')
+  })
+
+  it('accepts customer csv with full template headers', () => {
+    const headers = getImportTemplateColumns('customers')
+    const result = validateImportTemplateHeaders('customers', headers)
+    expect(result.ok).toBe(true)
+  })
+
+  it('rejects customer csv that only has name column', () => {
+    const result = validateImportTemplateHeaders('customers', ['name', 'email', 'phone'])
+    expect(result.ok).toBe(false)
+    expect(result.missing.length).toBeGreaterThan(0)
   })
 })

@@ -86,6 +86,7 @@ from app.db.models.inventory import (
     InventoryMovementLine,
     InventoryStockBalance,
     InventoryWarehouse,
+    ItemImage,
 )
 from app.db.models.master_data import (
     Attachment,
@@ -134,6 +135,7 @@ __all__ = [
     "Asset",
     "AssetAttachment",
     "AssetCategory",
+    "ItemImage",
     "Branch",
     "CashMovement",
     "CashMovementLine",

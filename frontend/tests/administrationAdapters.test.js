@@ -138,6 +138,7 @@ describe('administration adapters', () => {
       name: 'Principal Renovada',
       status: 'active',
       timezone: 'America/Santo_Domingo',
+      onlineBookingSelectable: false,
       details: {
         address: 'Av. Renovada 2',
         phone: '809-555-0199',

@@ -407,6 +407,43 @@ class Asset(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     )
 
 
+class ItemImage(UuidPrimaryKeyMixin, Base):
+    __tablename__ = "item_images"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "item_id", name="uq_item_images_workspace_item"),
+        ForeignKeyConstraint(
+            ["workspace_id", "item_id"],
+            ["items.workspace_id", "items.id"],
+            ondelete="CASCADE",
+            name="fk_item_images_workspace_item",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "uploaded_by_membership_id"],
+            ["workspace_memberships.workspace_id", "workspace_memberships.id"],
+            ondelete="RESTRICT",
+            name="fk_item_images_workspace_uploader",
+        ),
+        CheckConstraint("size_bytes > 0", name="size_positive"),
+        CheckConstraint("char_length(checksum_sha256) = 64", name="checksum_length"),
+        CheckConstraint(
+            "content_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/gif')",
+            name="content_type_values",
+        ),
+    )
+
+    workspace_id: Mapped[UUID] = mapped_column(nullable=False)
+    item_id: Mapped[UUID] = mapped_column(nullable=False)
+    uploaded_by_membership_id: Mapped[UUID] = mapped_column(nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, deferred=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
 class AssetAttachment(UuidPrimaryKeyMixin, Base):
     __tablename__ = "asset_attachments"
     __table_args__ = (

@@ -40,7 +40,7 @@ function mergeProfileIntoRecipient(current, found) {
   }
 }
 
-export function BookingLinkModal({ open, onClose, branchId, branchName }) {
+export function BookingLinkModal({ open, onClose, branchId = null, branchName = '' }) {
   const profiles = useSelfBookingStore((s) => s.profiles)
   const lookupByDocument = useSelfBookingStore((s) => s.lookupByDocument)
   const linkProfileToCustomer = useSelfBookingStore((s) => s.linkProfileToCustomer)
@@ -57,7 +57,10 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
   const sendAttempt = useRef(null)
   const emailBusy = useRef(false)
 
-  const bookingUrl = buildBookingUrl(branchId)
+  const bookingUrl = useMemo(
+    () => buildBookingUrl(branchId || null, customer?.id || null),
+    [branchId, customer?.id],
+  )
 
   useEffect(() => {
     if (!open) return
@@ -68,10 +71,13 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
   }, [open])
 
   useEffect(() => {
-    if (!open || !isOnline || !branchId) return
+    if (!open || !isOnline) return
     let active = true
     setSetupLoading(true)
-    publicBookingApi.getContext(branchId).then((context) => {
+    const loader = branchId
+      ? publicBookingApi.getContext(branchId)
+      : publicBookingApi.getEntryContext()
+    loader.then((context) => {
       if (!active) return
       setSetup(context)
     }).catch(() => {
@@ -97,7 +103,8 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
       setEmailMessage('Ingresa un nombre y correo válidos para enviar el enlace.')
       return
     }
-    const payload = { branchId, name, email }
+    const payload = { name, email }
+    if (branchId) payload.branchId = branchId
     const fingerprint = JSON.stringify(payload)
     if (sendAttempt.current?.fingerprint !== fingerprint) sendAttempt.current = { fingerprint, key: crypto.randomUUID() }
     emailBusy.current = true
@@ -178,18 +185,20 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
     toast.message('Datos cargados del perfil de agendación')
   }
 
-  const profileUrl = documentKey ? buildProfileUrl(documentKey, branchId) : null
+  const profileUrl = documentKey ? buildProfileUrl(documentKey, branchId || '') : null
+  const workspaceLabel = setup?.workspaceName || setup?.branch?.workspaceName || branchName || ''
 
   const whatsappMessage = useMemo(() => {
     const name = recipient.name.trim()
     if (!name) return null
     return buildBookingLinkWhatsAppMessage({
       profile: { name },
-      branchName,
+      branchName: branchName || null,
+      workspaceName: workspaceLabel,
       bookingUrl,
       profileUrl,
     })
-  }, [recipient.name, profileUrl, branchName, bookingUrl])
+  }, [recipient.name, profileUrl, branchName, workspaceLabel, bookingUrl])
 
   const copyLink = async () => {
     try {
@@ -341,7 +350,7 @@ export function BookingLinkModal({ open, onClose, branchId, branchName }) {
             </a>
           </div>
           {emailMessage && <p role="status" data-testid="booking-link-email-result" className="text-sm text-slate-600">{emailMessage}</p>}
-          {setup && (setup.unavailable || !setup.specialists?.length || !setup.hasResources) && (
+          {branchId && setup?.branch && (setup.unavailable || !setup.specialists?.length || !setup.hasResources) && (
             <InlineSetupCard
               testId="booking-link-setup"
               title="Revisar configuración de agendación"

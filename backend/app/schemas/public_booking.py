@@ -46,6 +46,11 @@ class PublicBookingContextResponse(ApiModel):
     workspace_branches: list[PublicWorkspaceBranchOption] = Field(default_factory=list)
 
 
+class PublicBookingEntryContextResponse(ApiModel):
+    workspace_name: str
+    workspace_branches: list[PublicWorkspaceBranchOption] = Field(default_factory=list)
+
+
 class EmailNotificationResponse(ApiModel):
     id: UUID
     status: Literal["pending", "disabled", "sending", "sent", "failed", "review", "superseded"]
@@ -54,7 +59,7 @@ class EmailNotificationResponse(ApiModel):
 
 
 class BookingLinkEmailRequest(ApiModel):
-    branch_id: UUID
+    branch_id: UUID | None = None
     name: str = Field(min_length=2, max_length=200)
     email: EmailStr
 
@@ -105,6 +110,7 @@ class PublicSlotsResponse(ApiModel):
 
 
 class PublicBookAppointmentRequest(ApiModel):
+    customer_id: UUID | None = None
     document_type: CustomerDocumentType
     document_id: str = Field(min_length=3, max_length=64)
     display_name: str = Field(min_length=2, max_length=200)

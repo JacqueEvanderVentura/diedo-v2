@@ -123,7 +123,7 @@ function updateDemoAppointment(current, data) {
     ...current,
     ...data,
     cabinaId: data.cabinaId || data.resourceId || current.cabinaId,
-    resourceId: data.resourceId || data.cabinaId || current.resourceId,
+    resourceId: data.cabinaId || data.resourceId || current.resourceId,
     duration: data.duration === undefined ? current.duration : Number(data.duration) || 0,
     price: data.price === undefined ? current.price : Number(data.price) || 0,
     pendingAmount: data.pendingAmount === undefined ? current.pendingAmount : Number(data.pendingAmount) || 0,

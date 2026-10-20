@@ -1,6 +1,7 @@
 import { forwardRef } from 'react'
 import { Calendar, Clock, User } from 'lucide-react'
 import { formatDOP } from '@/lib/format'
+import { fmtAuditWhen } from '../lib/audit'
 import { useStaffName } from '@/modules/rrhh/lib/staff'
 import { statusMeta } from '@/stores/agendaStore'
 import { formatLongDate, endTime } from '../lib/calendar'
@@ -85,8 +86,18 @@ export const AppointmentShareCard = forwardRef(function AppointmentShareCard(
 
         {showAudit && (appointment.createdBy || appointment.updatedBy) && (
           <div className="border-t border-slate-100 pt-3 text-[11px] leading-relaxed text-slate-400">
-            {appointment.createdBy && <p>Creado por <span className="font-medium text-slate-600">{appointment.createdBy}</span></p>}
-            {appointment.updatedBy && <p>Editado por <span className="font-medium text-slate-600">{appointment.updatedBy}</span></p>}
+            {appointment.createdBy && (
+              <p>
+                Creado por <span className="font-medium text-slate-600">{appointment.createdBy}</span>
+                {appointment.createdAt ? ` · ${fmtAuditWhen(appointment.createdAt)}` : ''}
+              </p>
+            )}
+            {appointment.updatedBy && (
+              <p>
+                Última modificación por: <span className="font-medium text-slate-600">{appointment.updatedBy}</span>
+                {appointment.updatedAt ? ` · ${fmtAuditWhen(appointment.updatedAt)}` : ''}
+              </p>
+            )}
           </div>
         )}
       </div>

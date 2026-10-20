@@ -1,5 +1,6 @@
 import { formatDOP } from '@/lib/format'
 import { formatLongDate, endTime } from './calendar'
+import { fmtAuditWhen } from './audit'
 
 const W = 380
 const SCALE = 2
@@ -91,6 +92,8 @@ export function buildShareCardModel(appointment, { staffName, statusLabel, proxi
     proximo: !!proximo,
     createdBy: showAudit ? appointment?.createdBy : undefined,
     updatedBy: showAudit ? appointment?.updatedBy : undefined,
+    createdAt: showAudit ? appointment?.createdAt : undefined,
+    updatedAt: showAudit ? appointment?.updatedAt : undefined,
     showAudit,
   }
 }
@@ -239,18 +242,14 @@ export function renderShareCardCanvas(model) {
     ctx.fillStyle = COLORS.slate400
     ctx.font = '500 11px Inter, system-ui, sans-serif'
     if (model.createdBy) {
-      ctx.fillText('Creado por ', PAD, y)
-      const w1 = ctx.measureText('Creado por ').width
-      ctx.fillStyle = COLORS.slate600
-      ctx.fillText(model.createdBy, PAD + w1, y)
+      const createdLine = `Creado por ${model.createdBy}${model.createdAt ? ` · ${fmtAuditWhen(model.createdAt)}` : ''}`
+      ctx.fillText(createdLine, PAD, y)
       y += 16
     }
     if (model.updatedBy) {
       ctx.fillStyle = COLORS.slate400
-      ctx.fillText('Editado por ', PAD, y)
-      const w2 = ctx.measureText('Editado por ').width
-      ctx.fillStyle = COLORS.slate600
-      ctx.fillText(model.updatedBy, PAD + w2, y)
+      const updatedLine = `Última modificación por: ${model.updatedBy}${model.updatedAt ? ` · ${fmtAuditWhen(model.updatedAt)}` : ''}`
+      ctx.fillText(updatedLine, PAD, y)
       y += 16
     }
   }

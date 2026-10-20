@@ -395,6 +395,7 @@ class PosCatalogItemResponse(ApiModel):
     tax_rate: Money
     stock_quantity: Quantity | None
     stock_status: PosStockStatus
+    image_url: str | None = None
 
 
 class RegisterPaymentMethodSummaryResponse(ApiModel):

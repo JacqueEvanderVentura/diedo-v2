@@ -81,8 +81,9 @@ export const useSelfBookingStore = create(
           profiles: s.profiles.map((p) => (p.id === profileId ? { ...p, customerId } : p)),
         })),
 
-      bookAppointment: async ({ profile, branchId, service, date, time, employeeId, duration, idempotencyKey }) => {
+      bookAppointment: async ({ profile, branchId, service, date, time, employeeId, idempotencyKey }) => {
         const response = await publicBookingApi.book(branchId, {
+          customerId: profile.customerId || null,
           documentType: profile.docType || 'cedula',
           documentId: profile.documentId,
           displayName: profile.name,
@@ -95,7 +96,6 @@ export const useSelfBookingStore = create(
           employeeId,
           date,
           time,
-          duration: duration || Number(service?.durationMinutes) || 30,
         }, idempotencyKey)
         return response.appointment
       },

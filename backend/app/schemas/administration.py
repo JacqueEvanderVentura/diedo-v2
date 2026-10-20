@@ -280,6 +280,7 @@ class BranchResponse(ApiModel):
     status: Literal["active", "inactive", "archived"]
     timezone: str
     details: BranchDetails
+    online_booking_selectable: bool = False
     version: int
 
 
@@ -308,6 +309,7 @@ class UpdateBranchRequest(ApiModel):
     status: Literal["active", "inactive"] | None = None
     timezone: str | None = Field(default=None, min_length=3, max_length=64)
     details: BranchDetailsPatch | None = None
+    online_booking_selectable: bool | None = None
     version: int = Field(ge=1)
 
 

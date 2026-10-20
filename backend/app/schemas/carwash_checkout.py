@@ -16,16 +16,25 @@ class WashPriceOverride(ApiModel):
     unit_price: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
 
 
+class WashExtraLineRequest(ApiModel):
+    model_config = ConfigDict(extra="forbid")
+    item_id: UUID
+    quantity: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
+
+
 class PreviewWashRequest(WashActionRequest):
     discount_type: Literal["percent", "fixed"] | None = None
     discount_value: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
     price_overrides: list[WashPriceOverride] = Field(default_factory=list, max_length=20)
+    extra_lines: list[WashExtraLineRequest] = Field(default_factory=list, max_length=30)
 
     @model_validator(mode="after")
     def valid_prices(self) -> Self:
         _validate_discount(self.discount_type, self.discount_value)
         if len({row.wash_line_id for row in self.price_overrides}) != len(self.price_overrides):
             raise ValueError("No repitas líneas en los cambios de precio.")
+        if len({row.item_id for row in self.extra_lines}) != len(self.extra_lines):
+            raise ValueError("No repitas productos adicionales.")
         return self
 
 

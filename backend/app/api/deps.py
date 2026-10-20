@@ -112,6 +112,25 @@ def require_permission(permission_code: str) -> Callable[..., PermissionGrant]:
     return dependency
 
 
+def require_any_permission(*permission_codes: str) -> Callable[..., PermissionGrant]:
+    def dependency(
+        database: DatabaseSession,
+        principal: CurrentPrincipal,
+    ) -> PermissionGrant:
+        service = AuthorizationService(database)
+        last_error: AuthorizationError | None = None
+        for permission_code in permission_codes:
+            try:
+                return service.require_permission(principal, permission_code)
+            except AuthorizationError as exc:
+                last_error = exc
+        if last_error is not None:
+            raise last_error
+        return service.require_permission(principal, permission_codes[0])
+
+    return dependency
+
+
 MembershipReadGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("membership.read")),
@@ -179,6 +198,10 @@ CatalogManageGrant = Annotated[
 InventoryReadGrant = Annotated[
     PermissionGrant,
     Depends(require_permission("inventory.read")),
+]
+CatalogOrInventoryReadGrant = Annotated[
+    PermissionGrant,
+    Depends(require_any_permission("catalog.read", "inventory.read")),
 ]
 InventoryManageGrant = Annotated[
     PermissionGrant,

@@ -16,32 +16,38 @@ def send_booking_link(
     session: Session,
     *,
     grant: PermissionGrant,
-    branch_id: UUID,
+    branch_id: UUID | None,
     name: str,
     email: str,
     idempotency_key: str,
 ) -> dict:
-    if grant.allowed_branch_ids is not None and branch_id not in grant.allowed_branch_ids:
-        raise AuthorizationError("No tienes acceso a esta sucursal.", "branchId")
-    branch = session.scalar(
-        select(Branch).where(
-            Branch.id == branch_id,
-            Branch.workspace_id == grant.workspace_id,
-            Branch.status == "active",
-        )
-    )
-    if branch is None:
-        raise ResourceNotFoundError("La sucursal no existe.", "branchId")
     workspace = session.get(Workspace, grant.workspace_id)
     assert workspace is not None
-    key = "booking-link/" + sha256(f"{branch_id}/{idempotency_key}".encode()).hexdigest()
+    branch_name: str | None = None
+    link_branch_id: UUID | None = None
+    if branch_id is not None:
+        if grant.allowed_branch_ids is not None and branch_id not in grant.allowed_branch_ids:
+            raise AuthorizationError("No tienes acceso a esta sucursal.", "branchId")
+        branch = session.scalar(
+            select(Branch).where(
+                Branch.id == branch_id,
+                Branch.workspace_id == grant.workspace_id,
+                Branch.status == "active",
+            )
+        )
+        if branch is None:
+            raise ResourceNotFoundError("La sucursal no existe.", "branchId")
+        branch_name = branch.name
+        link_branch_id = branch.id
+    fingerprint = f"{link_branch_id or grant.workspace_id}/{idempotency_key}"
+    key = "booking-link/" + sha256(fingerprint.encode()).hexdigest()
     PublicBookingService(session)._lock(key)
     content = render_booking_link_email(
         to=email,
         name=name,
-        branch_name=branch.name,
+        branch_name=branch_name,
         workspace_name=workspace.name,
-        branch_id=branch.id,
+        branch_id=link_branch_id,
     )
     notification = enqueue_email(
         session,

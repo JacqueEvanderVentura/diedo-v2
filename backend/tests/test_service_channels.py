@@ -75,6 +75,16 @@ def test_service_channel_flags_control_pos_and_agenda(client: TestClient) -> Non
     assert pos_service["id"] in catalog_ids
     assert agenda_service["id"] not in catalog_ids
 
+    branches = client.get("/api/v1/branches", headers=headers)
+    assert branches.status_code == 200, branches.text
+    branch_row = next(row for row in branches.json() if row["id"] == branch_id)
+    enabled = client.patch(
+        f"/api/v1/branches/{branch_id}",
+        headers=headers,
+        json={"onlineBookingSelectable": True, "version": branch_row["version"]},
+    )
+    assert enabled.status_code == 200, enabled.text
+
     booking_context = client.get(f"/api/v1/public/booking/branches/{branch_id}/context")
     assert booking_context.status_code == 200, booking_context.text
     booking_ids = {item["id"] for item in booking_context.json()["services"]}

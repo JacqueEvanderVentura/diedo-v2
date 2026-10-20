@@ -31,9 +31,9 @@ LEGACY_ROLE_PERMISSIONS = {
             "dashboard.read",
             "crm.read",
             "crm.manage",
-            "finance.read",
-            "report.read",
-            "sales.read",
+            "carwash.read",
+            "carwash.wash.manage",
+            "carwash.wash.complete",
             "pos.read",
             "pos.cash.read",
             "pos.receivables.read",
@@ -58,9 +58,7 @@ LEGACY_ROLE_PERMISSIONS = {
 }
 
 # Dependencies of CRM and POS workflows; commercial capabilities remain role-specific.
-ROLE_DEPENDENCIES = frozenset(
-    {"customer.read", "catalog.read", "inventory.read", "branch.read", "workspace.read"}
-)
+ROLE_DEPENDENCIES = frozenset({"customer.read", "catalog.read", "branch.read", "workspace.read"})
 ROLE_PERMISSIONS = {
     code: permissions
     | ROLE_DEPENDENCIES

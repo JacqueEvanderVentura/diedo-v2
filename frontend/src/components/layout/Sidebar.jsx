@@ -248,7 +248,7 @@ function SidebarContent({ collapsed, onNavigate, onClose, onToggleCollapse, pinn
       NAV_GROUPS.filter((group) => {
         if (group.id === 'chat' && !isChatModuleSurfaceEnabled(modules)) return false
         if (!isModuleAvailable(group.module, modules)) return false
-        if (!group.children && group.permission && !permissions.has(group.permission)) return false
+        if (group.permission && !permissions.has(group.permission)) return false
         return true
       })
         .map((group) => ({

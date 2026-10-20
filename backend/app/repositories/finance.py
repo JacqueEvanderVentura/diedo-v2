@@ -56,6 +56,7 @@ class ExpenseViewRecord:
     concept: str
     amount: Decimal
     category: str
+    category_id: UUID | None
     date: date
     branch_id: UUID
     status: str
@@ -215,6 +216,7 @@ class FinanceRepository:
             FinanceExpense.concept.label("concept"),
             FinanceExpense.amount.label("amount"),
             FinanceExpense.category.label("category"),
+            FinanceExpense.category_id.label("category_id"),
             FinanceExpense.expense_date.label("date"),
             FinanceExpense.branch_id.label("branch_id"),
             FinanceExpense.payment_status.label("status"),
@@ -230,6 +232,7 @@ class FinanceRepository:
             CashMovement.concept.label("concept"),
             CashMovement.amount.label("amount"),
             literal("otros").label("category"),
+            cast(literal(None), Uuid()).label("category_id"),
             local_cash_date.label("date"),
             CashMovement.branch_id.label("branch_id"),
             literal("pagado").label("status"),

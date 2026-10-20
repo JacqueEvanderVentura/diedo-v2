@@ -87,7 +87,8 @@ export function EmployeeScheduleEditor({ value, onChange }) {
             Horario semanal por bloques
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            Agrega varios rangos por día. Solo esos bloques estarán disponibles para citas.
+            Opcional: puedes dejar la semana vacía (por ejemplo lavadores sin horario fijo).
+            Sin bloques, Agenda no restringe al empleado y Carwash no usa este horario.
           </p>
         </div>
         <Button type="button" size="sm" variant="secondary" onClick={copyMondayToWeekdays}>

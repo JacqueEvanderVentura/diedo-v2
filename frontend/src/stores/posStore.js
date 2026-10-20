@@ -1205,7 +1205,7 @@ export const usePosStore = create(
           documentKind: held.documentKind || 'quote',
           isFinalized: false,
           activeQuoteId: held.apiSynced ? held.id : null,
-          heldCarts: held.apiSynced ? s.heldCarts : s.heldCarts.filter((h) => h.id !== id),
+          heldCarts: s.heldCarts.filter((h) => h.id !== id),
         })
         return true
       },
@@ -1723,12 +1723,21 @@ export const usePosStore = create(
             apply: (response) => {
               const sale = mapSaleMutationResponse(response)
               if (!sale) return
-              set((current) => ({
-                sales: replaceById(current.sales, sale),
-                shiftSales: current.register.open
-                  ? replaceById(current.shiftSales, sale)
-                  : current.shiftSales,
-              }))
+              set((current) => {
+                const quoteId = current.activeQuoteId
+                const patch = {
+                  sales: replaceById(current.sales, sale),
+                  shiftSales: current.register.open
+                    ? replaceById(current.shiftSales, sale)
+                    : current.shiftSales,
+                }
+                if (quoteId) {
+                  patch.heldCarts = current.heldCarts.filter((held) => held.id !== quoteId)
+                  patch.openQuotes = current.openQuotes.filter((quote) => quote.id !== quoteId)
+                  patch.activeQuoteId = null
+                }
+                return patch
+              })
             },
           })
         }

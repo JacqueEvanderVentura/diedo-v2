@@ -76,6 +76,7 @@ def setup(client: TestClient) -> Iterator[dict]:
         session.add(branch)
         session.flush()
         branch_id = str(branch.id)
+        bootstrap_local_foundation(session, hash_password(PASSWORD))
     headers = login(client, "owner@erp.dev")
     options = client.get(f"{BASE}/form-options", params={"branchId": branch_id}, headers=headers)
     assert options.status_code == 200, options.text

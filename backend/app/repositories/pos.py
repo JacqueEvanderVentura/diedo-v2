@@ -24,6 +24,7 @@ from app.db.models.inventory import (
     InventoryMovement,
     InventoryStockBalance,
     InventoryWarehouse,
+    ItemImage,
 )
 from app.db.models.master_data import Customer, CustomerBranchAssignment
 from app.db.models.pos import CashMovement, CashMovementLine, CashRegister
@@ -51,6 +52,7 @@ class PosCatalogRecord:
     warehouse_id: UUID | None
     stock_quantity: Decimal | None
     minimum_quantity: Decimal | None
+    has_image: bool = False
 
 
 @dataclass(frozen=True)
@@ -282,6 +284,7 @@ class PosRepository:
                 InventoryItemProfile,
                 InventoryStockBalance.quantity,
                 InventoryStockBalance.minimum_quantity,
+                ItemImage.id,
             )
             .join(
                 ItemBranchAssignment,
@@ -306,6 +309,10 @@ class PosRepository:
                     InventoryStockBalance.warehouse_id
                     == (default_warehouse.id if default_warehouse is not None else None)
                 ),
+            )
+            .outerjoin(
+                ItemImage,
+                (ItemImage.workspace_id == Item.workspace_id) & (ItemImage.item_id == Item.id),
             )
             .where(
                 Item.workspace_id == workspace_id,
@@ -333,6 +340,7 @@ class PosRepository:
                 warehouse_id=default_warehouse.id if default_warehouse is not None else None,
                 stock_quantity=(Decimal(row[3]) if row[3] is not None else None),
                 minimum_quantity=(Decimal(row[4]) if row[4] is not None else None),
+                has_image=row[5] is not None,
             )
             for row in rows
         )

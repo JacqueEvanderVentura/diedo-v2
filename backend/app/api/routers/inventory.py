@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, File, Form, Header, Query, Response, UploadFile, status
 
 from app.api.deps import (
+    CatalogOrInventoryReadGrant,
     CurrentPrincipal,
     DatabaseSession,
     InventoryManageGrant,
@@ -149,6 +150,9 @@ def _item_response(record: InventoryItemRecord) -> InventoryItemResponse:
         version=item.version,
         created_at=item.created_at,
         updated_at=item.updated_at,
+        image_url=(
+            f"/api/v1/inventory/items/{item.id}/image/content" if record.has_image else None
+        ),
     )
 
 
@@ -277,7 +281,7 @@ def list_warehouses(
 def list_inventory_items(
     response: Response,
     database: DatabaseSession,
-    grant: InventoryReadGrant,
+    grant: CatalogOrInventoryReadGrant,
     branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
     search: Annotated[str | None, Query(max_length=100)] = None,
     item_type: Annotated[InventoryItemType | None, Query(alias="itemType")] = None,
@@ -413,6 +417,85 @@ def update_inventory_item(
             item_id=item_id,
             expected_version=payload.version,
             changes=payload.model_dump(exclude_unset=True, exclude={"version"}, by_alias=False),
+        )
+    )
+
+
+@router.post(
+    "/items/{item_id}/image",
+    responses={
+        **_SECURITY_RESPONSES,
+        400: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
+)
+def upload_item_image(
+    item_id: UUID,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: InventoryManageGrant,
+    version: Annotated[int, Form(ge=1)],
+    file: Annotated[UploadFile, File()],
+) -> InventoryItemResponse:
+    try:
+        content = file.file.read(settings.incident_image_max_bytes + 1)
+    finally:
+        file.file.close()
+    return _item_response(
+        InventoryService(database).replace_item_image(
+            principal=principal,
+            grant=grant,
+            item_id=item_id,
+            expected_version=version,
+            item_input=AssetImageInput(
+                filename=file.filename or "imagen",
+                content_type=file.content_type or "application/octet-stream",
+                content=content,
+            ),
+            max_bytes=settings.incident_image_max_bytes,
+        )
+    )
+
+
+@router.get(
+    "/items/{item_id}/image/content",
+    responses={**_SECURITY_RESPONSES, 404: {"model": ErrorResponse}},
+)
+def preview_item_image(
+    item_id: UUID,
+    database: DatabaseSession,
+    grant: InventoryReadGrant,
+) -> Response:
+    image = InventoryService(database).get_item_image_content(grant=grant, item_id=item_id)
+    encoded_name = quote(image.original_filename, safe="")
+    return Response(
+        content=image.content,
+        media_type=image.content_type,
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{encoded_name}",
+            "Cache-Control": "private, max-age=3600",
+        },
+    )
+
+
+@router.delete(
+    "/items/{item_id}/image",
+    responses={**_SECURITY_RESPONSES, 404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+)
+def delete_item_image(
+    item_id: UUID,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: InventoryManageGrant,
+    version: Annotated[int, Query(ge=1)],
+) -> InventoryItemResponse:
+    return _item_response(
+        InventoryService(database).delete_item_image(
+            principal=principal,
+            grant=grant,
+            item_id=item_id,
+            expected_version=version,
         )
     )
 

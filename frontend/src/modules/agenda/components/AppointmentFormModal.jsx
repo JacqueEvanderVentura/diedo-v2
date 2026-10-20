@@ -36,7 +36,6 @@ import {
 } from '../lib/receivablePermissions'
 import { buildCompletionPayload } from '../lib/completion'
 import { fetchLastVisitBookingDefaults } from '../lib/customerBookingDefaults'
-
 const EMPTY_SLOT = Object.freeze({})
 
 const empty = (date, customerId, slot = {}) => ({
@@ -185,9 +184,11 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
       (resource) => resource.id === form.cabinaId
     )
     if (!currentResourceIsValid) {
+      const fallbackId = branchResources[0]?.id || ''
       setForm((current) => ({
         ...current,
-        cabinaId: branchResources[0]?.id || '',
+        cabinaId: fallbackId,
+        resourceId: fallbackId,
       }))
     }
   }, [branchResources, form.branchId, form.cabinaId, open, resourcesLoading])
@@ -325,6 +326,8 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
       price,
       createdBy: appointment?.createdBy,
       updatedBy: appointment?.updatedBy,
+      createdAt: appointment?.createdAt,
+      updatedAt: appointment?.updatedAt,
     }),
     [form, customers, selectedService, price, appointment]
   )
@@ -390,14 +393,30 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
               value={form.serviceId}
               onChange={(v) => {
                 const next = services.find((service) => service.id === v)
-                setForm((current) => ({
-                  ...current,
-                  serviceId: v,
-                  serviceName: next?.name || '',
-                  price: next?.price ?? 0,
-                  duration: Number(next?.durationMinutes) || 30,
-                  time: '',
-                }))
+                setForm((current) => {
+                  const nextDuration = Number(next?.durationMinutes) || 30
+                  let nextTime = current.time
+                  if (current.time && current.employeeId && current.date) {
+                    const slots = getAvailableSlots({
+                      date: current.date,
+                      employeeId: current.employeeId,
+                      duration: nextDuration,
+                      appointments,
+                      employee: employees.find((e) => e.id === current.employeeId),
+                      vacationRequests,
+                      excludeAppointmentId: appointment?.id,
+                    })
+                    if (!slots.includes(current.time)) nextTime = ''
+                  }
+                  return {
+                    ...current,
+                    serviceId: v,
+                    serviceName: next?.name || '',
+                    price: next?.price ?? 0,
+                    duration: nextDuration,
+                    time: nextTime,
+                  }
+                })
                 setErr('')
               }}
               placeholder="Seleccionar Servicio"
@@ -437,7 +456,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Cabina</label>
             <Select
               value={form.cabinaId}
-              onChange={(v) => set('cabinaId', v)}
+              onChange={(v) => setForm((current) => ({ ...current, cabinaId: v, resourceId: v }))}
               placeholder="Seleccionar Cabina"
               options={branchResources.map((resource) => ({ value: resource.id, label: resource.name }))}
               data-testid="appointment-field-cabina"

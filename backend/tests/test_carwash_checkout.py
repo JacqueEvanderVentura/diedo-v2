@@ -16,6 +16,7 @@ from app.db.models import (
     InventoryItemProfile,
     PaymentMethod,
     Sale,
+    SaleLine,
 )
 from app.db.session import session_scope
 from app.services.carwash_operations import CarwashOperationsService
@@ -26,6 +27,7 @@ from tests.test_carwash_operations import action, register
 from tests.test_carwash_operations import operation as operation_fixture
 from tests.test_carwash_settings import BASE, scoped_user
 from tests.test_carwash_settings import setup as settings_fixture
+from tests.test_pos import _create_product, _stock
 
 pytestmark = pytest.mark.integration
 
@@ -87,6 +89,52 @@ def commissions(setup, wash):
                 .order_by(CarwashCommission.role)
             )
         )
+
+
+def test_completion_includes_pos_products_on_same_sale(client, checkout_setup):
+    setup = checkout_setup
+    wash = washing(client, setup)
+    product = _create_product(
+        client,
+        setup["headers"],
+        UUID(setup["branchId"]),
+        str(uuid7())[:8],
+        stock="5",
+    )
+    item_id = str(product["id"])
+    stock_before = _stock(client, setup["headers"], UUID(setup["branchId"]), item_id)
+    preview = client.post(
+        f"{BASE}/washes/{wash['id']}/preview",
+        headers=setup["headers"],
+        json={
+            "version": wash["version"],
+            "extraLines": [{"itemId": item_id, "quantity": "2"}],
+        },
+    )
+    assert preview.status_code == 200, preview.text
+    wash_total = Decimal(wash["total"])
+    product_total = Decimal("20.00")
+    assert preview.json()["total"] == str(wash_total + product_total)
+    response = complete(
+        client,
+        setup,
+        wash,
+        extraLines=[{"itemId": item_id, "quantity": "2"}],
+    )
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["finalTotal"] == str(wash_total + product_total)
+    rows = commissions(setup, result)
+    assert len(rows) == 4
+    with session_scope() as session:
+        sale = session.get(Sale, UUID(result["saleId"]))
+        assert sale is not None
+        assert sale.total == wash_total + product_total
+        line_count = session.scalar(
+            select(func.count()).select_from(SaleLine).where(SaleLine.sale_id == sale.id)
+        )
+        assert line_count == len(wash["lines"]) + 1
+    assert _stock(client, setup["headers"], UUID(setup["branchId"]), item_id) == stock_before - 2
 
 
 def test_completion_snapshots_discounts_commissions_and_replay(client, checkout_setup):

@@ -23,11 +23,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 from app.db.models.mixins import TimestampMixin, UuidPrimaryKeyMixin, VersionMixin
 
-_EXPENSE_CATEGORY_CHECK = (
-    "category IN ('alquiler', 'servicios', 'nomina', 'insumos', "
-    "'marketing', 'mantenimiento', 'otros')"
-)
-
 
 class FinanceBudget(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     __tablename__ = "finance_budgets"
@@ -107,7 +102,12 @@ class FinanceExpense(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             ondelete="RESTRICT",
             name="fk_finance_expenses_scope_budget",
         ),
-        CheckConstraint(_EXPENSE_CATEGORY_CHECK, name="category_values"),
+        ForeignKeyConstraint(
+            ["workspace_id", "category_id"],
+            ["item_categories.workspace_id", "item_categories.id"],
+            ondelete="RESTRICT",
+            name="fk_finance_expenses_workspace_category",
+        ),
         CheckConstraint("amount > 0", name="amount_positive"),
         CheckConstraint("payment_status IN ('pagado', 'pendiente')", name="payment_status_values"),
         CheckConstraint("record_status IN ('active', 'voided')", name="record_status_values"),
@@ -129,6 +129,7 @@ class FinanceExpense(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             "creation_idempotency_key",
             unique=True,
         ),
+        Index("ix_finance_expenses_workspace_category", "workspace_id", "category_id"),
     )
 
     workspace_id: Mapped[UUID] = mapped_column(
@@ -137,7 +138,8 @@ class FinanceExpense(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     branch_id: Mapped[UUID] = mapped_column(nullable=False)
     concept: Mapped[str] = mapped_column(String(240), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
-    category: Mapped[str] = mapped_column(String(24), nullable=False)
+    category: Mapped[str] = mapped_column(String(36), nullable=False)
+    category_id: Mapped[UUID | None] = mapped_column(nullable=True)
     expense_date: Mapped[date] = mapped_column(Date, nullable=False)
     payment_status: Mapped[str] = mapped_column(String(16), nullable=False)
     budget_id: Mapped[UUID | None] = mapped_column(nullable=True)
@@ -180,7 +182,12 @@ class FinanceFixedExpense(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Bas
             ondelete="RESTRICT",
             name="fk_finance_fixed_expenses_workspace_branch",
         ),
-        CheckConstraint(_EXPENSE_CATEGORY_CHECK, name="category_values"),
+        ForeignKeyConstraint(
+            ["workspace_id", "category_id"],
+            ["item_categories.workspace_id", "item_categories.id"],
+            ondelete="RESTRICT",
+            name="fk_finance_fixed_expenses_workspace_category",
+        ),
         CheckConstraint("amount > 0", name="amount_positive"),
         CheckConstraint("day_of_month BETWEEN 1 AND 31", name="day_of_month_range"),
         CheckConstraint("status IN ('active', 'archived')", name="status_values"),
@@ -196,6 +203,7 @@ class FinanceFixedExpense(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Bas
             "creation_idempotency_key",
             unique=True,
         ),
+        Index("ix_finance_fixed_expenses_workspace_category", "workspace_id", "category_id"),
     )
 
     workspace_id: Mapped[UUID] = mapped_column(
@@ -205,7 +213,8 @@ class FinanceFixedExpense(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Bas
     concept: Mapped[str] = mapped_column(String(240), nullable=False)
     normalized_concept: Mapped[str] = mapped_column(String(240), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
-    category: Mapped[str] = mapped_column(String(24), nullable=False)
+    category: Mapped[str] = mapped_column(String(36), nullable=False)
+    category_id: Mapped[UUID | None] = mapped_column(nullable=True)
     day_of_month: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="active", server_default=text("'active'")

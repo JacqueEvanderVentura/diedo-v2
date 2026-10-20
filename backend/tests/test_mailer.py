@@ -124,3 +124,17 @@ def test_booking_link_email_uses_invitation_layout_without_appointment_details(m
     assert "Agendar cita" in content["html"]
     assert f"https://example.workers.dev/agendar?branch={branch_id}" in content["text"]
     assert "Servicio" not in content["text"]
+
+
+def test_booking_link_email_without_branch_uses_generic_agendar_url(monkeypatch):
+    monkeypatch.setattr(settings, "public_app_url", "https://example.workers.dev")
+    content = mailer.render_booking_link_email(
+        to="client@example.com",
+        name="Ana",
+        branch_name=None,
+        workspace_name="Mi establecimiento",
+        branch_id=None,
+    )
+    assert "https://example.workers.dev/agendar" in content["text"]
+    assert "branch=" not in content["text"]
+    assert "Sucursal" not in content["html"]

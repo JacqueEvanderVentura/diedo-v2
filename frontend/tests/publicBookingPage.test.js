@@ -9,7 +9,7 @@ import { useSessionStore } from '@/stores/sessionStore'
 import { publicBookingApi } from '@/services/publicBookingApi'
 
 vi.mock('@/services/publicBookingApi', () => ({
-  publicBookingApi: { getContext: vi.fn() },
+  publicBookingApi: { getContext: vi.fn(), getEntryContext: vi.fn() },
 }))
 
 beforeEach(() => {
@@ -46,8 +46,14 @@ it('does not book against a local fallback branch when the shared link is invali
   expect(publicBookingApi.getContext).toHaveBeenCalledWith('missing')
 })
 
-it('requests a valid link when no branch was provided', async () => {
+it('loads branch picker from entry context when no branch was provided', async () => {
+  publicBookingApi.getEntryContext.mockResolvedValue({
+    workspaceName: 'Helios Spa',
+    workspaceBranches: [{ id: 'entry-branch', name: 'Sucursal centro' }],
+  })
   openLink('/agendar')
-  expect((await screen.findByRole('alert')).textContent).toContain('no contiene una sucursal')
+  expect(await screen.findByText('Elige tu sucursal')).toBeTruthy()
+  expect(screen.getByTestId('branch-option-entry-branch').textContent).toContain('Sucursal centro')
+  expect(publicBookingApi.getEntryContext).toHaveBeenCalled()
   expect(publicBookingApi.getContext).not.toHaveBeenCalled()
 })

@@ -281,7 +281,6 @@ def test_provisioning_creates_an_isolated_ready_workspace(
             assert {
                 "customer.read",
                 "catalog.read",
-                "inventory.read",
                 "branch.read",
                 "workspace.read",
             } <= codes

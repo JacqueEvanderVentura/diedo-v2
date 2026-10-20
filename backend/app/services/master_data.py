@@ -28,6 +28,13 @@ from app.services.attachment_storage import (
 from app.services.auth import AuthPrincipal
 from app.services.authorization import PermissionGrant
 from app.services.customer_documents import prepare_customer_document_fields
+from app.services.customer_import_merge import (
+    build_customer_import_update_changes,
+    customer_import_row_context,
+    find_import_customer_matches,
+    format_customer_import_update_summary,
+    meaningful_customer_import_changes,
+)
 from app.services.document_identity import (
     assert_document_available_in_workspace,
     require_document_pair,
@@ -154,38 +161,97 @@ class MasterDataService:
     ) -> list[dict[str, object]]:
         self._validate_branches(grant, branch_ids)
         results: list[dict[str, object]] = []
+
+        def result_row(
+            *,
+            external_id: object,
+            customer_id: UUID | None,
+            status: str,
+            message: str | None,
+            raw_row: dict[str, object],
+        ) -> dict[str, object]:
+            return {
+                "external_id": external_id,
+                "customer_id": customer_id,
+                "status": status,
+                "message": message,
+                **customer_import_row_context(raw_row),
+            }
+
         for raw in items:
             external_id = raw.get("external_id")
             try:
-                phone = raw.get("phone")
-                if phone:
-                    existing_page = self._repository.list_customers(
-                        workspace_id=grant.workspace_id,
-                        allowed_branch_ids=grant.allowed_branch_ids,
-                        search=None,
-                        name=None,
-                        phone=normalize_phone(str(phone)),
-                        email=None,
-                        document_id=None,
-                        customer_type=None,
-                        status="active",
-                        branch_id=None,
-                        page=1,
-                        page_size=1,
-                        sort_by="name",
-                        sort_direction="asc",
-                    )
-                    if existing_page.items:
-                        customer = existing_page.items[0]
-                        results.append(
-                            {
-                                "external_id": external_id,
-                                "customer_id": customer.id,
-                                "status": "skipped",
-                                "message": "Cliente existente con el mismo teléfono.",
-                            }
+                existing_customers = find_import_customer_matches(
+                    self._repository,
+                    workspace_id=grant.workspace_id,
+                    allowed_branch_ids=grant.allowed_branch_ids,
+                    destination_branch_ids=branch_ids,
+                    raw=raw,
+                )
+                if existing_customers:
+                    updated_id: UUID | None = None
+                    summaries: list[str] = []
+                    last_customer_id = existing_customers[0].id
+                    for existing_customer in existing_customers:
+                        update_changes = meaningful_customer_import_changes(
+                            build_customer_import_update_changes(existing_customer, raw)
                         )
-                        continue
+                        self._repository.ensure_customer_branches(
+                            grant.workspace_id,
+                            existing_customer.id,
+                            branch_ids,
+                        )
+                        if not update_changes:
+                            last_customer_id = existing_customer.id
+                            continue
+                        summaries.append(
+                            format_customer_import_update_summary(
+                                existing_customer,
+                                update_changes,
+                            )
+                        )
+                        prepared_update = self._prepare_customer_values(update_changes)
+                        normalized_doc = cast_optional_str(
+                            prepared_update.get("normalized_document_id")
+                        )
+                        if normalized_doc:
+                            assert_document_available_in_workspace(
+                                self._session,
+                                workspace_id=grant.workspace_id,
+                                normalized_document_id=normalized_doc,
+                                exclude_customer_id=existing_customer.id,
+                            )
+                        record = self._repository.update_customer(
+                            customer=existing_customer,
+                            changes=prepared_update,
+                            branch_ids=None,
+                            actor_platform_user_id=principal.platform_user_id,
+                            request_id=get_request_id(),
+                        )
+                        updated_id = record.id
+                    self._session.commit()
+                    if updated_id is not None:
+                        results.append(
+                            result_row(
+                                external_id=external_id,
+                                customer_id=updated_id,
+                                status="updated",
+                                message="; ".join(summaries)
+                                or "Sucursal asignada al cliente existente.",
+                                raw_row=raw,
+                            )
+                        )
+                    else:
+                        results.append(
+                            result_row(
+                                external_id=external_id,
+                                customer_id=last_customer_id,
+                                status="skipped",
+                                message="Cliente existente sin cambios nuevos.",
+                                raw_row=raw,
+                            )
+                        )
+                    continue
                 import_values: dict[str, object] = {
                     "customer_type": raw.get("customer_type", "person"),
                     "display_name": raw.get("display_name"),
@@ -218,22 +284,24 @@ class MasterDataService:
                 )
                 self._session.commit()
                 results.append(
-                    {
-                        "external_id": external_id,
-                        "customer_id": record.id,
-                        "status": "created",
-                        "message": None,
-                    }
+                    result_row(
+                        external_id=external_id,
+                        customer_id=record.id,
+                        status="created",
+                        message=None,
+                        raw_row=raw,
+                    )
                 )
             except Exception as exc:  # noqa: BLE001 - per-row import report
                 self._session.rollback()
                 results.append(
-                    {
-                        "external_id": external_id,
-                        "customer_id": None,
-                        "status": "error",
-                        "message": str(exc),
-                    }
+                    result_row(
+                        external_id=external_id,
+                        customer_id=None,
+                        status="error",
+                        message=str(exc),
+                        raw_row=raw,
+                    )
                 )
         return results
 

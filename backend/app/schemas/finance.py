@@ -47,11 +47,12 @@ class FinanceExpenseResponse(ApiModel):
     id: UUID
     concept: str
     amount: Decimal
-    category: ExpenseCategory
+    category: str
+    category_id: UUID | None = None
     date: DateValue
     branch_id: UUID
     status: PaymentStatus
-    budget_id: UUID | None
+    budget_id: UUID | None = None
     source: Literal["finanzas", "caja"]
     editable: bool
     version: int | None
@@ -71,7 +72,8 @@ class PaginatedFinanceExpensesResponse(ApiModel):
 class CreateFinanceExpenseRequest(ApiModel):
     concept: RequiredText = Field(max_length=240)
     amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
-    category: ExpenseCategory = "otros"
+    category: str = "otros"
+    category_id: UUID | None = None
     date: DateValue
     branch_id: UUID
     status: PaymentStatus = "pagado"
@@ -82,7 +84,8 @@ class UpdateFinanceExpenseRequest(ApiModel):
     version: int = Field(ge=1)
     concept: RequiredText | None = Field(default=None, max_length=240)
     amount: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=2)
-    category: ExpenseCategory | None = None
+    category: str | None = None
+    category_id: UUID | None = None
     date: DateValue | None = None
     branch_id: UUID | None = None
     status: PaymentStatus | None = None

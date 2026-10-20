@@ -993,11 +993,97 @@ class InventoryService:
             checksum_sha256=checksum,
         )
 
+    def replace_item_image(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        item_id: UUID,
+        expected_version: int,
+        item_input: AssetImageInput,
+        max_bytes: int,
+    ) -> InventoryItemRecord:
+        image = self._validate_asset_image(item_input, max_bytes)
+        item = self._repository.get_item_for_update(grant.workspace_id, item_id)
+        if item is None:
+            raise ResourceNotFoundError("El artículo no existe.", "itemId")
+        if item.item_type != "product":
+            raise InvalidOperationError(
+                "Solo los productos de inventario admiten imagen.", "itemId"
+            )
+        self._require_item_visible(grant, item_id)
+        self._require_version(item.version, expected_version)
+        try:
+            self._repository.replace_item_image(
+                item=item,
+                image=image,
+                actor_membership_id=principal.membership_id,
+                actor_platform_user_id=principal.platform_user_id,
+                request_id=get_request_id(),
+            )
+            self._session.commit()
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise ConflictError("No se pudo guardar la imagen del producto.") from exc
+        record = self.get_item(grant, item_id, branch_id=None)
+        assert record is not None
+        return record
+
+    def delete_item_image(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        item_id: UUID,
+        expected_version: int,
+    ) -> InventoryItemRecord:
+        item = self._repository.get_item_for_update(grant.workspace_id, item_id)
+        if item is None:
+            raise ResourceNotFoundError("El artículo no existe.", "itemId")
+        self._require_item_visible(grant, item_id)
+        self._require_version(item.version, expected_version)
+        if not self._repository.delete_item_image(
+            item=item,
+            actor_platform_user_id=principal.platform_user_id,
+            request_id=get_request_id(),
+        ):
+            raise ResourceNotFoundError("El producto no tiene imagen.", "itemId")
+        self._session.commit()
+        record = self.get_item(grant, item_id, branch_id=None)
+        assert record is not None
+        return record
+
+    def get_item_image_content(
+        self,
+        *,
+        grant: PermissionGrant,
+        item_id: UUID,
+    ) -> AssetAttachmentContentRecord:
+        record = self._repository.get_item_image_content(
+            workspace_id=grant.workspace_id,
+            item_id=item_id,
+            visible_branch_ids=grant.allowed_branch_ids,
+        )
+        if record is None:
+            raise ResourceNotFoundError("La imagen del producto no existe.", "itemId")
+        return record
+
+    def _require_item_visible(self, grant: PermissionGrant, item_id: UUID) -> None:
+        if (
+            self._repository.get_item(
+                workspace_id=grant.workspace_id,
+                item_id=item_id,
+                visible_branch_ids=grant.allowed_branch_ids,
+            )
+            is None
+        ):
+            raise ResourceNotFoundError("El artículo no existe.", "itemId")
+
     @staticmethod
     def _require_version(current: int, expected: int) -> None:
         if current != expected:
             raise ConflictError(
-                "El activo cambió mientras editabas. Recarga e intenta de nuevo.",
+                "El registro cambió mientras editabas. Recarga e intenta de nuevo.",
                 "version",
             )
 

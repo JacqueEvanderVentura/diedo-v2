@@ -3,6 +3,7 @@ const API_CONNECTED_MODULE_SET = new Set([
   'dashboard',
   'iam',
   'catalog',
+  'inventory',
   'crm',
   'hr',
   'appointments',
@@ -125,7 +126,7 @@ export function routeRequirement(pathname) {
     return { module: 'foundation', permission: 'workspace.read' }
   }
   if (pathname.startsWith('/inventarios')) {
-    return { module: 'catalog', permission: 'catalog.read' }
+    return { module: 'inventory', permission: 'inventory.read' }
   }
   if (pathname.startsWith('/dashboard')) {
     return { module: 'dashboard', permission: 'dashboard.read' }
