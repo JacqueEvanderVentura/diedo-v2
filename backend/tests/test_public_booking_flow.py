@@ -345,16 +345,11 @@ def test_public_booking_any_available_specialist(client, booking_setup):
 def test_staff_any_available_leaves_unassigned(client, booking_setup):
     headers, _, branch, employee, service = booking_setup
     body = payload_for(employee, service)
-    resources = client.get(
-        "/api/v1/appointment-resources", headers=headers, params={"branchId": branch}
-    ).json()["items"]
-    resource_id = resources[0]["id"]
     created = client.post(
         "/api/v1/appointments",
         headers={**headers, "Idempotency-Key": str(uuid7())},
         json={
             "branchId": branch,
-            "resourceId": resource_id,
             "employeeId": None,
             "anyAvailable": True,
             "serviceId": service,

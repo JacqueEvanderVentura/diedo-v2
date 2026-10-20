@@ -19,7 +19,7 @@ from app.services.errors import (
     InvalidOperationError,
     ResourceNotFoundError,
 )
-from app.services.pos import PosService
+from app.services.pos import PosService, _PricedCatalogLine
 from sqlalchemy.exc import IntegrityError
 
 
@@ -1338,9 +1338,19 @@ def test_checkout_pricing_and_receivable_lock_guards() -> None:
         )
 
     service._require_payment_method = lambda *_args: card  # type: ignore[method-assign]
+    membership_line = _PricedCatalogLine(
+        catalog=SimpleNamespace(item=SimpleNamespace(item_type="membership")),
+        quantity=Decimal("1"),
+        list_price=Decimal("10"),
+        unit_price=Decimal("10"),
+        discount_amount=Decimal("0"),
+        tax_rate=Decimal("0"),
+        tax_amount=Decimal("0"),
+        line_total=Decimal("10"),
+    )
     service._price_lines = lambda **_kwargs: (  # type: ignore[method-assign]
         SimpleNamespace(total=Decimal("10")),
-        (SimpleNamespace(catalog=SimpleNamespace(item=SimpleNamespace(item_type="membership"))),),
+        (membership_line,),
     )
     with pytest.raises(InvalidOperationError, match="vender una membresía"):
         service.checkout(
