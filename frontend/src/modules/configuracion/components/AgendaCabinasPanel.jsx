@@ -124,7 +124,10 @@ export default function AgendaCabinasPanel({ embedded = false, visibleBlockIds }
 
   const loadResources = useCallback(async () => {
     if (!online || !activeBranchId) return []
-    const items = await appointmentsApi.appointmentResources({ branchId: activeBranchId })
+    const items = await appointmentsApi.appointmentResources({
+      branchId: activeBranchId,
+      forConfig: true,
+    })
     setResources(items)
     return items
   }, [activeBranchId, online])

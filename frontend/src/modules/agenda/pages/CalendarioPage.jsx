@@ -31,7 +31,7 @@ import {
 import { cn } from '@/lib/utils'
 import { appointmentsApi } from '@/services/appointmentsApi'
 import { isAppointmentConflict } from '@/services/adapters/appointments'
-import { canEditResource, sortResources } from '@/modules/configuracion/lib/agendaCabinas'
+import { canBookResource, canEditResource, sortResources } from '@/modules/configuracion/lib/agendaCabinas'
 import { boundsForDate } from '../lib/branchOpeningHours'
 import { explainAppointmentResourceMove } from '../lib/calendarResourceMove'
 import { normalizeAppointmentStatus } from '../lib/completion'
@@ -134,7 +134,7 @@ export default function CalendarioPage() {
 
   const openNew = (slot = {}) => {
     const defaultCabina = branchResources.find(
-      (resource) => resource.access !== 'view' && resource.access != null,
+      (resource) => canBookResource(resource.access),
     )?.id || ''
     setEditing(null)
     setDefaults({
@@ -150,7 +150,7 @@ export default function CalendarioPage() {
   const canDragAppointment = useCallback((apt) => {
     if (!canManage) return false
     const resource = branchResources.find((item) => item.id === apt.cabinaId)
-    return canEditResource(resource?.access ?? 'edit')
+    return canEditResource(resource?.access)
   }, [branchResources, canManage])
 
   const openEdit = (apt) => {

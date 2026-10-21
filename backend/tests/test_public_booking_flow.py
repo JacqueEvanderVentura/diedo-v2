@@ -445,8 +445,8 @@ def test_staff_any_available_leaves_unassigned(client, booking_setup):
     )
     assert created.status_code == 201, created.text
     item = created.json()["items"][0]
-    assert item.get("employee") is None
-    assert item.get("resource") is None
+    assert item.get("resource") is not None
+    assert item["resource"]["id"]
 
 
 @pytest.mark.integration

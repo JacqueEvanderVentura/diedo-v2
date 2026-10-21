@@ -14,6 +14,7 @@ import {
 } from '../../lib/dayViewSlots'
 import { useCalendarResourceDrag } from '../../hooks/useCalendarResourceDrag'
 import { cn } from '@/lib/utils'
+import { canBookResource } from '@/modules/configuracion/lib/agendaCabinas'
 
 const SLOT_CELL_MIN_PX = CALENDAR_ROW_PX
 
@@ -113,7 +114,7 @@ export function DayView({
                     {slot}
                   </div>
                   {resources.map((c) => {
-                    const canBook = c.access !== 'view' && c.access != null
+                    const canBook = canBookResource(c.access)
                     const displayAppointments = appointmentsForResource(appointments, dateKey, c.id, {
                       includeCancelled: showCancelled,
                     })

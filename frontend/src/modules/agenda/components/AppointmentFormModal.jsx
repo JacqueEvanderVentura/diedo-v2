@@ -126,13 +126,20 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     ? APPOINTMENT_STATUSES
     : APPOINTMENT_STATUSES.filter((status) => status.id === 'confirmada')
   const price = selectedService?.price || form.price || 0
+  const anyAvailableEmployee = !form.employeeId
   const cabinaAccess = useMemo(
-    () => resources.find((resource) => resource.id === form.cabinaId)?.access ?? 'edit',
+    () => resources.find((resource) => resource.id === form.cabinaId)?.access,
     [form.cabinaId, resources],
   )
+  const hasBookableCabina = useMemo(() => {
+    const scoped = resources.filter(
+      (resource) => resource.branchId === form.branchId && resource.active !== false,
+    )
+    return scoped.some((resource) => canBookResource(resource.access))
+  }, [form.branchId, resources])
   const canSaveAppointment = canManage && (appointment
     ? canEditResource(cabinaAccess)
-    : canBookResource(cabinaAccess))
+    : (anyAvailableEmployee ? hasBookableCabina : canBookResource(cabinaAccess)))
   const branchStaff = useBranchStaff(form.branchId)
   const branchResources = useMemo(() => {
     const scoped = resources.filter(

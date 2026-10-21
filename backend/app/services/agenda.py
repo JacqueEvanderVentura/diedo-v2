@@ -144,8 +144,7 @@ class AgendaService:
         grant: PermissionGrant,
         branch_id: UUID,
         *,
-        principal: AuthPrincipal | None = None,
-        bypass_resource_acl: bool = False,
+        principal: AuthPrincipal,
     ) -> tuple[ListedAppointmentResource, ...]:
         self._require_branch_access(grant, branch_id)
         if self._repository.branch(grant.workspace_id, branch_id) is None:
@@ -154,17 +153,47 @@ class AgendaService:
             workspace_id=grant.workspace_id,
             branch_id=branch_id,
         )
-        if bypass_resource_acl or principal is None:
-            return tuple(
-                ListedAppointmentResource(resource=resource, access="edit")
-                for resource in resources
-            )
         return self._filter_listed_resources(
             workspace_id=grant.workspace_id,
             branch_id=branch_id,
             platform_user_id=principal.platform_user_id,
             resources=resources,
-            bypass_resource_acl=bypass_resource_acl,
+        )
+
+    def list_resources_for_config(
+        self,
+        grant: PermissionGrant,
+        branch_id: UUID,
+        *,
+        principal: AuthPrincipal,
+    ) -> tuple[ListedAppointmentResource, ...]:
+        self._require_branch_access(grant, branch_id)
+        if self._repository.branch(grant.workspace_id, branch_id) is None:
+            raise ResourceNotFoundError("La sucursal no existe o no está activa.", "branchId")
+        resources = self._repository.list_resources(
+            workspace_id=grant.workspace_id,
+            branch_id=branch_id,
+        )
+        resources_with_acl = self._repository.resource_ids_with_acl_rows(
+            grant.workspace_id, branch_id
+        )
+        acl_rows = self._repository.acl_rows_for_branch(grant.workspace_id, branch_id)
+        acl_by_resource: dict[UUID, dict[UUID, str]] = {}
+        for row in acl_rows:
+            acl_by_resource.setdefault(row.resource_id, {})[row.platform_user_id] = row.access
+        return tuple(
+            ListedAppointmentResource(
+                resource=resource,
+                access=self._resource_access(
+                    workspace_id=grant.workspace_id,
+                    branch_id=branch_id,
+                    resource_id=resource.id,
+                    platform_user_id=principal.platform_user_id,
+                    resources_with_acl=resources_with_acl,
+                    acl_by_resource=acl_by_resource,
+                ),
+            )
+            for resource in resources
         )
 
     def list_appointments(
@@ -440,9 +469,18 @@ class AgendaService:
         any_available = cast(bool, values.get("any_available", False))
         resource_id = cast(UUID | None, values.get("resource_id"))
         employee_id = cast(UUID | None, values.get("employee_id"))
+        staff_any_available = any_available and cast(str, values.get("source", "staff")) != "self"
         if any_available:
             employee_id = None
             resource_id = None
+        if staff_any_available:
+            bookable = self._bookable_listed_resources(
+                workspace_id=grant.workspace_id,
+                branch_id=branch_id,
+                platform_user_id=principal.platform_user_id,
+            )
+            if not bookable:
+                raise AuthorizationError("No tienes permiso para agendar en ninguna cabina.")
         customer_id = cast(UUID | None, values.get("customer_id"))
         service_id = cast(UUID | None, values.get("service_id"))
         self._validate_references(
@@ -483,17 +521,37 @@ class AgendaService:
                     timezone=branch.timezone,
                 )
                 occurrence_employee_id = employee_id
-                self._validate_employee_availability(
-                    workspace_id=grant.workspace_id,
-                    employee_id=occurrence_employee_id,
-                    scheduled_date=scheduled_date,
-                    starts_at=starts_at,
-                    ends_at=ends_at,
-                )
+                occurrence_resource_id = resource_id
+                if staff_any_available:
+                    occurrence_resource_id, occurrence_employee_id = (
+                        self._resolve_staff_any_available(
+                            workspace_id=grant.workspace_id,
+                            branch_id=branch_id,
+                            platform_user_id=principal.platform_user_id,
+                            scheduled_date=scheduled_date,
+                            starts_at=starts_at,
+                            ends_at=ends_at,
+                            bookable=bookable,
+                        )
+                    )
+                    self._require_resource_use(
+                        workspace_id=grant.workspace_id,
+                        branch_id=branch_id,
+                        resource_id=occurrence_resource_id,
+                        platform_user_id=principal.platform_user_id,
+                    )
+                else:
+                    self._validate_employee_availability(
+                        workspace_id=grant.workspace_id,
+                        employee_id=occurrence_employee_id,
+                        scheduled_date=scheduled_date,
+                        starts_at=starts_at,
+                        ends_at=ends_at,
+                    )
                 conflict = self._repository.conflicting_appointment(
                     workspace_id=grant.workspace_id,
                     branch_id=branch_id,
-                    resource_id=resource_id,
+                    resource_id=occurrence_resource_id,
                     employee_id=occurrence_employee_id,
                     starts_at=starts_at,
                     ends_at=ends_at,
@@ -506,7 +564,7 @@ class AgendaService:
                 appointment = Appointment(
                     workspace_id=grant.workspace_id,
                     branch_id=branch_id,
-                    resource_id=resource_id,
+                    resource_id=occurrence_resource_id,
                     customer_id=customer_id,
                     employee_id=occurrence_employee_id,
                     service_id=service_id,
@@ -1231,6 +1289,76 @@ class AgendaService:
         if grant.allowed_branch_ids is not None and branch_id not in grant.allowed_branch_ids:
             raise AuthorizationError("No puedes usar una sucursal fuera de tu alcance.")
 
+    def _bookable_listed_resources(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID,
+        platform_user_id: UUID,
+    ) -> tuple[ListedAppointmentResource, ...]:
+        resources = self._repository.list_resources(
+            workspace_id=workspace_id,
+            branch_id=branch_id,
+        )
+        listed = self._filter_listed_resources(
+            workspace_id=workspace_id,
+            branch_id=branch_id,
+            platform_user_id=platform_user_id,
+            resources=resources,
+        )
+        return tuple(item for item in listed if item.access in {"use", "edit"})
+
+    def _resolve_staff_any_available(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID,
+        platform_user_id: UUID,
+        scheduled_date: date,
+        starts_at: datetime,
+        ends_at: datetime,
+        bookable: tuple[ListedAppointmentResource, ...],
+    ) -> tuple[UUID, UUID | None]:
+        employees = self._repository.list_active_branch_employee_ids(workspace_id, branch_id)
+        ordered = sorted(
+            bookable,
+            key=lambda item: (item.resource.sort_order, item.resource.name),
+        )
+        for listing in ordered:
+            resource_id = listing.resource.id
+            for employee_id in employees:
+                try:
+                    self._validate_employee_availability(
+                        workspace_id=workspace_id,
+                        employee_id=employee_id,
+                        scheduled_date=scheduled_date,
+                        starts_at=starts_at,
+                        ends_at=ends_at,
+                    )
+                except ConflictError:
+                    continue
+                conflict = self._repository.conflicting_appointment(
+                    workspace_id=workspace_id,
+                    branch_id=branch_id,
+                    resource_id=resource_id,
+                    employee_id=employee_id,
+                    starts_at=starts_at,
+                    ends_at=ends_at,
+                )
+                if conflict is None:
+                    return resource_id, employee_id
+            conflict = self._repository.conflicting_appointment(
+                workspace_id=workspace_id,
+                branch_id=branch_id,
+                resource_id=resource_id,
+                employee_id=None,
+                starts_at=starts_at,
+                ends_at=ends_at,
+            )
+            if conflict is None:
+                return resource_id, None
+        raise self._slot_conflict()
+
     def _resource_access(
         self,
         *,
@@ -1338,13 +1466,7 @@ class AgendaService:
         branch_id: UUID,
         platform_user_id: UUID,
         resources: tuple[AppointmentResource, ...],
-        bypass_resource_acl: bool,
     ) -> tuple[ListedAppointmentResource, ...]:
-        if bypass_resource_acl:
-            return tuple(
-                ListedAppointmentResource(resource=resource, access="edit")
-                for resource in resources
-            )
         resources_with_acl = self._repository.resource_ids_with_acl_rows(workspace_id, branch_id)
         acl_rows = self._repository.acl_rows_for_branch(workspace_id, branch_id)
         acl_by_resource: dict[UUID, dict[UUID, str]] = {}

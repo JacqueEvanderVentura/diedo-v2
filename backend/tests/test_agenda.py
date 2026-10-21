@@ -1144,7 +1144,7 @@ def test_appointment_resource_config_crud_reorder_hours_and_acl(client: TestClie
     listed = client.get(
         "/api/v1/appointment-resources",
         headers=owner_headers,
-        params={"branchId": branch_id},
+        params={"branchId": branch_id, "forConfig": True},
     )
     assert listed.status_code == 200, listed.text
     active_ids = [item["id"] for item in listed.json()["items"]]
@@ -1224,8 +1224,18 @@ def test_appointment_resource_config_crud_reorder_hours_and_acl(client: TestClie
     )
     assert owner_list.status_code == 200, owner_list.text
     owner_cabina = next(item for item in owner_list.json()["items"] if item["id"] == cabina_id)
-    # appointment.manage bypasses ACL on list and reports full edit access.
-    assert owner_cabina["access"] == "edit"
+    assert owner_cabina["access"] == "use"
+
+    owner_config_list = client.get(
+        "/api/v1/appointment-resources",
+        headers=owner_headers,
+        params={"branchId": branch_id, "forConfig": True},
+    )
+    assert owner_config_list.status_code == 200, owner_config_list.text
+    owner_config_cabina = next(
+        item for item in owner_config_list.json()["items"] if item["id"] == cabina_id
+    )
+    assert owner_config_cabina["access"] == "use"
 
     reader_list = client.get(
         "/api/v1/appointment-resources",
@@ -1318,7 +1328,7 @@ def test_appointment_resource_config_crud_reorder_hours_and_acl(client: TestClie
     after_archive = client.get(
         "/api/v1/appointment-resources",
         headers=owner_headers,
-        params={"branchId": branch_id},
+        params={"branchId": branch_id, "forConfig": True},
     )
     assert after_archive.status_code == 200, after_archive.text
     assert to_archive["id"] not in {item["id"] for item in after_archive.json()["items"]}

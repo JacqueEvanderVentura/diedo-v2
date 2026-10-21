@@ -45,6 +45,7 @@ from app.services.agenda import AgendaService, appointment_created_by_label
 from app.services.authorization import AuthorizationService
 from app.services.booking_links import send_booking_link
 from app.services.email_notifications import notification_result
+from app.services.errors import AuthorizationError
 
 router = APIRouter(prefix="/api/v1", tags=["agenda"])
 
@@ -202,14 +203,24 @@ def list_appointment_resources(
     principal: CurrentPrincipal,
     grant: AppointmentReadGrant,
     branch_id: Annotated[UUID, Query(alias="branchId")],
+    for_config: Annotated[bool, Query(alias="forConfig")] = False,
 ) -> AppointmentResourcesResponse:
     response.headers["Cache-Control"] = "no-store"
-    resources = AgendaService(database).list_resources(
-        grant,
-        branch_id,
-        principal=principal,
-        bypass_resource_acl=_bypass_resource_acl(database, principal, branch_id),
-    )
+    service = AgendaService(database)
+    if for_config:
+        if not _bypass_resource_acl(database, principal, branch_id):
+            raise AuthorizationError("No tienes permiso para configurar cabinas en esta sucursal.")
+        resources = service.list_resources_for_config(
+            grant,
+            branch_id,
+            principal=principal,
+        )
+    else:
+        resources = service.list_resources(
+            grant,
+            branch_id,
+            principal=principal,
+        )
     return AppointmentResourcesResponse(items=[_resource_response(item) for item in resources])
 
 
@@ -411,11 +422,10 @@ def list_appointments(
     sort_direction: Annotated[SortDirection, Query(alias="sortDirection")] = "asc",
 ) -> PaginatedAppointmentsResponse:
     response.headers["Cache-Control"] = "no-store"
-    bypass_acl = branch_id is not None and _bypass_resource_acl(database, principal, branch_id)
     result = AgendaService(database).list_appointments(
         grant=grant,
         principal=principal,
-        bypass_resource_acl=bypass_acl,
+        bypass_resource_acl=False,
         branch_id=branch_id,
         customer_id=customer_id,
         date_from=date_from,

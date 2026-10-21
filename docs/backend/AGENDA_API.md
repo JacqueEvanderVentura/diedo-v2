@@ -64,8 +64,10 @@ rol administrador del workspace por defecto.
 `GET /api/v1/appointment-resources?branchId={uuid}`
 
 Devuelve `{ "items": [...] }` ordenados por `sortOrder`, con `description`, `access` (`view` |
-`use`, `edit`, solo para el usuario actual) y `version`. Filtra por ACL salvo que el caller tenga
-`appointment.manage` en la sucursal (configuración). `Cache-Control: no-store`.
+`use`, `edit`, solo para el usuario actual) y `version`. Solo incluye cabinas visibles para el
+usuario según ACL (calendario y gestión). Con `forConfig=true` (requiere `appointment.manage`) lista
+todas las cabinas activas de la sucursal y el `access` efectivo del usuario (`null` = sin acceso).
+`Cache-Control: no-store`.
 
 `POST /api/v1/appointment-resources` — crear (`appointment.manage`).
 

@@ -62,7 +62,7 @@ class AppointmentListResult:
 @dataclass(frozen=True)
 class ListedAppointmentResource:
     resource: AppointmentResource
-    access: str
+    access: str | None
 
 
 class AgendaRepository:
@@ -422,6 +422,26 @@ class AgendaRepository:
                 AppointmentResource.status == "active",
             )
         )
+
+    def list_active_branch_employee_ids(
+        self, workspace_id: UUID, branch_id: UUID
+    ) -> tuple[UUID, ...]:
+        rows = self._session.scalars(
+            select(Employee.id)
+            .join(
+                EmployeeBranchAssignment,
+                (EmployeeBranchAssignment.workspace_id == Employee.workspace_id)
+                & (EmployeeBranchAssignment.employee_id == Employee.id),
+            )
+            .where(
+                Employee.workspace_id == workspace_id,
+                Employee.status == "active",
+                EmployeeBranchAssignment.branch_id == branch_id,
+                EmployeeBranchAssignment.status == "active",
+            )
+            .order_by(Employee.normalized_name, Employee.id)
+        ).all()
+        return tuple(rows)
 
     def employee_available_in_branch(
         self, workspace_id: UUID, branch_id: UUID, employee_id: UUID
