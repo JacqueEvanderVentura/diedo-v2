@@ -32,6 +32,13 @@ from app.services.appointment_reminders import AppointmentReminderService
 from app.services.auth import AuthPrincipal
 from app.services.authorization import PermissionGrant
 from app.services.booking_availability import fits_schedule, get_available_slots
+from app.services.booking_policy import (
+    appointment_meets_cancel_lead,
+    booking_lead_conflict_message,
+    cancel_lead_conflict_message,
+    slot_meets_booking_lead,
+    utc_now,
+)
 from app.services.booking_tokens import (
     issue_appointment_management_token,
     verify_appointment_management_token,
@@ -52,7 +59,19 @@ class PublicBookingService:
         self._agenda = AgendaRepository(session)
         self._master_data = MasterDataRepository(session)
 
-    def get_entry_context(self) -> dict[str, Any]:
+    def get_entry_context(self, branch_id: UUID | None = None) -> dict[str, Any]:
+        if branch_id is not None:
+            branch, workspace = self._resolve_branch(branch_id)
+            workspace_rows = self._list_workspace_branches(branch.workspace_id)
+            if not workspace_rows:
+                raise InvalidOperationError(
+                    "No hay sucursales disponibles para agendar en línea.",
+                    "branchId",
+                )
+            return {
+                "workspace_name": workspace.name,
+                "workspace_branches": workspace_rows,
+            }
         rows = self._session.scalars(
             select(Branch)
             .where(
@@ -66,14 +85,22 @@ class PublicBookingService:
                 "No hay sucursales disponibles para agendar en línea.",
                 "branchId",
             )
-        workspace_id = rows[0].workspace_id
-        workspace_rows = [row for row in rows if row.workspace_id == workspace_id]
-        workspace = self._session.scalar(select(Workspace).where(Workspace.id == workspace_id))
-        if workspace is None:
+        workspace_ids = {row.workspace_id for row in rows}
+        if len(workspace_ids) > 1:
+            raise InvalidOperationError(
+                "Indica una sucursal en el enlace para continuar.",
+                "branchId",
+            )
+        workspace_id = next(iter(workspace_ids))
+        branch_rows = [row for row in rows if row.workspace_id == workspace_id]
+        resolved_workspace = self._session.scalar(
+            select(Workspace).where(Workspace.id == workspace_id)
+        )
+        if resolved_workspace is None:
             raise ResourceNotFoundError("El workspace no existe.", "branchId")
         return {
-            "workspace_name": workspace.name,
-            "workspace_branches": [{"id": row.id, "name": row.name} for row in workspace_rows],
+            "workspace_name": resolved_workspace.name,
+            "workspace_branches": [{"id": row.id, "name": row.name} for row in branch_rows],
         }
 
     def get_context(self, branch_id: UUID) -> dict[str, Any]:
@@ -87,6 +114,8 @@ class PublicBookingService:
                 "branch_name": branch.name,
                 "workspace_name": workspace.name,
                 "timezone": branch.timezone,
+                "public_booking_min_lead_minutes": branch.public_booking_min_lead_minutes,
+                "public_cancel_min_lead_minutes": branch.public_cancel_min_lead_minutes,
             },
             "has_resources": bool(self._active_resources(branch)),
             "services": services,
@@ -223,7 +252,8 @@ class PublicBookingService:
             on_approved_vacation=False,
         )
         branch_zone = ZoneInfo(branch.timezone)
-        now = datetime.now(UTC)
+        now = utc_now()
+        booking_lead = branch.public_booking_min_lead_minutes
         resource_ids = [resource.id for resource in resources]
         day_start = datetime.combine(scheduled_date, time.min, branch_zone).astimezone(UTC)
         day_end = datetime.combine(
@@ -248,7 +278,7 @@ class PublicBookingService:
                 continue
             local = datetime.combine(scheduled_date, time.fromisoformat(slot), branch_zone)
             start = local.astimezone(UTC)
-            if start <= now:
+            if not slot_meets_booking_lead(start, now, booking_lead):
                 continue
             end = start + timedelta(minutes=duration)
             if end.astimezone(branch_zone).date() != scheduled_date:
@@ -303,7 +333,8 @@ class PublicBookingService:
                 ),
             )
         ).all()
-        now = datetime.now(UTC)
+        now = utc_now()
+        booking_lead = branch.public_booking_min_lead_minutes
         result: dict[str, list[UUID]] = {}
         for offset in (-1, 0, 1):
             schedule_date = scheduled_date + timedelta(days=offset)
@@ -329,7 +360,9 @@ class PublicBookingService:
                 ):
                     continue
                 branch_start = start.astimezone(branch_zone)
-                if branch_start.date() != scheduled_date or start <= now:
+                if branch_start.date() != scheduled_date:
+                    continue
+                if not slot_meets_booking_lead(start, now, booking_lead):
                     continue
                 end = start + timedelta(minutes=duration)
                 if end.astimezone(branch_zone).date() != scheduled_date:
@@ -376,6 +409,15 @@ class PublicBookingService:
         scheduled_time = cast(time, payload["time"])
         duration = int(service["duration_minutes"])
         time_key = scheduled_time.strftime("%H:%M")
+        branch_zone = ZoneInfo(branch.timezone)
+        slot_start = datetime.combine(scheduled_date, scheduled_time, branch_zone).astimezone(UTC)
+        if not slot_meets_booking_lead(
+            slot_start, utc_now(), branch.public_booking_min_lead_minutes
+        ):
+            raise ConflictError(
+                booking_lead_conflict_message(branch.public_booking_min_lead_minutes),
+                "time",
+            )
         payload_employee_id = cast(UUID | None, payload.get("employee_id"))
         self._lock(f"booking-branch:{branch.id}")
         employee: Employee | None = None
@@ -503,11 +545,15 @@ class PublicBookingService:
         appointment, branch, workspace, _, _ = self._authorized_appointment(
             branch_id, appointment_id, token
         )
+        manage = self._management_access(appointment, branch)
         return {
             **self._appointment_summary(appointment, token),
             "branch_name": branch.name,
             "workspace_name": workspace.name,
             "timezone": branch.timezone,
+            "public_booking_min_lead_minutes": branch.public_booking_min_lead_minutes,
+            "public_cancel_min_lead_minutes": branch.public_cancel_min_lead_minutes,
+            **manage,
         }
 
     def management_slots(
@@ -594,7 +640,7 @@ class PublicBookingService:
         )
         if appointment.status == "cancelled":
             return self._summary_with_notification(appointment)
-        self._require_manageable(appointment)
+        self._require_manageable(appointment, branch)
         record = AgendaService(self._session).update_appointment(
             principal=principal,
             grant=grant,
@@ -610,11 +656,38 @@ class PublicBookingService:
         return self._finish_notification(record.appointment, notification)
 
     @staticmethod
-    def _require_manageable(appointment: Appointment) -> None:
-        if appointment.status != "confirmed" or appointment.starts_at <= datetime.now(UTC):
-            raise ConflictError(
-                "Solo puedes modificar citas confirmadas que todavía no han comenzado."
-            )
+    def _management_access(appointment: Appointment, branch: Branch) -> dict[str, Any]:
+        now = utc_now()
+        if appointment.status != "confirmed":
+            return {
+                "can_manage_online": False,
+                "manage_blocked_reason": (
+                    "Solo puedes modificar citas confirmadas que todavía no han comenzado."
+                ),
+            }
+        if appointment.starts_at <= now:
+            return {
+                "can_manage_online": False,
+                "manage_blocked_reason": (
+                    "Solo puedes modificar citas confirmadas que todavía no han comenzado."
+                ),
+            }
+        if not appointment_meets_cancel_lead(
+            appointment.starts_at, now, branch.public_cancel_min_lead_minutes
+        ):
+            return {
+                "can_manage_online": False,
+                "manage_blocked_reason": cancel_lead_conflict_message(
+                    branch.public_cancel_min_lead_minutes
+                ),
+            }
+        return {"can_manage_online": True, "manage_blocked_reason": None}
+
+    @staticmethod
+    def _require_manageable(appointment: Appointment, branch: Branch) -> None:
+        access = PublicBookingService._management_access(appointment, branch)
+        if not access["can_manage_online"]:
+            raise ConflictError(str(access["manage_blocked_reason"]))
 
     def reschedule_appointment(
         self,
@@ -628,7 +701,7 @@ class PublicBookingService:
         appointment, branch, workspace, principal, grant = self._authorized_appointment(
             branch_id, appointment_id, management_token
         )
-        self._require_manageable(appointment)
+        self._require_manageable(appointment, branch)
         duration_minutes = int(appointment.duration_minutes)
         if (
             appointment.scheduled_date,

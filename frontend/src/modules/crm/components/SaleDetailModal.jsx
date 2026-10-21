@@ -160,15 +160,17 @@ export function SaleDetailModal({ open, onClose, sale }) {
     [branches, settings, paymentMethods, customers]
   )
 
-  if (!sale || !detail) return null
+  if (!open || !sale) return null
 
-  const branchName = branches.find((b) => b.id === detail.branchId)?.name || '—'
-  const Icon = Icons[METHOD_ICON[detail.method]] || Icons.Circle
-  const invoice = buildInvoiceDataFromSale(detail, ctx)
-  const isVoided = detail.status === 'voided'
-  const documentId = detail.number || detail.id.toUpperCase()
+  const view = detail || sale
+
+  const branchName = branches.find((b) => b.id === view.branchId)?.name || '—'
+  const Icon = Icons[METHOD_ICON[view.method]] || Icons.Circle
+  const invoice = buildInvoiceDataFromSale(view, ctx)
+  const isVoided = view.status === 'voided'
+  const documentId = view.number || view.id.toUpperCase()
   const receivableBalance = receivableDetail ? getBalance(receivableDetail) : 0
-  const statusBadge = saleStatusBadge(detail, receivableDetail)
+  const statusBadge = saleStatusBadge(view, receivableDetail)
   const canApprovePayment = !isVoided
     && canCollectReceivables
     && receivableDetail
@@ -341,7 +343,7 @@ export function SaleDetailModal({ open, onClose, sale }) {
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Detalle de venta" testId="sale-detail-modal" wide>
+    <Modal open={open} onClose={onClose} title="Detalle de venta" testId="sale-detail-modal" wide elevated>
       <div className="space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl bg-slate-50 p-4">
           <div>
@@ -349,19 +351,19 @@ export function SaleDetailModal({ open, onClose, sale }) {
               <p className="font-heading text-lg font-bold text-slate-900" data-testid="sale-detail-id">{documentId}</p>
               <Badge tone={statusBadge.tone} data-testid="sale-detail-status">{statusBadge.label}</Badge>
             </div>
-            <p className="mt-1 text-sm text-slate-500">{fmtDateTime(detail.createdAt)} · {branchName}</p>
-            <p className="mt-2 font-semibold text-slate-800">{detail.customer?.name || 'Cliente Mostrador'}</p>
-            {isVoided && detail.voidReason && (
-              <p className="mt-2 text-xs font-medium text-red-600">Motivo: {detail.voidReason}</p>
+            <p className="mt-1 text-sm text-slate-500">{fmtDateTime(view.createdAt)} · {branchName}</p>
+            <p className="mt-2 font-semibold text-slate-800">{view.customer?.name || 'Cliente Mostrador'}</p>
+            {isVoided && view.voidReason && (
+              <p className="mt-2 text-xs font-medium text-red-600">Motivo: {view.voidReason}</p>
             )}
           </div>
           <div className="text-right">
-            <p className={cn('font-heading text-2xl font-bold text-blue-600', isVoided && 'text-slate-400 line-through')}>{formatDOP(detail.total)}</p>
+            <p className={cn('font-heading text-2xl font-bold text-blue-600', isVoided && 'text-slate-400 line-through')}>{formatDOP(view.total)}</p>
             <span className="mt-1 inline-flex items-center gap-1.5 text-sm text-slate-600">
               <Icon className="h-4 w-4 text-slate-400" />
-              {METHOD_LABELS[detail.method] || detail.method}
+              {METHOD_LABELS[view.method] || view.method}
             </span>
-            {detail.reference && <p className="mt-1 text-xs text-slate-400">Ref: {detail.reference}</p>}
+            {view.reference && <p className="mt-1 text-xs text-slate-400">Ref: {view.reference}</p>}
           </div>
         </div>
 

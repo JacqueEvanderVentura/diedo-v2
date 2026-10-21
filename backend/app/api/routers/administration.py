@@ -1,4 +1,4 @@
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Response, status
@@ -40,6 +40,7 @@ from app.schemas.administration import (
     WorkspaceSettingsResponse,
 )
 from app.schemas.backoffice import WorkspaceDataResetRequest, WorkspaceDataResetResponse
+from app.schemas.booking_policy import PublicBookingLeadMinutes
 from app.schemas.common import ErrorResponse
 from app.services.administration import AdministrationService
 from app.services.authorization import AuthorizationService
@@ -117,6 +118,12 @@ def _branch_response(branch: Branch) -> BranchResponse:
         timezone=branch.timezone,
         details=AdministrationService.branch_details(branch),
         online_booking_selectable=branch.online_booking_selectable,
+        public_booking_min_lead_minutes=cast(
+            PublicBookingLeadMinutes, branch.public_booking_min_lead_minutes
+        ),
+        public_cancel_min_lead_minutes=cast(
+            PublicBookingLeadMinutes, branch.public_cancel_min_lead_minutes
+        ),
         version=branch.version,
     )
 

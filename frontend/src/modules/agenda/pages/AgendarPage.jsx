@@ -39,6 +39,49 @@ import { applyBranchBookingDefaults, fetchLastVisitBookingDefaults } from '../li
 
 const STEPS = ['Identificación', 'Datos', 'Cita', 'Confirmación']
 
+function initialBookingForm(intentBook, branchId) {
+  const base = {
+    docType: 'cedula',
+    documentId: '',
+    name: '',
+    email: '',
+    phone: '',
+    address: '',
+    wantsInvoice: false,
+    wantsContact: false,
+    observaciones: '',
+    serviceId: '',
+    employeeId: '',
+    date: todayKey(),
+    time: '',
+  }
+  if (!intentBook || !branchId) return base
+  const session = recallPublicSession()
+  if (!session?.documentId || session.branchId !== branchId) return base
+  return {
+    ...base,
+    docType: session.docType || 'cedula',
+    documentId: formatDocumentInput(session.documentId, session.docType),
+  }
+}
+
+function validateBookingProfile(form) {
+  if (!form.name.trim()) {
+    return 'Ingresa tu nombre'
+  }
+  const docKey = normalizeDocumentId(form.documentId, form.docType)
+  if (!docKey) {
+    return 'Ingresa tu documento'
+  }
+  if (form.docType === 'cedula' && docKey.length !== 11) {
+    return 'La cédula debe tener 11 dígitos'
+  }
+  if (docKey.length < 3) {
+    return 'Ingresa un documento válido'
+  }
+  return null
+}
+
 export default function AgendarPage() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
@@ -76,27 +119,21 @@ export default function AgendarPage() {
   const [step, setStep] = useState(() => (intentBook && hasSavedSession ? 2 : 0))
   const [lookupDocType, setLookupDocType] = useState('cedula')
   const [lookup, setLookup] = useState('')
-  const [form, setForm] = useState({
-    docType: 'cedula',
-    documentId: '',
-    name: '',
-    email: '',
-    phone: '',
-    address: '',
-    wantsInvoice: false,
-    wantsContact: false,
-    observaciones: '',
-    serviceId: '',
-    employeeId: '',
-    date: todayKey(),
-    time: '',
-  })
+  const [form, setForm] = useState(() => initialBookingForm(intentBook, requestedBranchId || ''))
   const [done, setDone] = useState(false)
   const [savedAppointment, setSavedAppointment] = useState(null)
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
   const attemptRef = useRef(null)
   const restoredSessionDefaultsRef = useRef(false)
+  const hydrateProfileFromSessionRef = useRef(
+    Boolean(
+      intentBook
+      && requestedBranchId
+      && recallPublicSession()?.documentId
+      && recallPublicSession()?.branchId === requestedBranchId
+    )
+  )
   const [slotLoading, setSlotLoading] = useState(false)
   const [slotError, setSlotError] = useState('')
   const [slotRevision, setSlotRevision] = useState(0)
@@ -176,6 +213,7 @@ export default function AgendarPage() {
     setRemoteServices([])
     setRemoteSpecialists([])
     setRemoteSlots(null)
+    setWorkspaceBranches([])
     setContextError('')
     publicBookingApi.getContext(branchId)
       .then((context) => {
@@ -311,6 +349,7 @@ export default function AgendarPage() {
   }
 
   useEffect(() => {
+    if (!hydrateProfileFromSessionRef.current) return
     if (!intentBook || isDemo || !branchId || restoredSessionDefaultsRef.current) return
     if (!remoteServices?.length || !bookableStaff.length) return
     const session = recallPublicSession()
@@ -319,11 +358,22 @@ export default function AgendarPage() {
     restoredSessionDefaultsRef.current = true
     identifyRemote(branchId, session.docType || 'cedula', session.documentId)
       .then((found) => {
-        if (!found) return
+        hydrateProfileFromSessionRef.current = false
+        if (!found) {
+          toast.error('No pudimos recuperar tu perfil. Ingresa tu documento de nuevo.')
+          setPhase('identity')
+          setStep(0)
+          return
+        }
         applyProfileToForm(found, found.docType || session.docType || 'cedula')
       })
-      .catch(() => {})
-  }, [branchId, identifyRemote, intentBook, isDemo, phase, step])
+      .catch((error) => {
+        hydrateProfileFromSessionRef.current = false
+        toast.error(error.message || 'No pudimos recuperar tu perfil. Ingresa tu documento de nuevo.')
+        setPhase('identity')
+        setStep(0)
+      })
+  }, [branchId, identifyRemote, intentBook, isDemo, phase, step, remoteServices, bookableStaff])
 
   const finishAuth = (profile, goBook) => {
     const activeBranch = branch?.id || branchId
@@ -454,6 +504,8 @@ export default function AgendarPage() {
   }, [bookableStaff, savedAppointment?.employeeId])
 
   const continueToConfirm = () => {
+    const profileError = validateBookingProfile(form)
+    if (profileError) return toast.error(profileError)
     if (!form.serviceId) return toast.error('Selecciona un servicio')
     if (!form.time) return toast.error('Selecciona una hora')
     if (!isDemo && (slotLoading || !remoteSlots?.includes(form.time))) {
@@ -464,6 +516,8 @@ export default function AgendarPage() {
 
   const confirm = async () => {
     if (savingRef.current) return
+    const profileError = validateBookingProfile(form)
+    if (profileError) return toast.error(profileError)
     if (!service || !form.time) return toast.error('Completa la cita')
     const stillAvailable = form.employeeId
       ? isSlotAvailable({
@@ -480,7 +534,8 @@ export default function AgendarPage() {
     if (!isDemo && (slotLoading || !remoteSlots?.includes(form.time))) {
       return toast.error('Ese horario ya no está disponible. Elige otro cupo.')
     }
-    const profile = upsertProfile(form)
+    const docKey = normalizeDocumentId(form.documentId, form.docType)
+    const profile = upsertProfile({ ...form, documentId: docKey })
     const fingerprint = JSON.stringify({ branchId: branch.id, serviceId: service.id, ...form })
     if (attemptRef.current?.fingerprint !== fingerprint) attemptRef.current = { fingerprint, key: crypto.randomUUID() }
     savingRef.current = true
@@ -756,6 +811,36 @@ export default function AgendarPage() {
             {!isDemo && !hasResources && <p role="status">La sucursal todavía no tiene cabinas disponibles para recibir reservas.</p>}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
+                <p className="mb-1.5 text-sm font-medium text-slate-600">Duración</p>
+                <p
+                  className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-700"
+                  data-testid="self-duration-display"
+                >
+                  {service ? durationLabel(appointmentDuration) : 'Selecciona un servicio'}
+                </p>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-600">Especialista</label>
+                <Select
+                  value={form.employeeId}
+                  onChange={(v) => {
+                    set('employeeId', v)
+                    set('time', '')
+                  }}
+                  data-testid="self-specialist"
+                  placeholder="Seleccionar especialista"
+                  options={[
+                    ANY_AVAILABLE_EMPLOYEE_OPTION,
+                    ...bookableStaff.map((e) => ({
+                      value: e.id,
+                      label: e.name.split(' ').slice(0, 2).join(' '),
+                    })),
+                  ]}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-600">Fecha</label>
                 <DatePicker
                   value={form.date}
@@ -790,36 +875,6 @@ export default function AgendarPage() {
                     testId="self-booking-time"
                   />
                 )}
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <p className="mb-1.5 text-sm font-medium text-slate-600">Duración</p>
-                <p
-                  className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-700"
-                  data-testid="self-duration-display"
-                >
-                  {service ? durationLabel(appointmentDuration) : 'Selecciona un servicio'}
-                </p>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-600">Especialista</label>
-                <Select
-                  value={form.employeeId}
-                  onChange={(v) => {
-                    set('employeeId', v)
-                    set('time', '')
-                  }}
-                  data-testid="self-specialist"
-                  placeholder="Seleccionar especialista"
-                  options={[
-                    ANY_AVAILABLE_EMPLOYEE_OPTION,
-                    ...bookableStaff.map((e) => ({
-                      value: e.id,
-                      label: e.name.split(' ').slice(0, 2).join(' '),
-                    })),
-                  ]}
-                />
               </div>
             </div>
             <Button className="w-full" onClick={continueToConfirm} disabled={!form.time} data-testid="self-booking-continue">

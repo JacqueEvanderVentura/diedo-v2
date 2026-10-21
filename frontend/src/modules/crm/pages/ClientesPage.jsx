@@ -25,6 +25,7 @@ import { CustomerDetailModal } from '../components/CustomerDetailModal'
 import { QuoteFormModal } from '../components/QuoteFormModal'
 import { ActivityFormModal } from '../components/ActivityFormModal'
 import { SaleDetailModal } from '../components/SaleDetailModal'
+import { LeadQuoteManageModal } from '../components/LeadQuoteManageModal'
 import { AppointmentFormModal } from '@/modules/agenda/components/AppointmentFormModal'
 import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
 import {
@@ -72,6 +73,8 @@ export default function ClientesPage() {
   const sales = usePosStore((s) => s.sales)
   const crmSales = useCrmStore((s) => s.sales)
   const branches = useConfigStore((s) => s.branches)
+  const settings = useConfigStore((s) => s.settings)
+  const paymentMethods = useConfigStore((s) => s.paymentMethods)
   const appointments = useAgendaStore((s) => s.appointments)
   const agendaResources = useAgendaStore((s) => s.resources)
   const hydrateAppointments = useAgendaStore((s) => s.hydrateAppointments)
@@ -90,6 +93,10 @@ export default function ClientesPage() {
     () => Object.fromEntries(branches.map((branch) => [branch.id, branch.name])),
     [branches]
   )
+  const quoteDocumentCtx = useMemo(
+    () => ({ branches, settings, paymentMethods, customers: scopedCustomers }),
+    [branches, settings, paymentMethods, scopedCustomers],
+  )
 
   const [query, setQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
@@ -104,6 +111,9 @@ export default function ClientesPage() {
   const [taskOpen, setTaskOpen] = useState(false)
   const [taskCustomerId, setTaskCustomerId] = useState('')
   const [saleDetail, setSaleDetail] = useState(null)
+  const [managingQuote, setManagingQuote] = useState(null)
+  const [editingTask, setEditingTask] = useState(null)
+  const [viewingAppointment, setViewingAppointment] = useState(null)
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState(() => new Set())
   const [deleting, setDeleting] = useState(false)
@@ -604,10 +614,17 @@ export default function ClientesPage() {
           setQuoteOpen(true)
         }}
         onNewTask={(c) => {
+          setEditingTask(null)
           setTaskCustomerId(c.id)
           setTaskOpen(true)
         }}
         onOpenSale={(sale) => setSaleDetail(sale)}
+        onOpenQuote={(quote) => setManagingQuote(quote)}
+        onOpenTask={(task) => {
+          setEditingTask(task)
+          setTaskOpen(true)
+        }}
+        onOpenAppointment={(appointment) => setViewingAppointment(appointment)}
       />
       <QuoteFormModal
         open={quoteOpen}
@@ -616,15 +633,36 @@ export default function ClientesPage() {
       />
       <ActivityFormModal
         open={taskOpen}
-        onClose={() => { setTaskOpen(false); setTaskCustomerId('') }}
+        onClose={() => {
+          setTaskOpen(false)
+          setTaskCustomerId('')
+          setEditingTask(null)
+        }}
+        activity={editingTask}
         defaultCustomerId={taskCustomerId}
+      />
+      <LeadQuoteManageModal
+        open={Boolean(managingQuote)}
+        quote={managingQuote}
+        documentCtx={quoteDocumentCtx}
+        onClose={() => setManagingQuote(null)}
+        onQuoteChanged={() => useCrmStore.getState().hydrateSection('quotes').catch(() => {})}
       />
       <SaleDetailModal
         open={!!saleDetail}
         onClose={() => setSaleDetail(null)}
         sale={saleDetail}
       />
-      <AppointmentFormModal open={!!scheduling} onClose={() => setScheduling(null)} defaultCustomerId={scheduling?.id} defaultSlot={{ branchId: scheduling?.branchIds?.[0] || scheduling?.branchId }} />
+      <AppointmentFormModal
+        open={Boolean(scheduling) || Boolean(viewingAppointment)}
+        onClose={() => {
+          setScheduling(null)
+          setViewingAppointment(null)
+        }}
+        appointment={viewingAppointment}
+        defaultCustomerId={scheduling?.id || viewingAppointment?.customerId}
+        defaultSlot={{ branchId: scheduling?.branchIds?.[0] || scheduling?.branchId || viewingAppointment?.branchId }}
+      />
 
       <ConfirmDialog
         open={!!confirm}

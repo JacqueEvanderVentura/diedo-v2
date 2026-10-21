@@ -156,7 +156,8 @@ class AgendaService:
         )
         if bypass_resource_acl or principal is None:
             return tuple(
-                ListedAppointmentResource(resource=resource, access="use") for resource in resources
+                ListedAppointmentResource(resource=resource, access="edit")
+                for resource in resources
             )
         return self._filter_listed_resources(
             workspace_id=grant.workspace_id,
@@ -678,7 +679,7 @@ class AgendaService:
             or "duration" in changes
         )
         if resource_id is not None and (schedule_changed or resource_id != appointment.resource_id):
-            self._require_resource_use(
+            self._require_resource_edit(
                 workspace_id=grant.workspace_id,
                 branch_id=branch_id,
                 resource_id=resource_id,
@@ -902,7 +903,7 @@ class AgendaService:
             platform_user_id=principal.platform_user_id,
         ):
             raise AuthorizationError("No tienes acceso a esta cita.")
-        self._require_resource_use(
+        self._require_resource_edit(
             workspace_id=grant.workspace_id,
             branch_id=appointment.branch_id,
             resource_id=appointment.resource_id,
@@ -1241,7 +1242,7 @@ class AgendaService:
         acl_by_resource: dict[UUID, dict[UUID, str]],
     ) -> str | None:
         if resource_id not in resources_with_acl:
-            return "use"
+            return "edit"
         user_access = acl_by_resource.get(resource_id, {}).get(platform_user_id)
         return user_access
 
@@ -1268,7 +1269,7 @@ class AgendaService:
             resources_with_acl=resources_with_acl,
             acl_by_resource=acl_by_resource,
         )
-        return access in {"view", "use"}
+        return access in {"view", "use", "edit"}
 
     def _require_resource_use(
         self,
@@ -1280,12 +1281,48 @@ class AgendaService:
     ) -> None:
         if resource_id is None:
             return
+        access = self._resolved_resource_access(
+            workspace_id=workspace_id,
+            branch_id=branch_id,
+            resource_id=resource_id,
+            platform_user_id=platform_user_id,
+        )
+        if access not in {"use", "edit"}:
+            raise AuthorizationError("No tienes permiso para usar esta cabina.")
+
+    def _require_resource_edit(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID,
+        resource_id: UUID | None,
+        platform_user_id: UUID,
+    ) -> None:
+        if resource_id is None:
+            return
+        access = self._resolved_resource_access(
+            workspace_id=workspace_id,
+            branch_id=branch_id,
+            resource_id=resource_id,
+            platform_user_id=platform_user_id,
+        )
+        if access != "edit":
+            raise AuthorizationError("No tienes permiso para editar citas en esta cabina.")
+
+    def _resolved_resource_access(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID,
+        resource_id: UUID,
+        platform_user_id: UUID,
+    ) -> str | None:
         resources_with_acl = self._repository.resource_ids_with_acl_rows(workspace_id, branch_id)
         acl_rows = self._repository.acl_rows_for_branch(workspace_id, branch_id)
         acl_by_resource: dict[UUID, dict[UUID, str]] = {}
         for row in acl_rows:
             acl_by_resource.setdefault(row.resource_id, {})[row.platform_user_id] = row.access
-        access = self._resource_access(
+        return self._resource_access(
             workspace_id=workspace_id,
             branch_id=branch_id,
             resource_id=resource_id,
@@ -1293,8 +1330,6 @@ class AgendaService:
             resources_with_acl=resources_with_acl,
             acl_by_resource=acl_by_resource,
         )
-        if access != "use":
-            raise AuthorizationError("No tienes permiso para usar esta cabina.")
 
     def _filter_listed_resources(
         self,
@@ -1307,7 +1342,8 @@ class AgendaService:
     ) -> tuple[ListedAppointmentResource, ...]:
         if bypass_resource_acl:
             return tuple(
-                ListedAppointmentResource(resource=resource, access="use") for resource in resources
+                ListedAppointmentResource(resource=resource, access="edit")
+                for resource in resources
             )
         resources_with_acl = self._repository.resource_ids_with_acl_rows(workspace_id, branch_id)
         acl_rows = self._repository.acl_rows_for_branch(workspace_id, branch_id)
@@ -1324,7 +1360,7 @@ class AgendaService:
                 resources_with_acl=resources_with_acl,
                 acl_by_resource=acl_by_resource,
             )
-            if access in {"view", "use"}:
+            if access in {"view", "use", "edit"}:
                 listed.append(ListedAppointmentResource(resource=resource, access=access))
         return tuple(listed)
 

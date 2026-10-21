@@ -25,6 +25,7 @@ export function DayView({
   onAppointmentClick,
   onResourceMove,
   canDrag = false,
+  canDragAppointment,
   showCancelled = false,
   startHour = 8,
   endHour = 20,
@@ -112,7 +113,7 @@ export function DayView({
                     {slot}
                   </div>
                   {resources.map((c) => {
-                    const canBook = c.access !== 'view'
+                    const canBook = c.access !== 'view' && c.access != null
                     const displayAppointments = appointmentsForResource(appointments, dateKey, c.id, {
                       includeCancelled: showCancelled,
                     })
@@ -178,7 +179,7 @@ export function DayView({
                                         apt={laneAppointment}
                                         compact
                                         spanFullHeight
-                                        canDrag={canDrag}
+                                        canDrag={canDragAppointment ? canDragAppointment(laneAppointment) : canDrag}
                                         dragging={dragState?.id === laneAppointment.id}
                                         onPointerDown={startDrag}
                                         onClick={handleChipClick}

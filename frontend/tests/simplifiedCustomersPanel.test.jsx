@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('@/modules/crm/components/CustomerFormModal', () => ({
   CustomerFormModal: ({ open }) => (open ? <div data-testid="customer-form-open">Nuevo cliente</div> : null),
@@ -20,6 +21,10 @@ vi.mock('@/modules/crm/components/ActivityFormModal', () => ({
 
 vi.mock('@/modules/crm/components/SaleDetailModal', () => ({
   SaleDetailModal: () => null,
+}))
+
+vi.mock('@/modules/crm/components/LeadQuoteManageModal', () => ({
+  LeadQuoteManageModal: () => null,
 }))
 
 vi.mock('@/modules/agenda/components/AppointmentFormModal', () => ({
@@ -54,7 +59,11 @@ vi.mock('@/stores/customersStore', () => ({
 }))
 
 vi.mock('@/stores/configStore', () => ({
-  useConfigStore: (selector) => selector({ branches: [] }),
+  useConfigStore: (selector) => selector({
+    branches: [],
+    settings: {},
+    paymentMethods: [],
+  }),
 }))
 
 vi.mock('@/stores/sessionStore', () => ({
@@ -70,6 +79,14 @@ vi.mock('@/modules/crm/hooks/useCrmCapabilities', () => ({
 
 import { SimplifiedCustomersPanel } from '@/modules/crm/components/SimplifiedCustomersPanel'
 
+function renderPanel() {
+  return render(
+    <MemoryRouter>
+      <SimplifiedCustomersPanel />
+    </MemoryRouter>,
+  )
+}
+
 describe('SimplifiedCustomersPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -80,14 +97,14 @@ describe('SimplifiedCustomersPanel', () => {
   })
 
   it('abre el formulario de cliente al pulsar Nuevo cliente', () => {
-    render(<SimplifiedCustomersPanel />)
+    renderPanel()
     expect(screen.queryByTestId('customer-form-open')).toBeNull()
     fireEvent.click(screen.getByTestId('crm-simplified-customers-new-btn'))
     expect(screen.getByTestId('customer-form-open')).toBeTruthy()
   })
 
   it('muestra acción de crear en el estado vacío', () => {
-    render(<SimplifiedCustomersPanel />)
+    renderPanel()
     fireEvent.click(screen.getByTestId('crm-simplified-customers-empty-new'))
     expect(screen.getByTestId('customer-form-open')).toBeTruthy()
   })

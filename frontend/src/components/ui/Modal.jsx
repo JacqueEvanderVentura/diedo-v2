@@ -5,7 +5,17 @@ import { X } from 'lucide-react'
 import { modalBackdropTransition, modalPanelTransition } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
-export function Modal({ open, onClose, title, children, testId, wide = false, xlarge = false, bodyClassName }) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  testId,
+  wide = false,
+  xlarge = false,
+  bodyClassName,
+  elevated = false,
+}) {
   const titleId = useId()
   useEffect(() => {
     if (!open) return
@@ -26,7 +36,12 @@ export function Modal({ open, onClose, title, children, testId, wide = false, xl
   return createPortal(
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-[80] flex items-end justify-center overflow-y-auto p-4 sm:items-center">
+        <div
+          className={cn(
+            'fixed inset-0 flex items-end justify-center overflow-y-auto p-4 sm:items-center',
+            elevated ? 'z-[100]' : 'z-[80]',
+          )}
+        >
           <motion.div
             initial={modalBackdropTransition.initial}
             animate={modalBackdropTransition.animate}

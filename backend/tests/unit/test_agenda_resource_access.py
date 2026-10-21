@@ -16,7 +16,7 @@ def test_resource_access_defaults_to_use_without_acl_rows() -> None:
             resources_with_acl=frozenset(),
             acl_by_resource={},
         )
-        == "use"
+        == "edit"
     )
 
 
@@ -49,7 +49,7 @@ def test_filter_listed_resources_bypass_grants_use() -> None:
         bypass_resource_acl=True,
     )
     assert len(listed) == 1
-    assert listed[0].access == "use"
+    assert listed[0].access == "edit"
 
 
 def test_branch_opening_schedule_returns_none_when_empty() -> None:

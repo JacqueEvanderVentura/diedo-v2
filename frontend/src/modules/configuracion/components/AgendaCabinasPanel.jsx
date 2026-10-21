@@ -1,5 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Building2, CalendarDays, ChevronDown, ChevronUp, Plus, Trash2, Pencil } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Building2,
+  CalendarDays,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Pencil,
+  PencilLine,
+  Plus,
+  Trash2,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { useActiveBranchScope } from '@/hooks/useActiveBranchScope'
 import { useSessionStore } from '@/stores/sessionStore'
@@ -16,8 +27,13 @@ import { cn } from '@/lib/utils'
 import { WEEKDAY_KEYS, WEEKDAY_LABELS } from '@/modules/rrhh/lib/schedule'
 import {
   ACL_LABELS,
-  accessButtonClass,
+  accessPillClass,
+  accessRowHighlightClass,
+  aclRowsToMap,
   cycleResourceAccess,
+  fetchAllActiveUsers,
+  normalizeAclUserId,
+  platformUserId,
   sortResources,
 } from '../lib/agendaCabinas'
 import { configPageClass } from '../lib/pageShell'
@@ -39,9 +55,28 @@ function initials(name) {
     .join('')
 }
 
+function roleLabel(user) {
+  const name = user.role?.name || user.roleAssignments?.[0]?.roleName || ''
+  return name ? String(name).toLowerCase() : ''
+}
+
+function AccessPill({ access }) {
+  const level = access || 'none'
+  const label = ACL_LABELS[level] || ACL_LABELS.none
+  return (
+    <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px]', accessPillClass(access))}>
+      {access === 'use' && <CheckCircle2 className="h-3 w-3" aria-hidden />}
+      {access === 'view' && <Clock className="h-3 w-3" aria-hidden />}
+      {access === 'edit' && <PencilLine className="h-3 w-3" aria-hidden />}
+      {label}
+    </span>
+  )
+}
+
 export default function AgendaCabinasPanel({ embedded = false, visibleBlockIds }) {
   const online = useSessionStore((state) => state.status === 'online')
   const canManage = useSessionStore((state) => state.hasPermission('appointment.manage'))
+  const canReadUsers = useSessionStore((state) => state.hasPermission('membership.read'))
   const { activeBranchId, setActiveBranch, branches, selectOptions } = useActiveBranchScope()
   const hydrateEmployees = useRrhhStore((state) => state.hydrateEmployees)
   const employees = useRrhhStore((state) => state.employees)
@@ -53,9 +88,12 @@ export default function AgendaCabinasPanel({ embedded = false, visibleBlockIds }
   const [resources, setResources] = useState([])
   const [openingHours, setOpeningHours] = useState([])
   const [users, setUsers] = useState([])
-  const [aclResourceId, setAclResourceId] = useState('')
-  const [aclByUser, setAclByUser] = useState({})
+  const [usersLoadError, setUsersLoadError] = useState('')
+  const [aclByResource, setAclByResource] = useState({})
+  const [aclLoading, setAclLoading] = useState(false)
   const [loading, setLoading] = useState(false)
+  const aclLoadSeq = useRef(0)
+  const aclMutationSeq = useRef(0)
 
   const [cabinaModal, setCabinaModal] = useState(null)
   const [dayModalOpen, setDayModalOpen] = useState(false)
@@ -85,11 +123,11 @@ export default function AgendaCabinasPanel({ embedded = false, visibleBlockIds }
   )
 
   const loadResources = useCallback(async () => {
-    if (!online || !activeBranchId) return
+    if (!online || !activeBranchId) return []
     const items = await appointmentsApi.appointmentResources({ branchId: activeBranchId })
     setResources(items)
-    if (!aclResourceId && items[0]) setAclResourceId(items[0].id)
-  }, [activeBranchId, aclResourceId, online])
+    return items
+  }, [activeBranchId, online])
 
   const loadHours = useCallback(async () => {
     if (!online || !activeBranchId) return
@@ -97,41 +135,89 @@ export default function AgendaCabinasPanel({ embedded = false, visibleBlockIds }
   }, [activeBranchId, online])
 
   const loadUsers = useCallback(async () => {
-    if (!online) return
-    const response = await usersApi.list({ page: 1, pageSize: 200, status: 'active' })
-    setUsers(response.items || [])
-  }, [online])
-
-  const loadAcl = useCallback(async () => {
-    if (!online || !activeBranchId || !aclResourceId) return
-    const items = await appointmentsApi.appointmentResourceAcl(aclResourceId, activeBranchId)
-    const map = {}
-    items.forEach((row) => {
-      map[row.userId] = row.access || null
-    })
-    setAclByUser(map)
-  }, [aclResourceId, activeBranchId, online])
-
-  const reload = useCallback(async () => {
-    if (!activeBranchId) return
-    setLoading(true)
-    try {
-      await Promise.all([loadResources(), loadHours(), loadUsers()])
-      await hydrateEmployees({ force: false }).catch(() => {})
-    } catch (error) {
-      toast.error(error.message || 'No se pudo cargar la configuración de agenda.')
-    } finally {
-      setLoading(false)
+    if (!online) {
+      setUsers([])
+      setUsersLoadError('')
+      return
     }
-  }, [activeBranchId, hydrateEmployees, loadHours, loadResources, loadUsers])
+    if (!canReadUsers) {
+      setUsers([])
+      setUsersLoadError('membership')
+      return
+    }
+    try {
+      const items = await fetchAllActiveUsers(usersApi)
+      setUsers(items)
+      setUsersLoadError('')
+    } catch (error) {
+      setUsers([])
+      setUsersLoadError(error.message || 'users')
+      throw error
+    }
+  }, [canReadUsers, online])
+
+  const loadAllAcl = useCallback(async (resourceList) => {
+    const resourcesForAcl = sortResources(resourceList || [])
+    if (!online || !activeBranchId || resourcesForAcl.length === 0) {
+      setAclByResource({})
+      return
+    }
+    const seq = aclLoadSeq.current + 1
+    aclLoadSeq.current = seq
+    setAclLoading(true)
+    try {
+      const pairs = await Promise.all(
+        resourcesForAcl.map(async (resource) => {
+          const items = await appointmentsApi.appointmentResourceAcl(resource.id, activeBranchId)
+          return [resource.id, aclRowsToMap(items)]
+        }),
+      )
+      if (seq < aclLoadSeq.current || seq < aclMutationSeq.current) return
+      const next = {}
+      pairs.forEach(([resourceId, byUser]) => {
+        next[resourceId] = byUser
+      })
+      setAclByResource(next)
+    } catch (error) {
+      toast.error(error.message || 'No se pudieron cargar los permisos de cabinas.')
+    } finally {
+      if (seq === aclLoadSeq.current) setAclLoading(false)
+    }
+  }, [activeBranchId, online])
 
   useEffect(() => {
-    reload().catch(() => {})
-  }, [reload])
-
-  useEffect(() => {
-    loadAcl().catch(() => {})
-  }, [loadAcl])
+    if (!activeBranchId) return
+    let cancelled = false
+    const run = async () => {
+      setLoading(true)
+      try {
+        const [loadedResources] = await Promise.all([
+          online ? loadResources() : Promise.resolve([]),
+          online ? loadHours() : Promise.resolve(),
+        ])
+        if (cancelled) return
+        if (online) await loadAllAcl(loadedResources || [])
+        if (cancelled) return
+        await hydrateEmployees({ force: false }).catch(() => {})
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error.message || 'No se pudo cargar la configuración de agenda.')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+      if (cancelled) return
+      try {
+        await loadUsers()
+      } catch {
+        if (!cancelled) toast.error('No se pudieron cargar los usuarios del sistema.')
+      }
+    }
+    run().catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [activeBranchId, online, canReadUsers, hydrateEmployees, loadAllAcl, loadHours, loadResources, loadUsers])
 
   const branchUsers = useMemo(
     () => users.filter((user) => (user.branches || []).some((branch) => branch.id === activeBranchId)),
@@ -218,19 +304,44 @@ export default function AgendaCabinasPanel({ embedded = false, visibleBlockIds }
     }
   }
 
-  const toggleAcl = async (userId) => {
-    const current = aclByUser[userId] || null
+  const toggleAcl = async (resourceId, userId) => {
+    const normalizedUserId = normalizeAclUserId(userId)
+    const currentMap = aclByResource[resourceId] || {}
+    const current = currentMap[normalizedUserId] ?? null
     const next = cycleResourceAccess(current)
-    const items = branchUsers.map((user) => ({
-      userId: user.userId,
-      access: user.userId === userId ? next : (aclByUser[user.userId] || null),
-    }))
+    const mutationSeq = aclMutationSeq.current + 1
+    aclMutationSeq.current = mutationSeq
+
+    setAclByResource((state) => {
+      const map = { ...(state[resourceId] || {}) }
+      if (next == null) delete map[normalizedUserId]
+      else map[normalizedUserId] = next
+      return { ...state, [resourceId]: map }
+    })
+
+    const items = branchUsers.map((user) => {
+      const id = platformUserId(user)
+      const normalizedId = normalizeAclUserId(id)
+      return {
+        userId: id,
+        access: normalizedId === normalizedUserId ? next : (currentMap[normalizedId] ?? null),
+      }
+    })
     try {
-      const saved = await appointmentsApi.replaceAppointmentResourceAcl(aclResourceId, activeBranchId, items)
-      const map = {}
-      saved.forEach((row) => { map[row.userId] = row.access || null })
-      setAclByUser(map)
+      const saved = await appointmentsApi.replaceAppointmentResourceAcl(resourceId, activeBranchId, items)
+      if (mutationSeq < aclMutationSeq.current) return
+      setAclByResource((state) => {
+        const map = { ...(state[resourceId] || {}) }
+        aclRowsToMap(saved, map)
+        if (next == null) delete map[normalizedUserId]
+        return { ...state, [resourceId]: map }
+      })
     } catch (error) {
+      aclMutationSeq.current += 1
+      setAclByResource((state) => ({
+        ...state,
+        [resourceId]: { ...(state[resourceId] || {}), [normalizedUserId]: current },
+      }))
       toast.error(error.message || 'No se pudo actualizar permisos.')
     }
   }
@@ -423,36 +534,90 @@ export default function AgendaCabinasPanel({ embedded = false, visibleBlockIds }
       )}
 
       {tab === 'acl' && tabAllowed('acl') && (
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-slate-700">Cabina</p>
-            <Select
-              value={aclResourceId}
-              onChange={setAclResourceId}
-              options={sortedResources.map((resource) => ({ value: resource.id, label: resource.name }))}
-              placeholder="Selecciona una cabina"
-            />
-          </div>
-          <div className="space-y-2">
-            {branchUsers.map((user) => {
-              const access = aclByUser[user.userId] || null
-              const label = ACL_LABELS[access || 'none']
-              return (
-                <button
-                  key={user.userId}
-                  type="button"
-                  onClick={() => toggleAcl(user.userId)}
-                  className={cn(
-                    'flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left text-sm font-semibold transition-colors',
-                    accessButtonClass(access),
-                  )}
+        <div className="space-y-4" data-testid="agenda-acl-panel">
+          <Card className="border-slate-100 p-4 shadow-soft">
+            <h4 className="font-heading text-lg font-bold text-slate-900">Asignación de Usuarios de Sistema</h4>
+            <p className="mt-1 text-sm text-slate-500">
+              Otorga el permiso a los usuarios del sistema (ej. recepcionistas) para ver y administrar la agenda de estas cabinas.
+              Sin usuarios asignados, la cabina queda abierta a todos.
+            </p>
+          </Card>
+
+          {usersLoadError === 'membership' && (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Necesitas permiso para ver usuarios (membership.read) para asignar accesos por cabina.
+            </p>
+          )}
+
+          {usersLoadError && usersLoadError !== 'membership' && (
+            <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              No se pudieron cargar los usuarios del sistema.
+            </p>
+          )}
+
+          {aclLoading && (
+            <p className="text-sm text-slate-500" role="status">Cargando permisos…</p>
+          )}
+
+          {sortedResources.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-200 px-4 py-10 text-center text-sm text-slate-500">
+              Esta sucursal no tiene cabinas. Agrega cabinas en la pestaña Orden de Cabinas.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              {sortedResources.map((resource) => (
+                <div
+                  key={resource.id}
+                  className="overflow-hidden rounded-xl border border-slate-100 bg-white shadow-soft"
+                  data-testid={`agenda-acl-card-${resource.id}`}
                 >
-                  <span>{user.displayName}</span>
-                  <span>{label}</span>
-                </button>
-              )
-            })}
-          </div>
+                  <div className="border-b border-slate-100 bg-slate-50/80 px-4 py-3">
+                    <h5 className="flex items-center gap-2 font-bold text-slate-900">
+                      <Building2 className="h-4 w-4 text-blue-600" aria-hidden />
+                      {resource.name}
+                    </h5>
+                  </div>
+                  <div className="max-h-80 space-y-1 overflow-y-auto p-2">
+                    <div className="flex justify-between px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                      <span>Usuario</span>
+                      <span>Nivel de Acceso</span>
+                    </div>
+                    {branchUsers.length === 0 ? (
+                      <p className="px-2 py-4 text-center text-sm text-slate-500">
+                        No hay usuarios activos con acceso a esta sucursal.
+                      </p>
+                    ) : branchUsers.map((user) => {
+                      const access = aclByResource[resource.id]?.[normalizeAclUserId(platformUserId(user))] ?? null
+                      const highlighted = access === 'use' || access === 'edit'
+                      return (
+                        <button
+                          key={`${resource.id}-${user.userId}`}
+                          type="button"
+                          onClick={() => toggleAcl(resource.id, platformUserId(user))}
+                          className={cn(
+                            'flex w-full items-center justify-between rounded-lg p-2 text-left text-sm transition-colors',
+                            accessRowHighlightClass(access),
+                          )}
+                        >
+                          <div className="min-w-0 pr-2">
+                            <span className={cn('block truncate font-medium', highlighted ? 'font-bold text-blue-700' : 'text-slate-600')}>
+                              {user.displayName}
+                            </span>
+                            {roleLabel(user) && (
+                              <span className="mt-0.5 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] capitalize text-slate-500">
+                                {roleLabel(user)}
+                              </span>
+                            )}
+                          </div>
+                          <AccessPill access={access} />
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

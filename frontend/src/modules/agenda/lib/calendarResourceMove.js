@@ -1,3 +1,4 @@
+import { canBookResource, canEditResource } from '@/modules/configuracion/lib/agendaCabinas'
 import { normalizeAppointmentStatus } from '@/modules/agenda/lib/completion'
 import { timeRangesOverlap } from '@/modules/agenda/lib/selfBooking'
 
@@ -39,6 +40,7 @@ export function findEmployeeSlotConflict({
 export function explainAppointmentResourceMove({
   appointment,
   targetResource,
+  sourceResource,
   targetTime,
   appointments = [],
   canManage = true,
@@ -48,9 +50,15 @@ export function explainAppointmentResourceMove({
   if (normalizeAppointmentStatus(appointment.status) === 'cancelada') {
     return 'No se puede mover una cita cancelada.'
   }
+  if (sourceResource && !canEditResource(sourceResource.access)) {
+    return `No tienes permiso para editar citas en ${sourceResource.name}.`
+  }
   if (!targetResource) return 'Suelta la cita sobre una cabina para moverla.'
-  if (targetResource.access === 'view') {
-    return `No tienes permiso para usar ${targetResource.name}.`
+  if (!canEditResource(targetResource.access)) {
+    if (targetResource.access === 'view' || !canBookResource(targetResource.access)) {
+      return `No tienes permiso para usar ${targetResource.name}.`
+    }
+    return `No tienes permiso para mover citas a ${targetResource.name}.`
   }
   if (targetResource.active === false) {
     return `${targetResource.name} no está activa.`

@@ -1,3 +1,4 @@
+import { normalizePublicBookingLeadMinutes } from '@/lib/bookingLeadTimes'
 import {
   DEFAULT_BILLING_DOCUMENTS,
   normalizeBillingDocumentsState,
@@ -120,6 +121,12 @@ export function mapBranchFromApi(branch, legalEntities = []) {
     sharing: entity?.sharing || { branchCount: 0, shared: false },
     billingDocuments: mapBillingDocumentsFromApi(details.billingDocuments || details.billing_documents),
     onlineBookingSelectable: Boolean(branch.onlineBookingSelectable),
+    publicBookingMinLeadMinutes: normalizePublicBookingLeadMinutes(
+      branch.publicBookingMinLeadMinutes,
+    ),
+    publicCancelMinLeadMinutes: normalizePublicBookingLeadMinutes(
+      branch.publicCancelMinLeadMinutes,
+    ),
     source: 'api',
   }
 }
@@ -177,6 +184,12 @@ export function branchGeneralPatchToApi(form, branch) {
     status: form.active ? 'active' : 'inactive',
     timezone: form.timezone || branch.timezone,
     onlineBookingSelectable: Boolean(form.onlineBookingSelectable),
+    publicBookingMinLeadMinutes: normalizePublicBookingLeadMinutes(
+      form.publicBookingMinLeadMinutes,
+    ),
+    publicCancelMinLeadMinutes: normalizePublicBookingLeadMinutes(
+      form.publicCancelMinLeadMinutes,
+    ),
     details: {
       address: form.address || '',
       phone: form.phone || '',

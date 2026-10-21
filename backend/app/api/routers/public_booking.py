@@ -92,9 +92,10 @@ def _handle_public_errors(exc: Exception) -> None:
 )
 def get_booking_entry_context(
     database: DatabaseSession,
+    branch_id: Annotated[UUID | None, Query(alias="branchId")] = None,
 ) -> PublicBookingEntryContextResponse:
     try:
-        payload = PublicBookingService(database).get_entry_context()
+        payload = PublicBookingService(database).get_entry_context(branch_id)
         return PublicBookingEntryContextResponse.model_validate(payload)
     except Exception as exc:
         _handle_public_errors(exc)

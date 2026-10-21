@@ -235,20 +235,25 @@ export function buildInvoiceHtml(data) {
       display: flex;
       flex-direction: column;
       align-items: flex-end;
-      gap: 10px;
-      max-width: 42%;
+      justify-content: flex-start;
+      max-width: 48%;
     }
     .brand-logo {
       flex-shrink: 0;
-      max-height: 72px;
-      max-width: min(240px, 100%);
+      max-height: 112px;
+      max-width: min(320px, 100%);
       width: auto;
       height: auto;
       object-fit: contain;
       object-position: right top;
     }
-    .meta { text-align: right; font-size: 13px; color: #475569; }
-    .meta strong { display: block; color: #0f172a; font-size: 15px; margin-bottom: 4px; }
+    .meta {
+      text-align: left;
+      font-size: 13px;
+      color: #475569;
+      margin-bottom: 12px;
+    }
+    .meta strong { display: block; color: #0f172a; font-size: 17px; margin-bottom: 4px; }
     .grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -404,17 +409,17 @@ export function buildInvoiceHtml(data) {
   <div class="sheet">
     <header class="invoice-print-header">
       <div class="header-left">
+        <div class="meta">
+          <strong>${escapeHtml(docTitle)}</strong>
+          ${escapeHtml(id)}<br />
+          ${escapeHtml(issuedAt)}
+        </div>
         <h1>${escapeHtml(businessName)}</h1>
         ${businessRnc ? `<p class="muted">RNC: ${escapeHtml(businessRnc)}</p>` : ''}
         ${businessAddress ? `<p class="muted">${escapeHtml(businessAddress.split('\n')[0])}</p>` : ''}
       </div>
       <div class="header-right">
         ${logoHtml}
-        <div class="meta">
-          <strong>${escapeHtml(docTitle)}</strong>
-          ${escapeHtml(id)}<br />
-          ${escapeHtml(issuedAt)}
-        </div>
       </div>
     </header>
 

@@ -21,6 +21,7 @@ import {
   REPEAT_COUNTS,
 } from '@/data/agenda'
 import { useBranchStaff } from '@/modules/rrhh/lib/staff'
+import { canBookResource, canEditResource } from '@/modules/configuracion/lib/agendaCabinas'
 import {
   ANY_AVAILABLE_EMPLOYEE_OPTION,
   getAvailableSlots,
@@ -125,12 +126,19 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     ? APPOINTMENT_STATUSES
     : APPOINTMENT_STATUSES.filter((status) => status.id === 'confirmada')
   const price = selectedService?.price || form.price || 0
+  const cabinaAccess = useMemo(
+    () => resources.find((resource) => resource.id === form.cabinaId)?.access ?? 'edit',
+    [form.cabinaId, resources],
+  )
+  const canSaveAppointment = canManage && (appointment
+    ? canEditResource(cabinaAccess)
+    : canBookResource(cabinaAccess))
   const branchStaff = useBranchStaff(form.branchId)
   const branchResources = useMemo(() => {
     const scoped = resources.filter(
       (resource) => resource.branchId === form.branchId && resource.active !== false,
     )
-    const bookable = scoped.filter((resource) => resource.access !== 'view')
+    const bookable = scoped.filter((resource) => canBookResource(resource.access))
     const sorted = [...bookable].sort((left, right) => {
       const order = (left.sortOrder ?? 0) - (right.sortOrder ?? 0)
       if (order !== 0) return order
@@ -649,7 +657,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
           <Button variant="secondary" className="flex-1" onClick={onClose} data-testid="appointment-form-cancel">
             <X className="h-4 w-4" /> Cancelar
           </Button>
-          <Button className="flex-1" onClick={submit} disabled={saving || !canManage} data-testid="appointment-form-save">
+          <Button className="flex-1" onClick={submit} disabled={saving || !canSaveAppointment} data-testid="appointment-form-save">
             <Save className="h-4 w-4" /> {saving ? 'Guardando…' : 'Guardar'}
           </Button>
         </div>

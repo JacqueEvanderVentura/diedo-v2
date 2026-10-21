@@ -20,6 +20,7 @@ import { formatTime12h } from '@/modules/agenda/lib/calendar'
 import { managementUrl } from '@/modules/agenda/lib/notification'
 import { PublicShell } from '../components/PublicShell'
 import { PortalInvoicePreviewModal } from '../components/PortalInvoicePreviewModal'
+import { PortalCancelAppointmentModal } from '../components/PortalCancelAppointmentModal'
 import { clearPublicSession, recallPublicSession } from '../lib/publicSession'
 import { cn } from '@/lib/utils'
 
@@ -49,6 +50,7 @@ export default function PortalPage() {
   const [loading, setLoading] = useState(true)
   const [branchName, setBranchName] = useState('')
   const [cancellingId, setCancellingId] = useState(null)
+  const [cancelTarget, setCancelTarget] = useState(null)
   const [invoicePreview, setInvoicePreview] = useState(null)
   const [invoicePreviewLoading, setInvoicePreviewLoading] = useState(false)
   const [invoicePreviewError, setInvoicePreviewError] = useState('')
@@ -130,13 +132,23 @@ export default function PortalPage() {
     }
   }
 
-  const cancelAppointment = async (apt) => {
-    const aptBranchId = apt.branchId || branchId
+  const requestCancelAppointment = (apt) => {
     if (!apt.managementToken) {
       toast.error('No se puede cancelar esta cita desde el portal.')
       return
     }
-    if (!window.confirm('¿Cancelar esta cita y liberar el horario?')) return
+    setCancelTarget(apt)
+  }
+
+  const closeCancelModal = () => {
+    if (cancellingId) return
+    setCancelTarget(null)
+  }
+
+  const confirmCancelAppointment = async () => {
+    const apt = cancelTarget
+    if (!apt?.managementToken) return
+    const aptBranchId = apt.branchId || branchId
     setCancellingId(apt.id)
     try {
       await publicBookingApi.cancelAppointment(aptBranchId, apt.id, {
@@ -145,6 +157,7 @@ export default function PortalPage() {
       setAppointments((items) =>
         items.map((item) => (item.id === apt.id ? { ...item, status: 'cancelled' } : item)),
       )
+      setCancelTarget(null)
       toast.success('Cita cancelada.')
     } catch (error) {
       toast.error(error.message || 'No se pudo cancelar la cita.')
@@ -235,7 +248,7 @@ export default function PortalPage() {
                               size="sm"
                               className="flex-1 text-xs"
                               disabled={cancellingId === apt.id}
-                              onClick={() => cancelAppointment(apt)}
+                              onClick={() => requestCancelAppointment(apt)}
                               data-testid={`portal-apt-cancel-${apt.id}`}
                             >
                               {cancellingId === apt.id ? 'Cancelando…' : 'Cancelar cita'}
@@ -305,6 +318,13 @@ export default function PortalPage() {
         pdfUrl={invoicePreview?.blobUrl}
         loading={invoicePreviewLoading}
         error={invoicePreviewError}
+      />
+      <PortalCancelAppointmentModal
+        open={cancelTarget !== null}
+        appointment={cancelTarget}
+        busy={cancelTarget !== null && cancellingId === cancelTarget.id}
+        onClose={closeCancelModal}
+        onConfirm={confirmCancelAppointment}
       />
     </PublicShell>
   )

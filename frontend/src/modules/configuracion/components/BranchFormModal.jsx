@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
 import { branchErrorTarget } from '@/services/adapters/administration'
+import { PUBLIC_BOOKING_LEAD_TIME_OPTIONS, PUBLIC_BOOKING_LEAD_MINUTES_DEFAULT } from '@/lib/bookingLeadTimes'
 import { cn } from '@/lib/utils'
 
 const TABS = [
@@ -24,6 +25,8 @@ const empty = (legalEntities = []) => {
     schedule: '09:00 - 21:00',
     active: true,
     onlineBookingSelectable: false,
+    publicBookingMinLeadMinutes: PUBLIC_BOOKING_LEAD_MINUTES_DEFAULT,
+    publicCancelMinLeadMinutes: PUBLIC_BOOKING_LEAD_MINUTES_DEFAULT,
     independentBusiness: false,
     legalName: '',
     legalDisplayName: '',
@@ -315,6 +318,34 @@ export function BranchFormModal({
                 Visible en agenda en línea (enlace de autobook)
               </span>
             </label>
+            {form.onlineBookingSelectable ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-600">
+                    Anticipo mínimo para agendar
+                  </label>
+                  <Select
+                    data-testid="branch-booking-lead"
+                    value={String(form.publicBookingMinLeadMinutes)}
+                    disabled={submitting || branchFieldsDisabled}
+                    options={PUBLIC_BOOKING_LEAD_TIME_OPTIONS}
+                    onChange={(value) => set('publicBookingMinLeadMinutes', Number(value))}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-600">
+                    Anticipo mínimo para cancelar
+                  </label>
+                  <Select
+                    data-testid="branch-cancel-lead"
+                    value={String(form.publicCancelMinLeadMinutes)}
+                    disabled={submitting || branchFieldsDisabled}
+                    options={PUBLIC_BOOKING_LEAD_TIME_OPTIONS}
+                    onChange={(value) => set('publicCancelMinLeadMinutes', Number(value))}
+                  />
+                </div>
+              </div>
+            ) : null}
           </div>
         )}
 

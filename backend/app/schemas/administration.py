@@ -6,6 +6,10 @@ from uuid import UUID, uuid7
 
 from pydantic import EmailStr, Field, field_validator, model_validator
 
+from app.schemas.booking_policy import (
+    DEFAULT_PUBLIC_BOOKING_LEAD_MINUTES,
+    PublicBookingLeadMinutes,
+)
 from app.schemas.common import ApiModel
 
 PaymentChannel = Literal[
@@ -281,6 +285,8 @@ class BranchResponse(ApiModel):
     timezone: str
     details: BranchDetails
     online_booking_selectable: bool = False
+    public_booking_min_lead_minutes: PublicBookingLeadMinutes = DEFAULT_PUBLIC_BOOKING_LEAD_MINUTES
+    public_cancel_min_lead_minutes: PublicBookingLeadMinutes = DEFAULT_PUBLIC_BOOKING_LEAD_MINUTES
     version: int
 
 
@@ -310,6 +316,8 @@ class UpdateBranchRequest(ApiModel):
     timezone: str | None = Field(default=None, min_length=3, max_length=64)
     details: BranchDetailsPatch | None = None
     online_booking_selectable: bool | None = None
+    public_booking_min_lead_minutes: PublicBookingLeadMinutes | None = None
+    public_cancel_min_lead_minutes: PublicBookingLeadMinutes | None = None
     version: int = Field(ge=1)
 
 

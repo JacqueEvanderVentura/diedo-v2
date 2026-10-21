@@ -8,6 +8,10 @@ from uuid import UUID
 
 from pydantic import EmailStr, Field, field_validator, model_validator
 
+from app.schemas.booking_policy import (
+    DEFAULT_PUBLIC_BOOKING_LEAD_MINUTES,
+    PublicBookingLeadMinutes,
+)
 from app.schemas.common import ApiModel
 from app.schemas.master_data import CustomerDocumentType
 
@@ -24,6 +28,8 @@ class PublicBranchContextResponse(ApiModel):
     branch_name: str
     workspace_name: str
     timezone: str = "America/Santo_Domingo"
+    public_booking_min_lead_minutes: PublicBookingLeadMinutes = DEFAULT_PUBLIC_BOOKING_LEAD_MINUTES
+    public_cancel_min_lead_minutes: PublicBookingLeadMinutes = DEFAULT_PUBLIC_BOOKING_LEAD_MINUTES
 
 
 class PublicServiceOption(ApiModel):
@@ -166,6 +172,10 @@ class ManagedAppointmentResponse(PublicAppointmentSummary):
     branch_name: str
     workspace_name: str
     timezone: str
+    public_booking_min_lead_minutes: PublicBookingLeadMinutes = DEFAULT_PUBLIC_BOOKING_LEAD_MINUTES
+    public_cancel_min_lead_minutes: PublicBookingLeadMinutes = DEFAULT_PUBLIC_BOOKING_LEAD_MINUTES
+    can_manage_online: bool = True
+    manage_blocked_reason: str | None = None
 
 
 class PublicBookAppointmentResponse(ApiModel):

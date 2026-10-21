@@ -22,6 +22,7 @@ import { QuoteFormModal } from '@/modules/crm/components/QuoteFormModal'
 import { ActivityFormModal } from '@/modules/crm/components/ActivityFormModal'
 import { AppointmentFormModal } from '@/modules/agenda/components/AppointmentFormModal'
 import { SaleDetailModal } from '@/modules/crm/components/SaleDetailModal'
+import { LeadQuoteManageModal } from '@/modules/crm/components/LeadQuoteManageModal'
 import { cn } from '@/lib/utils'
 import { Pagination } from '@/modules/reportes/components/Pagination'
 import { CRM_PAGE_SIZE_OPTIONS, DEFAULT_CRM_PAGE_SIZE } from '@/modules/crm/constants/paging'
@@ -37,6 +38,8 @@ export function SimplifiedCustomersPanel() {
   const setCustomersPageSize = useCustomersStore((s) => s.setCustomersPageSize)
   const deleteCustomers = useCustomersStore((s) => s.deleteCustomers)
   const branches = useConfigStore((s) => s.branches)
+  const settings = useConfigStore((s) => s.settings)
+  const paymentMethods = useConfigStore((s) => s.paymentMethods)
 
   const [query, setQuery] = useState('')
   const [branchIds, setBranchIds] = useState([])
@@ -53,6 +56,14 @@ export function SimplifiedCustomersPanel() {
   const [taskOpen, setTaskOpen] = useState(false)
   const [taskCustomerId, setTaskCustomerId] = useState('')
   const [saleDetail, setSaleDetail] = useState(null)
+  const [managingQuote, setManagingQuote] = useState(null)
+  const [editingTask, setEditingTask] = useState(null)
+  const [viewingAppointment, setViewingAppointment] = useState(null)
+
+  const quoteDocumentCtx = useMemo(
+    () => ({ branches, settings, paymentMethods, customers }),
+    [branches, settings, paymentMethods, customers],
+  )
 
   useEffect(() => {
     useCrmStore.getState().hydrateSection('customers').catch(() => {})
@@ -269,10 +280,17 @@ export function SimplifiedCustomersPanel() {
                   setQuoteOpen(true)
                 }}
                 onNewTask={(c) => {
+                  setEditingTask(null)
                   setTaskCustomerId(c.id)
                   setTaskOpen(true)
                 }}
                 onOpenSale={(sale) => setSaleDetail(sale)}
+                onOpenQuote={(quote) => setManagingQuote(quote)}
+                onOpenTask={(task) => {
+                  setEditingTask(task)
+                  setTaskOpen(true)
+                }}
+                onOpenAppointment={(appointment) => setViewingAppointment(appointment)}
               />
             ) : (
               <p className="text-sm text-slate-500">Selecciona un cliente de la lista.</p>
@@ -313,8 +331,20 @@ export function SimplifiedCustomersPanel() {
       />
       <ActivityFormModal
         open={taskOpen}
-        onClose={() => { setTaskOpen(false); setTaskCustomerId('') }}
+        onClose={() => {
+          setTaskOpen(false)
+          setTaskCustomerId('')
+          setEditingTask(null)
+        }}
+        activity={editingTask}
         defaultCustomerId={taskCustomerId}
+      />
+      <LeadQuoteManageModal
+        open={Boolean(managingQuote)}
+        quote={managingQuote}
+        documentCtx={quoteDocumentCtx}
+        onClose={() => setManagingQuote(null)}
+        onQuoteChanged={() => useCrmStore.getState().hydrateSection('quotes').catch(() => {})}
       />
       <SaleDetailModal
         open={Boolean(saleDetail)}
@@ -322,10 +352,14 @@ export function SimplifiedCustomersPanel() {
         sale={saleDetail}
       />
       <AppointmentFormModal
-        open={Boolean(scheduling)}
-        onClose={() => setScheduling(null)}
-        defaultCustomerId={scheduling?.id}
-        defaultSlot={{ branchId: scheduling?.branchIds?.[0] || scheduling?.branchId }}
+        open={Boolean(scheduling) || Boolean(viewingAppointment)}
+        onClose={() => {
+          setScheduling(null)
+          setViewingAppointment(null)
+        }}
+        appointment={viewingAppointment}
+        defaultCustomerId={scheduling?.id || viewingAppointment?.customerId}
+        defaultSlot={{ branchId: scheduling?.branchIds?.[0] || scheduling?.branchId || viewingAppointment?.branchId }}
       />
 
       <ConfirmDialog

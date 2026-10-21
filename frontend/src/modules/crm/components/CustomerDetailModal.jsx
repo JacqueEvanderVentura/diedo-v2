@@ -14,7 +14,9 @@ import {
   Building2,
   FileText,
   CheckSquare,
+  ChevronRight,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -37,10 +39,48 @@ import {
 
 function Section({ title, children }) {
   return (
-    <div>
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">{title}</p>
-      {children}
-    </div>
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">{title}</p>
+      </div>
+      <div className="p-4">{children}</div>
+    </section>
+  )
+}
+
+const detailRowClass = (interactive, className) => cn(
+  'group flex w-full items-center justify-between gap-3 rounded-xl border border-slate-100 p-4 text-left text-sm transition-colors',
+  interactive && 'cursor-pointer hover:border-blue-200 hover:bg-blue-50/40',
+  className,
+)
+
+function DetailRowButton({ onClick, to, children, testId, className }) {
+  const interactive = Boolean(onClick || to)
+  const body = (
+    <>
+      <div className="min-w-0 flex-1">{children}</div>
+      {interactive && (
+        <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition-colors group-hover:text-blue-500" aria-hidden />
+      )}
+    </>
+  )
+  if (to) {
+    return (
+      <Link to={to} data-testid={testId} className={detailRowClass(true, className)}>
+        {body}
+      </Link>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!interactive}
+      data-testid={testId}
+      className={detailRowClass(interactive, className)}
+    >
+      {body}
+    </button>
   )
 }
 
@@ -52,6 +92,10 @@ export function CustomerDetailPanel({
   onQuote,
   onNewTask,
   onOpenSale,
+  onOpenQuote,
+  onOpenTask,
+  onOpenAppointment,
+  onOpenLead,
 }) {
   const can = useCrmCapabilities()
   const posSales = usePosStore((s) => s.sales)
@@ -109,7 +153,7 @@ export function CustomerDetailPanel({
   if (!customer) return null
 
   return (
-    <div className="space-y-5" data-testid="customer-detail-panel">
+    <div className="space-y-6" data-testid="customer-detail-panel">
           <div className="flex items-center gap-4 rounded-xl bg-slate-50 p-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-100 text-lg font-bold text-blue-700">
               {customer.name.slice(0, 1).toUpperCase()}
@@ -185,7 +229,7 @@ export function CustomerDetailPanel({
           </div>
 
           <Section title="Clasificación y sucursales">
-            <div className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 p-4">
               <Badge tone="neutral">
                 {customer.customerType === 'b2b' ? 'Empresa (B2B)' : 'Consumidor (B2C)'}
               </Badge>
@@ -212,29 +256,32 @@ export function CustomerDetailPanel({
 
           {customer.notes && (
             <Section title="Notas">
-              <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">{customer.notes}</p>
+              <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">{customer.notes}</p>
             </Section>
           )}
 
           <Section title="Leads en pipeline">
             {openPipelineLeads.length === 0 ? (
-              <p className="text-sm text-slate-400">Sin leads activos en el pipeline.</p>
+              <p className="py-2 text-sm text-slate-400">Sin leads activos en el pipeline.</p>
             ) : (
-              <ul className="space-y-2" data-testid="customer-detail-pipeline-leads">
+              <ul className="space-y-3" data-testid="customer-detail-pipeline-leads">
                 {openPipelineLeads.map((pipelineLead) => (
-                  <li key={pipelineLead.id} className="flex items-center justify-between rounded-xl border border-slate-100 p-3 text-sm">
-                    <div>
-                      <p className="font-medium text-slate-800">{pipelineLead.company || pipelineLead.name}</p>
-                      <p className="text-xs text-slate-500">{formatDOP(pipelineLead.pipelineValue || 0)}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge tone={STAGE_META[pipelineLead.status]?.tone || 'neutral'}>
-                        {STAGE_META[pipelineLead.status]?.label || pipelineLead.status}
-                      </Badge>
-                      <Link to="/crm/pipeline" className="text-xs font-semibold text-blue-600 hover:underline">
-                        Pipeline
-                      </Link>
-                    </div>
+                  <li key={pipelineLead.id}>
+                    <DetailRowButton
+                      to={onOpenLead ? undefined : '/crm/pipeline'}
+                      onClick={onOpenLead ? () => onOpenLead(pipelineLead) : undefined}
+                      testId={`customer-detail-lead-${pipelineLead.id}`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-slate-800">{pipelineLead.company || pipelineLead.name}</p>
+                          <p className="text-xs text-slate-500">{formatDOP(pipelineLead.pipelineValue || 0)}</p>
+                        </div>
+                        <Badge tone={STAGE_META[pipelineLead.status]?.tone || 'neutral'}>
+                          {STAGE_META[pipelineLead.status]?.label || pipelineLead.status}
+                        </Badge>
+                      </div>
+                    </DetailRowButton>
                   </li>
                 ))}
               </ul>
@@ -243,18 +290,25 @@ export function CustomerDetailPanel({
 
           <Section title="Cotizaciones recientes">
             {customerQuotes.length === 0 ? (
-              <p className="text-sm text-slate-400">Aún no hay cotizaciones para este cliente.</p>
+              <p className="py-2 text-sm text-slate-400">Aún no hay cotizaciones para este cliente.</p>
             ) : (
-              <ul className="max-h-40 space-y-2 overflow-y-auto scrollbar-thin" data-testid="customer-detail-quotes">
+              <ul className="max-h-60 space-y-3 overflow-y-auto scrollbar-thin" data-testid="customer-detail-quotes">
                 {customerQuotes.slice(0, 5).map((quote) => (
-                  <li key={quote.id} className="flex items-center justify-between rounded-xl border border-slate-100 p-3 text-sm">
-                    <div>
-                      <p className="font-mono text-xs text-slate-500">{quote.number}</p>
-                      <p className="font-medium text-slate-800">{formatDOP(quote.total)}</p>
-                    </div>
-                    <Badge tone={QUOTE_STATUS_META[quote.status]?.tone || 'neutral'}>
-                      {QUOTE_STATUS_META[quote.status]?.label || quote.status}
-                    </Badge>
+                  <li key={quote.id}>
+                    <DetailRowButton
+                      onClick={onOpenQuote ? () => onOpenQuote(quote) : undefined}
+                      testId={`customer-detail-quote-${quote.id}`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-mono text-xs text-slate-500">{quote.number}</p>
+                          <p className="font-medium text-slate-800">{formatDOP(quote.total)}</p>
+                        </div>
+                        <Badge tone={QUOTE_STATUS_META[quote.status]?.tone || 'neutral'}>
+                          {QUOTE_STATUS_META[quote.status]?.label || quote.status}
+                        </Badge>
+                      </div>
+                    </DetailRowButton>
                   </li>
                 ))}
               </ul>
@@ -263,13 +317,18 @@ export function CustomerDetailPanel({
 
           <Section title="Tareas pendientes">
             {pendingTasks.length === 0 ? (
-              <p className="text-sm text-slate-400">Sin seguimientos pendientes.</p>
+              <p className="py-2 text-sm text-slate-400">Sin seguimientos pendientes.</p>
             ) : (
-              <ul className="space-y-2" data-testid="customer-detail-tasks">
+              <ul className="space-y-3" data-testid="customer-detail-tasks">
                 {pendingTasks.slice(0, 5).map((task) => (
-                  <li key={task.id} className="rounded-xl border border-slate-100 p-3 text-sm">
-                    <p className="font-medium text-slate-800">{task.title}</p>
-                    <p className="text-xs text-slate-500">{fmtDateTime(task.dueAt || task.createdAt)}</p>
+                  <li key={task.id}>
+                    <DetailRowButton
+                      onClick={onOpenTask ? () => onOpenTask(task) : undefined}
+                      testId={`customer-detail-task-${task.id}`}
+                    >
+                      <p className="font-medium text-slate-800">{task.title}</p>
+                      <p className="text-xs text-slate-500">{fmtDateTime(task.dueAt || task.createdAt)}</p>
+                    </DetailRowButton>
                   </li>
                 ))}
               </ul>
@@ -278,15 +337,22 @@ export function CustomerDetailPanel({
 
           <Section title="Próximas citas">
             {upcoming.length === 0 ? (
-              <p className="flex items-center gap-2 text-sm text-slate-400"><CalendarClock className="h-4 w-4" /> Sin citas próximas</p>
+              <p className="flex items-center gap-2 py-2 text-sm text-slate-400"><CalendarClock className="h-4 w-4" /> Sin citas próximas</p>
             ) : (
-              <ul className="space-y-2" data-testid="customer-detail-appointments">
+              <ul className="space-y-3" data-testid="customer-detail-appointments">
                 {upcoming.map((a) => {
                   const st = statusMeta(a.status)
                   return (
-                    <li key={a.id} className="flex items-center justify-between rounded-xl border border-slate-100 p-3 text-sm">
-                      <span className="text-slate-700">{fmtDate(a.date)} · {a.time} · {a.serviceName || 'Sin servicio'}</span>
-                      <Badge tone={st.tone}>{st.name}</Badge>
+                    <li key={a.id}>
+                      <DetailRowButton
+                        onClick={onOpenAppointment ? () => onOpenAppointment(a) : undefined}
+                        testId={`customer-detail-appointment-${a.id}`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-slate-700">{fmtDate(a.date)} · {a.time} · {a.serviceName || 'Sin servicio'}</span>
+                          <Badge tone={st.tone}>{st.name}</Badge>
+                        </div>
+                      </DetailRowButton>
                     </li>
                   )
                 })}
@@ -296,15 +362,22 @@ export function CustomerDetailPanel({
 
           <Section title="Historial de citas">
             {pastAppointments.length === 0 ? (
-              <p className="flex items-center gap-2 text-sm text-slate-400"><CalendarDays className="h-4 w-4" /> Sin citas anteriores</p>
+              <p className="flex items-center gap-2 py-2 text-sm text-slate-400"><CalendarDays className="h-4 w-4" /> Sin citas anteriores</p>
             ) : (
-              <ul className="max-h-48 space-y-2 overflow-y-auto scrollbar-thin" data-testid="customer-detail-past-appointments">
+              <ul className="max-h-64 space-y-3 overflow-y-auto scrollbar-thin" data-testid="customer-detail-past-appointments">
                 {pastAppointments.map((a) => {
                   const st = statusMeta(a.status)
                   return (
-                    <li key={a.id} className="flex items-center justify-between rounded-xl border border-slate-100 p-3 text-sm">
-                      <span className="text-slate-700">{fmtDate(a.date)} · {a.time} · {a.serviceName || 'Sin servicio'}</span>
-                      <Badge tone={st.tone}>{st.name}</Badge>
+                    <li key={a.id}>
+                      <DetailRowButton
+                        onClick={onOpenAppointment ? () => onOpenAppointment(a) : undefined}
+                        testId={`customer-detail-past-appointment-${a.id}`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-slate-700">{fmtDate(a.date)} · {a.time} · {a.serviceName || 'Sin servicio'}</span>
+                          <Badge tone={st.tone}>{st.name}</Badge>
+                        </div>
+                      </DetailRowButton>
                     </li>
                   )
                 })}
@@ -314,35 +387,35 @@ export function CustomerDetailPanel({
 
           <Section title="Historial de compras">
             {purchases.length === 0 ? (
-              <p className="flex items-center gap-2 text-sm text-slate-400"><ShoppingBag className="h-4 w-4" /> Aún sin compras registradas</p>
+              <p className="flex items-center gap-2 py-2 text-sm text-slate-400"><ShoppingBag className="h-4 w-4" /> Aún sin compras registradas</p>
             ) : (
-              <ul className="max-h-56 space-y-2 overflow-y-auto scrollbar-thin" data-testid="customer-detail-purchases">
+              <ul className="max-h-80 space-y-3 overflow-y-auto scrollbar-thin" data-testid="customer-detail-purchases">
                 {purchases.map((s) => {
                   const receivable = receivables.find((row) => row.saleId === s.id)
                   const badge = saleStatusBadge(s, receivable)
                   return (
                   <li key={s.id}>
-                    <button
-                      type="button"
-                      onClick={() => onOpenSale?.(s)}
-                      className="w-full rounded-xl border border-slate-100 p-3 text-left transition-colors hover:border-blue-200 hover:bg-blue-50/40"
-                      data-testid={`customer-detail-sale-${s.id}`}
+                    <DetailRowButton
+                      onClick={onOpenSale ? () => onOpenSale(s) : undefined}
+                      testId={`customer-detail-sale-${s.id}`}
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-slate-400">{fmtDateTime(s.createdAt)}</span>
-                        <span className="font-heading font-bold text-slate-900">{formatDOP(s.total)}</span>
+                      <div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs text-slate-400">{fmtDateTime(s.createdAt)}</span>
+                          <span className="font-heading font-bold text-slate-900">{formatDOP(s.total)}</span>
+                        </div>
+                        <p className="mt-1 truncate text-sm text-slate-600">
+                          {s.items?.map((i) => `${i.qty}× ${i.name}`).join(', ') || s.number || 'Venta'}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <Badge tone={badge.tone}>{badge.label}</Badge>
+                          <span className="text-[11px] font-medium text-slate-400">
+                            {METHOD_LABELS[s.method] || s.method}
+                            {s.origin === 'pipeline' ? ' · Pipeline' : ''}
+                          </span>
+                        </div>
                       </div>
-                      <p className="mt-1 truncate text-sm text-slate-600">
-                        {s.items?.map((i) => `${i.qty}× ${i.name}`).join(', ') || s.number || 'Venta'}
-                      </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <Badge tone={badge.tone}>{badge.label}</Badge>
-                        <span className="text-[11px] font-medium text-slate-400">
-                          {METHOD_LABELS[s.method] || s.method}
-                          {s.origin === 'pipeline' ? ' · Pipeline' : ''}
-                        </span>
-                      </div>
-                    </button>
+                    </DetailRowButton>
                   </li>
                   )
                 })}
@@ -363,6 +436,10 @@ export function CustomerDetailModal({
   onQuote,
   onNewTask,
   onOpenSale,
+  onOpenQuote,
+  onOpenTask,
+  onOpenAppointment,
+  onOpenLead,
 }) {
   return (
     <Modal open={open} onClose={onClose} title="Ficha de cliente" wide testId="customer-detail-modal">
@@ -375,6 +452,10 @@ export function CustomerDetailModal({
           onQuote={onQuote}
           onNewTask={onNewTask}
           onOpenSale={onOpenSale}
+          onOpenQuote={onOpenQuote}
+          onOpenTask={onOpenTask}
+          onOpenAppointment={onOpenAppointment}
+          onOpenLead={onOpenLead}
         />
       )}
     </Modal>

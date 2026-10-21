@@ -43,7 +43,7 @@ export default function GestionCitaPage({ branchId, appointmentId, token }) {
     setTime('')
     setSlots([])
     setSlotError('')
-    if (!appointment || appointment.status !== 'confirmed' || !date) {
+    if (!appointment || appointment.status !== 'confirmed' || appointment.canManageOnline === false || !date) {
       setLoadingSlots(false)
       return
     }
@@ -93,7 +93,12 @@ export default function GestionCitaPage({ branchId, appointmentId, token }) {
             <p data-testid="managed-appointment-status">{appointment.status === 'cancelled' ? 'Cancelada' : appointment.status === 'confirmed' ? 'Confirmada' : 'Cita cerrada'}</p>
           </div>
           {notice && <p role="status" className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">{notice}</p>}
-          {appointment.status === 'confirmed' && <>
+          {appointment.status === 'confirmed' && appointment.canManageOnline === false && appointment.manageBlockedReason ? (
+            <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900" data-testid="manage-blocked-reason">
+              {appointment.manageBlockedReason}
+            </p>
+          ) : null}
+          {appointment.status === 'confirmed' && appointment.canManageOnline !== false && <>
             <h2 className="font-semibold">Elegir otro horario</h2>
             <DatePicker value={date} minDate={branchDateKey(appointment.timezone)} onChange={(value) => { setTime(''); setDate(value) }} testId="manage-date" />
             <p className="text-sm text-slate-600">

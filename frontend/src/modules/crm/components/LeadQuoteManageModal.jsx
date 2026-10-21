@@ -85,6 +85,7 @@ export function LeadQuoteManageModal({
         onClose={onClose}
         title={detail?.number ? `Cotización ${detail.number}` : 'Cotización'}
         wide
+        elevated
         testId="lead-quote-manage-modal"
       >
         <div className="space-y-4">

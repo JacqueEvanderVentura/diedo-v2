@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID, uuid7
+from zoneinfo import ZoneInfo
 
 import pytest
 from app.config import settings
@@ -10,6 +11,7 @@ from app.db.session import get_session_factory
 from app.services import email_notifications
 from app.services.appointment_reminders import REMINDER_EVENT, AppointmentReminderService
 from app.services.email import EmailDeliveryResult, EmailTransportError
+from pydantic import SecretStr
 from sqlalchemy import delete, select
 
 from tests.test_agenda import (
@@ -153,6 +155,20 @@ def _slot_params(body, employee, service):
     return {"date": body["date"], "employeeId": employee, "serviceId": service}
 
 
+def _patch_branch_lead(client, headers, branch_id, **fields):
+    listed = client.get("/api/v1/branches", headers=headers)
+    assert listed.status_code == 200, listed.text
+    branch_row = next(row for row in listed.json() if row["id"] == branch_id)
+    payload = {"version": branch_row["version"], **fields}
+    updated = client.patch(
+        f"/api/v1/branches/{branch_id}",
+        headers=headers,
+        json=payload,
+    )
+    assert updated.status_code == 200, updated.text
+    return updated.json()
+
+
 @pytest.mark.integration
 def test_resources_other_branches_and_past_slots(client, booking_setup):
     from app.db.models import AppointmentResource, EmployeeBranchAssignment
@@ -256,6 +272,67 @@ def test_public_slots_respect_branch_opening_hours(client, booking_setup):
         json={"items": []},
     )
     assert cleared.status_code == 200, cleared.text
+
+
+@pytest.mark.integration
+def test_public_booking_and_cancel_respect_branch_lead_times(client, booking_setup, monkeypatch):
+    headers, _, branch, employee, service = booking_setup
+    _patch_branch_lead(
+        client,
+        headers,
+        branch,
+        publicBookingMinLeadMinutes=60,
+        publicCancelMinLeadMinutes=60,
+    )
+    base = f"/api/v1/public/booking/branches/{branch}"
+    booking_date = "2026-06-15"
+    zone = ZoneInfo("America/Santo_Domingo")
+    # 60-minute lead is strict (slot must start after now + lead); 12:30 leaves 14:00 open.
+    fixed_now = datetime(2026, 6, 15, 12, 30, tzinfo=zone).astimezone(UTC)
+    monkeypatch.setattr("app.services.public_booking.utc_now", lambda: fixed_now)
+    params = {"date": booking_date, "employeeId": employee, "serviceId": service}
+    slots = client.get(f"{base}/slots", params=params).json()["slots"]
+    assert "13:30" not in slots
+    assert "14:00" in slots
+    too_soon = client.post(
+        f"{base}/appointments",
+        json={
+            **payload_for(employee, service),
+            "date": booking_date,
+            "time": "13:30",
+        },
+        headers={"Idempotency-Key": str(uuid7())},
+    )
+    assert too_soon.status_code == 409, too_soon.text
+    booked = client.post(
+        f"{base}/appointments",
+        json={
+            **payload_for(employee, service),
+            "date": booking_date,
+            "time": "14:00",
+        },
+        headers={"Idempotency-Key": str(uuid7())},
+    )
+    assert booked.status_code == 201, booked.text
+    appointment = booked.json()["appointment"]
+    token = appointment["managementToken"]
+    uri = f"{base}/appointments/{appointment['id']}"
+    monkeypatch.setattr(
+        "app.services.public_booking.utc_now",
+        lambda: datetime(2026, 6, 15, 13, 0, tzinfo=zone).astimezone(UTC),
+    )
+    detail = client.get(uri, params={"token": token}).json()
+    assert detail["canManageOnline"] is False
+    blocked_cancel = client.post(f"{uri}/cancel", json={"managementToken": token})
+    assert blocked_cancel.status_code == 409, blocked_cancel.text
+    monkeypatch.setattr(
+        "app.services.public_booking.utc_now",
+        lambda: datetime(2026, 6, 15, 12, 0, tzinfo=zone).astimezone(UTC),
+    )
+    detail_open = client.get(uri, params={"token": token}).json()
+    assert detail_open["canManageOnline"] is True
+    cancelled = client.post(f"{uri}/cancel", json={"managementToken": token})
+    assert cancelled.status_code == 200, cancelled.text
 
 
 @pytest.mark.integration
@@ -805,6 +882,58 @@ def test_booking_entry_context_lists_selectable_branches(client, booking_setup):
     assert body.get("workspaceName")
     assert len(branches) >= 2
     assert any(item["id"] == branch for item in branches)
+
+
+_BACKOFFICE_KEY = "test-backoffice-key-with-at-least-32-characters"
+
+
+@pytest.mark.integration
+def test_booking_entry_context_scoped_to_branch_workspace(client, booking_setup, monkeypatch):
+    _, _me, branch, _employee, _service = booking_setup
+    suffix = uuid7().hex[:10]
+    monkeypatch.setattr(settings, "backoffice_api_key", SecretStr(_BACKOFFICE_KEY))
+    provisioned = client.post(
+        "/api/v1/backoffice/workspaces",
+        headers={"X-Backoffice-Key": _BACKOFFICE_KEY},
+        json={
+            "slug": f"other-tenant-{suffix}",
+            "name": "Otro comercio",
+            "defaultCurrency": "DOP",
+            "timezone": "America/Santo_Domingo",
+            "locale": "es-do",
+            "taxDefaultRate": "18.00",
+            "owner": {
+                "email": f"owner-{suffix}@example.com",
+                "displayName": "Owner Other",
+                "password": "Owner!password-not-a-production-secret",
+            },
+        },
+    )
+    assert provisioned.status_code == 201, provisioned.text
+    other_workspace_id = UUID(provisioned.json()["workspaceId"])
+    other_branch_name = "Cuts Facroty FP SRL"
+    with get_session_factory()() as session:
+        other_branch = session.scalar(
+            select(Branch).where(Branch.workspace_id == other_workspace_id)
+        )
+        assert other_branch is not None
+        other_branch.name = other_branch_name
+        other_branch.online_booking_selectable = True
+        session.commit()
+        other_branch_id = str(other_branch.id)
+
+    ambiguous = client.get("/api/v1/public/booking/context")
+    assert ambiguous.status_code == 400, ambiguous.text
+
+    scoped = client.get("/api/v1/public/booking/context", params={"branchId": branch})
+    assert scoped.status_code == 200, scoped.text
+    scoped_names = {item["name"] for item in scoped.json().get("workspaceBranches") or []}
+    assert other_branch_name not in scoped_names
+
+    context = client.get(f"/api/v1/public/booking/branches/{branch}/context").json()
+    context_names = {item["name"] for item in context.get("workspaceBranches") or []}
+    assert other_branch_name not in context_names
+    assert other_branch_id not in {item["id"] for item in context.get("workspaceBranches") or []}
 
 
 @pytest.mark.integration

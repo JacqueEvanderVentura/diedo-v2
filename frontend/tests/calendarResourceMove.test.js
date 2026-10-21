@@ -13,12 +13,14 @@ const appointment = {
   customerName: 'Ana',
 }
 
-const cab2 = { id: 'cab2', name: 'Cabina 2', access: 'use', active: true }
+const cab1 = { id: 'cab1', name: 'Cabina 1', access: 'edit', active: true }
+const cab2 = { id: 'cab2', name: 'Cabina 2', access: 'edit', active: true }
 
 describe('explainAppointmentResourceMove', () => {
   it('allows moving to a free cabina at the same time', () => {
     expect(explainAppointmentResourceMove({
       appointment,
+      sourceResource: cab1,
       targetResource: cab2,
       targetTime: '10:00',
       appointments: [appointment],
@@ -38,14 +40,25 @@ describe('explainAppointmentResourceMove', () => {
   it('rejects a view-only cabina', () => {
     expect(explainAppointmentResourceMove({
       appointment,
+      sourceResource: cab1,
       targetResource: { ...cab2, access: 'view' },
       appointments: [appointment],
     })).toBe('No tienes permiso para usar Cabina 2.')
   })
 
+  it('rejects moving when destination is use-only', () => {
+    expect(explainAppointmentResourceMove({
+      appointment,
+      sourceResource: cab1,
+      targetResource: { ...cab2, access: 'use' },
+      appointments: [appointment],
+    })).toBe('No tienes permiso para mover citas a Cabina 2.')
+  })
+
   it('rejects a confirmed overlap on the destination cabina', () => {
     expect(explainAppointmentResourceMove({
       appointment,
+      sourceResource: cab1,
       targetResource: cab2,
       targetTime: '10:00',
       appointments: [
@@ -66,6 +79,7 @@ describe('explainAppointmentResourceMove', () => {
   it('rejects an employee overlap when the time changes', () => {
     expect(explainAppointmentResourceMove({
       appointment,
+      sourceResource: cab1,
       targetResource: cab2,
       targetTime: '11:00',
       appointments: [
@@ -87,6 +101,7 @@ describe('explainAppointmentResourceMove', () => {
   it('does not treat cancelled appointments as blocking', () => {
     expect(explainAppointmentResourceMove({
       appointment,
+      sourceResource: cab1,
       targetResource: cab2,
       targetTime: '10:00',
       appointments: [

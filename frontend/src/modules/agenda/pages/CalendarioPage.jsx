@@ -31,7 +31,7 @@ import {
 import { cn } from '@/lib/utils'
 import { appointmentsApi } from '@/services/appointmentsApi'
 import { isAppointmentConflict } from '@/services/adapters/appointments'
-import { sortResources } from '@/modules/configuracion/lib/agendaCabinas'
+import { canEditResource, sortResources } from '@/modules/configuracion/lib/agendaCabinas'
 import { boundsForDate } from '../lib/branchOpeningHours'
 import { explainAppointmentResourceMove } from '../lib/calendarResourceMove'
 import { normalizeAppointmentStatus } from '../lib/completion'
@@ -133,7 +133,9 @@ export default function CalendarioPage() {
   }
 
   const openNew = (slot = {}) => {
-    const defaultCabina = branchResources.find((resource) => resource.access !== 'view')?.id || ''
+    const defaultCabina = branchResources.find(
+      (resource) => resource.access !== 'view' && resource.access != null,
+    )?.id || ''
     setEditing(null)
     setDefaults({
       date: cursor,
@@ -145,7 +147,18 @@ export default function CalendarioPage() {
     setModalOpen(true)
   }
 
+  const canDragAppointment = useCallback((apt) => {
+    if (!canManage) return false
+    const resource = branchResources.find((item) => item.id === apt.cabinaId)
+    return canEditResource(resource?.access ?? 'edit')
+  }, [branchResources, canManage])
+
   const openEdit = (apt) => {
+    const resource = branchResources.find((item) => item.id === apt.cabinaId)
+    if (canManage && resource && !canEditResource(resource.access)) {
+      toast.error('No tienes permiso para editar citas en esta cabina.')
+      return
+    }
     setEditing(apt)
     setDefaults({})
     setModalOpen(true)
@@ -157,9 +170,11 @@ export default function CalendarioPage() {
     if (targetResource && targetResource.id === appointment.cabinaId && nextTime === appointment.time) {
       return
     }
+    const sourceResource = branchResources.find((resource) => resource.id === appointment.cabinaId) || null
     const blocked = explainAppointmentResourceMove({
       appointment,
       targetResource,
+      sourceResource,
       targetTime: nextTime,
       appointments,
       canManage,
@@ -324,6 +339,7 @@ export default function CalendarioPage() {
             onSlotClick={canManage ? openNew : undefined}
             onAppointmentClick={openEdit}
             canDrag={canManage}
+            canDragAppointment={canDragAppointment}
             showCancelled={showCancelled}
             onResourceMove={handleResourceMove}
           />

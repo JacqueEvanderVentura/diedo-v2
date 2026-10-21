@@ -20,7 +20,7 @@ AppointmentSortField = Literal["date", "customerName", "serviceName", "status", 
 SortDirection = Literal["asc", "desc"]
 ResourceStatus = Literal["active", "inactive", "archived"]
 ResourceType = Literal["room", "equipment", "other"]
-ResourceAccess = Literal["view", "use"]
+ResourceAccess = Literal["view", "use", "edit"]
 WeekdayKey = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 

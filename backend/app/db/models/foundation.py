@@ -162,6 +162,14 @@ class Branch(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             name="fk_branches_workspace_entity",
         ),
         CheckConstraint("status IN ('active', 'inactive', 'archived')", name="status_values"),
+        CheckConstraint(
+            "public_booking_min_lead_minutes IN (5, 30, 45, 60, 90, 240, 360, 720, 1440)",
+            name="public_booking_min_lead_minutes",
+        ),
+        CheckConstraint(
+            "public_cancel_min_lead_minutes IN (5, 30, 45, 60, 90, 240, 360, 720, 1440)",
+            name="public_cancel_min_lead_minutes",
+        ),
         Index("ix_branches_workspace_entity", "workspace_id", "legal_entity_id"),
         Index("ix_branches_workspace_status", "workspace_id", "status"),
     )
@@ -184,6 +192,16 @@ class Branch(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
         nullable=False,
         default=False,
         server_default=text("false"),
+    )
+    public_booking_min_lead_minutes: Mapped[int] = mapped_column(
+        nullable=False,
+        default=5,
+        server_default=text("5"),
+    )
+    public_cancel_min_lead_minutes: Mapped[int] = mapped_column(
+        nullable=False,
+        default=5,
+        server_default=text("5"),
     )
 
 

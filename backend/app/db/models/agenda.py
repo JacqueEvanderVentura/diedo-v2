@@ -143,7 +143,7 @@ class AppointmentResourceAcl(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, 
             "platform_user_id",
             name="uq_appointment_resource_acl_user",
         ),
-        CheckConstraint("access IN ('view', 'use')", name="access_values"),
+        CheckConstraint("access IN ('view', 'use', 'edit')", name="access_values"),
     )
 
     workspace_id: Mapped[UUID] = mapped_column(nullable=False)

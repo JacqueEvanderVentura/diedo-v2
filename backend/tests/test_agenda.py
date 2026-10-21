@@ -1215,6 +1215,7 @@ def test_appointment_resource_config_crud_reorder_hours_and_acl(client: TestClie
     assert acl_get.status_code == 200, acl_get.text
     acl_by_user = {item["userId"]: item["access"] for item in acl_get.json()["items"]}
     assert acl_by_user[reader_user_id] == "view"
+    assert acl_by_user[owner_user_id] == "use"
 
     owner_list = client.get(
         "/api/v1/appointment-resources",
@@ -1223,7 +1224,8 @@ def test_appointment_resource_config_crud_reorder_hours_and_acl(client: TestClie
     )
     assert owner_list.status_code == 200, owner_list.text
     owner_cabina = next(item for item in owner_list.json()["items"] if item["id"] == cabina_id)
-    assert owner_cabina["access"] == "use"
+    # appointment.manage bypasses ACL on list and reports full edit access.
+    assert owner_cabina["access"] == "edit"
 
     reader_list = client.get(
         "/api/v1/appointment-resources",

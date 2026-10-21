@@ -11,10 +11,10 @@ transaccional en PostgreSQL. Todos los recursos y citas pertenecen a un `workspa
   el demo/local bootstrap puede seguir cargando el set Charm.
 - `branch_opening_hours`: ventana laboral por día (`mon`…`sun`) usada para recortar slots de
   reserva pública y la grilla diaria del calendario. Sin filas, el frontend asume 08:00–20:00.
-- `appointment_resource_acl`: permisos por usuario (`view` | `use`). Si un recurso no tiene
+- `appointment_resource_acl`: permisos por usuario (`view` | `use` | `edit`). Si un recurso no tiene
   filas ACL, se comporta como abierto para quien tenga `appointment.read` / `appointment.manage`.
   En cuanto existe al menos una fila, solo los usuarios listados ven la cabina y sus citas;
-  crear, mover o eliminar citas en esa cabina exige `use`.
+  crear citas exige `use` o `edit`; mover, editar o eliminar citas exige `edit`.
 - `appointments`: horario local y zona horaria de la sucursal, ventana UTC, snapshots de cliente,
   servicio y precio, empleado/recurso, estado operativo, estado activo/inactivo del registro,
   recurrencia, versión optimista e idempotencia.
@@ -64,7 +64,7 @@ rol administrador del workspace por defecto.
 `GET /api/v1/appointment-resources?branchId={uuid}`
 
 Devuelve `{ "items": [...] }` ordenados por `sortOrder`, con `description`, `access` (`view` |
-`use`, solo para el usuario actual) y `version`. Filtra por ACL salvo que el caller tenga
+`use`, `edit`, solo para el usuario actual) y `version`. Filtra por ACL salvo que el caller tenga
 `appointment.manage` en la sucursal (configuración). `Cache-Control: no-store`.
 
 `POST /api/v1/appointment-resources` — crear (`appointment.manage`).
@@ -87,7 +87,7 @@ los ids activos de la sucursal.
 `GET /api/v1/appointment-resources/{id}/acl?branchId=`
 
 `PUT /api/v1/appointment-resources/{id}/acl?branchId=` — matriz `{ items: [{ userId, access }] }`
-donde `access` es `view`, `use` o `null` (sin fila).
+donde `access` es `view`, `use`, `edit` o `null` (sin fila).
 
 ### Calendario y gestión
 
