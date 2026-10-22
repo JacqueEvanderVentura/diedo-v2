@@ -177,12 +177,12 @@ class AgendaRepository:
         by_user = {row.platform_user_id: row for row in existing}
         for user_id, access in entries:
             if access is None:
-                row = by_user.pop(user_id, None)
-                if row is not None:
-                    self._session.delete(row)
+                revoked = by_user.pop(user_id) if user_id in by_user else None
+                if revoked is not None:
+                    self._session.delete(revoked)
                 continue
-            row = by_user.get(user_id)
-            if row is None:
+            current = by_user.get(user_id)
+            if current is None:
                 self._session.add(
                     AppointmentResourceAcl(
                         workspace_id=workspace_id,
@@ -193,7 +193,7 @@ class AgendaRepository:
                     )
                 )
             else:
-                row.access = access
+                current.access = access
         self._session.flush()
         return self.acl_rows_for_resource(workspace_id, branch_id, resource_id)
 
