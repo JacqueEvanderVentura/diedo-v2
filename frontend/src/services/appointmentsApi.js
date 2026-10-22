@@ -42,8 +42,11 @@ async function listAllAppointments(params = {}) {
 
 export const appointmentsApi = {
   appointments: listAllAppointments,
-  appointmentResources: async ({ branchId }) => {
-    const response = await apiClient.get('/api/v1/appointment-resources', { branchId })
+  appointmentResources: async ({ branchId, forConfig = false } = {}) => {
+    const response = await apiClient.get('/api/v1/appointment-resources', {
+      branchId,
+      forConfig: forConfig ? true : undefined,
+    })
     return (response.items || []).map((item) => mapAppointmentResourceFromApi(item, branchId))
   },
   createAppointment: async (payload) => {

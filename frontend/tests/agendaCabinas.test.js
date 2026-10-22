@@ -3,6 +3,7 @@ import {
   ACL_LABELS,
   accessButtonClass,
   accessPillClass,
+  aclPatchItems,
   canBookResource,
   canEditResource,
   cycleResourceAccess,
@@ -10,6 +11,7 @@ import {
   fetchAllActiveUsers,
   normalizeAclUserId,
   sortResources,
+  userAssignedToBranch,
 } from '@/modules/configuracion/lib/agendaCabinas'
 import { boundsForDate } from '@/modules/agenda/lib/branchOpeningHours'
 
@@ -55,6 +57,18 @@ describe('agendaCabinas helpers', () => {
     ])
     expect(map[normalizeAclUserId('abc-111')]).toBe('use')
     expect(map[normalizeAclUserId('def-222')]).toBe('edit')
+  })
+
+  it('patches a single acl user without replacing the matrix', () => {
+    expect(aclPatchItems('user-1', 'use')).toEqual([{ userId: 'user-1', access: 'use' }])
+    expect(aclPatchItems('user-1', null)).toEqual([{ userId: 'user-1', access: null }])
+    expect(aclPatchItems(null, 'view')).toEqual([])
+  })
+
+  it('matches users assigned to a branch via branches or branchIds', () => {
+    expect(userAssignedToBranch({ branches: [{ id: 'hq' }] }, 'hq')).toBe(true)
+    expect(userAssignedToBranch({ branchIds: ['hq'] }, 'hq')).toBe(true)
+    expect(userAssignedToBranch({ branches: [], branchIds: [] }, 'hq')).toBe(false)
   })
 
   it('paginates active users with pageSize 100', async () => {

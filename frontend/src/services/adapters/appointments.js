@@ -106,7 +106,7 @@ export function mapAppointmentResourceFromApi(item, fallbackBranchId) {
     status: item.status || 'active',
     active: item.status !== 'inactive' && item.status !== 'archived',
     sortOrder: Number(item.sortOrder) || 0,
-    access: item.access || 'edit',
+    access: item.access === undefined ? 'edit' : item.access,
     version: Number(item.version) || 1,
   }
 }

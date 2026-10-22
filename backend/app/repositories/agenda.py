@@ -62,7 +62,7 @@ class AppointmentListResult:
 @dataclass(frozen=True)
 class ListedAppointmentResource:
     resource: AppointmentResource
-    access: str
+    access: str | None
 
 
 class AgendaRepository:
@@ -169,15 +169,20 @@ class AgendaRepository:
         entries: tuple[tuple[UUID, str | None], ...],
     ) -> tuple[AppointmentResourceAcl, ...]:
         existing = self.acl_rows_for_resource(workspace_id, branch_id, resource_id)
+        if not entries:
+            for row in existing:
+                self._session.delete(row)
+            self._session.flush()
+            return ()
         by_user = {row.platform_user_id: row for row in existing}
         for user_id, access in entries:
             if access is None:
-                row = by_user.pop(user_id, None)
-                if row is not None:
-                    self._session.delete(row)
+                revoked = by_user.pop(user_id) if user_id in by_user else None
+                if revoked is not None:
+                    self._session.delete(revoked)
                 continue
-            row = by_user.get(user_id)
-            if row is None:
+            current = by_user.get(user_id)
+            if current is None:
                 self._session.add(
                     AppointmentResourceAcl(
                         workspace_id=workspace_id,
@@ -188,9 +193,7 @@ class AgendaRepository:
                     )
                 )
             else:
-                row.access = access
-        for row in by_user.values():
-            self._session.delete(row)
+                current.access = access
         self._session.flush()
         return self.acl_rows_for_resource(workspace_id, branch_id, resource_id)
 
@@ -422,6 +425,26 @@ class AgendaRepository:
                 AppointmentResource.status == "active",
             )
         )
+
+    def list_active_branch_employee_ids(
+        self, workspace_id: UUID, branch_id: UUID
+    ) -> tuple[UUID, ...]:
+        rows = self._session.scalars(
+            select(Employee.id)
+            .join(
+                EmployeeBranchAssignment,
+                (EmployeeBranchAssignment.workspace_id == Employee.workspace_id)
+                & (EmployeeBranchAssignment.employee_id == Employee.id),
+            )
+            .where(
+                Employee.workspace_id == workspace_id,
+                Employee.status == "active",
+                EmployeeBranchAssignment.branch_id == branch_id,
+                EmployeeBranchAssignment.status == "active",
+            )
+            .order_by(Employee.normalized_name, Employee.id)
+        ).all()
+        return tuple(rows)
 
     def employee_available_in_branch(
         self, workspace_id: UUID, branch_id: UUID, employee_id: UUID
