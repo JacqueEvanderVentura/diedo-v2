@@ -169,6 +169,11 @@ class AgendaRepository:
         entries: tuple[tuple[UUID, str | None], ...],
     ) -> tuple[AppointmentResourceAcl, ...]:
         existing = self.acl_rows_for_resource(workspace_id, branch_id, resource_id)
+        if not entries:
+            for row in existing:
+                self._session.delete(row)
+            self._session.flush()
+            return ()
         by_user = {row.platform_user_id: row for row in existing}
         for user_id, access in entries:
             if access is None:
@@ -189,8 +194,6 @@ class AgendaRepository:
                 )
             else:
                 row.access = access
-        for row in by_user.values():
-            self._session.delete(row)
         self._session.flush()
         return self.acl_rows_for_resource(workspace_id, branch_id, resource_id)
 

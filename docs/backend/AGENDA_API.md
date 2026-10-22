@@ -89,7 +89,9 @@ los ids activos de la sucursal.
 `GET /api/v1/appointment-resources/{id}/acl?branchId=`
 
 `PUT /api/v1/appointment-resources/{id}/acl?branchId=` — matriz `{ items: [{ userId, access }] }`
-donde `access` es `view`, `use`, `edit` o `null` (sin fila).
+donde `access` es `view`, `use`, `edit` o `null` (quita ese usuario). Un `PUT` con usuarios
+actualiza o borra **solo esas filas**; el resto se conserva. `items: []` deja la cabina sin ACL
+(abierta a todos).
 
 ### Calendario y gestión
 

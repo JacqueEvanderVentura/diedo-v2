@@ -59,6 +59,17 @@ export function platformUserId(user) {
   return user?.userId ?? user?.user_id ?? null
 }
 
+export function userAssignedToBranch(user, branchId) {
+  if (!branchId) return false
+  if ((user?.branches || []).some((branch) => branch.id === branchId)) return true
+  return (user?.branchIds || []).includes(branchId)
+}
+
+export function aclPatchItems(userId, access) {
+  if (!userId) return []
+  return [{ userId, access }]
+}
+
 export function normalizeAclUserId(userId) {
   return userId ? String(userId).toLowerCase() : ''
 }

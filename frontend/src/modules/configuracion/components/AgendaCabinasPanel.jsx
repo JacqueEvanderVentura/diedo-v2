@@ -29,12 +29,14 @@ import {
   ACL_LABELS,
   accessPillClass,
   accessRowHighlightClass,
+  aclPatchItems,
   aclRowsToMap,
   cycleResourceAccess,
   fetchAllActiveUsers,
   normalizeAclUserId,
   platformUserId,
   sortResources,
+  userAssignedToBranch,
 } from '../lib/agendaCabinas'
 import { configPageClass } from '../lib/pageShell'
 import { isSettingsBlockVisible } from '../lib/settingsSearch'
@@ -167,6 +169,7 @@ export default function AgendaCabinasPanel({ embedded = false, visibleBlockIds }
     }
     const seq = aclLoadSeq.current + 1
     aclLoadSeq.current = seq
+    const mutationAtStart = aclMutationSeq.current
     setAclLoading(true)
     try {
       const pairs = await Promise.all(
@@ -175,7 +178,7 @@ export default function AgendaCabinasPanel({ embedded = false, visibleBlockIds }
           return [resource.id, aclRowsToMap(items)]
         }),
       )
-      if (seq < aclLoadSeq.current || seq < aclMutationSeq.current) return
+      if (seq !== aclLoadSeq.current || aclMutationSeq.current !== mutationAtStart) return
       const next = {}
       pairs.forEach(([resourceId, byUser]) => {
         next[resourceId] = byUser
@@ -223,7 +226,7 @@ export default function AgendaCabinasPanel({ embedded = false, visibleBlockIds }
   }, [activeBranchId, online, canReadUsers, hydrateEmployees, loadAllAcl, loadHours, loadResources, loadUsers])
 
   const branchUsers = useMemo(
-    () => users.filter((user) => (user.branches || []).some((branch) => branch.id === activeBranchId)),
+    () => users.filter((user) => userAssignedToBranch(user, activeBranchId)),
     [users, activeBranchId],
   )
 
@@ -322,23 +325,14 @@ export default function AgendaCabinasPanel({ embedded = false, visibleBlockIds }
       return { ...state, [resourceId]: map }
     })
 
-    const items = branchUsers.map((user) => {
-      const id = platformUserId(user)
-      const normalizedId = normalizeAclUserId(id)
-      return {
-        userId: id,
-        access: normalizedId === normalizedUserId ? next : (currentMap[normalizedId] ?? null),
-      }
-    })
+    const items = aclPatchItems(userId, next)
     try {
       const saved = await appointmentsApi.replaceAppointmentResourceAcl(resourceId, activeBranchId, items)
       if (mutationSeq < aclMutationSeq.current) return
-      setAclByResource((state) => {
-        const map = { ...(state[resourceId] || {}) }
-        aclRowsToMap(saved, map)
-        if (next == null) delete map[normalizedUserId]
-        return { ...state, [resourceId]: map }
-      })
+      setAclByResource((state) => ({
+        ...state,
+        [resourceId]: aclRowsToMap(saved),
+      }))
     } catch (error) {
       aclMutationSeq.current += 1
       setAclByResource((state) => ({

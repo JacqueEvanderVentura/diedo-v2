@@ -502,6 +502,59 @@ def test_agenda_acl_view_blocks_appointment_reschedule(client: TestClient) -> No
 
 
 @pytest.mark.integration
+def test_agenda_acl_put_keeps_unlisted_users(client: TestClient) -> None:
+    owner_headers, context = _bootstrap_and_login(client)
+    owner_user_id = str(context["userId"])
+    branch_id = _hq_branch_id(context)
+    workspace_id = UUID(str(context["workspaceId"]))
+    suffix = uuid7().hex[-10:]
+    cabina = client.post(
+        "/api/v1/appointment-resources",
+        headers=owner_headers,
+        json={"branchId": branch_id, "name": f"Cabina ACL keep {suffix}"},
+    )
+    assert cabina.status_code == 201, cabina.text
+    resource_id = cabina.json()["id"]
+    reader_email = _create_branch_agenda_reader(workspace_id, UUID(branch_id))
+    with session_scope() as session:
+        reader = session.scalar(select(PlatformUser).where(PlatformUser.email == reader_email))
+        assert reader is not None
+        reader_user_id = str(reader.id)
+
+    first = client.put(
+        f"/api/v1/appointment-resources/{resource_id}/acl",
+        headers=owner_headers,
+        params={"branchId": branch_id},
+        json={"items": [{"userId": owner_user_id, "access": "edit"}]},
+    )
+    assert first.status_code == 200, first.text
+    second = client.put(
+        f"/api/v1/appointment-resources/{resource_id}/acl",
+        headers=owner_headers,
+        params={"branchId": branch_id},
+        json={"items": [{"userId": reader_user_id, "access": "view"}]},
+    )
+    assert second.status_code == 200, second.text
+    reloaded = client.get(
+        f"/api/v1/appointment-resources/{resource_id}/acl",
+        headers=owner_headers,
+        params={"branchId": branch_id},
+    )
+    assert reloaded.status_code == 200, reloaded.text
+    by_user = {item["userId"]: item["access"] for item in reloaded.json()["items"]}
+    assert by_user[owner_user_id] == "edit"
+    assert by_user[reader_user_id] == "view"
+    cleared = client.put(
+        f"/api/v1/appointment-resources/{resource_id}/acl",
+        headers=owner_headers,
+        params={"branchId": branch_id},
+        json={"items": []},
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["items"] == []
+
+
+@pytest.mark.integration
 def test_appointment_resource_not_found_paths(client: TestClient) -> None:
     owner_headers, context = _bootstrap_and_login(client)
     branch_id = _hq_branch_id(context)
