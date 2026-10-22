@@ -13,6 +13,11 @@ import {
 } from './prepush-state.mjs'
 import { resolveTestDatabaseUrl } from './test-database-url.mjs'
 import { resolvePython } from './python-command.mjs'
+import {
+  parsePytestPassedFilesFromJunit,
+  recordFullSuiteSuccess,
+  shouldSkipFullSuite,
+} from './prepush-incremental.mjs'
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const repoRoot = path.dirname(root)
@@ -164,17 +169,34 @@ if (relatedTests.length) {
   )
 }
 
-const pytestArgs = ['-x', '--maxfail=1', '--tb=short']
-if (quick) {
-  pytestArgs.push('-m', 'not integration')
+const skipFullSuite =
+  !quick &&
+  shouldSkipFullSuite({ repoRoot, packageRoot: root, posixPrefix: 'backend' })
+if (skipFullSuite) {
+  console.log(
+    'prepush: fase 3 — sin cambios en backend desde el último prepush OK en este commit; salto suite completa.',
+  )
+  console.log('prepush: forzar suite completa con PREPUSH_FULL=1 npm run prepush')
 } else {
-  pytestArgs.push('--cov=app', '--cov-report=term-missing', '--cov-fail-under=80')
-}
+  const pytestArgs = ['-x', '--maxfail=1', '--tb=short']
+  if (quick) {
+    pytestArgs.push('-m', 'not integration')
+  } else {
+    pytestArgs.push('--cov=app', '--cov-report=term-missing', '--cov-fail-under=80')
+  }
 
-runPytest(
-  quick ? 'fase 3 — pytest unitarios (suite completa)' : 'fase 3 — pytest (suite completa + coverage)',
-  pytestArgs,
-)
+  runPytest(
+    quick ? 'fase 3 — pytest unitarios (suite completa)' : 'fase 3 — pytest (suite completa + coverage)',
+    pytestArgs,
+  )
+  if (!quick) {
+    recordFullSuiteSuccess({
+      repoRoot,
+      packageRoot: root,
+      passedTestFiles: parsePytestPassedFilesFromJunit(junitPath),
+    })
+  }
+}
 
 markPrepushSucceeded(root)
 

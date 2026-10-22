@@ -11,6 +11,11 @@ import {
   writeStepFailure,
   writeVitestFailure,
 } from './prepush-state.mjs'
+import {
+  parseVitestPassedFilesFromJunit,
+  recordFullSuiteSuccess,
+  shouldSkipFullSuite,
+} from './prepush-incremental.mjs'
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const repoRoot = path.dirname(root)
@@ -124,18 +129,35 @@ if (!changed.length) {
   )
 }
 
-console.log('prepush: fase 3 — build + suite completa + wrangler')
-run('build', 'npm', ['run', 'build'])
-runVitest('fase 3 — vitest (suite completa)', [])
-run('wrangler dry-run', 'npx', [
-  'wrangler',
-  'deploy',
-  '--dry-run',
-  '--config',
-  'wrangler.jsonc',
-  '--env',
-  'production',
-])
+const skipFullSuite = shouldSkipFullSuite({
+  repoRoot,
+  packageRoot: root,
+  posixPrefix: 'frontend',
+})
+if (skipFullSuite) {
+  console.log(
+    'prepush: fase 3 — sin cambios en frontend desde el último prepush OK en este commit; salto build, vitest y wrangler.',
+  )
+  console.log('prepush: forzar suite completa con PREPUSH_FULL=1 npm run prepush')
+} else {
+  console.log('prepush: fase 3 — build + suite completa + wrangler')
+  run('build', 'npm', ['run', 'build'])
+  runVitest('fase 3 — vitest (suite completa)', [])
+  run('wrangler dry-run', 'npx', [
+    'wrangler',
+    'deploy',
+    '--dry-run',
+    '--config',
+    'wrangler.jsonc',
+    '--env',
+    'production',
+  ])
+  recordFullSuiteSuccess({
+    repoRoot,
+    packageRoot: root,
+    passedTestFiles: parseVitestPassedFilesFromJunit(junitPath),
+  })
+}
 
 markPrepushSucceeded(root)
 

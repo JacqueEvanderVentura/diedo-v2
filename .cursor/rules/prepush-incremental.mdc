@@ -1,0 +1,20 @@
+---
+description: Local prepush may skip full test suites when unchanged since last green run
+globs:
+  - backend/scripts/prepush*.mjs
+  - frontend/scripts/prepush*.mjs
+---
+
+# Prepush incremental (local only)
+
+Backend and frontend `npm run prepush` **fase 3** (full pytest / vitest suite) may be skipped when:
+
+1. The last prepush on that package finished successfully and recorded `backend/.local/prepush-incremental.json` or `frontend/.local/prepush-incremental.json`.
+2. `git rev-parse HEAD` is still the same commit as that record.
+3. There are no changed or untracked files under `backend/` or `frontend/` respectively (`listChangedFiles`).
+
+CI always runs the full suite; this optimization is for local iteration only.
+
+Force a full run: `PREPUSH_FULL=1 npm run prepush` from `backend/` or `frontend/`.
+
+After any edit under the package prefix, fase 3 runs again. Fase 1 (replay last failure) and fase 2 (diff-related tests) are unchanged.

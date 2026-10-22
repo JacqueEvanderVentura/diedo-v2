@@ -875,7 +875,7 @@ def test_booking_context_lists_workspace_branches(client, booking_setup):
 @pytest.mark.integration
 def test_booking_entry_context_lists_selectable_branches(client, booking_setup):
     _, me, branch, _employee, _service = booking_setup
-    entry = client.get("/api/v1/public/booking/context")
+    entry = client.get("/api/v1/public/booking/context", params={"branchId": branch})
     assert entry.status_code == 200, entry.text
     body = entry.json()
     branches = body.get("workspaceBranches") or []

@@ -17,6 +17,8 @@ npm run prepush
 
 Prepush test order: **setup** (lint + DB reset) → **fase 1** replay last pytest failure from `backend/.local/prepush-last-failure.json` → **fase 2** lint/tests for git diff → **fase 3** full suite. A green run writes `backend/.local/prepush.log` (`succeeded …`) and clears the saved failure.
 
+**Incremental fase 3 (local):** if `HEAD` is unchanged and there are no modified/untracked files under `backend/`, fase 3 is skipped after a prior green full suite on that commit (`backend/.local/prepush-incremental.json`). Use `PREPUSH_FULL=1 npm run prepush` to force the full suite. CI is unaffected.
+
 Equivalent manual sequence:
 
 ```bash
