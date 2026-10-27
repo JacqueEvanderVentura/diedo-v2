@@ -10,6 +10,7 @@ import { useAgendaStore } from './stores/agendaStore'
 import { useCatalogStore } from './stores/catalogStore'
 import { configFacade } from './services/configFacade'
 import { WorkspaceScopeSync } from '@/components/branch/WorkspaceScopeSync'
+import { RouteErrorBoundary } from '@/components/layout/RouteErrorBoundary'
 import { hydrateWorkspaceBillingSettings } from '@/modules/configuracion/lib/workspaceSettings'
 
 export default function App() {
@@ -62,7 +63,9 @@ export default function App() {
   return (
     <>
       <WorkspaceScopeSync />
-      <AppRoutes />
+      <RouteErrorBoundary>
+        <AppRoutes />
+      </RouteErrorBoundary>
       <Toaster
         position="top-center"
         richColors

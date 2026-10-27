@@ -38,6 +38,19 @@ describe('apiClient URL base', () => {
     expect(refreshContext).toHaveBeenCalledOnce()
   })
 
+  it('un 500 no expone Error interno del servidor y usa request_id', async () => {
+    const { apiClient } = await loadApiClient('/api-backend')
+    fetch.mockResolvedValueOnce(new Response(
+      JSON.stringify({ message: 'Error interno del servidor.', parameter: null, requestId: 'req-qa-1' }),
+      { status: 500, headers: { 'Content-Type': 'application/json', 'X-Request-Id': 'req-qa-1' } }
+    ))
+    await expect(apiClient.post('/api/v1/finance/expenses', { concept: 'x' })).rejects.toMatchObject({
+      status: 500,
+      requestId: 'req-qa-1',
+      message: 'No pudimos completar la acción. Si sigue, copia este código: req-qa-1.',
+    })
+  })
+
   it('un refresh rechazado limpia la sesión sin intentar actualizar módulos', async () => {
     const { apiClient, bindSessionHandlers } = await loadApiClient('/api-backend')
     const clearSession = vi.fn()

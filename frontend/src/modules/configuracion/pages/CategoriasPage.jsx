@@ -5,7 +5,7 @@ import { useConfigStore, CATEGORY_COLORS, CATALOG_CATEGORY_TYPES, FINANCE_CATEGO
 import { useSessionStore } from '@/stores/sessionStore'
 import { catalogApi } from '@/services/catalogApi'
 import { mapCategoryFromApi, mapCategoryCreatePayload, mapCategoryUpdatePayload } from '@/services/adapters/catalog'
-import { filterCategoriesForSection, isFinanceCategory } from '@/lib/categories'
+import { categoryMutationErrorMessage, filterCategoriesForSection, isFinanceCategory } from '@/lib/categories'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -121,7 +121,7 @@ export default function CategoriasPage({ embedded = false }) {
           toast.success('Categoría creada')
         }
       } catch (err) {
-        toast.error(err.message || 'No se pudo guardar la categoría.')
+        toast.error(categoryMutationErrorMessage(err))
         return false
       }
       return true
@@ -149,7 +149,7 @@ export default function CategoriasPage({ embedded = false }) {
         setCategories(categories.filter((row) => row.id !== c.id))
         toast.success('Categoría archivada')
       } catch (err) {
-        toast.error(err.message || 'No se pudo eliminar la categoría.')
+        toast.error(categoryMutationErrorMessage(err))
       }
       return
     }

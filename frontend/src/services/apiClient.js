@@ -1,3 +1,5 @@
+import { publicHttpErrorMessage, readResponseRequestId } from '@/lib/httpError'
+
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api-backend'
 const BASE_URL_IS_ABSOLUTE = /^[a-z][a-z\d+.-]*:\/\//i.test(BASE_URL)
 
@@ -136,11 +138,7 @@ async function request(path, {
   if (response.ok && responseType === 'blob') return response.blob()
   if (!response.ok && responseType === 'blob') {
     const data = await parseBody(response)
-    const error = new Error(data?.message || `Error ${response.status}`)
-    error.status = response.status
-    error.parameter = data?.parameter
-    error.data = data
-    throw error
+    throw httpError(response, data)
   }
   const data = await parseBody(response)
 
@@ -148,14 +146,20 @@ async function request(path, {
     if (response.status === 403 && auth && data?.parameter === 'module') {
       await sessionHandlers.refreshContext().catch(() => {})
     }
-    const error = new Error(data?.message || `Error ${response.status}`)
-    error.status = response.status
-    error.parameter = data?.parameter
-    error.data = data
-    throw error
+    throw httpError(response, data)
   }
 
   return data
+}
+
+function httpError(response, data) {
+  const requestId = readResponseRequestId(response, data)
+  const error = new Error(publicHttpErrorMessage(response.status, data, requestId))
+  error.status = response.status
+  error.parameter = data?.parameter
+  error.requestId = requestId || null
+  error.data = data
+  return error
 }
 
 export const apiClient = {

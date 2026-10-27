@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any, NoReturn
 
 from fastapi import HTTPException, Request
@@ -10,6 +11,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.cors import apply_cors_headers
+from app.core.request_context import get_request_id
 from app.services.errors import (
     ApplicationError,
     AuthenticationError,
@@ -171,11 +173,32 @@ async def application_exception_handler(
     )
 
 
+def unhandled_client_message(request_id: str) -> str:
+    code = request_id or "sin-código"
+    return f"No pudimos completar la acción. Si sigue, copia este código: {code}."
+
+
+def resolve_request_id(request: Request) -> str:
+    return get_request_id() or getattr(request.state, "request_id", "") or str(uuid.uuid4())
+
+
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.exception("Unhandled exception on %s %s", request.method, request.url.path, exc_info=exc)
+    request_id = resolve_request_id(request)
+    logger.exception(
+        "Unhandled exception on %s %s request_id=%s",
+        request.method,
+        request.url.path,
+        request_id,
+        exc_info=exc,
+    )
     response = JSONResponse(
         status_code=500,
-        content={"message": "Error interno del servidor.", "parameter": None},
+        content={
+            "message": unhandled_client_message(request_id),
+            "parameter": None,
+            "requestId": request_id,
+        },
     )
+    response.headers["X-Request-Id"] = request_id
     apply_cors_headers(request, response)
     return response

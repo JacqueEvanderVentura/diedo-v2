@@ -49,6 +49,7 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
             request.headers.get("x-request-id") or request.headers.get("x-correlation-id") or ""
         ).strip()
         request_id = incoming if valid_request_id(incoming) else str(uuid.uuid4())
+        request.state.request_id = request_id
         token = set_request_id(request_id)
         try:
             response = await call_next(request)
