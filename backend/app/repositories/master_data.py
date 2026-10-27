@@ -74,6 +74,8 @@ class EmployeeRecord:
     position: str
     department: str | None
     contract_type: str | None
+    document_type: str | None
+    document_id: str | None
     hire_date: date
     platform_user_id: UUID | None
     branches: tuple[BranchRecord, ...]
@@ -484,6 +486,7 @@ class MasterDataRepository:
         page_size: int,
         sort_by: str,
         sort_direction: str,
+        include_labor_contract: bool = False,
     ) -> EmployeePage:
         query = (
             select(Employee)
@@ -533,7 +536,10 @@ class MasterDataRepository:
         rows = self._session.scalars(
             query.order_by(order, Employee.id).offset((page - 1) * page_size).limit(page_size)
         ).all()
-        return EmployeePage(self._employee_records(rows), total_items)
+        return EmployeePage(
+            self._employee_records(rows, include_labor_contract=include_labor_contract),
+            total_items,
+        )
 
     def get_employee(
         self,
@@ -558,8 +564,10 @@ class MasterDataRepository:
             query = query.where(EmployeeBranchAssignment.branch_id.in_(allowed_branch_ids))
         return self._session.scalar(query.limit(1))
 
-    def employee_record(self, employee: Employee) -> EmployeeRecord:
-        return self._employee_records([employee])[0]
+    def employee_record(
+        self, employee: Employee, *, include_labor_contract: bool = False
+    ) -> EmployeeRecord:
+        return self._employee_records([employee], include_labor_contract=include_labor_contract)[0]
 
     def create_employee(
         self,
@@ -625,7 +633,7 @@ class MasterDataRepository:
             details={"branchIds": [str(value) for value in sorted(branch_ids)]},
         )
         self._session.flush()
-        return self.employee_record(employee)
+        return self.employee_record(employee, include_labor_contract=True)
 
     def update_employee(
         self,
@@ -649,6 +657,9 @@ class MasterDataRepository:
             "position",
             "department",
             "contract_type",
+            "document_type",
+            "document_id",
+            "normalized_document_id",
             "hire_date",
             "platform_user_id",
             "online_booking_selectable",
@@ -678,7 +689,7 @@ class MasterDataRepository:
             details={"changedFields": sorted(changed_fields), "version": employee.version},
         )
         self._session.flush()
-        return self.employee_record(employee)
+        return self.employee_record(employee, include_labor_contract=True)
 
     def get_schedule(self, workspace_id: UUID, employee_id: UUID) -> EmployeeSchedule | None:
         return self._session.scalar(
@@ -762,6 +773,21 @@ class MasterDataRepository:
             )
             is not None
         )
+
+    def employee_by_document(
+        self,
+        workspace_id: UUID,
+        normalized_document_id: str,
+        exclude_id: UUID | None = None,
+    ) -> Employee | None:
+        query = select(Employee).where(
+            Employee.workspace_id == workspace_id,
+            Employee.normalized_document_id == normalized_document_id,
+            Employee.status != "archived",
+        )
+        if exclude_id is not None:
+            query = query.where(Employee.id != exclude_id)
+        return self._session.scalar(query.limit(1))
 
     def employee_number_exists(
         self, workspace_id: UUID, employee_number: str, exclude_id: UUID | None = None
@@ -938,12 +964,18 @@ class MasterDataRepository:
 
         return self._customer_records(customers)
 
-    def _employee_records(self, employees: Sequence[Employee]) -> tuple[EmployeeRecord, ...]:
+    def _employee_records(
+        self,
+        employees: Sequence[Employee],
+        *,
+        include_labor_contract: bool = False,
+    ) -> tuple[EmployeeRecord, ...]:
         ids = {employee.id for employee in employees}
         branches = self._employee_branches(ids)
         supervisors = self._supervisor_ids(ids)
         schedules = self._schedules(ids)
-        counts = self._attachment_counts("employee", ids)
+        exclude = frozenset() if include_labor_contract else frozenset({"labor_contract"})
+        counts = self._attachment_counts("employee", ids, exclude_classifications=exclude)
         return tuple(
             EmployeeRecord(
                 id=employee.id,
@@ -955,6 +987,8 @@ class MasterDataRepository:
                 position=employee.position,
                 department=employee.department,
                 contract_type=employee.contract_type,
+                document_type=employee.document_type,
+                document_id=employee.document_id,
                 hire_date=employee.hire_date,
                 platform_user_id=employee.platform_user_id,
                 branches=branches.get(employee.id, ()),
@@ -1036,17 +1070,22 @@ class MasterDataRepository:
         ).all()
         return {row.employee_id: self.schedule_record(row) for row in rows}
 
-    def _attachment_counts(self, owner_type: str, owner_ids: set[UUID]) -> dict[UUID, int]:
+    def _attachment_counts(
+        self,
+        owner_type: str,
+        owner_ids: set[UUID],
+        *,
+        exclude_classifications: frozenset[str] = frozenset(),
+    ) -> dict[UUID, int]:
         if not owner_ids:
             return {}
         owner_column = (
             Attachment.customer_id if owner_type == "customer" else Attachment.employee_id
         )
-        rows = self._session.execute(
-            select(owner_column, func.count(Attachment.id))
-            .where(owner_column.in_(owner_ids))
-            .group_by(owner_column)
-        )
+        query = select(owner_column, func.count(Attachment.id)).where(owner_column.in_(owner_ids))
+        if exclude_classifications:
+            query = query.where(Attachment.classification.notin_(exclude_classifications))
+        rows = self._session.execute(query.group_by(owner_column))
         return {cast(UUID, owner_id): int(count) for owner_id, count in rows}
 
     def _replace_customer_branches(

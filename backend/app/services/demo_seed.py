@@ -2712,6 +2712,13 @@ def _seed_employees(
             if fixture.phone
             else None
         )
+        document_type = fixture.document_type
+        document_id = fixture.document_id
+        normalized_document_id = (
+            "".join(character for character in document_id if character.isdigit())
+            if document_type == "cedula" and document_id
+            else (document_id.upper() if document_id else None)
+        )
         if employee is None:
             employee = Employee(
                 id=employee_id,
@@ -2727,6 +2734,9 @@ def _seed_employees(
                 position=fixture.position,
                 department=fixture.department,
                 contract_type=fixture.contract_type,
+                document_type=document_type,
+                document_id=document_id,
+                normalized_document_id=normalized_document_id,
                 hire_date=fixture.hire_date,
                 platform_user_id=platform_user_id,
                 status=fixture.status,
@@ -2756,6 +2766,9 @@ def _seed_employees(
             employee.position = fixture.position
             employee.department = fixture.department
             employee.contract_type = fixture.contract_type
+            employee.document_type = document_type
+            employee.document_id = document_id
+            employee.normalized_document_id = normalized_document_id
             employee.hire_date = fixture.hire_date
             employee.platform_user_id = platform_user_id
             employee.status = fixture.status
@@ -2813,6 +2826,7 @@ def _sync_employee_hr_profile(
         "bank_account_type": payload.get("bankAccountType"),
         "bank_account_number": payload.get("bankAccountNumber"),
         "bank_document": payload.get("bankDocument"),
+        "residence_location": payload.get("residenceLocation"),
     }
     if profile is None:
         profile = session.scalar(

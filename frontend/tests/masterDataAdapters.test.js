@@ -32,6 +32,8 @@ describe('master data adapters', () => {
       department: 'Operaciones',
       contractType: 'Indefinido',
       hireDate: '2026-01-01',
+      documentType: 'cedula',
+      documentId: '001-1234567-8',
       platformUserId: 'user-uuid',
       branches: [{ id: 'branch-uuid', code: 'MAIN', name: 'Principal' }],
       supervisorIds: [],
@@ -49,6 +51,8 @@ describe('master data adapters', () => {
       version: 4,
       api: true,
       selectableAsSpecialist: true,
+      documentType: 'cedula',
+      documentId: '001-1234567-8',
     })
   })
 
@@ -64,7 +68,10 @@ describe('master data adapters', () => {
         position: 'Especialista',
         hireDate: '2026-01-01',
         salary: 100000,
+        residenceLocation: 'Santo Domingo, DN',
         bankAccountNumber: 'sensitive',
+        documentType: 'cedula',
+        documentId: '001-1234567-8',
         workSchedule: {},
       },
       ['branch-uuid']
@@ -73,7 +80,10 @@ describe('master data adapters', () => {
     expect(customerPayload.branchIds).toEqual(['branch-uuid'])
     expect(employeePayload.branchIds).toEqual(['branch-uuid'])
     expect(employeePayload.onlineBookingSelectable).toBe(true)
+    expect(employeePayload.documentType).toBe('cedula')
+    expect(employeePayload.documentId).toBe('001-1234567-8')
     expect(employeePayload).not.toHaveProperty('salary')
+    expect(employeePayload).not.toHaveProperty('residenceLocation')
     expect(employeePayload).not.toHaveProperty('bankAccountNumber')
   })
 

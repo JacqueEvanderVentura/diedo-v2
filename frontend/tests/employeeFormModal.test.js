@@ -18,4 +18,17 @@ describe('formulario de empleados', () => {
 
     expect(form.branchIds).toEqual(['01a03144-dff3-70d8-aedc-70a77395c0a2'])
   })
+
+  it('formatea la cédula y deja salario/residencia para la ficha HR', () => {
+    const form = createEmployeeFormState({
+      id: 'employee-1',
+      documentId: '00112345678',
+      residenceLocation: 'Santo Domingo, DN',
+      salary: 42000,
+    })
+
+    expect(form.documentId).toBe('001-1234567-8')
+    expect(form.residenceLocation).toBe('Santo Domingo, DN')
+    expect(form.salary).toBe('42000')
+  })
 })

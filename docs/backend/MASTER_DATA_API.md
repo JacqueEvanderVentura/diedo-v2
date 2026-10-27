@@ -57,11 +57,13 @@ payments can append authorized projections in later phases without changing the 
 | `PUT` | `/api/v1/employees/{employeeId}/schedule` | `employee.schedule.manage` | Replace the complete weekly schedule |
 
 The basic employee contract contains employee number, first/last name, email, phone, position,
-department, contract type, hire date, assigned branches, supervisors, status, optional
-`platformUserId`, timestamps, and versions. Salary, vacation balances, banking, payroll, debts,
+department, contract type, optional identity document (`documentType` `cedula` or `pasaporte` plus
+`documentId`), hire date, assigned branches, supervisors, status, optional `platformUserId`,
+timestamps, and versions. An active employee document is unique per workspace; a duplicate returns
+409 with `parameter: "documentId"`. Salary, vacation balances, banking, residence, payroll, debts,
 and evaluations stay outside this basic contract. Implemented HR profiles, vacation requests,
-employee debts, and documents are defined in [HR_API.md](HR_API.md); payroll and evaluations remain
-separate future domains.
+employee debts, and generated documents are defined in [HR_API.md](HR_API.md); payroll and
+evaluations remain separate future domains.
 
 An employee can link to at most one platform user, and a platform user can link to at most one
 employee in the workspace. The database requires that the platform user has a membership in that
@@ -83,6 +85,11 @@ Each owner exposes the same nested routes; there is no generic unscoped upload e
 
 Uploads use `multipart/form-data` with `file`, `classification`, and optional `retentionUntil`.
 Allowed content types are PDF, JPEG, PNG, and WebP. The configured maximum is 10 MiB by default.
+Classifications are `internal`, `customer_document`, `employee_document`, and `labor_contract`.
+`laborContract` is only valid on an employee. Listing and downloading it require `hr.profile.read`;
+upload and delete require `hr.profile.manage`. Callers without those grants do not see the file
+in the list, receive 404 for its content URL, and `attachmentCount` on `EmployeeResponse` excludes
+it. Other employee classifications keep `employee.read` / `employee.manage`.
 The service computes SHA-256 while streaming to the storage adapter, stores an opaque storage key,
 and persists immutable metadata. The original filename is display metadata only; it is sanitized
 and never used as a path or proof of type.

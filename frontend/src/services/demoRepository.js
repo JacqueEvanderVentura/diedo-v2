@@ -154,7 +154,7 @@ function buildDemoDashboard(snapshot, {
   const trend = buildTrend(trendPeriod, start, end, sales)
   const activeLeads = (snapshot.crm?.leads || [])
     .filter(matchesBranch)
-    .filter((lead) => !['descartado', 'convertido'].includes(lead.status) && inPeriod(lead.createdAt))
+    .filter((lead) => !['descartado', 'convertido', 'cerrado', 'perdido'].includes(lead.status) && inPeriod(lead.createdAt))
   const tasks = (snapshot.crm?.activities || []).filter(matchesBranch)
   const customers = new Map(snapshot.customers.items.map((item) => [item.seedKey, item]))
   const catalog = new Map(snapshot.catalog.items.map((item) => [item.seedKey, item]))

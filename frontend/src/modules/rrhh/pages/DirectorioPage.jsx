@@ -163,7 +163,7 @@ export default function DirectorioPage() {
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-1">
-                  <button type="button" onClick={() => openEdit(emp)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-blue-600" aria-label="Editar empleado">
+                  <button type="button" onClick={() => openEdit(emp)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-blue-600" aria-label={`Editar ${fullName(emp)}`}>
                     <Pencil className="h-4 w-4" />
                   </button>
                   {emp.active && (
@@ -171,7 +171,7 @@ export default function DirectorioPage() {
                       type="button"
                       onClick={() => setArchiveTarget(emp)}
                       className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-red-600"
-                      aria-label="Archivar empleado"
+                      aria-label={`Archivar ${fullName(emp)}`}
                       data-testid={`employee-archive-${emp.id}`}
                     >
                       <Trash2 className="h-4 w-4" />
