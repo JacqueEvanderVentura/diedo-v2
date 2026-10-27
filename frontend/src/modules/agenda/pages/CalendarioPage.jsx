@@ -149,6 +149,7 @@ export default function CalendarioPage() {
 
   const canDragAppointment = useCallback((apt) => {
     if (!canManage) return false
+    if (!apt.cabinaId) return true
     const resource = branchResources.find((item) => item.id === apt.cabinaId)
     return canEditResource(resource?.access)
   }, [branchResources, canManage])

@@ -35,6 +35,48 @@ describe('createModuleGateway', () => {
     await expect(gateway.mutate('update', 1)).rejects.toBeInstanceOf(MutationBlockedError)
   })
 
+  it('espera una relectura en curso en vez de bloquear la mutación', async () => {
+    let resolveRefresh
+    const list = vi.fn()
+      .mockResolvedValueOnce([{ id: 1 }])
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveRefresh = resolve
+      }))
+    const update = vi.fn().mockResolvedValue({ id: 1, name: 'Guardado' })
+    const gateway = createModuleGateway({ module: 'refresh', apiRepository: { list, update } })
+    await gateway.read('list')
+
+    const refresh = gateway.read('list')
+    expect(gateway.getState().status).toBe(DATA_STATES.LOADING)
+    const saving = gateway.mutate('update', 1)
+    expect(update).not.toHaveBeenCalled()
+
+    resolveRefresh([{ id: 1 }])
+    await refresh
+    await expect(saving).resolves.toEqual({ id: 1, name: 'Guardado' })
+    expect(update).toHaveBeenCalledTimes(1)
+  })
+
+  it('sigue bloqueando si la relectura en curso falla', async () => {
+    let rejectRefresh
+    const list = vi.fn()
+      .mockResolvedValueOnce([{ id: 1 }])
+      .mockImplementationOnce(() => new Promise((_, reject) => {
+        rejectRefresh = reject
+      }))
+    const update = vi.fn()
+    const gateway = createModuleGateway({ module: 'refresh-fail', apiRepository: { list, update } })
+    await gateway.read('list')
+
+    const refresh = gateway.read('list')
+    const saving = gateway.mutate('update', 1)
+    rejectRefresh(new Error('offline'))
+    await refresh
+
+    await expect(saving).rejects.toBeInstanceOf(MutationBlockedError)
+    expect(update).not.toHaveBeenCalled()
+  })
+
   it('propaga error cuando no hay cache previo', async () => {
     const errorGateway = createModuleGateway({
       module: 'error',

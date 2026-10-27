@@ -74,7 +74,6 @@ export function SimplifiedLeadActions({
   const addQuote = useCrmStore((state) => state.addQuote)
   const updateQuote = useCrmStore((state) => state.updateQuote)
   const updateLead = useCrmStore((state) => state.updateLead)
-  const convertToCustomer = useCrmStore((state) => state.convertToCustomer)
   const canInvoice = useSessionStore((state) => state.hasPermission(PIPELINE_INVOICE_PERMISSION))
   const can = useCrmCapabilities()
 
@@ -104,7 +103,8 @@ export function SimplifiedLeadActions({
   const [customerFormDefaults, setCustomerFormDefaults] = useState(null)
   const [convertModalOpen, setConvertModalOpen] = useState(false)
   const [convertModalForClose, setConvertModalForClose] = useState(false)
-  const [convertForAppointment, setConvertForAppointment] = useState(false)
+  const [pendingAppointmentAfterCustomer, setPendingAppointmentAfterCustomer] = useState(false)
+  const [createdCustomerByLead, setCreatedCustomerByLead] = useState({})
 
   const liveLead = useMemo(
     () => storeLeads.find((item) => item.id === lead?.id) || lead,
@@ -310,11 +310,6 @@ export function SimplifiedLeadActions({
     return ensured?.id || null
   }
 
-  const attachCustomer = async (customer) => {
-    if (!customer?.id) return
-    await updateLead(liveLead.id, { customerId: customer.id })
-  }
-
   const openPayment = () => {
     if (!canInvoice) {
       setPendingClose(true)
@@ -434,27 +429,17 @@ export function SimplifiedLeadActions({
 
   const handleLeadConverted = async (customer) => {
     if (customer?.id) {
-      if (convertModalForClose) {
-        await syncPipelineCloseCustomer({
-          leadId: liveLead.id,
-          customerId: customer.id,
-          quotes,
-          updateQuote,
-          updateLead,
-        })
-        toast.success('Cliente listo para facturar')
-        setConvertModalForClose(false)
-      } else {
-        await attachCustomer(customer)
-        toast.success('Lead convertido a cliente')
-      }
+      await syncPipelineCloseCustomer({
+        leadId: liveLead.id,
+        customerId: customer.id,
+        quotes,
+        updateQuote,
+        updateLead,
+      })
+      toast.success('Cliente listo para facturar')
     }
+    setConvertModalForClose(false)
     setConvertModalOpen(false)
-    if (convertForAppointment && customer?.id) {
-      setAppointmentCustomerId(customer.id)
-      setAppointmentOpen(true)
-    }
-    setConvertForAppointment(false)
   }
 
   const openCreateCustomerForClose = () => {
@@ -510,29 +495,43 @@ export function SimplifiedLeadActions({
     }
   }
 
-  const openAppointment = async () => {
-    let customerId = effectiveLeadCustomerId(liveLead, activeCustomers)
-    if (!customerId && liveLead?.id) {
-      if (!leadHasDocument(liveLead)) {
-        setConvertForAppointment(true)
-        setConvertModalOpen(true)
-        return
-      }
-      try {
-        const customer = await convertToCustomer(liveLead.id)
-        customerId = customer?.id
-        if (customerId) await attachCustomer(customer)
-      } catch (error) {
-        toast.error(error.message || 'Convierte el lead a cliente antes de agendar')
-        return
-      }
-    }
-    if (!customerId) {
-      toast.error('Vincula o crea un cliente para agendar la cita')
+  const openAppointment = () => {
+    const customerId = effectiveLeadCustomerId(liveLead, activeCustomers)
+      || createdCustomerByLead[liveLead.id]
+    if (customerId) {
+      setAppointmentCustomerId(customerId)
+      setAppointmentOpen(true)
       return
     }
-    setAppointmentCustomerId(customerId)
-    setAppointmentOpen(true)
+    setPendingAppointmentAfterCustomer(true)
+    setCustomerFormDefaults({
+      ...leadCustomerDefaults(liveLead),
+      phone: liveLead?.phone || '',
+      email: liveLead?.email || '',
+      docType: liveLead?.docType || liveLead?.documentType || 'cedula',
+      documentId: liveLead?.documentId || '',
+    })
+    setCustomerFormOpen(true)
+  }
+
+  const handleCustomerCreated = (customer) => {
+    const openAppointmentNext = pendingAppointmentAfterCustomer
+    setPendingAppointmentAfterCustomer(false)
+    setCustomerFormOpen(false)
+    if (!customer?.id) return
+    setCreatedCustomerByLead((current) => ({ ...current, [liveLead.id]: customer.id }))
+    syncPipelineCloseCustomer({
+      leadId: liveLead.id,
+      customerId: customer.id,
+      quotes,
+      updateQuote,
+    }).catch((error) => {
+      toast.error(error.message || 'No se pudo vincular el cliente a la cotización')
+    })
+    if (openAppointmentNext) {
+      setAppointmentCustomerId(customer.id)
+      setAppointmentOpen(true)
+    }
   }
 
   const copyOffer = async () => {
@@ -765,7 +764,6 @@ export function SimplifiedLeadActions({
         onClose={() => {
           setConvertModalOpen(false)
           setConvertModalForClose(false)
-          setConvertForAppointment(false)
         }}
         onConverted={handleLeadConverted}
       />
@@ -775,12 +773,10 @@ export function SimplifiedLeadActions({
         onClose={() => {
           setCustomerFormOpen(false)
           setCustomerFormDefaults(null)
+          setPendingAppointmentAfterCustomer(false)
         }}
         defaults={customerFormDefaults}
-        onCreated={async (customer) => {
-          await attachCustomer(customer)
-          setCustomerFormOpen(false)
-        }}
+        onCreated={handleCustomerCreated}
       />
 
       <AppointmentFormModal

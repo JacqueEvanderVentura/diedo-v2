@@ -43,6 +43,13 @@ import {
 } from '../lib/receivablePermissions'
 import { buildCompletionPayload } from '../lib/completion'
 import { fetchLastVisitBookingDefaults } from '../lib/customerBookingDefaults'
+import {
+  appointmentScheduleChanged,
+  resolveAppointmentAssignment,
+  resolveAppointmentFormResources,
+  resolveNextCabinaId,
+} from '../lib/appointmentFormResources'
+
 const EMPTY_SLOT = Object.freeze({})
 
 const empty = (date, customerId, slot = {}) => ({
@@ -138,25 +145,25 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     return scoped.some((resource) => canBookResource(resource.access))
   }, [form.branchId, resources])
   const canSaveAppointment = canManage && (appointment
-    ? canEditResource(cabinaAccess)
+    ? !form.cabinaId || canEditResource(cabinaAccess)
     : (anyAvailableEmployee ? hasBookableCabina : canBookResource(cabinaAccess)))
   const branchStaff = useBranchStaff(form.branchId)
-  const branchResources = useMemo(() => {
-    const scoped = resources.filter(
-      (resource) => resource.branchId === form.branchId && resource.active !== false,
-    )
-    const bookable = scoped.filter((resource) => canBookResource(resource.access))
-    const sorted = [...bookable].sort((left, right) => {
-      const order = (left.sortOrder ?? 0) - (right.sortOrder ?? 0)
-      if (order !== 0) return order
-      return String(left.name || '').localeCompare(String(right.name || ''))
-    })
-    if (appointment?.cabinaId && !sorted.some((resource) => resource.id === appointment.cabinaId)) {
-      const current = scoped.find((resource) => resource.id === appointment.cabinaId)
-      if (current) return [current, ...sorted]
-    }
-    return sorted
-  }, [appointment?.cabinaId, form.branchId, resources])
+  const assignedCabinaId = appointment?.branchId === form.branchId ? appointment?.cabinaId || '' : ''
+  const branchResources = useMemo(
+    () =>
+      resolveAppointmentFormResources({
+        resources,
+        branchId: form.branchId,
+        currentCabinaId: assignedCabinaId,
+      }),
+    [assignedCabinaId, form.branchId, resources],
+  )
+  const employeeOptions = useMemo(() => {
+    const assignedId = appointment?.employeeId
+    if (!assignedId || branchStaff.some((member) => member.id === assignedId)) return branchStaff
+    const assigned = employees.find((member) => member.id === assignedId)
+    return [{ id: assignedId, name: assigned?.name || 'Empleado asignado' }, ...branchStaff]
+  }, [appointment?.employeeId, branchStaff, employees])
   const resourcesLoading = resourceLoadingByBranch[form.branchId] === true
   const selectedEmployee = useMemo(
     () => employees.find((e) => e.id === form.employeeId),
@@ -199,10 +206,10 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
 
   useEffect(() => {
     if (!form.employeeId) return
-    if (!branchStaff.some((e) => e.id === form.employeeId)) {
+    if (!employeeOptions.some((e) => e.id === form.employeeId)) {
       setForm((f) => ({ ...f, employeeId: '' }))
     }
-  }, [form.branchId, branchStaff, form.employeeId])
+  }, [form.branchId, employeeOptions, form.employeeId])
 
   useEffect(() => {
     if (!open || !form.branchId) return
@@ -210,19 +217,20 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
   }, [form.branchId, hydrateResources, open])
 
   useEffect(() => {
-    if (!open || !form.branchId || resourcesLoading || !form.employeeId) return
-    const currentResourceIsValid = branchResources.some(
-      (resource) => resource.id === form.cabinaId
-    )
-    if (!currentResourceIsValid) {
-      const fallbackId = branchResources[0]?.id || ''
-      setForm((current) => ({
-        ...current,
-        cabinaId: fallbackId,
-        resourceId: fallbackId,
-      }))
-    }
-  }, [branchResources, form.branchId, form.cabinaId, form.employeeId, open, resourcesLoading])
+    if (!open || !form.branchId || resourcesLoading) return
+    const nextCabinaId = resolveNextCabinaId({
+      isEditing: editing,
+      employeeSelected: Boolean(form.employeeId),
+      formCabinaId: form.cabinaId || '',
+      options: branchResources,
+    })
+    if (nextCabinaId === (form.cabinaId || '')) return
+    setForm((current) => ({
+      ...current,
+      cabinaId: nextCabinaId,
+      resourceId: nextCabinaId,
+    }))
+  }, [branchResources, editing, form.branchId, form.cabinaId, form.employeeId, open, resourcesLoading])
 
   useEffect(() => {
     if (!open || !servicesReady || !form.serviceId) return
@@ -283,34 +291,38 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
 
   const buildPayload = () => {
     const customer = customers.find((c) => c.id === form.customerId)
-    const anyAvailable = !form.employeeId
+    const assignment = resolveAppointmentAssignment({
+      isEditing: editing,
+      employeeId: form.employeeId,
+      cabinaId: form.cabinaId,
+    })
     return {
       ...form,
       customerName: form.customerName || customer?.name || 'Cliente',
       customerPhone: form.customerPhone || customer?.phone || '',
       serviceName: selectedService?.name || form.serviceName || '',
       price,
-      employeeId: anyAvailable ? '' : form.employeeId,
-      cabinaId: anyAvailable ? '' : form.cabinaId,
-      resourceId: anyAvailable ? '' : form.cabinaId || form.resourceId,
-      anyAvailable,
+      ...assignment,
+      resourceId: assignment.cabinaId,
     }
   }
 
   const submit = async () => {
     if (saving) return
     if (!form.branchId) return setErr('Selecciona una sucursal.')
-    if (!resourcesLoading && branchResources.length === 0) {
+    if (!editing && !resourcesLoading && branchResources.length === 0) {
       return setErr('La sucursal seleccionada no tiene cabinas o recursos activos.')
     }
-    if (form.employeeId && !form.cabinaId) return setErr('Selecciona una cabina o recurso.')
+    if (!editing && form.employeeId && !form.cabinaId) return setErr('Selecciona una cabina o recurso.')
     if (!selectedService) return setErr('Selecciona un servicio disponible en esa sucursal.')
     if (!form.date) return setErr('Selecciona una fecha.')
     if (!form.time) return setErr('Selecciona una hora.')
     if (notesTooLong && notesChanged) {
       return setErr(`Las notas admiten un máximo de ${APPOINTMENT_NOTES_MAX_LENGTH} caracteres.`)
     }
+    const scheduleChanged = appointmentScheduleChanged(appointment, form)
     if (
+      scheduleChanged &&
       selectedEmployee &&
       !fitsInSchedule({
         employee: selectedEmployee,
@@ -321,7 +333,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     ) {
       return setErr('La hora seleccionada está fuera del horario del empleado.')
     }
-    if (!availableSlots.includes(form.time)) {
+    if (scheduleChanged && !availableSlots.includes(form.time)) {
       return setErr(
         form.employeeId
           ? 'Ese horario ya no está disponible para el empleado.'
@@ -478,6 +490,10 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
             <Select
               value={form.employeeId}
               onChange={(v) => {
+                if (!v && editing) {
+                  set('employeeId', '')
+                  return
+                }
                 if (!v) {
                   setForm((current) => {
                     const slots = getAvailableSlotsForAny({
@@ -507,7 +523,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
               placeholder="Seleccionar Empleado"
               options={[
                 ANY_AVAILABLE_EMPLOYEE_OPTION,
-                ...branchStaff.map((e) => ({ value: e.id, label: e.name })),
+                ...employeeOptions.map((e) => ({ value: e.id, label: e.name })),
               ]}
               data-testid="appointment-field-employee"
             />
@@ -528,10 +544,10 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Cabina</label>
             <Select
-              value={form.employeeId ? form.cabinaId : ''}
+              value={editing || form.employeeId ? form.cabinaId : ''}
               onChange={(v) => setForm((current) => ({ ...current, cabinaId: v, resourceId: v }))}
-              placeholder={form.employeeId ? 'Seleccionar Cabina' : 'Sin asignar'}
-              disabled={!form.employeeId}
+              placeholder={editing || form.employeeId ? 'Seleccionar Cabina' : 'Sin asignar'}
+              disabled={!editing && !form.employeeId}
               options={branchResources.map((resource) => ({ value: resource.id, label: resource.name }))}
               data-testid="appointment-field-cabina"
             />

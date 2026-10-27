@@ -170,7 +170,7 @@ export function appointmentPatchToApiPayload(data, version) {
   const payload = appointmentToApiPayload(data)
   return {
     branchId: payload.branchId,
-    resourceId: payload.resourceId,
+    resourceId: payload.resourceId ?? (payload.anyAvailable ? null : undefined),
     customerId: payload.customerId,
     employeeId: payload.employeeId,
     serviceId: payload.serviceId,
