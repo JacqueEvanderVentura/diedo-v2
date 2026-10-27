@@ -1,6 +1,7 @@
 # Handoff de pruebas QA — CRM / Finanzas / Inventarios
 
 **Para:** compañero de QA (pruebas manuales en el navegador)  
+**PR:** https://github.com/JacqueEvanderVentura/diedo-v2/pull/16  
 **Rama:** `fix/agenda-crm-bugs-20261026` → `qa`  
 **Fecha:** 2026-10-26  
 **Workspace:** `franchesko-columna`
