@@ -32,6 +32,7 @@ import {
 } from '@/modules/pos/lib/receivables'
 import { QUOTE_REVISION_EVENT_LABELS } from '@/modules/crm/lib/quoteRevisions'
 import { SaleEditModal } from '@/modules/crm/components/SaleEditModal'
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 
 const VOID_INVOICE_PERMISSION = 'sales.invoice.void'
 const EDIT_INVOICE_PERMISSION = 'sales.invoice.edit'
@@ -49,7 +50,7 @@ function ItemPrice({ item }) {
   )
 }
 
-export function SaleDetailModal({ open, onClose, sale }) {
+function SaleDetailModalContent({ open, onClose, sale }) {
   const branches = useConfigStore((s) => s.branches)
   const settings = useConfigStore((s) => s.settings)
   const paymentMethods = useConfigStore((s) => s.paymentMethods)
@@ -189,10 +190,10 @@ export function SaleDetailModal({ open, onClose, sale }) {
     && !requiresPaymentApproval(receivableDetail)
     && receivableBalance > 0
     && !receivableHasEvidence(receivableDetail)
-  const paymentProofs = collectSalePaymentProofs(detail, receivableDetail)
+  const paymentProofs = collectSalePaymentProofs(view, receivableDetail)
   const proofSubtitle = [
-    METHOD_LABELS[detail.method] || detail.method,
-    detail.reference ? `Ref. ${detail.reference}` : null,
+    METHOD_LABELS[view.method] || view.method,
+    view.reference ? `Ref. ${view.reference}` : null,
   ].filter(Boolean).join(' · ')
 
   const handleReversePayment = async (payment) => {
@@ -201,7 +202,7 @@ export function SaleDetailModal({ open, onClose, sale }) {
     try {
       await reversePayment(payment.id)
       toast.success('Pago reversado')
-      refreshReceivableForSale(detail.id)
+      refreshReceivableForSale(view.id)
     } catch (error) {
       toast.error(error.message || 'No se pudo reversar el pago.')
     }
@@ -226,7 +227,7 @@ export function SaleDetailModal({ open, onClose, sale }) {
     try {
       await approveReceivablePayment(receivableDetail.id)
       toast.success('Pago aprobado · factura comprobada')
-      refreshReceivableForSale(detail.id)
+      refreshReceivableForSale(view.id)
     } catch (error) {
       const message = error.message || 'No se pudo aprobar el pago.'
       if (isReceivableProofRequiredError(message)) {
@@ -244,7 +245,7 @@ export function SaleDetailModal({ open, onClose, sale }) {
     try {
       await unapproveReceivablePayment(receivableDetail.id)
       toast.success('Pago desaprobado · cuenta por cobrar')
-      refreshReceivableForSale(detail.id)
+      refreshReceivableForSale(view.id)
     } catch (error) {
       toast.error(error.message || 'No se pudo desaprobar el pago.')
     }
@@ -255,7 +256,7 @@ export function SaleDetailModal({ open, onClose, sale }) {
     try {
       await deleteReceivableProof(receivableDetail.id, proof.id)
       toast.success('Comprobante eliminado')
-      refreshReceivableForSale(detail.id)
+      refreshReceivableForSale(view.id)
     } catch (error) {
       toast.error(error.message || 'No se pudo eliminar el comprobante.')
     }
@@ -266,11 +267,11 @@ export function SaleDetailModal({ open, onClose, sale }) {
     await attachReceivableProof(receivableDetail.id, payload)
     toast.success('Comprobante registrado · pendiente de aprobación')
     setProofUploadOpen(false)
-    refreshReceivableForSale(detail.id)
+    refreshReceivableForSale(view.id)
   }
 
   const print = () => {
-    printSaleInvoice(detail, ctx).catch((error) => {
+    printSaleInvoice(view, ctx).catch((error) => {
       toast.error(error.message || 'No se pudo imprimir la factura.')
     })
     toast.success('Enviando a impresión…')
@@ -278,7 +279,7 @@ export function SaleDetailModal({ open, onClose, sale }) {
 
   const download = async () => {
     try {
-      await downloadSaleInvoicePdf(detail, ctx)
+      await downloadSaleInvoicePdf(view, ctx)
       toast.success('Factura descargada')
     } catch (error) {
       toast.error(error.message || 'No se pudo descargar la factura.')
@@ -297,9 +298,9 @@ export function SaleDetailModal({ open, onClose, sale }) {
 
   const confirmDelete = async () => {
     try {
-      await deleteSale(detail.id)
+      await deleteSale(view.id)
       useCrmStore.setState((state) => ({
-        sales: state.sales.filter((item) => item.id !== detail.id),
+        sales: state.sales.filter((item) => item.id !== view.id),
       }))
       setDeleteOpen(false)
       toast.success('Factura eliminada')
@@ -319,16 +320,16 @@ export function SaleDetailModal({ open, onClose, sale }) {
       return
     }
     try {
-      const result = await voidSale(detail.id, voidReason.trim())
+      const result = await voidSale(view.id, voidReason.trim())
       if (!result) throw new Error('La factura ya no está disponible para anular.')
       setDetail((current) => ({
-        ...current,
+        ...(current || view),
         status: 'voided',
         voidReason: voidReason.trim(),
       }))
       useCrmStore.setState((state) => ({
         sales: state.sales.map((item) => (
-          item.id === detail.id
+          item.id === view.id
             ? { ...item, status: 'voided', voidReason: voidReason.trim() }
             : item
         )),
@@ -453,7 +454,7 @@ export function SaleDetailModal({ open, onClose, sale }) {
             <h4 className="font-heading font-semibold text-slate-900">Historial de pagos</h4>
           </div>
           <InvoicePaymentLog
-            sale={detail}
+            sale={view}
             receivable={receivableDetail}
             onReverse={canCollectReceivables ? handleReversePayment : null}
             onDownload={handleDownloadProof}
@@ -558,9 +559,9 @@ export function SaleDetailModal({ open, onClose, sale }) {
       <SaleEditModal
         open={editOpen}
         onClose={() => setEditOpen(false)}
-        sale={detail}
+        sale={view}
         onSaved={() => {
-          ensureSaleDetail(detail.id).then((fresh) => {
+          ensureSaleDetail(view.id).then((fresh) => {
             if (fresh) setDetail(fresh)
           })
         }}
@@ -617,7 +618,7 @@ export function SaleDetailModal({ open, onClose, sale }) {
         open={collectPaymentOpen}
         onClose={() => {
           setCollectPaymentOpen(false)
-          refreshReceivableForSale(detail.id)
+          refreshReceivableForSale(view.id)
         }}
         receivable={collectPaymentOpen ? receivableDetail : null}
       />
@@ -635,7 +636,7 @@ export function SaleDetailModal({ open, onClose, sale }) {
             await approveReceivablePayment(receivableDetail.id)
             toast.success('Pago aprobado · factura comprobada')
             setProofUploadOpen(false)
-            refreshReceivableForSale(detail.id)
+            refreshReceivableForSale(view.id)
           } catch (error) {
             const message = error.message || 'No se pudo aprobar el pago.'
             if (isReceivableProofRequiredError(message)) {
@@ -648,5 +649,27 @@ export function SaleDetailModal({ open, onClose, sale }) {
         onSaveOnly={handleProofUpload}
       />
     </Modal>
+  )
+}
+
+export function SaleDetailModal({ open, onClose, sale }) {
+  return (
+    <ErrorBoundary
+      resetKey={`${open}:${sale?.id || ''}`}
+      fallback={(
+        <Modal open={open} onClose={onClose} title="Detalle de venta" testId="sale-detail-error">
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              No se pudo mostrar esta factura. Cierra e intenta con otra venta.
+            </p>
+            <div className="flex justify-end">
+              <Button variant="secondary" onClick={onClose}>Cerrar</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    >
+      <SaleDetailModalContent open={open} onClose={onClose} sale={sale} />
+    </ErrorBoundary>
   )
 }

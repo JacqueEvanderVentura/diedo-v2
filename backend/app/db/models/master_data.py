@@ -124,8 +124,24 @@ class Employee(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             name="fk_employees_workspace_platform_user",
         ),
         CheckConstraint("status IN ('active', 'inactive', 'archived')", name="status_values"),
+        CheckConstraint(
+            "document_type IS NULL OR document_type IN ('cedula', 'pasaporte')",
+            name="employee_document_type_values",
+        ),
         Index("ix_employees_workspace_name", "workspace_id", "normalized_name"),
         Index("ix_employees_workspace_status", "workspace_id", "status"),
+        Index(
+            "ix_employees_workspace_normalized_document",
+            "workspace_id",
+            "normalized_document_id",
+        ),
+        Index(
+            "uq_employees_workspace_document_active",
+            "workspace_id",
+            "normalized_document_id",
+            unique=True,
+            postgresql_where=text("normalized_document_id IS NOT NULL AND status <> 'archived'"),
+        ),
         Index(
             "uq_employees_workspace_platform_user",
             "workspace_id",
@@ -149,6 +165,9 @@ class Employee(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     position: Mapped[str] = mapped_column(String(120), nullable=False)
     department: Mapped[str | None] = mapped_column(String(120))
     contract_type: Mapped[str | None] = mapped_column(String(80))
+    document_type: Mapped[str | None] = mapped_column(String(16))
+    document_id: Mapped[str | None] = mapped_column(String(64))
+    normalized_document_id: Mapped[str | None] = mapped_column(String(64))
     hire_date: Mapped[date] = mapped_column(Date, nullable=False)
     platform_user_id: Mapped[UUID | None] = mapped_column(nullable=True)
     status: Mapped[str] = mapped_column(
@@ -281,7 +300,8 @@ class Attachment(UuidPrimaryKeyMixin, TimestampMixin, Base):
             name="single_owner",
         ),
         CheckConstraint(
-            "classification IN ('internal', 'customer_document', 'employee_document')",
+            "classification IN "
+            "('internal', 'customer_document', 'employee_document', 'labor_contract')",
             name="classification_values",
         ),
         CheckConstraint("size_bytes > 0 AND size_bytes <= 10485760", name="size_range"),

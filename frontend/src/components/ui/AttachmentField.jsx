@@ -4,10 +4,30 @@ import { ImageLightbox } from '@/modules/pos/components/ProofImagePreview'
 import { Button } from '@/components/ui/Button'
 import { filesToAttachments } from '@/lib/imageAttachments'
 
-export function AttachmentField({ value = [], onChange, disabled = false, testId = 'attachment-field' }) {
+const DEFAULT_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif,application/pdf'
+
+export function AttachmentField({
+  value = [],
+  onChange,
+  disabled = false,
+  testId = 'attachment-field',
+  label = 'Comprobantes / fotos',
+  emptyText = 'Sin comprobantes adjuntos',
+  helpText,
+  multiple = true,
+  maxFiles,
+  accept = DEFAULT_ACCEPT,
+}) {
   const fileRef = useRef(null)
   const [lightbox, setLightbox] = useState(null)
   const [loading, setLoading] = useState(false)
+  const labelId = `${testId}-label`
+  const helpId = helpText ? `${testId}-help` : undefined
+  const items = value || []
+  const atLimit = Number.isFinite(maxFiles) && items.length >= maxFiles
+  const replaceMode = atLimit || multiple === false
+  const addLabel = replaceMode && items.length ? 'Reemplazar' : 'Agregar'
+  const addAria = replaceMode && items.length ? `Reemplazar ${label.toLowerCase()}` : `Agregar ${label.toLowerCase()}`
 
   const handleFiles = async (event) => {
     const files = Array.from(event.target.files || [])
@@ -15,45 +35,56 @@ export function AttachmentField({ value = [], onChange, disabled = false, testId
     if (!files.length) return
     setLoading(true)
     try {
-      const next = await filesToAttachments(files)
-      onChange([...(value || []), ...next])
+      const next = await filesToAttachments(replaceMode || multiple === false ? files.slice(0, 1) : files)
+      if (replaceMode || multiple === false) onChange(next)
+      else if (Number.isFinite(maxFiles)) onChange([...items, ...next].slice(0, maxFiles))
+      else onChange([...items, ...next])
     } finally {
       setLoading(false)
     }
   }
 
   const removeAt = (index) => {
-    onChange((value || []).filter((_, itemIndex) => itemIndex !== index))
+    onChange(items.filter((_, itemIndex) => itemIndex !== index))
   }
 
   return (
     <>
       <div data-testid={testId}>
         <div className="mb-2 flex items-center justify-between gap-2">
-          <label className="text-sm font-medium text-slate-600">Comprobantes / fotos</label>
+          <label id={labelId} htmlFor={`${testId}-input`} className="text-sm font-medium text-slate-600">
+            {label}
+          </label>
           <Button
             type="button"
             variant="ghost"
             size="sm"
             disabled={disabled || loading}
             onClick={() => fileRef.current?.click()}
+            aria-label={addAria}
             data-testid={`${testId}-add`}
           >
             <ImagePlus className="h-4 w-4" />
-            {loading ? 'Cargando…' : 'Agregar'}
+            {loading ? 'Cargando…' : addLabel}
           </Button>
           <input
+            id={`${testId}-input`}
             ref={fileRef}
             type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
-            multiple
+            accept={accept}
+            multiple={multiple !== false && !replaceMode}
             className="hidden"
+            aria-labelledby={labelId}
+            aria-describedby={helpId}
             onChange={handleFiles}
           />
         </div>
-        {(value || []).length ? (
+        {helpText && (
+          <p id={helpId} className="mb-2 text-xs text-slate-500">{helpText}</p>
+        )}
+        {items.length ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {(value || []).map((attachment, index) => {
+            {items.map((attachment, index) => {
               const src = attachment.previewObjectUrl || attachment.dataUrl
               const isImage = (attachment.contentType || '').startsWith('image/') || String(src).startsWith('data:image')
               return (
@@ -90,7 +121,7 @@ export function AttachmentField({ value = [], onChange, disabled = false, testId
           </div>
         ) : (
           <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 px-4 py-5 text-sm text-slate-400">
-            Sin comprobantes adjuntos
+            {emptyText}
           </p>
         )}
       </div>

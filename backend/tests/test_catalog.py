@@ -316,6 +316,7 @@ def test_catalog_crud_filters_concurrency_and_audit(client: TestClient) -> None:
     )
     assert duplicate_category.status_code == 409
     assert duplicate_category.json()["parameter"] == "name"
+    assert duplicate_category.json()["message"] == "Ya existe una categoría con este nombre."
 
     category_page = client.get(
         "/api/v1/catalog/categories",

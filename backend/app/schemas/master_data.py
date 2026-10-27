@@ -16,8 +16,11 @@ AcquisitionSource = Literal[
     "whatsapp", "instagram", "referral", "otros", "pos_walk_in", "app", "ai"
 ]
 CustomerDocumentType = Literal["cedula", "pasaporte", "rnc"]
+EmployeeDocumentType = Literal["cedula", "pasaporte"]
 EmployeeSortField = Literal["name", "employeeNumber", "status", "createdAt", "updatedAt"]
-AttachmentClassification = Literal["internal", "customer_document", "employee_document"]
+AttachmentClassification = Literal[
+    "internal", "customer_document", "employee_document", "labor_contract"
+]
 
 
 def normalize_text(value: str) -> str:
@@ -352,6 +355,8 @@ class EmployeeResponse(ApiModel):
     position: str
     department: str | None
     contract_type: str | None
+    document_type: EmployeeDocumentType | None = None
+    document_id: str | None = None
     hire_date: date
     platform_user_id: UUID | None
     branches: list[BranchReference]
@@ -382,6 +387,8 @@ class CreateEmployeeRequest(ApiModel):
     position: str = Field(min_length=2, max_length=120)
     department: str | None = Field(default=None, max_length=120)
     contract_type: str | None = Field(default=None, max_length=80)
+    document_type: EmployeeDocumentType | None = None
+    document_id: str | None = Field(default=None, max_length=64)
     hire_date: date
     platform_user_id: UUID | None = None
     branch_ids: list[UUID] = Field(min_length=1, max_length=100)
@@ -402,7 +409,7 @@ class CreateEmployeeRequest(ApiModel):
     def normalize_required_fields(cls, value: str) -> str:
         return normalize_text(value)
 
-    @field_validator("department", "contract_type", "phone")
+    @field_validator("department", "contract_type", "phone", "document_id")
     @classmethod
     def normalize_optional_fields(cls, value: str | None) -> str | None:
         return normalize_optional_text(value)
@@ -413,6 +420,12 @@ class CreateEmployeeRequest(ApiModel):
         if len(value) != len(set(value)):
             raise ValueError("No repitas identificadores.")
         return value
+
+    @model_validator(mode="after")
+    def validate_document_pair(self) -> Self:
+        if (self.document_type is None) ^ (self.document_id is None):
+            raise ValueError("documentType y documentId deben enviarse juntos.")
+        return self
 
 
 class UpdateEmployeeRequest(ApiModel):
@@ -425,6 +438,8 @@ class UpdateEmployeeRequest(ApiModel):
     position: str | None = Field(default=None, min_length=2, max_length=120)
     department: str | None = Field(default=None, max_length=120)
     contract_type: str | None = Field(default=None, max_length=80)
+    document_type: EmployeeDocumentType | None = None
+    document_id: str | None = Field(default=None, max_length=64)
     hire_date: date | None = None
     platform_user_id: UUID | None = None
     branch_ids: list[UUID] | None = Field(default=None, min_length=1, max_length=100)
@@ -443,7 +458,7 @@ class UpdateEmployeeRequest(ApiModel):
     def normalize_required_fields(cls, value: str | None) -> str | None:
         return normalize_text(value) if value is not None else None
 
-    @field_validator("department", "contract_type", "phone")
+    @field_validator("department", "contract_type", "phone", "document_id")
     @classmethod
     def normalize_optional_fields(cls, value: str | None) -> str | None:
         return normalize_optional_text(value)
@@ -473,6 +488,9 @@ class UpdateEmployeeRequest(ApiModel):
         }
         if any(field in changed and getattr(self, field) is None for field in required):
             raise ValueError("Este campo no puede ser nulo.")
+        if "document_type" in changed or "document_id" in changed:
+            if (self.document_type is None) ^ (self.document_id is None):
+                raise ValueError("documentType y documentId deben enviarse juntos.")
         return self
 
 

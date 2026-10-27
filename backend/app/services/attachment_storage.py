@@ -9,6 +9,29 @@ from typing import Any, BinaryIO, Protocol, cast
 
 import boto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
+
+from app.services.errors import ServiceUnavailableError
+
+STORAGE_UNAVAILABLE_MESSAGE = (
+    "No se pudo guardar el comprobante. Intenta de nuevo o sigue sin archivo."
+)
+
+
+def _raise_if_storage_client_error(exc: BaseException) -> None:
+    if isinstance(exc, ClientError) or (
+        isinstance(exc, BaseExceptionGroup)
+        and any(_is_client_error(item) for item in exc.exceptions)
+    ):
+        raise ServiceUnavailableError(STORAGE_UNAVAILABLE_MESSAGE, "file") from exc
+
+
+def _is_client_error(exc: BaseException) -> bool:
+    if isinstance(exc, ClientError):
+        return True
+    if isinstance(exc, BaseExceptionGroup):
+        return any(_is_client_error(item) for item in exc.exceptions)
+    return False
 
 
 class AttachmentTooLargeError(Exception):
@@ -156,15 +179,19 @@ class S3AttachmentStorage:
                 raise AttachmentContentMismatchError
             checksum = digest.hexdigest()
             temporary.seek(0)
-            self._client.upload_fileobj(
-                temporary,
-                self._bucket,
-                key,
-                ExtraArgs={
-                    "ContentType": content_type,
-                    "Metadata": {"checksum-sha256": checksum},
-                },
-            )
+            try:
+                self._client.upload_fileobj(
+                    temporary,
+                    self._bucket,
+                    key,
+                    ExtraArgs={
+                        "ContentType": content_type,
+                        "Metadata": {"checksum-sha256": checksum},
+                    },
+                )
+            except Exception as exc:
+                _raise_if_storage_client_error(exc)
+                raise
         return StoredBlob(key, total, checksum)
 
     def open(self, storage_key: str) -> BinaryIO:

@@ -242,6 +242,8 @@ class DemoEmployeeFixture(ApiModel):
     position: str
     department: str | None = None
     contract_type: str | None = None
+    document_type: Literal["cedula", "pasaporte"] | None = None
+    document_id: str | None = None
     hire_date: date
     branch_codes: list[str]
     supervisor_seed_keys: list[str] = Field(default_factory=list)

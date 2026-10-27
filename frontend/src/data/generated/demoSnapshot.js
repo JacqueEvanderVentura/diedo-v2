@@ -435,6 +435,8 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "catalog.manage",
         "sales.read",
         "sales.quote.manage",
+        "sales.invoice.edit",
+        "sales.invoice.delete",
         "pos.read",
         "pos.sell",
         "pos.discount.override",
@@ -484,7 +486,6 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "branch.read",
         "membership.read",
         "catalog.read",
-        "sales.read",
         "sales.invoice.void",
         "pos.read",
         "pos.cash.read",
@@ -502,7 +503,9 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "customer.manage",
         "crm.read",
         "crm.manage",
-        "finance.read",
+        "carwash.read",
+        "carwash.wash.manage",
+        "carwash.wash.complete",
         "employee.read",
         "employee.schedule.manage",
         "hr.overview.read",
@@ -2025,8 +2028,9 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "location": "Santo Domingo",
         "source": "referral",
         "rawSnippet": "Salón de belleza con agenda, citas, clientes y punto de venta.",
-        "status": "convertido",
+        "status": "cerrado",
         "starRating": "4.5",
+        "pipelineValue": 18500,
         "convertedCustomerSeedKey": "c2",
         "createdAt": "2026-08-20T14:00:00Z",
         "updatedAt": "2026-08-24T16:30:00Z"
@@ -2045,8 +2049,8 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "sourceUrl": "https://www.google.com/maps/search/boutique-carla",
         "scrapedAt": "2026-08-25T13:00:00Z",
         "rawSnippet": "Tienda retail con productos, inventario, stock y ventas.",
-        "status": "convertido",
-        "convertedCustomerSeedKey": "c5",
+        "status": "propuesta",
+        "pipelineValue": 32000,
         "createdAt": "2026-08-25T13:00:00Z",
         "updatedAt": "2026-08-27T17:10:00Z"
       },
@@ -2064,7 +2068,8 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "sourceUrl": "https://www.google.com/maps/search/clinica-sonrisa-norte",
         "scrapedAt": "2026-08-29T14:15:00Z",
         "rawSnippet": "Clínica dental con citas, pacientes, inventario e historial de clientes.",
-        "status": "calificado",
+        "status": "negociacion",
+        "pipelineValue": 47500,
         "createdAt": "2026-08-29T14:15:00Z",
         "updatedAt": "2026-08-31T18:00:00Z"
       },
@@ -2081,6 +2086,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "rawSnippet": "Spa de masajes que necesita reservas, agenda y fidelización de clientes.",
         "status": "contactado",
         "starRating": "4",
+        "pipelineValue": 24000,
         "createdAt": "2026-08-30T15:20:00Z",
         "updatedAt": "2026-09-01T13:30:00Z"
       },
@@ -2111,7 +2117,8 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "location": "Santiago",
         "source": "serp",
         "rawSnippet": "Café y restaurante con punto de venta, caja e inventario de insumos.",
-        "status": "calificado",
+        "status": "propuesta",
+        "pipelineValue": 39500,
         "createdAt": "2026-08-28T11:45:00Z",
         "updatedAt": "2026-08-31T16:00:00Z"
       },
@@ -2125,8 +2132,10 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "location": "Distrito Nacional",
         "source": "manual",
         "rawSnippet": "Lavado y detailing por reserva; necesita caja e inventario.",
-        "status": "descartado",
+        "status": "perdido",
         "starRating": "2",
+        "lostReason": "Sin presupuesto",
+        "pipelineClosedAt": "2026-08-26T19:00:00Z",
         "createdAt": "2026-08-22T17:00:00Z",
         "updatedAt": "2026-08-26T19:00:00Z"
       },
@@ -2142,12 +2151,12 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "location": "Santo Domingo",
         "source": "referral",
         "rawSnippet": "Ferretería multisucursal con ventas, productos, almacén y stock.",
-        "status": "contactado",
+        "status": "nuevo",
+        "pipelineValue": 78000,
         "createdAt": "2026-08-27T14:10:00Z",
         "updatedAt": "2026-09-01T14:05:00Z"
       }
     ],
-    "opportunities": [],
     "activities": [
       {
         "seedKey": "jose-sale-call",
@@ -2271,6 +2280,8 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "position": "Director General",
         "department": "Administración",
         "contractType": "Indefinido",
+        "documentType": "cedula",
+        "documentId": "001-5566778-8",
         "hireDate": "2020-01-15",
         "branchCodes": [
           "HQ",
@@ -2286,7 +2297,8 @@ export const DEMO_SNAPSHOT = Object.freeze({
           "bankName": "Banco Popular",
           "bankAccountType": "ahorro",
           "bankAccountNumber": "****4521",
-          "bankDocument": "00112345678"
+          "bankDocument": "00155667788",
+          "residenceLocation": "Santo Domingo, DN"
         }
       },
       {
@@ -2299,6 +2311,8 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "position": "Supervisor",
         "department": "Operaciones",
         "contractType": "Indefinido",
+        "documentType": "cedula",
+        "documentId": "402-9876543-2",
         "hireDate": "2021-03-10",
         "branchCodes": [
           "DOWNTOWN"
@@ -2313,7 +2327,8 @@ export const DEMO_SNAPSHOT = Object.freeze({
           "bankName": "Banreservas",
           "bankAccountType": "ahorro",
           "bankAccountNumber": "****8832",
-          "bankDocument": "40298765432"
+          "bankDocument": "40298765432",
+          "residenceLocation": "Santiago"
         }
       },
       {
@@ -2397,6 +2412,8 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "position": "Especialista Laser",
         "department": "Laser",
         "contractType": "Indefinido",
+        "documentType": "cedula",
+        "documentId": "223-0011122-2",
         "hireDate": "2022-11-12",
         "branchCodes": [
           "DOWNTOWN",
@@ -2412,7 +2429,8 @@ export const DEMO_SNAPSHOT = Object.freeze({
           "bankName": "BHD",
           "bankAccountType": "corriente",
           "bankAccountNumber": "****1190",
-          "bankDocument": "22300111222"
+          "bankDocument": "22300111222",
+          "residenceLocation": "Santo Domingo Este"
         }
       },
       {
@@ -2876,7 +2894,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "createdByUserSeedKey": "seller-east",
         "kind": "quote",
         "origin": "crm",
-        "opportunitySeedKey": "carla-retail",
+        "leadSeedKey": "carla-boutique",
         "crmStatus": "vencida",
         "status": "expired",
         "paymentMethodSeedKey": "card",
@@ -2903,7 +2921,7 @@ export const DEMO_SNAPSHOT = Object.freeze({
         "createdByUserSeedKey": "seller-center",
         "kind": "quote",
         "origin": "crm",
-        "opportunitySeedKey": "jose-package",
+        "leadSeedKey": "jose-studio",
         "crmStatus": "aceptada",
         "status": "converted",
         "paymentMethodSeedKey": "cash",

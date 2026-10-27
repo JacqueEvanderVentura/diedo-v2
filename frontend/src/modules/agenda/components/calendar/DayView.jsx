@@ -9,6 +9,7 @@ import {
   appointmentStartsAtSlot,
   appointmentsOverlappingSlot,
   calendarBlockHeight,
+  calendarResourcesWithUnassigned,
   CALENDAR_ROW_PX,
   CALENDAR_SLOT_MINUTES,
 } from '../../lib/dayViewSlots'
@@ -32,6 +33,12 @@ export function DayView({
   endHour = 20,
 }) {
   const slots = timeSlots(startHour, endHour, CALENDAR_SLOT_MINUTES)
+  const displayResources = useMemo(
+    () => calendarResourcesWithUnassigned(resources, appointments, dateKey, {
+      includeCancelled: showCancelled,
+    }),
+    [resources, appointments, dateKey, showCancelled],
+  )
   const {
     dragState,
     hoverTarget,
@@ -47,14 +54,14 @@ export function DayView({
 
   const laneLayoutByResource = useMemo(() => {
     const map = new Map()
-    for (const resource of resources) {
+    for (const resource of displayResources) {
       const resourceAppointments = appointmentsForResource(appointments, dateKey, resource.id, {
         includeCancelled: showCancelled,
       })
       map.set(resource.id, assignAppointmentLanes(resourceAppointments))
     }
     return map
-  }, [appointments, dateKey, resources, showCancelled])
+  }, [appointments, dateKey, displayResources, showCancelled])
 
   const handleChipClick = (apt) => {
     if (consumeChipClick()) return
@@ -72,7 +79,7 @@ export function DayView({
       <h3 className="mb-1 font-heading text-lg font-semibold text-slate-800">Vista de Día</h3>
       <p className="mb-4 text-sm capitalize text-slate-500">{formatLongDate(dateKey)}</p>
 
-      {resources.length === 0 ? (
+      {displayResources.length === 0 ? (
         <p className="rounded-xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
           No hay cabinas o recursos activos configurados para esta sucursal.
         </p>
@@ -84,7 +91,7 @@ export function DayView({
           <div className="min-w-[900px] overflow-visible">
             <div
               className="grid gap-0 overflow-visible"
-              style={{ gridTemplateColumns: `80px repeat(${resources.length}, minmax(160px, 1fr))` }}
+              style={{ gridTemplateColumns: `80px repeat(${displayResources.length}, minmax(160px, 1fr))` }}
             >
               <div
                 className="sticky left-0 z-40 border-b border-r border-slate-200 bg-slate-50 px-2 py-3 text-xs font-bold uppercase text-slate-400 shadow-[4px_0_8px_-6px_rgba(15,23,42,0.5)]"
@@ -92,7 +99,7 @@ export function DayView({
               >
                 Hora
               </div>
-              {resources.map((c) => (
+              {displayResources.map((c) => (
                 <div
                   key={c.id}
                   data-calendar-resource={c.id}
@@ -113,7 +120,7 @@ export function DayView({
                   >
                     {slot}
                   </div>
-                  {resources.map((c) => {
+                  {displayResources.map((c) => {
                     const canBook = canBookResource(c.access)
                     const displayAppointments = appointmentsForResource(appointments, dateKey, c.id, {
                       includeCancelled: showCancelled,

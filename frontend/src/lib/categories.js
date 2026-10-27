@@ -72,3 +72,26 @@ export function isSupplyMovementItem(item, supplyIds = new Set()) {
 export function movementHasSupplyItems(movement, supplyIds = new Set()) {
   return (movement.items || []).some((item) => isSupplyMovementItem(item, supplyIds))
 }
+
+const GENERIC_SERVER_ERROR = 'Error interno del servidor.'
+
+export function categoryMutationErrorMessage(error) {
+  const status = error?.status
+  const message = String(error?.message || error?.data?.message || '').trim()
+  if (status === 409 || /ya existe una categor[íi]a/i.test(message)) {
+    return message && message !== GENERIC_SERVER_ERROR
+      ? message
+      : 'Ya existe una categoría con este nombre.'
+  }
+  if (status === 403) {
+    return message && message !== GENERIC_SERVER_ERROR
+      ? message
+      : 'Gestionar categorías requiere alcance sobre todo el workspace.'
+  }
+  if (status >= 500 || message === GENERIC_SERVER_ERROR) {
+    return message && message !== GENERIC_SERVER_ERROR
+      ? message
+      : 'No pudimos completar la acción. Inténtalo de nuevo.'
+  }
+  return message || 'No se pudo guardar la categoría.'
+}

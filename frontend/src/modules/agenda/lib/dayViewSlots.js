@@ -5,6 +5,13 @@ export const CALENDAR_SLOT_MINUTES = 30
 export const CALENDAR_ROW_PX = 88
 /** Vertical padding on slot cells (`p-1` = 8px total). */
 export const CALENDAR_SLOT_PAD_PX = 8
+export const UNASSIGNED_RESOURCE_ID = '__unassigned__'
+export const UNASSIGNED_RESOURCE = Object.freeze({
+  id: UNASSIGNED_RESOURCE_ID,
+  name: 'Sin cabina',
+  access: 'view',
+  active: true,
+})
 
 function appointmentStartMinutes(appointment) {
   const normalized = normalizeAppointmentTime(appointment?.time)
@@ -14,6 +21,7 @@ function appointmentStartMinutes(appointment) {
 
 function matchesResource(appointment, resourceId) {
   const cabina = appointment.cabinaId || appointment.resourceId
+  if (resourceId === UNASSIGNED_RESOURCE_ID) return !cabina
   return cabina === resourceId
 }
 
@@ -29,6 +37,19 @@ export function appointmentsForResource(appointments, dateKey, resourceId, { inc
 /** Appointments that block scheduling (excludes cancelled). */
 export function activeAppointmentsForResource(appointments, dateKey, resourceId) {
   return appointmentsForResource(appointments, dateKey, resourceId, { includeCancelled: false })
+}
+
+/** Adds a "Sin cabina" column only when the day has appointments without `resource_id`. */
+export function calendarResourcesWithUnassigned(
+  resources = [],
+  appointments = [],
+  dateKey,
+  { includeCancelled = false } = {},
+) {
+  const hasUnassigned = appointmentsForResource(appointments, dateKey, UNASSIGNED_RESOURCE_ID, {
+    includeCancelled,
+  }).length > 0
+  return hasUnassigned ? [...resources, UNASSIGNED_RESOURCE] : resources
 }
 
 export function appointmentStartingAtSlot(appointments, slot) {

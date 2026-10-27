@@ -5,10 +5,12 @@ import {
   appointmentStartingAtSlot,
   appointmentsOverlappingSlot,
   assignAppointmentLanes,
+  calendarResourcesWithUnassigned,
   isSlotBlockedByAppointment,
   calendarBlockHeight,
   calendarRowSpan,
   CALENDAR_ROW_PX,
+  UNASSIGNED_RESOURCE_ID,
 } from '@/modules/agenda/lib/dayViewSlots'
 
 const DATE = '2026-09-16'
@@ -90,6 +92,33 @@ describe('dayViewSlots', () => {
     ]
     const at1030 = appointmentsOverlappingSlot(overlapping, '10:30')
     expect(at1030.map((a) => a.id).sort()).toEqual(['a1', 'a3'])
+  })
+
+  it('lists appointments without a cabin in the unassigned column', () => {
+    const orphan = {
+      id: 'orphan',
+      date: DATE,
+      time: '08:00',
+      duration: 30,
+      cabinaId: null,
+      status: 'confirmada',
+    }
+    const assigned = { ...orphan, id: 'assigned', cabinaId: CAB }
+    expect(activeAppointmentsForResource([orphan, assigned], DATE, UNASSIGNED_RESOURCE_ID).map((a) => a.id))
+      .toEqual(['orphan'])
+    expect(activeAppointmentsForResource([orphan, assigned], DATE, CAB).map((a) => a.id)).toEqual(['assigned'])
+    const columns = calendarResourcesWithUnassigned([{ id: CAB, name: 'Cabina 1' }], [orphan], DATE)
+    expect(columns.map((c) => c.id)).toEqual([CAB, UNASSIGNED_RESOURCE_ID])
+  })
+
+  it('omits the unassigned column when every appointment has a cabin or is hidden', () => {
+    const resources = [{ id: CAB, name: 'Cabina 1' }]
+    const cancelledOrphan = { id: 'c', date: DATE, time: '08:00', duration: 30, cabinaId: '', status: 'cancelada' }
+    const otherDay = { ...cancelledOrphan, id: 'd', date: '2026-09-17', status: 'confirmada' }
+    expect(calendarResourcesWithUnassigned(resources, [cancelledOrphan, otherDay], DATE)).toBe(resources)
+    expect(
+      calendarResourcesWithUnassigned(resources, [cancelledOrphan], DATE, { includeCancelled: true }).at(-1)?.id,
+    ).toBe(UNASSIGNED_RESOURCE_ID)
   })
 
   it('assigns separate lanes for overlapping appointments', () => {

@@ -25,6 +25,7 @@ export const masterDataApi = {
   employeeAttachments: (id) => apiClient.get(`/api/v1/employees/${id}/attachments`),
   uploadCustomerAttachment: (id, formData) => apiClient.upload(`/api/v1/customers/${id}/attachments`, formData),
   uploadEmployeeAttachment: (id, formData) => apiClient.upload(`/api/v1/employees/${id}/attachments`, formData),
+  deleteEmployeeAttachment: (id, attachmentId) => apiClient.delete(`/api/v1/employees/${id}/attachments/${attachmentId}`),
 }
 
 export const customersGateway = createModuleGateway({

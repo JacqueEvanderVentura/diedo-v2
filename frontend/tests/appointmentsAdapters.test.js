@@ -117,6 +117,25 @@ describe('adaptadores de Agenda', () => {
     expect(isAppointmentConflict(Object.assign(new Error('Versión obsoleta.'), { status: 409, parameter: 'version' }))).toBe(false)
   })
 
+  it('no envía resourceId nulo al editar una cita sin cabina', () => {
+    const orphan = {
+      branchId: '01a117e6-94c7-77a1-af86-11270c2aa7c0',
+      cabinaId: '',
+      employeeId: '',
+      date: '2026-10-22',
+      time: '08:00',
+      customerName: 'Cliente',
+      serviceName: 'Cita de continuación (seguimiento)',
+      status: 'cancelada',
+    }
+    const patch = appointmentPatchToApiPayload(orphan, 3)
+    expect(patch.resourceId).toBeUndefined()
+    expect(JSON.parse(JSON.stringify(patch))).not.toHaveProperty('resourceId')
+    expect(patch).toMatchObject({ anyAvailable: false, employeeId: null, status: 'cancelled' })
+
+    expect(appointmentPatchToApiPayload({ ...orphan, anyAvailable: true }, 3).resourceId).toBeNull()
+  })
+
   it('convierte referencias locales o dummy en snapshots sin UUID', () => {
     expect(appointmentToApiPayload({
       branchId: '01a03144-dff3-70d8-aedc-70a77395c0a2',

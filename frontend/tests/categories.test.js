@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   categoryKindFromUi,
   categoryKindToUi,
+  categoryMutationErrorMessage,
   filterCategoriesForSection,
   isSupplyMovementItem,
   mergeCategoryOptions,
@@ -49,5 +50,21 @@ describe('categories', () => {
     const movement = { items: [{ id: 'sup-1', sku: 'INS-01', name: 'Guantes' }] }
     expect(isSupplyMovementItem(movement.items[0])).toBe(true)
     expect(movementHasSupplyItems(movement)).toBe(true)
+  })
+
+  it('muestra 409 y 403 de categorías y no repite el 500 genérico', () => {
+    expect(categoryMutationErrorMessage({
+      status: 409,
+      message: 'Ya existe una categoría con este nombre.',
+    })).toBe('Ya existe una categoría con este nombre.')
+    expect(categoryMutationErrorMessage({ status: 409 })).toBe('Ya existe una categoría con este nombre.')
+    expect(categoryMutationErrorMessage({
+      status: 403,
+      message: 'Gestionar categorías requiere alcance sobre todo el workspace.',
+    })).toBe('Gestionar categorías requiere alcance sobre todo el workspace.')
+    expect(categoryMutationErrorMessage({
+      status: 500,
+      message: 'Error interno del servidor.',
+    })).toBe('No pudimos completar la acción. Inténtalo de nuevo.')
   })
 })

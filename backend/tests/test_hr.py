@@ -148,6 +148,17 @@ def test_hr_profiles_leave_debts_documents_and_overview(client: TestClient) -> N
     user_id = session["userId"]
     suffix = uuid7().hex[-10:]
 
+    existing = client.get("/api/v1/employees", headers=headers, params={"pageSize": 100})
+    assert existing.status_code == 200, existing.text
+    for item in existing.json().get("items", []):
+        if item.get("platformUserId") == user_id:
+            unlinked = client.patch(
+                f"/api/v1/employees/{item['id']}",
+                headers=headers,
+                json={"version": item["version"], "platformUserId": None},
+            )
+            assert unlinked.status_code == 200, unlinked.text
+
     employee_response = client.post(
         "/api/v1/employees",
         headers=headers,
@@ -186,6 +197,16 @@ def test_hr_profiles_leave_debts_documents_and_overview(client: TestClient) -> N
     )
     assert updated_profile.status_code == 200, updated_profile.text
     assert updated_profile.json()["salary"] == "35000.00"
+    residence = client.patch(
+        f"/api/v1/hr/profiles/{employee['id']}",
+        headers=headers,
+        json={
+            "version": updated_profile.json()["version"],
+            "residenceLocation": "  Los Mina  ",
+        },
+    )
+    assert residence.status_code == 200, residence.text
+    assert residence.json()["residenceLocation"] == "Los Mina"
 
     start = date.today() + timedelta(days=30)
     leave_response = client.post(
@@ -241,6 +262,10 @@ def test_hr_profiles_leave_debts_documents_and_overview(client: TestClient) -> N
     assert cancelled.status_code == 200, cancelled.text
     assert cancelled.json()["status"] == "cancelada"
 
+    stats_before = client.get("/api/v1/hr/debts/stats", headers=headers)
+    assert stats_before.status_code == 200, stats_before.text
+    pending_before = Decimal(stats_before.json()["pending"])
+
     debt_headers = {**headers, "Idempotency-Key": f"debt-{suffix}"}
     debt_response = client.post(
         "/api/v1/hr/debts",
@@ -290,7 +315,7 @@ def test_hr_profiles_leave_debts_documents_and_overview(client: TestClient) -> N
     assert {item["id"] for item in debts.json()["items"]} == {debt["id"]}
     debt_stats = client.get("/api/v1/hr/debts/stats", headers=headers)
     assert debt_stats.status_code == 200, debt_stats.text
-    assert debt_stats.json()["pending"] == "5000.00"
+    assert Decimal(debt_stats.json()["pending"]) == pending_before + Decimal("5000.00")
 
     document = client.post(
         "/api/v1/hr/documents",
@@ -318,4 +343,4 @@ def test_hr_profiles_leave_debts_documents_and_overview(client: TestClient) -> N
     assert overview.status_code == 200, overview.text
     assert overview.json()["totalEmployees"] >= 1
     assert overview.json()["approvedVacations"] >= 1
-    assert overview.json()["debt"]["pending"] == "5000.00"
+    assert Decimal(overview.json()["debt"]["pending"]) == pending_before + Decimal("5000.00")

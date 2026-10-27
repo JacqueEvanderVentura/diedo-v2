@@ -40,6 +40,7 @@ vi.mock('@/stores/sessionStore', () => ({
   useSessionStore: (selector) => selector({
     isOnline: () => true,
     hasPermission: () => true,
+    hasWorkspacePermission: () => true,
   }),
 }))
 vi.mock('sonner', () => ({ toast: { success: mocks.toastSuccess } }))

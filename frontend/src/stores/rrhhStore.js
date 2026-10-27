@@ -1,8 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { ephemeralJsonStorage, registerSensitiveStateCleaner } from '@/services/storagePolicy'
-import { employeesGateway } from '@/services/masterDataApi'
-import { hrGateway } from '@/services/hrApi'
+import { employeesGateway, masterDataApi } from '@/services/masterDataApi'
+import { hrApi, hrGateway } from '@/services/hrApi'
 import { employeeToApiPayload, mapEmployeeFromApi } from '@/services/adapters/masterData'
 import { useSessionStore } from '@/stores/sessionStore'
 import { debtBalance, debtStatus } from '@/modules/rrhh/lib/rrhh'
@@ -11,6 +11,71 @@ import { normalizeWorkSchedule } from '@/modules/rrhh/lib/schedule'
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 const now = () => new Date().toISOString()
 const API_UNAVAILABLE = 'La API no está disponible.'
+const CONTRACT_SAVE_ERROR = 'No se pudo guardar el contrato. Intenta de nuevo o sigue sin archivo.'
+const PROFILE_SAVE_ERROR = 'No se pudo guardar el salario o la residencia. Intenta de nuevo desde editar.'
+
+function canManageHrProfile() {
+  return useSessionStore.getState().hasPermission('hr.profile.manage')
+}
+
+function mergeProfile(employee, profile) {
+  return normalizeEmployee({ ...employee, ...profile })
+}
+
+function upsertProfile(profiles, profile) {
+  const rest = profiles.filter((item) => item.employeeId !== profile.employeeId)
+  return [profile, ...rest]
+}
+
+function withSaveWarnings(employee, profileWarning, attachmentWarning) {
+  const warning = [profileWarning, attachmentWarning].filter(Boolean).join(' ')
+  return warning ? { ...employee, attachmentWarning: warning } : employee
+}
+
+async function syncHrProfile(employee, data) {
+  if (!canManageHrProfile()) return { profile: null, profileWarning: null }
+  const salaryRaw = data.salary
+  const hasSalary = salaryRaw !== '' && salaryRaw != null && Number.isFinite(Number(salaryRaw))
+  const hasResidenceField = Object.hasOwn(data, 'residenceLocation')
+  const residence = hasResidenceField ? (String(data.residenceLocation || '').trim() || null) : undefined
+  if (!hasSalary && residence === undefined) return { profile: null, profileWarning: null }
+  if (!hasSalary && !residence && !employee.residenceLocation) {
+    return { profile: null, profileWarning: null }
+  }
+  const payload = { version: employee.profileVersion || 1 }
+  if (hasSalary) payload.salary = Number(salaryRaw)
+  if (residence !== undefined) payload.residenceLocation = residence
+  try {
+    const profile = await hrApi.updateProfile(employee.id, payload)
+    return { profile, profileWarning: null }
+  } catch (error) {
+    return { profile: null, profileWarning: error.message || PROFILE_SAVE_ERROR }
+  }
+}
+
+async function syncLaborContract(employeeId, attachments, previousIds = []) {
+  if (!canManageHrProfile()) return { warning: null, attachmentCount: null }
+  const current = attachments || []
+  const keptIds = new Set(current.filter((item) => item.id && !item.pendingFile).map((item) => item.id))
+  const removed = (previousIds || []).filter((id) => !keptIds.has(id))
+  try {
+    for (const attachmentId of removed) {
+      await masterDataApi.deleteEmployeeAttachment(employeeId, attachmentId)
+    }
+    const pending = current.filter((item) => item.pendingFile)
+    for (const item of pending) {
+      const formData = new FormData()
+      formData.append('file', item.pendingFile, item.name || item.pendingFile.name)
+      formData.append('classification', 'labor_contract')
+      await masterDataApi.uploadEmployeeAttachment(employeeId, formData)
+    }
+    if (!removed.length && !pending.length) return { warning: null, attachmentCount: null }
+    const listed = await masterDataApi.employeeAttachments(employeeId)
+    return { warning: null, attachmentCount: listed.length }
+  } catch (error) {
+    return { warning: error.message || CONTRACT_SAVE_ERROR, attachmentCount: null }
+  }
+}
 
 function normalizeEmployee(data) {
   const branchIds = Array.isArray(data.branchIds) && data.branchIds.length
@@ -39,6 +104,9 @@ function normalizeEmployee(data) {
     jefeIds,
     jefeId: jefeIds[0] || null,
     contractType: data.contractType?.trim() || 'Indefinido',
+    documentType: data.documentType || (data.documentId ? 'cedula' : null),
+    documentId: data.documentId?.trim() || null,
+    residenceLocation: data.residenceLocation?.trim() || '',
     initialSalary,
     salary,
     vacationDays: Number(data.vacationDays) || 0,
@@ -174,9 +242,23 @@ export const useRrhhStore = create(
           'createEmployee',
           employeeToApiPayload(data, branchIds)
         )
-        const emp = normalizeEmployee(mapEmployeeFromApi(response))
-        set((s) => ({ employees: [emp, ...s.employees], hrOverview: null }))
-        return emp
+        let emp = normalizeEmployee(mapEmployeeFromApi(response))
+        const { profile, profileWarning } = await syncHrProfile(emp, data)
+        if (profile) emp = mergeProfile(emp, profile)
+        const { warning: attachmentWarning, attachmentCount } = await syncLaborContract(
+          emp.id,
+          data.attachments || [],
+          []
+        )
+        if (attachmentCount != null) emp = { ...emp, attachmentCount }
+        set((s) => ({
+          employees: [emp, ...s.employees],
+          employeeProfiles: profile
+            ? upsertProfile(s.employeeProfiles, profile)
+            : s.employeeProfiles,
+          hrOverview: null,
+        }))
+        return withSaveWarnings(emp, profileWarning, attachmentWarning)
       },
 
       updateEmployee: async (id, data) => {
@@ -209,14 +291,25 @@ export const useRrhhStore = create(
             scheduleVersion: updatedSchedule.version,
           })
         }
+        const { profile, profileWarning } = await syncHrProfile(employee, data)
+        if (profile) employee = mergeProfile(employee, profile)
+        const { warning: attachmentWarning, attachmentCount } = await syncLaborContract(
+          id,
+          data.attachments || [],
+          data.existingContractIds || []
+        )
+        if (attachmentCount != null) employee = { ...employee, attachmentCount }
         set((state) => ({
           employees: state.employees.map((item) => (item.id === id ? {
             ...employee,
             selectableAsSpecialist: data.selectableAsSpecialist ?? employee.selectableAsSpecialist,
           } : item)),
+          employeeProfiles: profile
+            ? upsertProfile(state.employeeProfiles, profile)
+            : state.employeeProfiles,
           hrOverview: null,
         }))
-        return employee
+        return withSaveWarnings(employee, profileWarning, attachmentWarning)
       },
 
       deleteEmployee: async (id) => {
