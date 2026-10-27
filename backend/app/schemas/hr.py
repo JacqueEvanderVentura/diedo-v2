@@ -31,6 +31,7 @@ class EmployeeHrProfileResponse(ApiModel):
     bank_account_type: BankAccountType | None
     bank_account_number: str | None
     bank_document: str | None
+    residence_location: str | None = None
     version: int
     updated_at: datetime
 
@@ -52,8 +53,9 @@ class UpdateEmployeeHrProfileRequest(ApiModel):
     bank_account_type: BankAccountType | None = None
     bank_account_number: str | None = Field(default=None, max_length=128)
     bank_document: str | None = Field(default=None, max_length=64)
+    residence_location: str | None = Field(default=None, max_length=120)
 
-    @field_validator("bank_name", "bank_account_number", "bank_document")
+    @field_validator("bank_name", "bank_account_number", "bank_document", "residence_location")
     @classmethod
     def normalize_optional_fields(cls, value: str | None) -> str | None:
         return normalize_optional_text(value)

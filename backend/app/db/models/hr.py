@@ -59,6 +59,7 @@ class EmployeeHrProfile(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base)
     bank_account_type: Mapped[str | None] = mapped_column(String(16))
     bank_account_number: Mapped[str | None] = mapped_column(String(128))
     bank_document: Mapped[str | None] = mapped_column(String(64))
+    residence_location: Mapped[str | None] = mapped_column(String(120))
     updated_by_platform_user_id: Mapped[UUID] = mapped_column(
         ForeignKey("platform_users.id", ondelete="RESTRICT"), nullable=False
     )

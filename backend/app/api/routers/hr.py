@@ -79,6 +79,7 @@ def _profile_response(profile: EmployeeHrProfile) -> EmployeeHrProfileResponse:
         bank_account_type=profile.bank_account_type,  # type: ignore[arg-type]
         bank_account_number=profile.bank_account_number,
         bank_document=profile.bank_document,
+        residence_location=profile.residence_location,
         version=profile.version,
         updated_at=profile.updated_at,
     )

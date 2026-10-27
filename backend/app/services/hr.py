@@ -96,6 +96,14 @@ class HrService:
             raise ResourceNotFoundError("La ficha de RRHH no existe.", "employeeId")
         if profile.version != expected_version:
             raise ConflictError("La ficha cambió desde la última lectura.", "version")
+        salary = changes.get("salary")
+        if (
+            salary is not None
+            and "initial_salary" not in changes
+            and profile.initial_salary == 0
+            and Decimal(str(salary)) > 0
+        ):
+            changes["initial_salary"] = salary
         try:
             record = self._repository.update_profile(
                 profile=profile,

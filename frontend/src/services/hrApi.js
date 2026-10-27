@@ -16,6 +16,7 @@ function mapProfile(item) {
     bankAccountType: item.bankAccountType || 'ahorro',
     bankAccountNumber: item.bankAccountNumber || '',
     bankDocument: item.bankDocument || '',
+    residenceLocation: item.residenceLocation || '',
     profileVersion: item.version,
     profileUpdatedAt: item.updatedAt,
   }
@@ -132,6 +133,7 @@ export const hrApi = {
         bankAccountType: 'ahorro',
         bankAccountNumber: '',
         bankDocument: '',
+        residenceLocation: '',
         profileVersion: 1,
         profileUpdatedAt: null,
       })
@@ -162,6 +164,9 @@ export const hrApi = {
   ),
   createDocument: async (payload) => mapDocument(
     await apiClient.post('/api/v1/hr/documents', payload, idempotencyOptions())
+  ),
+  updateProfile: async (employeeId, payload) => mapProfile(
+    await apiClient.patch(`/api/v1/hr/profiles/${employeeId}`, payload)
   ),
 }
 

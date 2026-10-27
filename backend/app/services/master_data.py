@@ -26,7 +26,7 @@ from app.services.attachment_storage import (
     AttachmentTooLargeError,
 )
 from app.services.auth import AuthPrincipal
-from app.services.authorization import PermissionGrant
+from app.services.authorization import AuthorizationService, PermissionGrant
 from app.services.customer_documents import prepare_customer_document_fields
 from app.services.customer_import_merge import (
     build_customer_import_update_changes,
@@ -46,6 +46,8 @@ from app.services.errors import (
     ResourceNotFoundError,
 )
 
+_LABOR_CONTRACT = "labor_contract"
+_EMPLOYEE_DOCUMENT_TYPES = frozenset({"cedula", "pasaporte"})
 _ALLOWED_CONTENT_TYPES = {
     "application/pdf": ".pdf",
     "image/jpeg": ".jpg",
@@ -467,6 +469,7 @@ class MasterDataService:
         self,
         *,
         grant: PermissionGrant,
+        principal: AuthPrincipal | None = None,
         search: str | None,
         status: str | None,
         branch_id: UUID | None,
@@ -488,6 +491,7 @@ class MasterDataService:
             page_size=page_size,
             sort_by=sort_by,
             sort_direction=sort_direction,
+            include_labor_contract=self._can_read_labor_contract(principal),
         )
         return EmployeeListResult(
             result.items,
@@ -497,13 +501,20 @@ class MasterDataService:
             ceil(result.total_items / page_size) if result.total_items else 0,
         )
 
-    def get_employee(self, grant: PermissionGrant, employee_id: UUID) -> EmployeeRecord:
+    def get_employee(
+        self,
+        grant: PermissionGrant,
+        employee_id: UUID,
+        principal: AuthPrincipal | None = None,
+    ) -> EmployeeRecord:
         employee = self._repository.get_employee(
             grant.workspace_id, employee_id, grant.allowed_branch_ids
         )
         if employee is None:
             raise ResourceNotFoundError("El empleado no existe.", "employeeId")
-        return self._repository.employee_record(employee)
+        return self._repository.employee_record(
+            employee, include_labor_contract=self._can_read_labor_contract(principal)
+        )
 
     def create_employee(
         self,
@@ -538,7 +549,7 @@ class MasterDataService:
             return record
         except IntegrityError as exc:
             self._session.rollback()
-            raise ConflictError("No fue posible crear el empleado.") from exc
+            raise self._employee_integrity_error(exc, "No fue posible crear el empleado.") from exc
 
     def update_employee(
         self,
@@ -594,7 +605,9 @@ class MasterDataService:
             return record
         except IntegrityError as exc:
             self._session.rollback()
-            raise ConflictError("No fue posible actualizar el empleado.") from exc
+            raise self._employee_integrity_error(
+                exc, "No fue posible actualizar el empleado."
+            ) from exc
 
     def get_schedule(self, grant: PermissionGrant, employee_id: UUID) -> ScheduleRecord:
         self.get_employee(grant, employee_id)
@@ -630,10 +643,17 @@ class MasterDataService:
         return record
 
     def list_attachments(
-        self, grant: PermissionGrant, owner_type: str, owner_id: UUID
+        self,
+        grant: PermissionGrant,
+        owner_type: str,
+        owner_id: UUID,
+        principal: AuthPrincipal | None = None,
     ) -> tuple[AttachmentRecord, ...]:
         self._require_owner(grant, owner_type, owner_id)
-        return self._repository.list_attachments(grant.workspace_id, owner_type, owner_id)
+        records = self._repository.list_attachments(grant.workspace_id, owner_type, owner_id)
+        if owner_type != "employee" or self._can_read_labor_contract(principal):
+            return records
+        return tuple(item for item in records if item.classification != _LABOR_CONTRACT)
 
     def upload_attachment(
         self,
@@ -658,7 +678,10 @@ class MasterDataService:
         extension = _ALLOWED_CONTENT_TYPES.get(content_type)
         if extension is None:
             raise InvalidOperationError("Tipo de archivo no permitido.", "file")
-        if owner_type == "customer" and classification == "employee_document":
+        if owner_type == "customer" and classification in {
+            "employee_document",
+            _LABOR_CONTRACT,
+        }:
             raise InvalidOperationError(
                 "Clasificación incompatible con el cliente.", "classification"
             )
@@ -666,6 +689,8 @@ class MasterDataService:
             raise InvalidOperationError(
                 "Clasificación incompatible con el empleado.", "classification"
             )
+        if classification == _LABOR_CONTRACT and not self._can_manage_labor_contract(principal):
+            raise AuthorizationError("No tienes permiso para realizar esta acción.")
         filename = _safe_filename(original_filename)
         storage_key = f"{grant.workspace_id}/{owner_type}/{owner_id}/{uuid7()}{extension}"
         try:
@@ -710,12 +735,17 @@ class MasterDataService:
         owner_type: str,
         owner_id: UUID,
         attachment_id: UUID,
+        principal: AuthPrincipal | None = None,
     ) -> AttachmentRecord:
         self._require_owner(grant, owner_type, owner_id)
         record = self._repository.get_attachment(
             grant.workspace_id, owner_type, owner_id, attachment_id
         )
         if record is None:
+            raise ResourceNotFoundError("El adjunto no existe.", "attachmentId")
+        if record.classification == _LABOR_CONTRACT and not self._can_read_labor_contract(
+            principal
+        ):
             raise ResourceNotFoundError("El adjunto no existe.", "attachmentId")
         return record
 
@@ -734,7 +764,12 @@ class MasterDataService:
             owner_type=owner_type,
             owner_id=owner_id,
             attachment_id=attachment_id,
+            principal=principal,
         )
+        if record.classification == _LABOR_CONTRACT and not self._can_manage_labor_contract(
+            principal
+        ):
+            raise AuthorizationError("No tienes permiso para realizar esta acción.")
         if record.retention_until is not None and record.retention_until >= date.today():
             raise InvalidOperationError(
                 "El adjunto no puede eliminarse durante su período de retención.",
@@ -801,6 +836,11 @@ class MasterDataService:
                 raise ConflictError(
                     "El usuario ya está vinculado a otro empleado.", "platformUserId"
                 )
+        normalized_document_id = values.get("normalized_document_id")
+        if isinstance(normalized_document_id, str) and self._repository.employee_by_document(
+            workspace_id, normalized_document_id, exclude_id
+        ):
+            raise ConflictError("Ya existe un empleado con esa cédula.", "documentId")
 
     @staticmethod
     def _prepare_customer_values(values: dict[str, object]) -> dict[str, object]:
@@ -853,7 +893,48 @@ class MasterDataService:
             prepared["normalized_email"] = normalize_email(cast_optional_str(prepared["email"]))
         if "phone" in prepared:
             prepared["normalized_phone"] = normalize_phone(cast_optional_str(prepared["phone"]))
+        if "document_type" in prepared or "document_id" in prepared:
+            doc_type = cast_optional_str(prepared.get("document_type"))
+            doc_id = cast_optional_str(prepared.get("document_id"))
+            if doc_type is None and doc_id is None:
+                prepared["document_type"] = None
+                prepared["document_id"] = None
+                prepared["normalized_document_id"] = None
+            else:
+                if doc_type is None:
+                    doc_type = "cedula"
+                if doc_type not in _EMPLOYEE_DOCUMENT_TYPES:
+                    raise InvalidOperationError("documentType inválido.", "documentType")
+                try:
+                    normalized_type, display_id, normalized_id = prepare_customer_document_fields(
+                        doc_type, doc_id
+                    )
+                except ValueError as exc:
+                    raise InvalidOperationError(str(exc), "documentId") from exc
+                prepared["document_type"] = normalized_type
+                prepared["document_id"] = display_id
+                prepared["normalized_document_id"] = normalized_id
         return prepared
+
+    def _can_read_labor_contract(self, principal: AuthPrincipal | None) -> bool:
+        if principal is None:
+            return False
+        return (
+            AuthorizationService(self._session).optional_permission(principal, "hr.profile.read")
+            is not None
+        )
+
+    def _can_manage_labor_contract(self, principal: AuthPrincipal) -> bool:
+        return (
+            AuthorizationService(self._session).optional_permission(principal, "hr.profile.manage")
+            is not None
+        )
+
+    @staticmethod
+    def _employee_integrity_error(exc: IntegrityError, fallback: str) -> ConflictError:
+        if _integrity_mentions_document(exc):
+            return ConflictError("Ya existe un empleado con esa cédula.", "documentId")
+        return ConflictError(fallback)
 
     @staticmethod
     def _require_filter_branch(grant: PermissionGrant, branch_id: UUID | None) -> None:
@@ -867,6 +948,13 @@ class MasterDataService:
 
 def cast_optional_str(value: object) -> str | None:
     return str(value) if value is not None else None
+
+
+def _integrity_mentions_document(exc: IntegrityError) -> bool:
+    detail = str(getattr(exc, "orig", exc)).lower()
+    return "uq_employees_workspace_document_active" in detail or (
+        "normalized_document" in detail and "employees" in detail
+    )
 
 
 def _safe_filename(value: str) -> str:

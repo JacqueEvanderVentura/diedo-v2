@@ -122,6 +122,8 @@ def _employee_response(employee: EmployeeRecord) -> EmployeeResponse:
         position=employee.position,
         department=employee.department,
         contract_type=employee.contract_type,
+        document_type=employee.document_type,  # type: ignore[arg-type]
+        document_id=employee.document_id,
         hire_date=employee.hire_date,
         platform_user_id=employee.platform_user_id,
         branches=[
@@ -332,6 +334,7 @@ def customer_timeline(
 @employees_router.get("", summary="Listar empleados básicos con scope y paginación")
 def list_employees(
     database: DatabaseSession,
+    principal: CurrentPrincipal,
     grant: EmployeeReadGrant,
     search: Annotated[str | None, Query(max_length=120)] = None,
     status_filter: Annotated[MasterDataStatus | None, Query(alias="status")] = None,
@@ -344,6 +347,7 @@ def list_employees(
 ) -> PaginatedEmployeesResponse:
     result = MasterDataService(database).list_employees(
         grant=grant,
+        principal=principal,
         search=search,
         status=status_filter,
         branch_id=branch_id,
@@ -399,9 +403,12 @@ def create_employee(
 def get_employee(
     employee_id: UUID,
     database: DatabaseSession,
+    principal: CurrentPrincipal,
     grant: EmployeeReadGrant,
 ) -> EmployeeResponse:
-    return _employee_response(MasterDataService(database).get_employee(grant, employee_id))
+    return _employee_response(
+        MasterDataService(database).get_employee(grant, employee_id, principal)
+    )
 
 
 @employees_router.patch(
@@ -469,8 +476,9 @@ def _list_attachments(
     grant: CustomerReadGrant | EmployeeReadGrant,
     owner_type: str,
     owner_id: UUID,
+    principal: CurrentPrincipal | None = None,
 ) -> list[AttachmentResponse]:
-    records = MasterDataService(database).list_attachments(grant, owner_type, owner_id)
+    records = MasterDataService(database).list_attachments(grant, owner_type, owner_id, principal)
     return [_attachment_response(record) for record in records]
 
 
@@ -513,12 +521,14 @@ def _download_attachment(
     owner_type: str,
     owner_id: UUID,
     attachment_id: UUID,
+    principal: CurrentPrincipal | None = None,
 ) -> StreamingResponse:
     record = MasterDataService(database).get_attachment(
         grant=grant,
         owner_type=owner_type,
         owner_id=owner_id,
         attachment_id=attachment_id,
+        principal=principal,
     )
     return authorized_attachment_response(
         storage,
@@ -618,9 +628,10 @@ def delete_customer_attachment(
 def list_employee_attachments(
     employee_id: UUID,
     database: DatabaseSession,
+    principal: CurrentPrincipal,
     grant: EmployeeReadGrant,
 ) -> list[AttachmentResponse]:
-    return _list_attachments(database, grant, "employee", employee_id)
+    return _list_attachments(database, grant, "employee", employee_id, principal)
 
 
 @employees_router.post(
@@ -661,6 +672,7 @@ def download_employee_attachment(
     employee_id: UUID,
     attachment_id: UUID,
     database: DatabaseSession,
+    principal: CurrentPrincipal,
     grant: EmployeeReadGrant,
     storage: AttachmentStorageDep,
 ) -> StreamingResponse:
@@ -671,6 +683,7 @@ def download_employee_attachment(
         owner_type="employee",
         owner_id=employee_id,
         attachment_id=attachment_id,
+        principal=principal,
     )
 
 

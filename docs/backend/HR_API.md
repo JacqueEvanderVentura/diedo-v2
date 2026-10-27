@@ -9,9 +9,9 @@ globales.
 ## 1. Separación de datos
 
 El Directorio mantiene en `employees` únicamente los datos generales, sucursales, supervisores,
-horario y vínculo opcional con un usuario. La información sensible está separada en
-`employee_hr_profiles`, una ficha única por empleado con salario inicial/actual, días de
-vacaciones y datos bancarios.
+horario, documento de identidad opcional y vínculo opcional con un usuario. La información
+sensible está separada en `employee_hr_profiles`, una ficha única por empleado con salario
+inicial/actual, días de vacaciones, datos bancarios y ubicación de residencia opcional.
 
 El resto del módulo usa estas tablas:
 
@@ -76,6 +76,12 @@ devuelve 409.
   Únicamente la carta `bancaria` puede incluir salario.
 - El historial guarda un snapshot para que un documento antiguo no cambie cuando se edite la
   ficha del empleado.
+- `PATCH /hr/profiles/{employeeId}` admite `residenceLocation` opcional (texto, máx. 120). El
+  salario actual ya existía en este contrato; si `initialSalary` es 0 y llega `salary > 0`, ambos
+  quedan con el nuevo valor para Nómina y cartas bancarias.
+- El PDF/imagen del contrato laboral no vive en la ficha: se adjunta al empleado con
+  `classification=labor_contract` y exige `hr.profile.read` / `hr.profile.manage`. Ver
+  [MASTER_DATA_API.md](MASTER_DATA_API.md).
 
 ## 5. Seeder y frontend
 

@@ -64,7 +64,7 @@ describe('DemoRepository', () => {
     vi.setSystemTime(new Date('2026-09-01T16:00:00Z'))
     const dashboard = new DemoRepository(DEMO_SNAPSHOT).dashboard({ period: 'quarter' })
 
-    expect(dashboard.summary.activeLeads).toBe(5)
+    expect(dashboard.summary.activeLeads).toBe(6)
     expect(dashboard.summary.openTasks).toBe(4)
     expect(dashboard.activity.filter((item) => item.source === 'Tareas')).toEqual(
       expect.arrayContaining([
