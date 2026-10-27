@@ -4,11 +4,14 @@ from typing import BinaryIO
 
 import pytest
 from app.services.attachment_storage import (
+    STORAGE_UNAVAILABLE_MESSAGE,
     AttachmentContentMismatchError,
     AttachmentTooLargeError,
     LocalAttachmentStorage,
     S3AttachmentStorage,
 )
+from app.services.errors import ServiceUnavailableError
+from botocore.exceptions import ClientError
 
 
 class FakeS3Client:
@@ -108,6 +111,53 @@ def test_s3_storage_builds_a_bounded_client(monkeypatch: pytest.MonkeyPatch) -> 
     assert captured["service"] == "s3"
     assert captured["endpoint_url"] == "https://storage.example.invalid"
     assert storage.open.__self__ is storage
+
+
+def test_s3_storage_maps_signature_errors_to_domain_unavailable() -> None:
+    class FailingS3Client(FakeS3Client):
+        def upload_fileobj(self, *args: object, **kwargs: object) -> None:
+            raise ClientError(
+                {
+                    "Error": {
+                        "Code": "SignatureDoesNotMatch",
+                        "Message": "The request signature we calculated does not match.",
+                    }
+                },
+                "PutObject",
+            )
+
+    storage = _storage(FailingS3Client())
+    with pytest.raises(ServiceUnavailableError, match=STORAGE_UNAVAILABLE_MESSAGE) as captured:
+        storage.save(
+            BytesIO(b"%PDF-1.4\nproof\n%%EOF"),
+            storage_key="workspace/expense/proof.pdf",
+            content_type="application/pdf",
+            max_bytes=1024,
+        )
+    assert captured.value.parameter == "file"
+
+
+def test_s3_storage_maps_exception_group_client_errors() -> None:
+    class GroupingS3Client(FakeS3Client):
+        def upload_fileobj(self, *args: object, **kwargs: object) -> None:
+            raise ExceptionGroup(
+                "s3",
+                [
+                    ClientError(
+                        {"Error": {"Code": "SignatureDoesNotMatch", "Message": "mismatch"}},
+                        "PutObject",
+                    )
+                ],
+            )
+
+    storage = _storage(GroupingS3Client())
+    with pytest.raises(ServiceUnavailableError, match=STORAGE_UNAVAILABLE_MESSAGE):
+        storage.save(
+            BytesIO(b"%PDF-1.4\nproof\n%%EOF"),
+            storage_key="workspace/receivable/proof.pdf",
+            content_type="application/pdf",
+            max_bytes=1024,
+        )
 
 
 def test_local_storage_open_uses_the_confined_path(tmp_path: Path) -> None:

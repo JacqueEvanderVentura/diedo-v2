@@ -116,12 +116,14 @@ export function ExpenseFormModal({ open, onClose, expense, mode = 'variable' }) 
     }
     setSaving(true)
     try {
-      if (fixed) {
-        await (editing ? updateFixed(expense.id, payload) : addFixed(payload))
+      const saved = fixed
+        ? await (editing ? updateFixed(expense.id, payload) : addFixed(payload))
+        : await (editing ? updateExpense(expense.id, payload) : addExpense(payload))
+      if (saved?.attachmentWarning) {
+        toast.error(`${editing ? 'Gasto actualizado' : 'Gasto registrado'}. ${saved.attachmentWarning}`)
       } else {
-        await (editing ? updateExpense(expense.id, payload) : addExpense(payload))
+        toast.success(editing ? 'Gasto actualizado' : 'Gasto registrado')
       }
-      toast.success(editing ? 'Gasto actualizado' : 'Gasto registrado')
       onClose()
     } catch (error) {
       setErr(error.message || 'No se pudo guardar el gasto.')

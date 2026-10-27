@@ -67,11 +67,14 @@ def test_unhandled_error_does_not_leak_internal_details() -> None:
         response = client.get("/test-crash")
 
     assert response.status_code == 500
-    assert response.json() == {
-        "message": "Error interno del servidor.",
-        "parameter": None,
-    }
+    request_id = response.headers["X-Request-Id"]
+    body = response.json()
+    assert body["parameter"] is None
+    assert body["requestId"] == request_id
     assert "database" not in response.text
+    assert "Error interno del servidor." not in body["message"]
+    assert request_id in body["message"]
+    assert body["message"].startswith("No pudimos completar la acción.")
 
 
 def test_rate_limit_error_includes_retry_after_header() -> None:

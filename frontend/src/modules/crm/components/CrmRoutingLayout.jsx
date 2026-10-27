@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useCrmStore } from '@/stores/crmStore'
 import { isSimplifiedBlockedCrmPath } from '@/modules/crm/lib/crmNavigation'
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 
 export function CrmRoutingLayout() {
   const location = useLocation()
@@ -32,5 +33,9 @@ export function CrmRoutingLayout() {
     return <Navigate to="/crm" replace />
   }
 
-  return <Outlet />
+  return (
+    <ErrorBoundary resetKey={pathname}>
+      <Outlet />
+    </ErrorBoundary>
+  )
 }

@@ -129,7 +129,7 @@ class CatalogService:
             return category
         except IntegrityError as exc:
             self._session.rollback()
-            raise ConflictError("No se pudo crear la categoría por un conflicto de datos.") from exc
+            raise ConflictError("Ya existe una categoría con este nombre.", "name") from exc
 
     def update_category(
         self,

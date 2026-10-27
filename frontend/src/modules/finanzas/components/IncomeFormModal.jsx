@@ -120,16 +120,18 @@ export function IncomeFormModal({ open, onClose, income }) {
     try {
       const customerName = form.customerRef?.name?.trim() || form.customer?.trim() || ''
       const payload = buildManualIncomePayload(form, customerName)
-      if (isPosIncome) {
-        await updateIncome(income.id, {
+      const saved = isPosIncome
+        ? await updateIncome(income.id, {
           ...payload,
           category: form.category,
           source: form.source,
         })
+        : await (editing ? updateIncome(income.id, payload) : addManualIncome(payload))
+      if (saved?.attachmentWarning) {
+        toast.error(`${editing ? 'Ingreso actualizado' : 'Ingreso registrado'}. ${saved.attachmentWarning}`)
       } else {
-        await (editing ? updateIncome(income.id, payload) : addManualIncome(payload))
+        toast.success(editing ? 'Ingreso actualizado' : 'Ingreso registrado')
       }
-      toast.success(editing ? 'Ingreso actualizado' : 'Ingreso registrado')
       onClose()
     } catch (error) {
       setErr(error.message || 'No se pudo guardar el ingreso.')

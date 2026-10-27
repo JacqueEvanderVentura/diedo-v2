@@ -13,6 +13,7 @@ import { catalogApi } from '@/services/catalogApi'
 import { inventoryApi } from '@/services/inventoryApi'
 import { mapCategoryFromApi } from '@/services/adapters/catalog'
 import { resolveCategoryId } from '@/lib/catalogSync'
+import { categoryMutationErrorMessage } from '@/lib/categories'
 import { DURATION_OPTIONS } from '@/data/agenda'
 import { cn } from '@/lib/utils'
 
@@ -69,7 +70,7 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
   const recordAdjustment = useInventarioStore((s) => s.recordAdjustment)
   const FORM_CATEGORIES = useConfigStore((s) => s.categories)
   const setCategories = useConfigStore((s) => s.setCategories)
-  const canManageCatalog = useSessionStore((s) => s.hasPermission('catalog.manage'))
+  const canManageCatalog = useSessionStore((s) => s.hasWorkspacePermission('catalog.manage'))
   const BRANCHES = useConfigStore((s) => s.branches)
   const taxDefault = useConfigStore((s) => s.settings.taxDefault)
   const isOnline = useSessionStore((s) => s.isOnline())
@@ -148,7 +149,7 @@ export function ProductFormModal({ open, onClose, product, defaultType = 'produc
       setNewCategoryName('')
       toast.success('Categoría creada')
     } catch (error) {
-      toast.error(error.message || 'No se pudo crear la categoría')
+      toast.error(categoryMutationErrorMessage(error))
     } finally {
       setCreatingCategory(false)
     }

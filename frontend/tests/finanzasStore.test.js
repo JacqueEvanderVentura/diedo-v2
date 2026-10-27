@@ -16,9 +16,19 @@ const mocks = vi.hoisted(() => ({
   deleteExpense: vi.fn(),
   updateIncome: vi.fn(),
   deleteIncome: vi.fn(),
+  uploadFinanceExpenseAttachments: vi.fn(),
 }))
 
 vi.mock('@/services/financeApi', () => ({ financeApi: mocks }))
+vi.mock('@/lib/documentAttachments', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    uploadFinanceExpenseAttachments: mocks.uploadFinanceExpenseAttachments,
+    uploadFinanceFixedAttachments: vi.fn().mockResolvedValue([]),
+    uploadFinanceIncomeAttachments: vi.fn().mockResolvedValue([]),
+  }
+})
 
 import { useFinanzasStore } from '@/stores/finanzasStore'
 import { useSessionStore } from '@/stores/sessionStore'
@@ -209,5 +219,25 @@ describe('store de Finanzas conectado a la API', () => {
 
     expect(mocks.deleteIncome).toHaveBeenCalledWith('sale-id', 2)
     expect(useFinanzasStore.getState().incomeEntries).toHaveLength(1)
+  })
+
+  it('conserva el gasto si el adjunto falla y avisa el comprobante aparte', async () => {
+    await useFinanzasStore.getState().hydrateFromApi()
+    mocks.createExpense.mockResolvedValue(expense)
+    mocks.uploadFinanceExpenseAttachments.mockRejectedValue(
+      Object.assign(new Error('No se pudo guardar el comprobante. Intenta de nuevo o sigue sin archivo.'), { status: 503 })
+    )
+
+    await expect(useFinanzasStore.getState().addExpense({
+      concept: 'Insumos',
+      amount: 1250.5,
+      attachments: [{ pendingFile: { name: 'ticket.pdf' } }],
+    })).resolves.toMatchObject({
+      id: 'expense-id',
+      attachmentWarning: 'No se pudo guardar el comprobante. Intenta de nuevo o sigue sin archivo.',
+    })
+
+    expect(mocks.createExpense).toHaveBeenCalledOnce()
+    expect(useFinanzasStore.getState().expenses.some((item) => item.id === 'expense-id')).toBe(true)
   })
 })
