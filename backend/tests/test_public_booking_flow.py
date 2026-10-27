@@ -412,10 +412,67 @@ def test_public_booking_any_available_specialist(client, booking_setup):
         headers={"Idempotency-Key": str(uuid7())},
     )
     assert booked.status_code == 201, booked.text
+    assert booked.json()["appointment"]["time"] == pick
+    booked_ids = [booked.json()["appointment"]["id"]]
+    for _ in range(50):
+        another = client.post(
+            f"{base}/appointments",
+            json={
+                **payload_for(employee, service),
+                "date": body["date"],
+                "time": pick,
+                "employeeId": None,
+            },
+            headers={"Idempotency-Key": str(uuid7())},
+        )
+        if another.status_code == 409:
+            assert another.json()["parameter"] == "time"
+            break
+        assert another.status_code == 201, another.text
+        booked_ids.append(another.json()["appointment"]["id"])
+    else:
+        pytest.fail("Cualquiera disponible nunca agotó el cupo del horario.")
+    with get_session_factory()() as session:
+        stored = [session.get(Appointment, UUID(item)) for item in booked_ids]
+    assert all(item.employee_id is not None and item.resource_id is not None for item in stored)
+    assert len({item.employee_id for item in stored}) == len(stored)
+    assert len({item.resource_id for item in stored}) == len(stored)
+
+
+@pytest.mark.integration
+def test_public_reschedule_assigns_orphan_appointment(client, booking_setup):
+    headers, _, branch, employee, service = booking_setup
+    base = f"/api/v1/public/booking/branches/{branch}"
+    body = payload_for(employee, service)
+    _set_service_duration(client, headers, service, 30)
+    booked = client.post(
+        f"{base}/appointments",
+        json={**body, "time": "10:00"},
+        headers={"Idempotency-Key": str(uuid7())},
+    )
+    assert booked.status_code == 201, booked.text
     appointment = booked.json()["appointment"]
-    assert not appointment.get("employeeId")
-    assert not appointment.get("resourceId")
-    assert appointment["time"] == pick
+    with get_session_factory()() as session:
+        stored = session.get(Appointment, UUID(appointment["id"]))
+        stored.employee_id = None
+        stored.resource_id = None
+        session.commit()
+
+    rescheduled = client.post(
+        f"{base}/appointments/{appointment['id']}/reschedule",
+        json={
+            "managementToken": appointment["managementToken"],
+            "date": body["date"],
+            "time": "11:00",
+        },
+    )
+    assert rescheduled.status_code == 200, rescheduled.text
+    assert rescheduled.json()["time"] == "11:00"
+    with get_session_factory()() as session:
+        stored = session.get(Appointment, UUID(appointment["id"]))
+        assert stored.employee_id is not None
+        assert str(stored.employee_id) == rescheduled.json()["employeeId"]
+        assert stored.resource_id is not None
 
 
 @pytest.mark.integration

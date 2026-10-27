@@ -231,6 +231,26 @@ class PublicBookingService:
         )
         return sorted(specialist_times & resource_times)
 
+    def _assign_any_specialist(
+        self,
+        branch: Branch,
+        scheduled_date: date,
+        time_key: str,
+        duration_minutes: int,
+        exclude_appointment_id: UUID | None = None,
+    ) -> tuple[UUID, UUID]:
+        for specialist in self._list_specialists(branch.workspace_id, branch.id):
+            free = self._slot_resources(
+                branch.id,
+                scheduled_date,
+                specialist["id"],
+                duration_minutes,
+                exclude_appointment_id=exclude_appointment_id,
+            ).get(time_key, [])
+            if free:
+                return specialist["id"], free[0]
+        raise ConflictError("Ese horario ya no está disponible. Elige otro cupo.", "time")
+
     def _resource_only_slot_times(
         self,
         branch: Branch,
@@ -420,24 +440,21 @@ class PublicBookingService:
             )
         payload_employee_id = cast(UUID | None, payload.get("employee_id"))
         self._lock(f"booking-branch:{branch.id}")
-        employee: Employee | None = None
-        resource_id: UUID | None = None
         if payload_employee_id is None:
-            open_slots = self._unassigned_slot_times(
-                branch,
-                scheduled_date=scheduled_date,
-                duration_minutes=duration,
+            employee_id, resource_id = self._assign_any_specialist(
+                branch, scheduled_date, time_key, duration
             )
-            if time_key not in open_slots:
-                raise ConflictError("Ese horario ya no está disponible. Elige otro cupo.", "time")
         else:
-            employee = self._require_specialist(branch.workspace_id, branch.id, payload_employee_id)
-            available = self._slot_resources(branch.id, scheduled_date, employee.id, duration)
-            free = available.get(time_key, [])
+            employee_id = self._require_specialist(
+                branch.workspace_id, branch.id, payload_employee_id
+            ).id
+            free = self._slot_resources(branch.id, scheduled_date, employee_id, duration).get(
+                time_key, []
+            )
             if not free:
                 raise ConflictError("Ese horario ya no está disponible. Elige otro cupo.", "time")
             resource_id = free[0]
-            self._lock(f"booking-employee:{employee.id}")
+        self._lock(f"booking-employee:{employee_id}")
         normalized = self._normalized_document(
             str(payload["document_type"]), str(payload["document_id"])
         )
@@ -455,8 +472,7 @@ class PublicBookingService:
             "branch_id": branch.id,
             "resource_id": resource_id,
             "customer_id": customer.id,
-            "employee_id": employee.id if employee is not None else None,
-            "any_available": payload_employee_id is None,
+            "employee_id": employee_id,
             "service_id": service["id"],
             "date": scheduled_date,
             "time": scheduled_time,
@@ -712,18 +728,19 @@ class PublicBookingService:
         self._lock(f"booking-branch:{branch.id}")
         time_key = scheduled_time.strftime("%H:%M")
         if appointment.employee_id is None:
-            open_slots = self._unassigned_slot_times(
+            employee_id, resource_id = self._assign_any_specialist(
                 branch,
-                scheduled_date=scheduled_date,
-                duration_minutes=duration_minutes,
+                scheduled_date,
+                time_key,
+                duration_minutes,
                 exclude_appointment_id=appointment.id,
             )
-            if time_key not in open_slots:
-                raise ConflictError("Ese horario ya no está disponible. Elige otro cupo.", "time")
             changes = {
                 "date": scheduled_date,
                 "time": scheduled_time,
                 "duration": duration_minutes,
+                "employee_id": employee_id,
+                "resource_id": resource_id,
             }
         else:
             self._lock(f"booking-employee:{appointment.employee_id}")
