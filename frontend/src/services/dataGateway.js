@@ -23,6 +23,7 @@ const gateways = new Set()
 
 export function createModuleGateway({ module, apiRepository }) {
   const cached = new Map()
+  const pendingReads = new Set()
   let generation = 0
   let state = { module, status: DATA_STATES.LOADING, source: null, lastSyncedAt: null, error: null }
 
@@ -30,41 +31,53 @@ export function createModuleGateway({ module, apiRepository }) {
     if (requestGeneration !== generation) throw new TenantStateChangedError()
   }
 
+  const readFromApi = async (operation, ...args) => {
+    const requestGeneration = generation
+    const cacheKey = `${operation}:${JSON.stringify(args)}`
+    state = { ...state, status: DATA_STATES.LOADING, error: null }
+    try {
+      const data = await apiRepository[operation](...args)
+      assertCurrentGeneration(requestGeneration)
+      cached.set(cacheKey, structuredClone(data))
+      state = {
+        module,
+        status: DATA_STATES.READY,
+        source: 'api',
+        lastSyncedAt: new Date().toISOString(),
+        error: null,
+      }
+      return { data, ...state }
+    } catch (error) {
+      assertCurrentGeneration(requestGeneration)
+      if (cached.has(cacheKey)) {
+        state = { ...state, status: DATA_STATES.STALE, source: 'cache', error }
+        return { data: structuredClone(cached.get(cacheKey)), ...state }
+      }
+      state = { ...state, status: DATA_STATES.ERROR, source: null, error }
+      throw error
+    }
+  }
+
   const gateway = {
     getState: () => state,
 
-    async read(operation, ...args) {
-      const requestGeneration = generation
-      const cacheKey = `${operation}:${JSON.stringify(args)}`
-      state = { ...state, status: DATA_STATES.LOADING, error: null }
-      try {
-        const data = await apiRepository[operation](...args)
-        assertCurrentGeneration(requestGeneration)
-        cached.set(cacheKey, structuredClone(data))
-        state = {
-          module,
-          status: DATA_STATES.READY,
-          source: 'api',
-          lastSyncedAt: new Date().toISOString(),
-          error: null,
-        }
-        return { data, ...state }
-      } catch (error) {
-        assertCurrentGeneration(requestGeneration)
-        if (cached.has(cacheKey)) {
-          state = { ...state, status: DATA_STATES.STALE, source: 'cache', error }
-          return { data: structuredClone(cached.get(cacheKey)), ...state }
-        }
-        state = { ...state, status: DATA_STATES.ERROR, source: null, error }
-        throw error
-      }
+    read(operation, ...args) {
+      const request = readFromApi(operation, ...args)
+      const settle = () => pendingReads.delete(request)
+      pendingReads.add(request)
+      request.then(settle, settle)
+      return request
     },
 
     async mutate(operation, ...args) {
+      const requestGeneration = generation
+      if (state.status === DATA_STATES.LOADING && pendingReads.size > 0) {
+        await Promise.allSettled([...pendingReads])
+        assertCurrentGeneration(requestGeneration)
+      }
       if (state.status !== DATA_STATES.READY || state.source !== 'api') {
         throw new MutationBlockedError()
       }
-      const requestGeneration = generation
       const result = await apiRepository[operation](...args)
       assertCurrentGeneration(requestGeneration)
       return result
@@ -73,6 +86,7 @@ export function createModuleGateway({ module, apiRepository }) {
     clear() {
       generation += 1
       cached.clear()
+      pendingReads.clear()
       state = {
         module,
         status: DATA_STATES.LOADING,
