@@ -36,16 +36,12 @@ export async function syncPipelineCloseCustomer({
   updateLead,
 }) {
   if (!leadId || !customerId) return
-  const quote = findBillableQuote(quotes, leadId) || findLeadLinkedQuote(quotes, leadId)
-  if (quote && quote.customerId !== customerId) {
-    await updateQuote(quote.id, { customerId })
-  }
   if (updateLead) {
-    try {
-      await updateLead(leadId, { customerId })
-    } catch {
-      /* La API solo persiste cliente en el lead al convertir; la cotización es la fuente de verdad. */
-    }
+    await updateLead(leadId, { customerId })
+  }
+  const quote = findBillableQuote(quotes, leadId) || findLeadLinkedQuote(quotes, leadId)
+  if (quote && !quote.convertedSaleId && quote.customerId !== customerId) {
+    await updateQuote(quote.id, { customerId })
   }
 }
 

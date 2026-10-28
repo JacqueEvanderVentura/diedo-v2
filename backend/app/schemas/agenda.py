@@ -44,6 +44,7 @@ class AppointmentResourceResponse(ApiModel):
     resource_type: ResourceType
     status: ResourceStatus
     sort_order: int = 0
+    online_booking_enabled: bool = True
     access: ResourceAccess | None = None
     version: int
 
@@ -73,6 +74,7 @@ class UpdateAppointmentResourceRequest(ApiModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=500)
     status: ResourceStatus | None = None
+    online_booking_enabled: bool | None = None
 
     @field_validator("name")
     @classmethod

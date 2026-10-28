@@ -87,13 +87,13 @@ class DocumentAttachmentService:
         if purpose not in _ALLOWED_PURPOSES:
             raise InvalidOperationError("El tipo de adjunto no es válido.", "purpose")
         normalized_type = self._content_type(content_type)
-        self._digest(source, max_bytes=max_bytes)
         attachment_id = uuid7()
         extension = _ALLOWED_TYPES[normalized_type]
         storage_key = (
             f"{grant.workspace_id}/documents/{owner_kind}/{owner_id}/{attachment_id}{extension}"
         )
         try:
+            self._digest(source, max_bytes=max_bytes)
             blob = storage.save(
                 source,
                 storage_key=storage_key,

@@ -6,16 +6,21 @@ import {
   WEEKDAY_KEYS,
   WEEKDAY_LABELS,
   WEEKDAY_SHORT,
-  emptyWorkSchedule,
-  normalizeWorkSchedule,
-  summarizeDayBlocks,
+  coerceWorkSchedule,
   copyWeekdaySchedule,
+  dayHasErrors,
+  getBlockError,
+  minutesToTime,
+  summarizeDayBlocks,
   timeToMinutes,
 } from '../lib/schedule'
 
+const LAST_MINUTE = 23 * 60 + 59
+const MIN_NEW_BLOCK = 30
+
 function DayTimeline({ blocks }) {
-  const dayStart = 7 * 60
-  const dayEnd = 21 * 60
+  const dayStart = Math.min(7 * 60, ...blocks.map((block) => timeToMinutes(block.start)))
+  const dayEnd = Math.max(21 * 60, ...blocks.map((block) => timeToMinutes(block.end)))
   const span = dayEnd - dayStart
 
   return (
@@ -35,28 +40,37 @@ function DayTimeline({ blocks }) {
         })}
       </div>
       <div className="mt-1.5 flex justify-between text-[10px] font-medium text-slate-400">
-        <span>7:00</span>
-        <span>21:00</span>
+        <span>{minutesToTime(dayStart)}</span>
+        <span>{minutesToTime(dayEnd)}</span>
       </div>
     </div>
   )
 }
 
 export function EmployeeScheduleEditor({ value, onChange }) {
-  const schedule = useMemo(() => normalizeWorkSchedule(value || emptyWorkSchedule()), [value])
+  const schedule = useMemo(() => coerceWorkSchedule(value), [value])
   const [activeDay, setActiveDay] = useState('mon')
 
   const blocks = schedule[activeDay] || []
+  const blockErrors = blocks.map((_, index) => getBlockError(blocks, index))
+  const validBlocks = blocks.filter((_, index) => !blockErrors[index])
+
+  const latestEnd = blocks.reduce((latest, block) => {
+    if (!block.start || !block.end) return latest
+    const end = timeToMinutes(block.end)
+    return end > timeToMinutes(block.start) ? Math.max(latest, end) : latest
+  }, -1)
+  const nextStart = latestEnd >= 0 ? latestEnd : 8 * 60
+  const canAddBlock = nextStart + MIN_NEW_BLOCK <= LAST_MINUTE
 
   const updateDay = (day, nextBlocks) => {
     onChange({ ...schedule, [day]: nextBlocks })
   }
 
   const addBlock = () => {
-    const last = blocks[blocks.length - 1]
-    const start = last ? last.end : '08:00'
-    const startMin = timeToMinutes(start)
-    const end = `${String(Math.min(21, Math.floor((startMin + 120) / 60))).padStart(2, '0')}:${String((startMin + 120) % 60).padStart(2, '0')}`
+    if (!canAddBlock) return
+    const start = minutesToTime(nextStart)
+    const end = minutesToTime(Math.min(nextStart + 120, LAST_MINUTE))
     updateDay(activeDay, [...blocks, { start, end }])
   }
 
@@ -100,6 +114,7 @@ export function EmployeeScheduleEditor({ value, onChange }) {
       <div className="flex flex-wrap gap-1.5">
         {WEEKDAY_KEYS.map((day) => {
           const count = schedule[day]?.length || 0
+          const hasErrors = dayHasErrors(schedule[day])
           return (
             <button
               key={day}
@@ -109,8 +124,10 @@ export function EmployeeScheduleEditor({ value, onChange }) {
                 'rounded-lg px-3 py-2 text-xs font-bold transition-colors',
                 activeDay === day
                   ? 'bg-blue-600 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+                hasErrors && 'ring-2 ring-red-400'
               )}
+              aria-label={hasErrors ? `${WEEKDAY_LABELS[day]} (con errores)` : undefined}
               data-testid={`schedule-day-${day}`}
             >
               {WEEKDAY_SHORT[day]}
@@ -118,10 +135,12 @@ export function EmployeeScheduleEditor({ value, onChange }) {
                 <span
                   className={cn(
                     'ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px]',
-                    activeDay === day ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-700'
+                    hasErrors
+                      ? 'bg-red-500 text-white'
+                      : activeDay === day ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-700'
                   )}
                 >
-                  {count}
+                  {hasErrors ? '!' : count}
                 </span>
               )}
             </button>
@@ -135,13 +154,21 @@ export function EmployeeScheduleEditor({ value, onChange }) {
             <p className="text-sm font-semibold text-slate-800">{WEEKDAY_LABELS[activeDay]}</p>
             <p className="text-xs text-slate-500">{summarizeDayBlocks(blocks)}</p>
           </div>
-          <Button type="button" size="sm" variant="secondary" onClick={addBlock}>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={addBlock}
+            disabled={!canAddBlock}
+            title={canAddBlock ? undefined : 'No queda espacio en el día para otro bloque.'}
+            data-testid="schedule-add-block"
+          >
             <Plus className="h-3.5 w-3.5" />
             Agregar bloque
           </Button>
         </div>
 
-        {blocks.length > 0 && <DayTimeline blocks={blocks} />}
+        {validBlocks.length > 0 && <DayTimeline blocks={validBlocks} />}
 
         <div className="mt-4 space-y-2">
           {blocks.length === 0 ? (
@@ -149,35 +176,57 @@ export function EmployeeScheduleEditor({ value, onChange }) {
               Sin bloques este día — no habrá cupos disponibles.
             </p>
           ) : (
-            blocks.map((block, index) => (
-              <div
-                key={`${activeDay}-${index}`}
-                className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-100 bg-slate-50/70 p-3"
-                data-testid={`schedule-block-${activeDay}-${index}`}
-              >
-                <input
-                  type="time"
-                  value={block.start}
-                  onChange={(e) => updateBlock(index, { start: e.target.value })}
-                  className="rounded-lg border-0 bg-white px-3 py-2 text-sm font-semibold text-slate-800 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-600"
-                />
-                <span className="text-xs font-semibold text-slate-400">a</span>
-                <input
-                  type="time"
-                  value={block.end}
-                  onChange={(e) => updateBlock(index, { end: e.target.value })}
-                  className="rounded-lg border-0 bg-white px-3 py-2 text-sm font-semibold text-slate-800 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-600"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeBlock(index)}
-                  className="ml-auto rounded-lg p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
-                  aria-label="Eliminar bloque"
+            blocks.map((block, index) => {
+              const error = blockErrors[index]
+              const errorId = `schedule-block-${activeDay}-${index}-error`
+              const inputClass = cn(
+                'rounded-lg border-0 bg-white px-3 py-2 text-sm font-semibold text-slate-800 ring-1 ring-inset focus:ring-2',
+                error ? 'ring-red-300 focus:ring-red-500' : 'ring-slate-200 focus:ring-blue-600'
+              )
+              return (
+                <div
+                  key={`${activeDay}-${index}`}
+                  className={cn(
+                    'flex flex-wrap items-center gap-2 rounded-xl border p-3',
+                    error ? 'border-red-200 bg-red-50/60' : 'border-slate-100 bg-slate-50/70'
+                  )}
+                  data-testid={`schedule-block-${activeDay}-${index}`}
                 >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            ))
+                  <input
+                    type="time"
+                    value={block.start}
+                    onChange={(e) => updateBlock(index, { start: e.target.value })}
+                    aria-label="Hora de entrada"
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={error ? errorId : undefined}
+                    className={inputClass}
+                  />
+                  <span className="text-xs font-semibold text-slate-400">a</span>
+                  <input
+                    type="time"
+                    value={block.end}
+                    onChange={(e) => updateBlock(index, { end: e.target.value })}
+                    aria-label="Hora de salida"
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={error ? errorId : undefined}
+                    className={inputClass}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeBlock(index)}
+                    className="ml-auto rounded-lg p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                    aria-label="Eliminar bloque"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                  {error && (
+                    <p id={errorId} className="basis-full text-xs font-medium text-red-600">
+                      {error}
+                    </p>
+                  )}
+                </div>
+              )
+            })
           )}
         </div>
       </div>

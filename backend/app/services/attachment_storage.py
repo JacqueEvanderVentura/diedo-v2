@@ -9,7 +9,7 @@ from typing import Any, BinaryIO, Protocol, cast
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 from app.services.errors import ServiceUnavailableError
 
@@ -19,15 +19,12 @@ STORAGE_UNAVAILABLE_MESSAGE = (
 
 
 def _raise_if_storage_client_error(exc: BaseException) -> None:
-    if isinstance(exc, ClientError) or (
-        isinstance(exc, BaseExceptionGroup)
-        and any(_is_client_error(item) for item in exc.exceptions)
-    ):
+    if _is_client_error(exc):
         raise ServiceUnavailableError(STORAGE_UNAVAILABLE_MESSAGE, "file") from exc
 
 
 def _is_client_error(exc: BaseException) -> bool:
-    if isinstance(exc, ClientError):
+    if isinstance(exc, (ClientError, BotoCoreError)):
         return True
     if isinstance(exc, BaseExceptionGroup):
         return any(_is_client_error(item) for item in exc.exceptions)
@@ -235,4 +232,6 @@ def _detected_content_type(value: bytes) -> str | None:
         return "image/png"
     if len(value) >= 12 and value.startswith(b"RIFF") and value[8:12] == b"WEBP":
         return "image/webp"
+    if value.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
     return None

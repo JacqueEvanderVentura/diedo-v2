@@ -100,6 +100,7 @@ def _resource_response(
         resource_type=cast(Any, resource.resource_type),
         status=cast(Any, resource.status),
         sort_order=resource.sort_order,
+        online_booking_enabled=resource.online_booking_enabled,
         access=access,
         version=resource.version,
     )

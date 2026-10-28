@@ -12,34 +12,24 @@ export function normalizePartyName(value) {
     .trim()
 }
 
-function normalizeName(value) {
-  return normalizePartyName(value)
+function linkedQuoteCustomerId(lead, quotes = []) {
+  const linked = (quotes || [])
+    .filter((quote) => quote.leadId === lead.id && quote.customerId && quote.customerId !== 'walk-in')
+    .sort((left, right) => new Date(right.updatedAt || right.createdAt || 0) - new Date(left.updatedAt || left.createdAt || 0))
+  return linked[0]?.customerId || null
 }
 
-export function resolveCustomerForLead(lead, customers = []) {
-  if (!lead) return null
-  if (lead.customerId) {
-    return customers.find((customer) => customer.id === lead.customerId) || null
-  }
-
-  const label = leadCompanyLabel(lead)
-  if (!label) return null
-  const target = normalizeName(label)
-
-  const pool = customers.filter((customer) => !customer.isDefault)
-  const exact = pool.find((customer) => normalizeName(customer.name) === target)
-  if (exact) return exact
-
-  return pool.find((customer) => {
-    const name = normalizeName(customer.name)
-    return name.includes(target) || target.includes(name)
-  }) || null
-}
-
-export function effectiveLeadCustomerId(lead, customers = []) {
+/** Customer explicitly linked to the lead, or the customer of its latest quote. Never guessed by name. */
+export function effectiveLeadCustomerId(lead, quotes = []) {
   if (!lead) return null
   if (lead.customerId) return lead.customerId
-  return resolveCustomerForLead(lead, customers)?.id || null
+  return linkedQuoteCustomerId(lead, quotes)
+}
+
+export function resolveCustomerForLead(lead, customers = [], quotes = []) {
+  const customerId = effectiveLeadCustomerId(lead, quotes)
+  if (!customerId) return null
+  return customers.find((customer) => customer.id === customerId) || null
 }
 
 /** @deprecated Use lead-based helpers */

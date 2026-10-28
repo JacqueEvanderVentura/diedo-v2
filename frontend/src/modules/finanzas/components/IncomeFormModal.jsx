@@ -128,7 +128,9 @@ export function IncomeFormModal({ open, onClose, income }) {
         })
         : await (editing ? updateIncome(income.id, payload) : addManualIncome(payload))
       if (saved?.attachmentWarning) {
-        toast.error(`${editing ? 'Ingreso actualizado' : 'Ingreso registrado'}. ${saved.attachmentWarning}`)
+        toast.warning(`${editing ? 'Ingreso actualizado' : 'Ingreso registrado'}, pero el comprobante no se subió.`, {
+          description: saved.attachmentWarning,
+        })
       } else {
         toast.success(editing ? 'Ingreso actualizado' : 'Ingreso registrado')
       }

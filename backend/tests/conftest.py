@@ -5,12 +5,12 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from app.config import settings
-from app.db.models import AppointmentResourceAcl, BranchOpeningHour
+from app.db.models import AppointmentResource, AppointmentResourceAcl, BranchOpeningHour
 from app.db.session import dispose_engine, session_scope
 from app.main import app
 from app.scripts.release_test_database_backends import release_backends
 from fastapi.testclient import TestClient
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 from sqlalchemy.engine import make_url
 
 
@@ -59,6 +59,7 @@ def reset_agenda_test_isolation(
     with session_scope() as session:
         session.execute(delete(AppointmentResourceAcl))
         session.execute(delete(BranchOpeningHour))
+        session.execute(update(AppointmentResource).values(online_booking_enabled=True))
     yield
 
 

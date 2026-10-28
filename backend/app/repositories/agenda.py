@@ -109,15 +109,6 @@ class AgendaRepository:
             )
         )
 
-    def resource_ids_with_acl_rows(self, workspace_id: UUID, branch_id: UUID) -> frozenset[UUID]:
-        rows = self._session.scalars(
-            select(AppointmentResourceAcl.resource_id).where(
-                AppointmentResourceAcl.workspace_id == workspace_id,
-                AppointmentResourceAcl.branch_id == branch_id,
-            )
-        )
-        return frozenset(rows)
-
     def acl_rows_for_branch(
         self, workspace_id: UUID, branch_id: UUID
     ) -> tuple[AppointmentResourceAcl, ...]:
@@ -311,9 +302,12 @@ class AgendaRepository:
             Appointment.record_status == "active",
         ]
         if allowed_resource_ids is not None:
-            if not allowed_resource_ids:
-                return AppointmentListResult(items=(), total_items=0)
-            filters.append(Appointment.resource_id.in_(allowed_resource_ids))
+            filters.append(
+                or_(
+                    Appointment.resource_id.is_(None),
+                    Appointment.resource_id.in_(allowed_resource_ids),
+                )
+            )
         if allowed_branch_ids is not None:
             filters.append(Appointment.branch_id.in_(allowed_branch_ids))
         if branch_id is not None:

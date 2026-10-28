@@ -800,16 +800,16 @@ class MasterDataRepository:
             query = query.where(Employee.id != exclude_id)
         return self._session.scalar(query) is not None
 
-    def platform_user_link_exists(
+    def find_employee_by_platform_user(
         self, workspace_id: UUID, platform_user_id: UUID, exclude_id: UUID | None = None
-    ) -> bool:
-        query = select(Employee.id).where(
+    ) -> Employee | None:
+        query = select(Employee).where(
             Employee.workspace_id == workspace_id,
             Employee.platform_user_id == platform_user_id,
         )
         if exclude_id is not None:
             query = query.where(Employee.id != exclude_id)
-        return self._session.scalar(query) is not None
+        return self._session.scalar(query.limit(1))
 
     def list_attachments(
         self, workspace_id: UUID, owner_type: str, owner_id: UUID

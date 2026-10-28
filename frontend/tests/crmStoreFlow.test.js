@@ -12,11 +12,14 @@ const mocks = vi.hoisted(() => ({
   createQuote: vi.fn(),
   updateQuote: vi.fn(),
   cancelQuote: vi.fn(),
+  convertLead: vi.fn(),
+  quotes: vi.fn(),
 }))
 
 const customerStore = vi.hoisted(() => ({
   hydrate: vi.fn(),
   addCustomer: vi.fn(),
+  fetchCustomer: vi.fn(),
   mergeCrmProfiles: vi.fn(),
 }))
 
@@ -336,5 +339,82 @@ describe('flujo conectado del store CRM', () => {
     expect(invoice).not.toHaveBeenCalled()
     expect(useCrmStore.getState().leads[0].status).toBe('cerrado')
     invoice.mockRestore()
+  })
+
+  it('no vuelve a cerrar un lead que el backend ya marcó Ganado al facturar', async () => {
+    customerStore.customers = [{ id: customerId, name: 'Cliente' }]
+    useCrmStore.setState({
+      leads: [pipelineLead({ customerId, status: 'negociacion' })],
+      quotes: [{
+        id: 'quote',
+        leadId,
+        customerId,
+        status: 'aceptada',
+        convertedSaleId: 'sale',
+        items: [{ name: 'Servicio', price: 900, qty: 1 }],
+        version: 1,
+      }],
+    })
+    mocks.getSale.mockResolvedValue({ id: 'sale', number: 'VTA-001', total: '955.80', lines: [] })
+    mocks.getLead.mockResolvedValue(pipelineLead({ customerId, status: 'cerrado', version: 3 }))
+    await useCrmStore.getState().closeLeadWithInvoice(leadId)
+    expect(mocks.updateLead).not.toHaveBeenCalled()
+    expect(useCrmStore.getState().leads[0]).toMatchObject({ status: 'cerrado', version: 3 })
+  })
+
+  it('cierra como ganado sin factura vinculando el cliente', async () => {
+    useCrmStore.setState({ leads: [pipelineLead({ status: 'negociacion' })] })
+    mocks.updateLead.mockResolvedValue(pipelineLead({ customerId, status: 'cerrado', version: 2 }))
+    await useCrmStore.getState().closeLeadWithoutInvoice(leadId, { customerId })
+    expect(mocks.updateLead).toHaveBeenCalledWith(leadId, {
+      version: 1,
+      status: 'cerrado',
+      customerId,
+    })
+    expect(useCrmStore.getState().leads[0].status).toBe('cerrado')
+  })
+
+  it('no cierra sin factura cuando el lead no tiene cliente', async () => {
+    useCrmStore.setState({ leads: [pipelineLead({ status: 'negociacion' })] })
+    await expect(useCrmStore.getState().closeLeadWithoutInvoice(leadId)).rejects.toThrow('Vincula un cliente')
+    expect(mocks.updateLead).not.toHaveBeenCalled()
+  })
+
+  it('encuentra el lead en la cola simplificada cuando no está en la página cargada', async () => {
+    const queued = pipelineLead({ status: 'propuesta', version: 4 })
+    useCrmStore.setState({
+      leads: [],
+      simplifiedWorkspace: { ...useCrmStore.getState().simplifiedWorkspace, items: [queued] },
+    })
+    mocks.updateLead.mockResolvedValue(pipelineLead({ status: 'negociacion', version: 5 }))
+    await useCrmStore.getState().updateLead(leadId, { status: 'negociacion' })
+    expect(mocks.updateLead).toHaveBeenCalledWith(leadId, { version: 4, status: 'negociacion' })
+    expect(mocks.getLead).not.toHaveBeenCalled()
+  })
+
+  it('consulta el lead en la API cuando no está en memoria', async () => {
+    useCrmStore.setState({
+      leads: [],
+      simplifiedWorkspace: { ...useCrmStore.getState().simplifiedWorkspace, items: [] },
+    })
+    mocks.getLead.mockResolvedValue(pipelineLead({ status: 'propuesta', version: 7 }))
+    mocks.updateLead.mockResolvedValue(pipelineLead({ status: 'negociacion', version: 8 }))
+    await useCrmStore.getState().updateLead(leadId, { status: 'negociacion' })
+    expect(mocks.getLead).toHaveBeenCalledWith(leadId)
+    expect(mocks.updateLead).toHaveBeenCalledWith(leadId, { version: 7, status: 'negociacion' })
+  })
+
+  it('convertir a cliente vincula el cliente y deja el lead en su etapa', async () => {
+    useCrmStore.setState({ leads: [pipelineLead({ status: 'propuesta', documentId: '00112345678' })] })
+    mocks.getLead
+      .mockResolvedValueOnce(pipelineLead({ status: 'propuesta', documentId: '00112345678', version: 2 }))
+      .mockResolvedValueOnce(pipelineLead({ status: 'propuesta', customerId, version: 3 }))
+    mocks.convertLead.mockResolvedValue({ id: customerId, displayName: 'Empresa de prueba' })
+    customerStore.fetchCustomer.mockResolvedValue(null)
+    const customer = await useCrmStore.getState().convertToCustomer(leadId)
+    expect(customer.id).toBe(customerId)
+    expect(mocks.convertLead).toHaveBeenCalledWith(leadId, expect.objectContaining({ version: 2 }))
+    expect(mocks.updateLead).not.toHaveBeenCalled()
+    expect(useCrmStore.getState().leads[0]).toMatchObject({ status: 'propuesta', customerId })
   })
 })

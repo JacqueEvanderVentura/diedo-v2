@@ -408,6 +408,22 @@ def test_document_attachment_get_content_and_upload_error_paths(
         )
     assert mismatch.value.parameter == "file"
 
+    untouched_storage = Mock()
+    with pytest.raises(InvalidOperationError, match="excede") as oversized:
+        service.upload(
+            principal=principal,
+            grant=grant,
+            owner_kind="finance_expense",
+            owner_id=expense_id,
+            source=BytesIO(_PNG),
+            filename="proof.png",
+            content_type="image/png",
+            storage=untouched_storage,
+            max_bytes=4,
+        )
+    assert oversized.value.parameter == "file"
+    untouched_storage.save.assert_not_called()
+
     repository.add.side_effect = IntegrityError("insert", {}, Exception("dup"))
     working_storage = Mock()
     working_storage.save.return_value = StoredBlob(

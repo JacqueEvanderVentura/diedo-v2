@@ -174,22 +174,13 @@ class AgendaService:
             workspace_id=grant.workspace_id,
             branch_id=branch_id,
         )
-        resources_with_acl = self._repository.resource_ids_with_acl_rows(
-            grant.workspace_id, branch_id
-        )
-        acl_rows = self._repository.acl_rows_for_branch(grant.workspace_id, branch_id)
-        acl_by_resource: dict[UUID, dict[UUID, str]] = {}
-        for row in acl_rows:
-            acl_by_resource.setdefault(row.resource_id, {})[row.platform_user_id] = row.access
+        acl_by_resource = self._branch_acl_map(grant.workspace_id, branch_id)
         return tuple(
             ListedAppointmentResource(
                 resource=resource,
                 access=self._resource_access(
-                    workspace_id=grant.workspace_id,
-                    branch_id=branch_id,
                     resource_id=resource.id,
                     platform_user_id=principal.platform_user_id,
-                    resources_with_acl=resources_with_acl,
                     acl_by_resource=acl_by_resource,
                 ),
             )
@@ -300,6 +291,8 @@ class AgendaService:
             resource.description = cast(str | None, changes["description"])
         if "status" in changes and changes["status"] is not None:
             resource.status = cast(str, changes["status"])
+        if changes.get("online_booking_enabled") is not None:
+            resource.online_booking_enabled = cast(bool, changes["online_booking_enabled"])
         self._session.commit()
         return resource
 
@@ -441,6 +434,7 @@ class AgendaService:
         values: dict[str, Any],
         idempotency_key: str,
         commit: bool = True,
+        enforce_resource_acl: bool = True,
     ) -> tuple[AppointmentRecord, ...]:
         branch_id = cast(UUID, values["branch_id"])
         self._validate_notes(values.get("notes"))
@@ -491,7 +485,7 @@ class AgendaService:
             customer_id=customer_id,
             service_id=service_id,
         )
-        if resource_id is not None:
+        if resource_id is not None and enforce_resource_acl:
             self._require_resource_use(
                 workspace_id=grant.workspace_id,
                 branch_id=branch_id,
@@ -692,6 +686,7 @@ class AgendaService:
         expected_version: int,
         changes: dict[str, Any],
         commit: bool = True,
+        enforce_resource_acl: bool = True,
     ) -> AppointmentRecord:
         appointment = self._repository.get_appointment(
             workspace_id=grant.workspace_id,
@@ -736,20 +731,23 @@ class AgendaService:
             or "time" in changes
             or "duration" in changes
         )
-        if resource_id is not None and (schedule_changed or resource_id != appointment.resource_id):
-            self._require_resource_edit(
+        if enforce_resource_acl:
+            if resource_id is not None and (
+                schedule_changed or resource_id != appointment.resource_id
+            ):
+                self._require_resource_edit(
+                    workspace_id=grant.workspace_id,
+                    branch_id=branch_id,
+                    resource_id=resource_id,
+                    platform_user_id=principal.platform_user_id,
+                )
+            elif not self._resource_visible(
                 workspace_id=grant.workspace_id,
                 branch_id=branch_id,
-                resource_id=resource_id,
+                resource_id=appointment.resource_id,
                 platform_user_id=principal.platform_user_id,
-            )
-        elif not self._resource_visible(
-            workspace_id=grant.workspace_id,
-            branch_id=branch_id,
-            resource_id=appointment.resource_id,
-            platform_user_id=principal.platform_user_id,
-        ):
-            raise AuthorizationError("No tienes acceso a esta cita.")
+            ):
+                raise AuthorizationError("No tienes acceso a esta cita.")
 
         scheduled_date = cast(date, changes.get("date", appointment.scheduled_date))
         scheduled_time = cast(time, changes.get("time", appointment.scheduled_time))
@@ -1359,20 +1357,24 @@ class AgendaService:
                 return resource_id, None
         raise self._slot_conflict()
 
+    def _branch_acl_map(self, workspace_id: UUID, branch_id: UUID) -> dict[UUID, dict[UUID, str]]:
+        acl_by_resource: dict[UUID, dict[UUID, str]] = {}
+        for row in self._repository.acl_rows_for_branch(workspace_id, branch_id):
+            acl_by_resource.setdefault(row.resource_id, {})[row.platform_user_id] = row.access
+        return acl_by_resource
+
+    @staticmethod
     def _resource_access(
-        self,
         *,
-        workspace_id: UUID,
-        branch_id: UUID,
         resource_id: UUID,
         platform_user_id: UUID,
-        resources_with_acl: frozenset[UUID],
         acl_by_resource: dict[UUID, dict[UUID, str]],
     ) -> str | None:
-        if resource_id not in resources_with_acl:
+        """A user without grants in the branch sees every cabin; otherwise only granted ones."""
+        restricted = any(platform_user_id in grants for grants in acl_by_resource.values())
+        if not restricted:
             return "edit"
-        user_access = acl_by_resource.get(resource_id, {}).get(platform_user_id)
-        return user_access
+        return acl_by_resource.get(resource_id, {}).get(platform_user_id)
 
     def _resource_visible(
         self,
@@ -1384,18 +1386,11 @@ class AgendaService:
     ) -> bool:
         if resource_id is None:
             return True
-        resources_with_acl = self._repository.resource_ids_with_acl_rows(workspace_id, branch_id)
-        acl_rows = self._repository.acl_rows_for_branch(workspace_id, branch_id)
-        acl_by_resource: dict[UUID, dict[UUID, str]] = {}
-        for row in acl_rows:
-            acl_by_resource.setdefault(row.resource_id, {})[row.platform_user_id] = row.access
-        access = self._resource_access(
+        access = self._resolved_resource_access(
             workspace_id=workspace_id,
             branch_id=branch_id,
             resource_id=resource_id,
             platform_user_id=platform_user_id,
-            resources_with_acl=resources_with_acl,
-            acl_by_resource=acl_by_resource,
         )
         return access in {"view", "use", "edit"}
 
@@ -1445,18 +1440,10 @@ class AgendaService:
         resource_id: UUID,
         platform_user_id: UUID,
     ) -> str | None:
-        resources_with_acl = self._repository.resource_ids_with_acl_rows(workspace_id, branch_id)
-        acl_rows = self._repository.acl_rows_for_branch(workspace_id, branch_id)
-        acl_by_resource: dict[UUID, dict[UUID, str]] = {}
-        for row in acl_rows:
-            acl_by_resource.setdefault(row.resource_id, {})[row.platform_user_id] = row.access
         return self._resource_access(
-            workspace_id=workspace_id,
-            branch_id=branch_id,
             resource_id=resource_id,
             platform_user_id=platform_user_id,
-            resources_with_acl=resources_with_acl,
-            acl_by_resource=acl_by_resource,
+            acl_by_resource=self._branch_acl_map(workspace_id, branch_id),
         )
 
     def _filter_listed_resources(
@@ -1467,19 +1454,12 @@ class AgendaService:
         platform_user_id: UUID,
         resources: tuple[AppointmentResource, ...],
     ) -> tuple[ListedAppointmentResource, ...]:
-        resources_with_acl = self._repository.resource_ids_with_acl_rows(workspace_id, branch_id)
-        acl_rows = self._repository.acl_rows_for_branch(workspace_id, branch_id)
-        acl_by_resource: dict[UUID, dict[UUID, str]] = {}
-        for row in acl_rows:
-            acl_by_resource.setdefault(row.resource_id, {})[row.platform_user_id] = row.access
+        acl_by_resource = self._branch_acl_map(workspace_id, branch_id)
         listed: list[ListedAppointmentResource] = []
         for resource in resources:
             access = self._resource_access(
-                workspace_id=workspace_id,
-                branch_id=branch_id,
                 resource_id=resource.id,
                 platform_user_id=platform_user_id,
-                resources_with_acl=resources_with_acl,
                 acl_by_resource=acl_by_resource,
             )
             if access in {"view", "use", "edit"}:
@@ -1510,13 +1490,18 @@ class AgendaService:
             workspace_id=workspace_id,
             branch_ids=branch_ids,
         )
+        acl_maps: dict[UUID, dict[UUID, dict[UUID, str]]] = {}
         visible: set[UUID] = set()
         for resource in resources:
-            if self._resource_visible(
-                workspace_id=workspace_id,
-                branch_id=resource.branch_id,
+            if resource.branch_id not in acl_maps:
+                acl_maps[resource.branch_id] = self._branch_acl_map(
+                    workspace_id, resource.branch_id
+                )
+            access = self._resource_access(
                 resource_id=resource.id,
                 platform_user_id=platform_user_id,
-            ):
+                acl_by_resource=acl_maps[resource.branch_id],
+            )
+            if access in {"view", "use", "edit"}:
                 visible.add(resource.id)
         return frozenset(visible)

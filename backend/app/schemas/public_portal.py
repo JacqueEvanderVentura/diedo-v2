@@ -12,8 +12,12 @@ class PublicPortalMeResponse(PublicCustomerProfileResponse):
     pass
 
 
+class PublicPortalAppointmentItem(PublicAppointmentSummary):
+    can_manage_online: bool = False
+
+
 class PublicPortalAppointmentsResponse(ApiModel):
-    items: list[PublicAppointmentSummary]
+    items: list[PublicPortalAppointmentItem]
 
 
 class PublicPortalReceivableItem(ApiModel):
