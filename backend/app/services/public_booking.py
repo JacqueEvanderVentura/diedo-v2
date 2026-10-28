@@ -185,8 +185,13 @@ class PublicBookingService:
                 ),
                 duration_minutes,
             )
+        spare = self._specialist_spare_capacity(branch, scheduled_date, duration_minutes)
         slots = sorted(
-            self._slot_resources(branch_id, scheduled_date, employee_id, duration_minutes)
+            key
+            for key in self._slot_resources(
+                branch_id, scheduled_date, employee_id, duration_minutes
+            )
+            if spare.get(key, 0) >= 1
         )
         return slots, duration_minutes
 
@@ -197,7 +202,7 @@ class PublicBookingService:
                 workspace_id=branch.workspace_id,
                 branch_id=branch.id,
             )
-            if resource.status == "active"
+            if resource.status == "active" and resource.online_booking_enabled
         ]
 
     def _lock(self, value: str) -> None:
@@ -212,55 +217,102 @@ class PublicBookingService:
         duration_minutes: int,
         exclude_appointment_id: UUID | None = None,
     ) -> list[str]:
-        specialist_times: set[str] = set()
-        for specialist in self._list_specialists(branch.workspace_id, branch.id):
-            specialist_times.update(
-                self._slot_resources(
-                    branch.id,
-                    scheduled_date,
-                    specialist["id"],
-                    duration_minutes,
-                    exclude_appointment_id=exclude_appointment_id,
-                ).keys()
+        return sorted(
+            self._unassigned_slot_resources(
+                branch,
+                scheduled_date=scheduled_date,
+                duration_minutes=duration_minutes,
+                exclude_appointment_id=exclude_appointment_id,
             )
-        resource_times = self._resource_only_slot_times(
+        )
+
+    def _unassigned_slot_resources(
+        self,
+        branch: Branch,
+        *,
+        scheduled_date: date,
+        duration_minutes: int,
+        exclude_appointment_id: UUID | None = None,
+    ) -> dict[str, list[UUID]]:
+        spare = self._specialist_spare_capacity(
             branch,
             scheduled_date,
             duration_minutes,
             exclude_appointment_id=exclude_appointment_id,
         )
-        return sorted(specialist_times & resource_times)
+        free_resources = self._resource_only_slots(
+            branch,
+            scheduled_date,
+            duration_minutes,
+            exclude_appointment_id=exclude_appointment_id,
+        )
+        return {
+            key: free for key, free in free_resources.items() if free and spare.get(key, 0) >= 1
+        }
 
-    def _assign_any_specialist(
+    def _specialist_spare_capacity(
         self,
         branch: Branch,
         scheduled_date: date,
-        time_key: str,
         duration_minutes: int,
         exclude_appointment_id: UUID | None = None,
-    ) -> tuple[UUID, UUID]:
+    ) -> dict[str, int]:
+        """Free specialists per slot minus overlapping online bookings still awaiting one."""
+        counts: dict[str, int] = {}
         for specialist in self._list_specialists(branch.workspace_id, branch.id):
-            free = self._slot_resources(
+            for key in self._slot_resources(
                 branch.id,
                 scheduled_date,
                 specialist["id"],
                 duration_minutes,
                 exclude_appointment_id=exclude_appointment_id,
-            ).get(time_key, [])
-            if free:
-                return specialist["id"], free[0]
-        raise ConflictError("Ese horario ya no está disponible. Elige otro cupo.", "time")
+            ):
+                counts[key] = counts.get(key, 0) + 1
+        if not counts:
+            return {}
+        branch_zone = ZoneInfo(branch.timezone)
+        day_start = datetime.combine(scheduled_date, time.min, branch_zone).astimezone(UTC)
+        day_end = datetime.combine(
+            scheduled_date + timedelta(days=1), time.min, branch_zone
+        ).astimezone(UTC)
+        unassigned = self._session.scalars(
+            select(Appointment).where(
+                Appointment.workspace_id == branch.workspace_id,
+                Appointment.branch_id == branch.id,
+                Appointment.record_status == "active",
+                Appointment.status == "confirmed",
+                Appointment.employee_id.is_(None),
+                Appointment.source == "self",
+                Appointment.starts_at < day_end + timedelta(minutes=duration_minutes),
+                Appointment.ends_at > day_start,
+            )
+        ).all()
+        spare: dict[str, int] = {}
+        for key, count in counts.items():
+            start = datetime.combine(
+                scheduled_date, time.fromisoformat(key), branch_zone
+            ).astimezone(UTC)
+            end = start + timedelta(minutes=duration_minutes)
+            overlapping = sum(
+                1
+                for appointment in unassigned
+                if appointment.id != exclude_appointment_id
+                and appointment.starts_at < end
+                and appointment.ends_at > start
+            )
+            spare[key] = count - overlapping
+        return spare
 
-    def _resource_only_slot_times(
+    def _resource_only_slots(
         self,
         branch: Branch,
         scheduled_date: date,
         duration: int,
         exclude_appointment_id: UUID | None = None,
-    ) -> set[str]:
+    ) -> dict[str, list[UUID]]:
         resources = self._active_resources(branch)
         if not resources:
-            return set()
+            return {}
         branch_schedule = AgendaService(self._session).branch_opening_schedule(
             branch.workspace_id, branch.id
         )
@@ -290,7 +342,7 @@ class PublicBookingService:
                 Appointment.ends_at > day_start,
             )
         ).all()
-        available: set[str] = set()
+        available: dict[str, list[UUID]] = {}
         for slot in candidates:
             if branch_schedule and not fits_schedule(
                 slot, duration, branch_schedule, scheduled_date
@@ -303,18 +355,19 @@ class PublicBookingService:
             end = start + timedelta(minutes=duration)
             if end.astimezone(branch_zone).date() != scheduled_date:
                 continue
-            for resource in resources:
-                overlapping = [
-                    appointment
-                    for appointment in conflicts
-                    if appointment.id != exclude_appointment_id
+            free = [
+                resource.id
+                for resource in resources
+                if not any(
+                    appointment.id != exclude_appointment_id
                     and appointment.resource_id == resource.id
                     and appointment.starts_at < end
                     and appointment.ends_at > start
-                ]
-                if not overlapping:
-                    available.add(slot)
-                    break
+                    for appointment in conflicts
+                )
+            ]
+            if free:
+                available[slot] = free
         return available
 
     def _slot_resources(
@@ -440,21 +493,28 @@ class PublicBookingService:
             )
         payload_employee_id = cast(UUID | None, payload.get("employee_id"))
         self._lock(f"booking-branch:{branch.id}")
+        employee_id: UUID | None
         if payload_employee_id is None:
-            employee_id, resource_id = self._assign_any_specialist(
-                branch, scheduled_date, time_key, duration
-            )
+            employee_id = None
+            free = self._unassigned_slot_resources(
+                branch, scheduled_date=scheduled_date, duration_minutes=duration
+            ).get(time_key, [])
         else:
             employee_id = self._require_specialist(
                 branch.workspace_id, branch.id, payload_employee_id
             ).id
-            free = self._slot_resources(branch.id, scheduled_date, employee_id, duration).get(
-                time_key, []
+            spare = self._specialist_spare_capacity(branch, scheduled_date, duration)
+            free = (
+                self._slot_resources(branch.id, scheduled_date, employee_id, duration).get(
+                    time_key, []
+                )
+                if spare.get(time_key, 0) >= 1
+                else []
             )
-            if not free:
-                raise ConflictError("Ese horario ya no está disponible. Elige otro cupo.", "time")
-            resource_id = free[0]
-        self._lock(f"booking-employee:{employee_id}")
+            self._lock(f"booking-employee:{employee_id}")
+        if not free:
+            raise ConflictError("Ese horario ya no está disponible. Elige otro cupo.", "time")
+        resource_id = free[0]
         normalized = self._normalized_document(
             str(payload["document_type"]), str(payload["document_id"])
         )
@@ -497,6 +557,7 @@ class PublicBookingService:
             values=values,
             idempotency_key=key,
             commit=False,
+            enforce_resource_acl=False,
         )
         record = records[0]
         appointment = record.appointment
@@ -577,22 +638,27 @@ class PublicBookingService:
     ) -> list[str]:
         appointment, _, _, _, _ = self._authorized_appointment(branch_id, appointment_id, token)
         duration = int(appointment.duration_minutes)
+        branch, _ = self._resolve_branch(branch_id)
         if appointment.employee_id is None:
-            branch, _ = self._resolve_branch(branch_id)
             return self._unassigned_slot_times(
                 branch,
                 scheduled_date=scheduled_date,
                 duration_minutes=duration,
                 exclude_appointment_id=appointment.id,
             )
+        spare = self._specialist_spare_capacity(
+            branch, scheduled_date, duration, exclude_appointment_id=appointment.id
+        )
         return sorted(
-            self._slot_resources(
+            key
+            for key in self._slot_resources(
                 branch_id,
                 scheduled_date,
                 appointment.employee_id,
                 duration,
                 exclude_appointment_id=appointment.id,
             )
+            if spare.get(key, 0) >= 1
         )
 
     def profile_for_document(
@@ -664,6 +730,7 @@ class PublicBookingService:
             expected_version=appointment.version,
             changes={"status": "cancelled"},
             commit=False,
+            enforce_resource_acl=False,
         )
         notification = self._enqueue_appointment(
             record.appointment, branch, workspace, "appointment.cancelled"
@@ -728,39 +795,36 @@ class PublicBookingService:
         self._lock(f"booking-branch:{branch.id}")
         time_key = scheduled_time.strftime("%H:%M")
         if appointment.employee_id is None:
-            employee_id, resource_id = self._assign_any_specialist(
+            free = self._unassigned_slot_resources(
                 branch,
-                scheduled_date,
-                time_key,
-                duration_minutes,
+                scheduled_date=scheduled_date,
+                duration_minutes=duration_minutes,
                 exclude_appointment_id=appointment.id,
-            )
-            changes = {
-                "date": scheduled_date,
-                "time": scheduled_time,
-                "duration": duration_minutes,
-                "employee_id": employee_id,
-                "resource_id": resource_id,
-            }
+            ).get(time_key, [])
         else:
             self._lock(f"booking-employee:{appointment.employee_id}")
-            free = self._slot_resources(
-                branch.id,
-                scheduled_date,
-                appointment.employee_id,
-                duration_minutes,
-                appointment.id,
-            ).get(time_key, [])
-            if not free:
-                raise ConflictError("Ese horario ya no está disponible. Elige otro cupo.", "time")
-            changes = {
-                "date": scheduled_date,
-                "time": scheduled_time,
-                "duration": duration_minutes,
-                "resource_id": appointment.resource_id
-                if appointment.resource_id in free
-                else free[0],
-            }
+            spare = self._specialist_spare_capacity(
+                branch, scheduled_date, duration_minutes, exclude_appointment_id=appointment.id
+            )
+            free = (
+                self._slot_resources(
+                    branch.id,
+                    scheduled_date,
+                    appointment.employee_id,
+                    duration_minutes,
+                    appointment.id,
+                ).get(time_key, [])
+                if spare.get(time_key, 0) >= 1
+                else []
+            )
+        if not free:
+            raise ConflictError("Ese horario ya no está disponible. Elige otro cupo.", "time")
+        changes = {
+            "date": scheduled_date,
+            "time": scheduled_time,
+            "duration": duration_minutes,
+            "resource_id": appointment.resource_id if appointment.resource_id in free else free[0],
+        }
         record = AgendaService(self._session).update_appointment(
             principal=principal,
             grant=grant,
@@ -768,6 +832,7 @@ class PublicBookingService:
             expected_version=appointment.version,
             changes=changes,
             commit=False,
+            enforce_resource_acl=False,
         )
         notification = self._enqueue_appointment(
             record.appointment, branch, workspace, "appointment.rescheduled"

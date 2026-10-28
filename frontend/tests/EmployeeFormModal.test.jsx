@@ -70,11 +70,48 @@ describe('EmployeeFormModal campos de directorio', () => {
     expect(screen.getByLabelText('Salario mensual')).toBeTruthy()
     expect(screen.getByLabelText('Ubicación de residencia')).toBeTruthy()
     expect(screen.getByTestId('employee-contract-attachment')).toBeTruthy()
+    expect(screen.getByTestId('employee-documents-attachment')).toBeTruthy()
+  })
+
+  it('oculta documentos sin hr.profile.read', () => {
+    renderForm(['employee.manage'])
+    expect(screen.queryByTestId('employee-documents-attachment')).toBeNull()
   })
 
   it('anuncia el error de validación con role alert', () => {
     renderForm(['employee.manage'])
     fireEvent.click(screen.getByRole('button', { name: 'Crear empleado' }))
     expect(screen.getByRole('alert').textContent).toMatch(/nombre/i)
+  })
+
+  it('bloquea el guardado si un bloque de horario tiene la entrada después de la salida', () => {
+    useSessionStore.setState({
+      status: 'online',
+      user: { effectivePermissionCodes: ['employee.manage'], branchIds: ['branch-1'] },
+    })
+    useConfigStore.setState({
+      branches: [{ id: 'branch-1', name: 'Principal', active: true }],
+      users: [],
+    })
+    const onSubmit = vi.fn()
+    render(
+      <EmployeeFormModal
+        open
+        onClose={() => {}}
+        employee={{
+          id: 'emp-1',
+          firstName: 'Ana',
+          lastName: 'Pérez',
+          position: 'Especialista',
+          branchIds: ['branch-1'],
+          workSchedule: { mon: [{ start: '10:00', end: '09:00' }] },
+        }}
+        employees={[]}
+        onSubmit={onSubmit}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+    expect(screen.getByRole('alert').textContent).toMatch(/Lunes: La entrada no puede ser posterior/)
+    expect(onSubmit).not.toHaveBeenCalled()
   })
 })

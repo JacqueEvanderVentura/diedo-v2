@@ -6,7 +6,14 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Appointment, Customer, CustomerPayment, CustomerReceivable, Sale
+from app.db.models import (
+    Appointment,
+    Branch,
+    Customer,
+    CustomerPayment,
+    CustomerReceivable,
+    Sale,
+)
 from app.repositories.pos import PosRepository
 from app.services.booking_tokens import issue_appointment_management_token
 from app.services.errors import AuthorizationError, ResourceNotFoundError
@@ -39,11 +46,21 @@ class PublicPortalService:
                 Appointment.record_status == "active",
             )
         ).all()
+        branch_ids = {row.branch_id for row in rows}
+        branches = {
+            item.id: item
+            for item in self._session.scalars(select(Branch).where(Branch.id.in_(branch_ids)))
+        }
         return [
-            self._booking._appointment_summary(
-                row,
-                issue_appointment_management_token(row.id),
-            )
+            {
+                **self._booking._appointment_summary(
+                    row,
+                    issue_appointment_management_token(row.id),
+                ),
+                "can_manage_online": PublicBookingService._management_access(
+                    row, branches[row.branch_id]
+                )["can_manage_online"],
+            }
             for row in sorted(rows, key=lambda item: (item.scheduled_date, item.scheduled_time))
         ]
 

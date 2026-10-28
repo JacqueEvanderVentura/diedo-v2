@@ -5,6 +5,18 @@ export const ACL_LABELS = {
   edit: 'Usar y Editar',
 }
 
+export const FULL_ACCESS_LABEL = 'Acceso total'
+
+export function userHasAnyGrant(aclByResource, userId) {
+  const key = normalizeAclUserId(userId)
+  if (!key) return false
+  return Object.values(aclByResource || {}).some((byUser) => Boolean(byUser?.[key]))
+}
+
+export function onlineBookingLabel(enabled) {
+  return enabled === false ? 'Bloqueada' : 'Permitida'
+}
+
 export function cycleResourceAccess(current) {
   if (!current || current === 'none') return 'view'
   if (current === 'view') return 'use'

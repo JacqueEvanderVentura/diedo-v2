@@ -25,6 +25,7 @@ export function AppointmentChip({
 }) {
   const tone = aptTone(apt)
   const fullNote = normalizeAppointmentNote(apt.notes)
+  const awaitingSpecialist = !apt.employeeId && tone !== 'cancelled'
   return (
     <div
       role="button"
@@ -82,6 +83,14 @@ export function AppointmentChip({
         >
           {apt.serviceName || 'Servicio'}
         </p>
+      )}
+      {awaitingSpecialist && (
+        <span
+          className="mt-0.5 inline-block max-w-full shrink-0 self-start truncate rounded bg-amber-100 px-1 py-px text-[10px] font-semibold text-amber-800"
+          data-testid={`calendar-apt-unassigned-${apt.id}`}
+        >
+          Sin especialista
+        </span>
       )}
       <div
         className={cn(

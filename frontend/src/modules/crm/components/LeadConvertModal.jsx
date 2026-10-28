@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { useCrmStore } from '@/stores/crmStore'
-import { useCustomersStore } from '@/stores/customersStore'
 import { DOC_TYPES, formatDocumentInput } from '@/modules/agenda/lib/selfBooking'
 import { validateCustomerDocument } from '@/lib/customerDocuments'
 import { preparePipelineCloseCustomer } from '@/modules/crm/lib/quoteCustomer'
@@ -22,7 +21,6 @@ export function LeadConvertModal({
   const updateLead = useCrmStore((state) => state.updateLead)
   const updateQuote = useCrmStore((state) => state.updateQuote)
   const quotes = useCrmStore((state) => state.quotes)
-  const addCustomer = useCustomersStore((state) => state.addCustomer)
   const [form, setForm] = useState({ docType: 'cedula', documentId: '' })
   const [submitting, setSubmitting] = useState(false)
 
@@ -50,7 +48,7 @@ export function LeadConvertModal({
       const customer = forPipelineClose
         ? await preparePipelineCloseCustomer({
           lead,
-          addCustomer,
+          convertToCustomer,
           updateLead,
           updateQuote,
           quotes,
@@ -60,7 +58,7 @@ export function LeadConvertModal({
       onConverted?.(customer, lead)
       onClose()
     } catch (error) {
-      toast.error(error.message || (forPipelineClose ? 'No se pudo crear el cliente' : 'No se pudo convertir el lead'))
+      toast.error(error.message || 'No se pudo crear el cliente')
     } finally {
       setSubmitting(false)
     }
@@ -78,7 +76,7 @@ export function LeadConvertModal({
       <p className="mb-4 text-sm text-slate-600">
         {forPipelineClose
           ? `Crea la ficha de ${displayName} para facturar sin cerrar el lead todavía.`
-          : `Para crear el cliente de ${displayName}, ingresa el documento de identidad.`}
+          : `Para crear el cliente de ${displayName}, ingresa el documento de identidad. El lead se queda en su etapa actual.`}
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
@@ -107,7 +105,7 @@ export function LeadConvertModal({
         <Button variant="secondary" onClick={onClose} disabled={submitting}>Cancelar</Button>
         <Button onClick={submit} disabled={submitting} data-testid="lead-convert-submit">
           <UserPlus className="h-4 w-4" />
-          {submitting ? 'Convirtiendo…' : 'Convertir a cliente'}
+          {submitting ? 'Creando…' : 'Crear cliente'}
         </Button>
       </div>
     </Modal>

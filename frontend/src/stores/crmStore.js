@@ -60,10 +60,7 @@ import {
 } from '@/modules/crm/lib/quoteInvoice'
 import { buildLeadConvertRequest, buildLeadOfflineCustomer } from '@/modules/crm/lib/leadConversion'
 import { PIPELINE_OPEN_STAGES } from '@/modules/crm/lib/pipelineLeads'
-import {
-  effectiveLeadCustomerId,
-  resolveCustomerForLead,
-} from '@/modules/crm/lib/leadCustomer'
+import { effectiveLeadCustomerId } from '@/modules/crm/lib/leadCustomer'
 import {
   mapCheckoutFromApi,
   mapReceivablesPageFromApi,
@@ -125,6 +122,20 @@ function leadPayload(data) {
 function reportMutationError(set, error) {
   set({ error })
   return null
+}
+
+function leadStatePatch(state, lead) {
+  return {
+    leads: upsertById(state.leads, [lead]),
+    simplifiedWorkspace: {
+      ...state.simplifiedWorkspace,
+      items: replaceById(state.simplifiedWorkspace.items || [], lead),
+    },
+  }
+}
+
+function isLeadVersionConflict(error) {
+  return error?.parameter === 'version' || String(error?.message || '').includes('última lectura')
 }
 
 async function loadOnlineSection(section) {
@@ -955,8 +966,52 @@ export const useCrmStore = create(
         return newLeads
       },
 
+      ensureLead: async (id) => {
+        if (!id) return null
+        const state = get()
+        const cached = state.leads.find((lead) => lead.id === id)
+        if (cached) return cached
+        const queued = (state.simplifiedWorkspace.items || []).find((lead) => lead.id === id)
+        if (queued) {
+          set((s) => ({ leads: upsertById(s.leads, [queued]) }))
+          return queued
+        }
+        if (!isOnline()) return null
+        return get().refreshLead(id)
+      },
+
+      refreshLead: async (id) => {
+        const lead = mapLeadFromApi(await crmApi.getLead(id))
+        set((state) => leadStatePatch(state, lead))
+        return lead
+      },
+
+      fetchLeadQuotes: async (leadId) => {
+        if (!leadId || !isOnline() || !crmCommerceEnabled()) {
+          return get().quotes.filter((quote) => quote.leadId === leadId)
+        }
+        const response = await crmApi.quotes({ leadId, page: 1, pageSize: 100 })
+        const mapped = mapCrmQuotesPageFromApi(response)
+        set((state) => ({
+          quotes: upsertById(
+            state.quotes,
+            mapped.map((quote) => {
+              const prior = state.quotes.find((item) => item.id === quote.id)
+              if (!prior) return quote
+              return {
+                ...quote,
+                invoiceCollection: mergeInvoiceCollection(quote.invoiceCollection, prior.invoiceCollection),
+                receivableId: quote.receivableId || prior.receivableId || null,
+                invoicePaymentMethod: quote.invoicePaymentMethod || prior.invoicePaymentMethod || null,
+              }
+            }),
+          ),
+        }))
+        return mapped
+      },
+
       updateLead: async (id, data, retryAfterVersionConflict = false) => {
-        const current = get().leads.find((lead) => lead.id === id)
+        const current = await get().ensureLead(id)
         if (!current) throw new Error('Lead no encontrado.')
         const statusChanged = data.status !== undefined && data.status !== current.status
         set((s) => ({
@@ -983,20 +1038,15 @@ export const useCrmStore = create(
           try {
             const response = await crmApi.updateLead(id, payload)
             const saved = mapLeadFromApi(response)
-            set((s) => ({ leads: replaceById(s.leads, saved) }))
+            set((s) => leadStatePatch(s, saved))
             if (statusChanged) {
               await get().fetchSimplifiedWorkspaceDetailActivities(id).catch(() => {})
             }
             return saved
           } catch (error) {
-            const versionConflict =
-              error?.parameter === 'version'
-              || String(error?.message || '').includes('última lectura')
-            if (versionConflict && !retryAfterVersionConflict) {
+            if (isLeadVersionConflict(error) && !retryAfterVersionConflict) {
               try {
-                const refreshed = await crmApi.getLead(id)
-                const savedLead = mapLeadFromApi(refreshed)
-                set((s) => ({ leads: replaceById(s.leads, savedLead) }))
+                await get().refreshLead(id)
                 return get().updateLead(id, data, true)
               } catch {
                 /* fall through to default error handling */
@@ -1055,33 +1105,43 @@ export const useCrmStore = create(
       }),
 
       convertToCustomer: async (leadId, documentOverride = null) => {
-        const lead = get().leads.find((l) => l.id === leadId)
-        if (!lead) return null
+        const cached = await get().ensureLead(leadId)
+        if (!cached) return null
         if (isOnline()) {
+          const lead = await get().refreshLead(leadId)
           const response = await crmApi.convertLead(
             leadId,
             buildLeadConvertRequest(lead, documentOverride),
           )
           const customer = mapCrmCustomerFromApi(response)
           await Promise.all([
-            get().hydrateSection('pipeline'),
-            get().hydrateSection('customers'),
-            get().hydrateSection('leads'),
-            useCustomersStore.getState().hydrate({ force: true }),
+            get().refreshLead(leadId).catch(() => null),
+            get().hydrateSection('customers').catch(() => null),
+            useCustomersStore.getState().fetchCustomer(customer.id).catch(() => null),
           ])
           return customer
         }
         const customer = await useCustomersStore.getState().addCustomer(
-          buildLeadOfflineCustomer(lead, documentOverride),
+          buildLeadOfflineCustomer(cached, documentOverride),
         )
         set((s) => ({
           leads: s.leads.map((l) =>
             l.id === leadId
-              ? { ...l, status: 'cerrado', customerId: customer.id, updatedAt: now() }
+              ? { ...l, customerId: customer.id, updatedAt: now() }
               : l
           ),
         }))
         return customer
+      },
+
+      closeLeadWithoutInvoice: async (leadId, { customerId } = {}) => {
+        const lead = await get().ensureLead(leadId)
+        if (!lead) throw new Error('Lead no encontrado.')
+        const linkedId = customerId || effectiveLeadCustomerId(lead, get().quotes)
+        if (!linkedId) throw new Error('Vincula un cliente antes de marcar el lead como ganado.')
+        const changes = { status: 'cerrado' }
+        if (lead.customerId !== linkedId) changes.customerId = linkedId
+        return get().updateLead(leadId, changes)
       },
 
       syncLeadsToPipeline: async () => 0,
@@ -1097,14 +1157,17 @@ export const useCrmStore = create(
         proof = null,
         collectionMode,
       } = {}) => {
-        const customers = useCustomersStore.getState().customers
-        let lead = get().leads.find((item) => item.id === leadId)
-        const resolvedId = customerId || effectiveLeadCustomerId(lead, customers)
+        let lead = await get().ensureLead(leadId)
+        if (!lead) throw new Error('Lead no encontrado.')
+        if (isOnline()) {
+          await get().fetchLeadQuotes(leadId).catch(() => null)
+        }
+        const resolvedId = customerId || effectiveLeadCustomerId(lead, get().quotes)
         let quote = findBillableQuote(get().quotes, leadId)
-        if (resolvedId && quote && quote.customerId !== resolvedId) {
+        if (resolvedId && quote && !quote.convertedSaleId && quote.customerId !== resolvedId) {
           quote = await get().updateQuote(quote.id, { customerId: resolvedId }) || quote
         }
-        lead = get().leads.find((item) => item.id === leadId)
+        lead = get().leads.find((item) => item.id === leadId) || lead
         const effectiveCustomerId = resolvedId || lead?.customerId || quote?.customerId || null
         const leadForClose = lead ? { ...lead, customerId: effectiveCustomerId } : null
         const validationError = validatePipelineClose({ lead: leadForClose, quotes: get().quotes })
@@ -1151,16 +1214,14 @@ export const useCrmStore = create(
         }
 
         if (isOnline()) {
-          let closedLead = get().leads.find((item) => item.id === leadId)
-          try {
-            const refreshed = await crmApi.getLead(leadId)
-            closedLead = mapLeadFromApi(refreshed)
-            set((s) => ({ leads: replaceById(s.leads, closedLead) }))
-          } catch {
-            /* keep local state */
-          }
-          if (closedLead?.status !== 'cerrado') {
-            closedLead = await get().updateLead(leadId, { status: 'cerrado' })
+          const refreshed = await get().refreshLead(leadId).catch(() => null)
+          const current = refreshed || get().leads.find((item) => item.id === leadId)
+          if (current && current.status !== 'cerrado') {
+            const changes = { status: 'cerrado' }
+            if (!current.customerId) changes.customerId = effectiveCustomerId
+            const closing = get().updateLead(leadId, changes)
+            // The sale already exists; a stale cached lead must not turn it into a reported failure.
+            await (refreshed ? closing : closing.catch(() => null))
           }
         } else {
           await get().updateLead(leadId, { status: 'cerrado' })

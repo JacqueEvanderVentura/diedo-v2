@@ -296,8 +296,25 @@ class CrmService:
         if lead is None:
             raise ResourceNotFoundError("El lead no existe.", "leadId")
         if lead.status == "cerrado":
-            raise ConflictError("Un lead cerrado ya no puede editarse.", "status")
+            reopening = (
+                "status" in changes
+                and changes["status"] != "cerrado"
+                and set(changes) <= {"status", "lost_reason"}
+            )
+            if not reopening:
+                raise ConflictError("Un lead cerrado ya no puede editarse.", "status")
+            if self._repository.lead_has_sale(grant.workspace_id, lead.id):
+                raise ConflictError(
+                    "El lead ya tiene una venta registrada y no puede reabrirse.", "status"
+                )
         self._require_version(lead.version, expected_version)
+        if "customer_id" in changes:
+            self._link_lead_customer(
+                principal=principal,
+                grant=grant,
+                lead=lead,
+                customer_id=cast(UUID | None, changes["customer_id"]),
+            )
         if "assigned_membership_id" in changes:
             assignee = changes["assigned_membership_id"]
             lead.assigned_membership_id = self._assignee(
@@ -352,6 +369,10 @@ class CrmService:
             )
             if status == "perdido" and not lost_reason:
                 raise InvalidOperationError("Un lead perdido requiere motivo.", "lostReason")
+            if status == "cerrado" and lead.converted_customer_id is None:
+                raise InvalidOperationError(
+                    "Vincula un cliente antes de marcar el lead como ganado.", "customerId"
+                )
             lead.status = status
             lead.lost_reason = lost_reason if status == "perdido" else None
             if status == "perdido":
@@ -674,15 +695,10 @@ class CrmService:
         if lead is None:
             raise ResourceNotFoundError("El lead no existe.", "leadId")
         fingerprint = self._fingerprint(values)
-        if lead.status == "cerrado":
-            self._require_fingerprint(
-                lead.conversion_request_fingerprint,
-                fingerprint,
-                parameter="Idempotency-Key",
-            )
+        if lead.converted_customer_id is not None:
             record = self._repository.customer_record(
                 workspace_id=crm_grant.workspace_id,
-                customer_id=cast(UUID, lead.converted_customer_id),
+                customer_id=lead.converted_customer_id,
                 allowed_branch_ids=crm_grant.allowed_branch_ids,
             )
             if record is None:
@@ -773,17 +789,13 @@ class CrmService:
                     request_id=get_request_id(),
                     create_crm_profile=False,
                 )
-            profile = CustomerCrmProfile(
+            self._ensure_customer_profile(
                 workspace_id=crm_grant.workspace_id,
                 customer_id=customer_record.id,
+                actor_platform_user_id=principal.platform_user_id,
                 lifecycle_status=cast(str, values.get("lifecycle_status", "prospecto")),
-                loyalty_points=0,
                 notes=self._optional_text(cast(str | None, values.get("notes"))),
-                created_by_platform_user_id=principal.platform_user_id,
-                updated_by_platform_user_id=principal.platform_user_id,
             )
-            self._repository.add_customer_profile(profile)
-            lead.status = "cerrado"
             lead.converted_customer_id = customer_record.id
             lead.converted_at = datetime.now(UTC)
             lead.conversion_idempotency_key = idempotency_key
@@ -920,6 +932,7 @@ class CrmService:
         page_size: int,
         updated_after: datetime | None = None,
         updated_before: datetime | None = None,
+        lead_id: UUID | None = None,
     ) -> PosPage:
         grant = self._intersect_grants(crm_grant, sales_grant)
         self._require_optional_branch(grant, branch_id)
@@ -931,6 +944,7 @@ class CrmService:
             kind="quote",
             origin="crm",
             crm_status=crm_status,
+            lead_id=lead_id,
             updated_after=updated_after,
             updated_before=updated_before,
             page=page,
@@ -1019,8 +1033,9 @@ class CrmService:
             if lead is None:
                 raise ResourceNotFoundError("El lead no existe.", "leadId")
             self._require_same_branch(branch_id, lead.branch_id, "leadId")
-            if lead.converted_customer_id is not None and lead.converted_customer_id != customer_id:
-                raise InvalidOperationError("El lead está vinculado a otro cliente.", "customerId")
+            self._sync_quote_customer_to_lead(
+                principal=principal, grant=grant, lead=lead, customer_id=customer_id
+            )
             previous_status = lead.status
             if lead.status in {"nuevo", "contactado"}:
                 lead.status = "propuesta"
@@ -1076,12 +1091,17 @@ class CrmService:
         if customer_id is None:
             raise InvalidOperationError("La cotización CRM requiere un cliente.", "customerId")
         if lead_id is not None:
-            lead = self._repository.lead(grant.workspace_id, lead_id, grant.allowed_branch_ids)
+            lead = self._repository.lead(
+                grant.workspace_id, lead_id, grant.allowed_branch_ids, lock=True
+            )
             if lead is None:
                 raise ResourceNotFoundError("El lead no existe.", "leadId")
             self._require_same_branch(branch_id, lead.branch_id, "leadId")
-            if lead.converted_customer_id is not None and lead.converted_customer_id != customer_id:
-                raise InvalidOperationError("El lead está vinculado a otro cliente.", "customerId")
+            if self._sync_quote_customer_to_lead(
+                principal=principal, grant=grant, lead=lead, customer_id=customer_id
+            ):
+                lead.updated_by_platform_user_id = principal.platform_user_id
+                lead.version += 1
         translated = dict(changes)
         if "lead_id" in translated:
             translated["lead_id"] = lead_id
@@ -1217,25 +1237,69 @@ class CrmService:
         }
         if register_id is not None:
             checkout_values["register_id"] = register_id
-        result = PosService(self._session).checkout(
-            principal=principal,
-            grant=sell_grant,
-            values=checkout_values,
-            idempotency_key=idempotency_key,
-        )
-        if record.quote.lead_id is not None and not replaying:
-            lead = self._repository.lead(
-                crm_grant.workspace_id,
-                record.quote.lead_id,
-                crm_grant.allowed_branch_ids,
-                lock=True,
+        pos = PosService(self._session)
+        try:
+            result = pos.checkout_in_transaction(
+                principal=principal,
+                grant=sell_grant,
+                values=checkout_values,
+                idempotency_key=idempotency_key,
             )
-            if lead is not None and lead.status != "cerrado":
-                lead.status = "cerrado"
-                lead.updated_by_platform_user_id = principal.platform_user_id
-                lead.version += 1
-                self._session.commit()
+        except IntegrityError:
+            self._session.rollback()
+            result = pos.checkout(
+                principal=principal,
+                grant=sell_grant,
+                values=checkout_values,
+                idempotency_key=idempotency_key,
+            )
+        if record.quote.lead_id is not None:
+            self._close_lead_won_by_sale(
+                principal=principal,
+                grant=crm_grant,
+                lead_id=record.quote.lead_id,
+                customer_id=record.quote.customer_id,
+            )
+        self._session.commit()
         return result
+
+    def _close_lead_won_by_sale(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        lead_id: UUID,
+        customer_id: UUID,
+    ) -> None:
+        lead = self._repository.lead(
+            grant.workspace_id,
+            lead_id,
+            grant.allowed_branch_ids,
+            lock=True,
+        )
+        if lead is None or lead.status == "cerrado":
+            return
+        if lead.converted_customer_id is None:
+            self._ensure_customer_profile(
+                workspace_id=grant.workspace_id,
+                customer_id=customer_id,
+                actor_platform_user_id=principal.platform_user_id,
+            )
+            lead.converted_customer_id = customer_id
+            lead.converted_at = datetime.now(UTC)
+        previous_status = lead.status
+        lead.status = "cerrado"
+        lead.lost_reason = None
+        lead.pipeline_closed_at = None
+        lead.updated_by_platform_user_id = principal.platform_user_id
+        lead.version += 1
+        self._append_lead_stage_activity(
+            principal=principal,
+            grant=grant,
+            lead=lead,
+            previous_status=previous_status,
+            new_status=lead.status,
+        )
 
     def overview(
         self,
@@ -1379,6 +1443,76 @@ class CrmService:
         for branch_id in branch_ids:
             self._require_branch(crm_grant, branch_id)
             self._require_branch(customer_grant, branch_id)
+
+    def _link_lead_customer(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        lead: CrmLead,
+        customer_id: UUID | None,
+    ) -> None:
+        if customer_id is None:
+            raise InvalidOperationError("Indica el cliente a vincular.", "customerId")
+        if lead.converted_customer_id == customer_id:
+            return
+        customer = self._repository.customer(
+            grant.workspace_id,
+            customer_id,
+            branch_id=lead.branch_id,
+            allowed_branch_ids=grant.allowed_branch_ids,
+        )
+        if customer is None:
+            raise ResourceNotFoundError("El cliente no existe en la sucursal.", "customerId")
+        self._ensure_customer_profile(
+            workspace_id=grant.workspace_id,
+            customer_id=customer_id,
+            actor_platform_user_id=principal.platform_user_id,
+        )
+        lead.converted_customer_id = customer_id
+        lead.converted_at = datetime.now(UTC)
+        lead.conversion_idempotency_key = None
+        lead.conversion_request_fingerprint = None
+
+    def _sync_quote_customer_to_lead(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        lead: CrmLead,
+        customer_id: UUID,
+    ) -> bool:
+        if lead.converted_customer_id == customer_id:
+            return False
+        if lead.status == "cerrado":
+            raise InvalidOperationError("El lead está vinculado a otro cliente.", "customerId")
+        self._link_lead_customer(
+            principal=principal, grant=grant, lead=lead, customer_id=customer_id
+        )
+        return True
+
+    def _ensure_customer_profile(
+        self,
+        *,
+        workspace_id: UUID,
+        customer_id: UUID,
+        actor_platform_user_id: UUID,
+        lifecycle_status: str = "prospecto",
+        notes: str | None = None,
+    ) -> None:
+        if self._repository.customer_profile(workspace_id, customer_id) is not None:
+            return
+        self._repository.add_customer_profile(
+            CustomerCrmProfile(
+                workspace_id=workspace_id,
+                customer_id=customer_id,
+                lifecycle_status=lifecycle_status,
+                loyalty_points=0,
+                notes=notes,
+                created_by_platform_user_id=actor_platform_user_id,
+                updated_by_platform_user_id=actor_platform_user_id,
+            )
+        )
 
     @staticmethod
     def _intersect_grants(first: PermissionGrant, second: PermissionGrant) -> PermissionGrant:

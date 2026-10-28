@@ -22,12 +22,22 @@ import { PublicShell } from '../components/PublicShell'
 import { PortalInvoicePreviewModal } from '../components/PortalInvoicePreviewModal'
 import { PortalCancelAppointmentModal } from '../components/PortalCancelAppointmentModal'
 import { clearPublicSession, recallPublicSession } from '../lib/publicSession'
+import {
+  PORTAL_STATUS_FILTERS,
+  canManageFromPortal,
+  countAppointmentsByStatus,
+  filterAppointmentsByStatus,
+  nextStatusFilter,
+  portalStatusLabel,
+  portalStatusTone,
+} from '../lib/appointmentStats'
 import { cn } from '@/lib/utils'
 
-function appointmentStatusLabel(status) {
-  if (status === 'cancelled') return 'Cancelada'
-  if (status === 'confirmed') return 'Confirmada'
-  return status
+const STAT_TONES = {
+  brand: 'text-blue-700',
+  success: 'text-emerald-600',
+  neutral: 'text-slate-600',
+  danger: 'text-red-600',
 }
 
 const TABS = [
@@ -54,6 +64,7 @@ export default function PortalPage() {
   const [invoicePreview, setInvoicePreview] = useState(null)
   const [invoicePreviewLoading, setInvoicePreviewLoading] = useState(false)
   const [invoicePreviewError, setInvoicePreviewError] = useState('')
+  const [statusFilter, setStatusFilter] = useState(null)
 
   useEffect(() => {
     if (!branchId || !session?.documentId) return
@@ -105,6 +116,11 @@ export default function PortalPage() {
   const branchAppointments = useMemo(
     () => appointments.filter((apt) => String(apt.branchId || branchId) === String(branchId)),
     [appointments, branchId],
+  )
+  const statusCounts = useMemo(() => countAppointmentsByStatus(branchAppointments), [branchAppointments])
+  const visibleAppointments = useMemo(
+    () => filterAppointmentsByStatus(branchAppointments, statusFilter),
+    [branchAppointments, statusFilter],
   )
 
   const closeInvoicePreview = () => {
@@ -216,9 +232,37 @@ export default function PortalPage() {
           <>
             {tab === 'citas' && (
               <Section empty={empty.citas} emptyLabel="Aún no tienes citas. Agenda tu primera visita.">
+                <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="portal-apt-stats">
+                  {PORTAL_STATUS_FILTERS.map((item) => {
+                    const active = statusFilter === item.id
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setStatusFilter((current) => nextStatusFilter(current, item.id))}
+                        aria-pressed={active}
+                        className={cn(
+                          'rounded-xl border bg-white px-3 py-2 text-left shadow-soft transition-colors',
+                          active ? 'border-slate-900 ring-1 ring-slate-900' : 'border-slate-100 hover:bg-slate-50',
+                        )}
+                        data-testid={`portal-apt-stat-${item.id}`}
+                      >
+                        <p className="text-[11px] font-medium text-slate-500">{item.label}</p>
+                        <p className={cn('font-heading text-xl font-bold', STAT_TONES[item.tone])}>
+                          {statusCounts[item.id]}
+                        </p>
+                      </button>
+                    )
+                  })}
+                </div>
+                {visibleAppointments.length === 0 && (
+                  <p className="rounded-xl border border-dashed border-slate-200 bg-white/60 p-4 text-center text-sm text-slate-500">
+                    No hay citas con este estatus.
+                  </p>
+                )}
                 <ul className="space-y-2">
-                  {branchAppointments.map((apt) => {
-                    const canManage = apt.status === 'confirmed' && apt.managementToken
+                  {visibleAppointments.map((apt) => {
+                    const canManage = canManageFromPortal(apt)
                     const aptBranchId = apt.branchId || branchId
                     return (
                       <li key={apt.id} className="rounded-xl border border-slate-100 bg-white p-4 text-sm">
@@ -229,8 +273,8 @@ export default function PortalPage() {
                               {fmtDate(apt.date)} · {formatTime12h(apt.time)}
                             </p>
                           </div>
-                          <Badge tone={apt.status === 'cancelled' ? 'neutral' : 'success'}>
-                            {appointmentStatusLabel(apt.status)}
+                          <Badge tone={portalStatusTone(apt.status)}>
+                            {portalStatusLabel(apt.status)}
                           </Badge>
                         </div>
                         {canManage ? (

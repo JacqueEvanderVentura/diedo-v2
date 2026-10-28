@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   Building2,
+  CheckCircle2,
   Download,
   FileText,
   Link2,
@@ -12,7 +13,6 @@ import {
   Printer,
   Receipt,
   UserCheck,
-  UserPlus,
   Package,
 } from 'lucide-react'
 
@@ -23,6 +23,8 @@ import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 
 import { Input } from '@/components/ui/Input'
+
+import { CustomerPicker } from '@/components/customers/CustomerPicker'
 
 import { PaymentMethodPicker } from '@/modules/pos/components/PaymentMethodPicker'
 
@@ -67,8 +69,6 @@ export function CloseLeadInvoiceModal({
 
   customers = [],
 
-  linkableCustomers = [],
-
   products = [],
 
   paymentMethods = [],
@@ -83,11 +83,11 @@ export function CloseLeadInvoiceModal({
 
   onConfirm,
 
-  onCreateCustomer,
-
   onLinkCustomer,
 
   onConvertLead,
+
+  onCloseWithoutInvoice,
 
   onOpenQuoteBuilder,
 
@@ -103,7 +103,7 @@ export function CloseLeadInvoiceModal({
 
   const [linkQuoteId, setLinkQuoteId] = useState('')
 
-  const [linkCustomerId, setLinkCustomerId] = useState('')
+  const [confirmManualClose, setConfirmManualClose] = useState(false)
 
   const [draftItemId, setDraftItemId] = useState('')
 
@@ -125,17 +125,23 @@ export function CloseLeadInvoiceModal({
     [enabledPaymentMethods, paymentMethod]
   )
 
-  const resolvedCustomer = useMemo(
-
-    () => (lead ? resolveCustomerForLead(lead, customers) : null),
-
-    [lead, customers],
-
-  )
-
   const companyLabel = lead ? leadCompanyLabel(lead) : ''
 
-  const effectiveCustomerId = lead ? effectiveLeadCustomerId(lead, customers) : null
+  const effectiveCustomerId = lead ? effectiveLeadCustomerId(lead, quotes) : null
+
+  const resolvedCustomer = useMemo(() => {
+    if (!lead) return null
+    const known = resolveCustomerForLead(lead, customers, quotes)
+    if (known) return known
+    if (!effectiveCustomerId) return null
+    const quoteName = quotes.find((row) => row.customerId === effectiveCustomerId)?.customerName
+    return { id: effectiveCustomerId, name: quoteName || companyLabel }
+  }, [lead, customers, quotes, effectiveCustomerId, companyLabel])
+
+  useEffect(() => {
+    if (!open || !enabledPaymentMethods.length || selectedPaymentMethod) return
+    onPaymentMethodChange?.(enabledPaymentMethods[0].id)
+  }, [open, enabledPaymentMethods, selectedPaymentMethod, onPaymentMethodChange])
 
 
 
@@ -155,7 +161,7 @@ export function CloseLeadInvoiceModal({
 
     setLinkQuoteId('')
 
-    setLinkCustomerId('')
+    setConfirmManualClose(false)
 
     setDraftItemId('')
 
@@ -257,9 +263,7 @@ export function CloseLeadInvoiceModal({
 
     const price = Number(draftPrice) || Number(product.price) || 0
 
-    const customer = effectiveCustomerId
-      ? (customers.find((item) => item.id === effectiveCustomerId) || resolvedCustomer)
-      : null
+    const customer = effectiveCustomerId ? resolvedCustomer : null
 
     return {
 
@@ -323,14 +327,31 @@ export function CloseLeadInvoiceModal({
 
 
 
-  const handleLinkCustomer = async () => {
+  const handlePickCustomer = async (customer) => {
 
-    if (!linkCustomerId) return
+    if (!customer?.id || customer.id === effectiveCustomerId) return
 
-    await onLinkCustomer(linkCustomerId)
+    try {
+      await onLinkCustomer(customer.id)
+    } catch (error) {
+      toast.error(error.message || 'No se pudo vincular el cliente')
+    }
 
-    setLinkCustomerId('')
+  }
 
+  const handleCloseWithoutInvoice = async () => {
+    if (!effectiveCustomerId || !onCloseWithoutInvoice) return
+    if (!confirmManualClose) {
+      setConfirmManualClose(true)
+      return
+    }
+    try {
+      await onCloseWithoutInvoice({ customerId: effectiveCustomerId })
+    } catch (error) {
+      toast.error(error.message || 'No se pudo cerrar la oportunidad')
+    } finally {
+      setConfirmManualClose(false)
+    }
   }
 
 
@@ -349,7 +370,13 @@ export function CloseLeadInvoiceModal({
         return
       }
       setPaymentEvidenceError(false)
-      const resolved = resolveQuoteInvoicePaymentMethod(paymentMethods, { paymentMethodId: paymentMethod })
+      let resolved
+      try {
+        resolved = resolveQuoteInvoicePaymentMethod(paymentMethods, { paymentMethodId: paymentMethod })
+      } catch (error) {
+        toast.error(error.message || 'Selecciona un método de pago válido')
+        return
+      }
       onConfirm({
         customerId: effectiveCustomerId,
         paymentMethod: resolved.semantic,
@@ -484,7 +511,7 @@ export function CloseLeadInvoiceModal({
               <div className="mt-2 space-y-3">
 
                 <p className="text-sm text-amber-800">
-                  Vincula o crea el cliente para facturar. También puedes cotizar con «{companyLabel}» y crear la ficha al guardar.
+                  Vincula un cliente existente o crea la ficha desde el lead. El lead seguirá abierto hasta facturar.
                 </p>
 
                 {onConvertLead && (
@@ -513,80 +540,39 @@ export function CloseLeadInvoiceModal({
 
                 )}
 
-                {linkableCustomers.length > 0 && (
-
-                  <div className="flex flex-col gap-2 sm:flex-row">
-
-                    <Select
-
-                      className="min-w-0 flex-1"
-
-                      value={linkCustomerId}
-
-                      onChange={setLinkCustomerId}
-
-                      searchable
-
-                      searchPlaceholder="Buscar cliente…"
-
-                      options={[
-
-                        { value: '', label: 'Elegir cliente existente…' },
-
-                        ...linkableCustomers.map((row) => ({ value: row.id, label: row.name })),
-
-                      ]}
-
-                      data-testid="pipeline-close-link-customer"
-
-                    />
-
-                    <Button
-
-                      type="button"
-
-                      variant="secondary"
-
-                      onClick={handleLinkCustomer}
-
-                      disabled={!linkCustomerId || customerBusy}
-
-                    >
-
-                      Vincular
-
-                    </Button>
-
-                  </div>
-
-                )}
-
-                {onCreateCustomer && (
-
-                  <Button
-
-                    type="button"
-
-                    size="sm"
-
-                    variant="secondary"
-
-                    onClick={onCreateCustomer}
-
-                    disabled={customerBusy}
-
-                    data-testid="pipeline-close-create-customer"
-
-                  >
-
-                    <UserPlus className="h-3.5 w-3.5" /> Crear cliente
-
-                  </Button>
-
+                {onLinkCustomer && (
+                  <CustomerPicker
+                    value={null}
+                    onChange={handlePickCustomer}
+                    branchId={lead.branchId || null}
+                    placeholder="Elegir cliente existente…"
+                    testIdPrefix="pipeline-close-link-customer"
+                  />
                 )}
 
               </div>
 
+            )}
+
+            {!missingCustomer && onCloseWithoutInvoice && !quote?.convertedSaleId && (
+              <div className="mt-3 border-t border-slate-100 pt-3">
+                {confirmManualClose && (
+                  <p className="mb-2 text-xs text-amber-800" data-testid="pipeline-close-manual-warning">
+                    La oportunidad quedará como Ganada sin factura. Confirma solo si la venta se registró por otra vía.
+                  </p>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleCloseWithoutInvoice}
+                  disabled={customerBusy}
+                  data-testid="pipeline-close-without-invoice"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {confirmManualClose ? 'Confirmar cierre sin factura' : 'Cerrar como ganado sin factura'}
+                </Button>
+              </div>
             )}
 
           </div>

@@ -717,6 +717,7 @@ class PosRepository:
         kind: str | None,
         origin: str | None = None,
         crm_status: str | None = None,
+        lead_id: UUID | None = None,
         updated_after: datetime | None = None,
         updated_before: datetime | None = None,
         page: int,
@@ -724,6 +725,8 @@ class PosRepository:
         include_details: bool = False,
     ) -> Page:
         predicates = [SalesQuote.workspace_id == workspace_id]
+        if lead_id is not None:
+            predicates.append(SalesQuote.lead_id == lead_id)
         if allowed_branch_ids is not None:
             predicates.append(SalesQuote.branch_id.in_(allowed_branch_ids))
         if branch_id is not None:

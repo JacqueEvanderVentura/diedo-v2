@@ -434,16 +434,93 @@ def test_public_booking_any_available_specialist(client, booking_setup):
         pytest.fail("Cualquiera disponible nunca agotó el cupo del horario.")
     with get_session_factory()() as session:
         stored = [session.get(Appointment, UUID(item)) for item in booked_ids]
-    assert all(item.employee_id is not None and item.resource_id is not None for item in stored)
-    assert len({item.employee_id for item in stored}) == len(stored)
+    assert all(item.employee_id is None and item.resource_id is not None for item in stored)
     assert len({item.resource_id for item in stored}) == len(stored)
+    calendar = client.get(
+        "/api/v1/appointments",
+        headers=headers,
+        params={"branchId": branch, "dateFrom": body["date"], "dateTo": body["date"]},
+    ).json()["items"]
+    listed = {item["id"]: item for item in calendar}
+    assert all(listed[item]["employee"] is None for item in booked_ids)
+    assert all(listed[item]["resource"] is not None for item in booked_ids)
+
+
+def _only_selectable_specialist(branch_id: str, employee_id: str) -> list[UUID]:
+    from app.db.models import EmployeeBranchAssignment
+
+    with get_session_factory()() as session:
+        others = session.scalars(
+            select(Employee)
+            .join(
+                EmployeeBranchAssignment,
+                EmployeeBranchAssignment.employee_id == Employee.id,
+            )
+            .where(
+                EmployeeBranchAssignment.branch_id == UUID(branch_id),
+                Employee.id != UUID(employee_id),
+                Employee.online_booking_selectable.is_(True),
+            )
+        ).all()
+        for other in others:
+            other.online_booking_selectable = False
+        session.commit()
+        return [other.id for other in others]
+
+
+def _restore_selectable(employee_ids: list[UUID]) -> None:
+    with get_session_factory()() as session:
+        for employee_id in employee_ids:
+            session.get(Employee, employee_id).online_booking_selectable = True
+        session.commit()
 
 
 @pytest.mark.integration
-def test_public_reschedule_assigns_orphan_appointment(client, booking_setup):
+def test_any_available_bookings_consume_specialist_capacity(client, booking_setup):
+    headers, _, branch, employee, service = booking_setup
+    base = f"/api/v1/public/booking/branches/{branch}"
+    _set_service_duration(client, headers, service, 30)
+    disabled = _only_selectable_specialist(branch, employee)
+    try:
+        body = payload_for(employee, service)
+        body.pop("employeeId")
+        first = client.post(
+            f"{base}/appointments",
+            json={**body, "time": "10:00"},
+            headers={"Idempotency-Key": str(uuid7())},
+        )
+        assert first.status_code == 201, first.text
+        assert first.json()["appointment"]["employeeId"] is None
+        unassigned_slots = client.get(
+            f"{base}/slots", params={"date": body["date"], "serviceId": service}
+        ).json()["slots"]
+        assert "10:00" not in unassigned_slots
+        specific_slots = client.get(
+            f"{base}/slots", params=_slot_params(body, employee, service)
+        ).json()["slots"]
+        assert "10:00" not in specific_slots
+        second = client.post(
+            f"{base}/appointments",
+            json={**payload_for(employee, service), "date": body["date"], "time": "10:00"},
+            headers={"Idempotency-Key": str(uuid7())},
+        )
+        assert second.status_code == 409, second.text
+        third = client.post(
+            f"{base}/appointments",
+            json={**body, "documentId": f"{body['documentId']}X", "time": "10:00"},
+            headers={"Idempotency-Key": str(uuid7())},
+        )
+        assert third.status_code == 409, third.text
+    finally:
+        _restore_selectable(disabled)
+
+
+@pytest.mark.integration
+def test_public_reschedule_keeps_appointment_unassigned(client, booking_setup):
     headers, _, branch, employee, service = booking_setup
     base = f"/api/v1/public/booking/branches/{branch}"
     body = payload_for(employee, service)
+    body.pop("employeeId")
     _set_service_duration(client, headers, service, 30)
     booked = client.post(
         f"{base}/appointments",
@@ -454,9 +531,15 @@ def test_public_reschedule_assigns_orphan_appointment(client, booking_setup):
     appointment = booked.json()["appointment"]
     with get_session_factory()() as session:
         stored = session.get(Appointment, UUID(appointment["id"]))
-        stored.employee_id = None
+        assert stored.employee_id is None
         stored.resource_id = None
         session.commit()
+    slots = client.get(
+        f"{base}/appointments/{appointment['id']}/slots",
+        params={"token": appointment["managementToken"], "date": body["date"]},
+    )
+    assert slots.status_code == 200, slots.text
+    assert "11:00" in slots.json()["slots"]
 
     rescheduled = client.post(
         f"{base}/appointments/{appointment['id']}/reschedule",
@@ -468,11 +551,155 @@ def test_public_reschedule_assigns_orphan_appointment(client, booking_setup):
     )
     assert rescheduled.status_code == 200, rescheduled.text
     assert rescheduled.json()["time"] == "11:00"
+    assert rescheduled.json()["employeeId"] is None
     with get_session_factory()() as session:
         stored = session.get(Appointment, UUID(appointment["id"]))
-        assert stored.employee_id is not None
-        assert str(stored.employee_id) == rescheduled.json()["employeeId"]
+        assert stored.employee_id is None
         assert stored.resource_id is not None
+
+
+@pytest.mark.integration
+def test_public_booking_ignores_staff_cabin_acl(client, booking_setup):
+    headers, me, branch, employee, service = booking_setup
+    base = f"/api/v1/public/booking/branches/{branch}"
+    resources = client.get(
+        "/api/v1/appointment-resources", headers=headers, params={"branchId": branch}
+    ).json()["items"]
+    from tests.test_agenda import _create_branch_agenda_reader
+
+    reader_email = _create_branch_agenda_reader(UUID(me["workspaceId"]), UUID(branch))
+    with get_session_factory()() as session:
+        from app.db.models import PlatformUser
+
+        reader_id = str(
+            session.scalar(select(PlatformUser.id).where(PlatformUser.email == reader_email))
+        )
+    for index, resource in enumerate(resources):
+        items = [{"userId": reader_id, "access": "edit"}]
+        if index == 0:
+            items.append({"userId": me["userId"], "access": "view"})
+        restricted = client.put(
+            f"/api/v1/appointment-resources/{resource['id']}/acl",
+            headers=headers,
+            params={"branchId": branch},
+            json={"items": items},
+        )
+        assert restricted.status_code == 200, restricted.text
+    owner_view = client.get(
+        "/api/v1/appointment-resources", headers=headers, params={"branchId": branch}
+    ).json()["items"]
+    assert [item["access"] for item in owner_view] == ["view"]
+    body = payload_for(employee, service)
+    booked = client.post(
+        f"{base}/appointments", json=body, headers={"Idempotency-Key": str(uuid7())}
+    )
+    assert booked.status_code == 201, booked.text
+    appointment = booked.json()["appointment"]
+    rescheduled = client.post(
+        f"{base}/appointments/{appointment['id']}/reschedule",
+        json={
+            "managementToken": appointment["managementToken"],
+            "date": body["date"],
+            "time": "13:00",
+        },
+    )
+    assert rescheduled.status_code == 200, rescheduled.text
+    cancelled = client.post(
+        f"{base}/appointments/{appointment['id']}/cancel",
+        json={"managementToken": appointment["managementToken"]},
+    )
+    assert cancelled.status_code == 200, cancelled.text
+
+
+@pytest.mark.integration
+def test_cabin_blocked_for_online_booking_is_never_offered(client, booking_setup):
+    headers, _, branch, employee, service = booking_setup
+    base = f"/api/v1/public/booking/branches/{branch}"
+    body = payload_for(employee, service)
+    resources = client.get(
+        "/api/v1/appointment-resources", headers=headers, params={"branchId": branch}
+    ).json()["items"]
+    open_resource = resources[0]
+    for resource in resources[1:]:
+        blocked = client.patch(
+            f"/api/v1/appointment-resources/{resource['id']}",
+            headers=headers,
+            params={"branchId": branch},
+            json={"version": resource["version"], "onlineBookingEnabled": False},
+        )
+        assert blocked.status_code == 200, blocked.text
+        assert blocked.json()["onlineBookingEnabled"] is False
+    booked = client.post(
+        f"{base}/appointments", json=body, headers={"Idempotency-Key": str(uuid7())}
+    )
+    assert booked.status_code == 201, booked.text
+    with get_session_factory()() as session:
+        stored = session.get(Appointment, UUID(booked.json()["appointment"]["id"]))
+        assert str(stored.resource_id) == open_resource["id"]
+    occupied = client.post(
+        "/api/v1/appointments",
+        headers={**headers, "Idempotency-Key": str(uuid7())},
+        json={
+            "branchId": branch,
+            "resourceId": open_resource["id"],
+            "date": body["date"],
+            "time": "13:00",
+            "duration": 60,
+            "customerName": "Ocupa la única cabina online",
+        },
+    )
+    assert occupied.status_code == 201, occupied.text
+    slots = client.get(f"{base}/slots", params=_slot_params(body, employee, service)).json()
+    assert "13:00" not in slots["slots"]
+    assert "14:00" in slots["slots"]
+    open_now = client.get(
+        "/api/v1/appointment-resources", headers=headers, params={"branchId": branch}
+    ).json()["items"]
+    first = next(item for item in open_now if item["id"] == open_resource["id"])
+    closed = client.patch(
+        f"/api/v1/appointment-resources/{first['id']}",
+        headers=headers,
+        params={"branchId": branch},
+        json={"version": first["version"], "onlineBookingEnabled": False},
+    )
+    assert closed.status_code == 200, closed.text
+    context = client.get(f"{base}/context").json()
+    assert context["hasResources"] is False
+
+
+@pytest.mark.integration
+def test_calendar_lists_cabinless_appointments_for_restricted_users(client, booking_setup):
+    headers, me, branch, employee, service = booking_setup
+    base = f"/api/v1/public/booking/branches/{branch}"
+    body = payload_for(employee, service)
+    booked = client.post(
+        f"{base}/appointments", json=body, headers={"Idempotency-Key": str(uuid7())}
+    )
+    assert booked.status_code == 201, booked.text
+    appointment_id = booked.json()["appointment"]["id"]
+    with get_session_factory()() as session:
+        session.get(Appointment, UUID(appointment_id)).resource_id = None
+        session.commit()
+    resources = client.get(
+        "/api/v1/appointment-resources", headers=headers, params={"branchId": branch}
+    ).json()["items"]
+    granted = client.put(
+        f"/api/v1/appointment-resources/{resources[-1]['id']}/acl",
+        headers=headers,
+        params={"branchId": branch},
+        json={"items": [{"userId": me["userId"], "access": "view"}]},
+    )
+    assert granted.status_code == 200, granted.text
+    visible = client.get(
+        "/api/v1/appointment-resources", headers=headers, params={"branchId": branch}
+    ).json()["items"]
+    assert [item["id"] for item in visible] == [resources[-1]["id"]]
+    calendar = client.get(
+        "/api/v1/appointments",
+        headers=headers,
+        params={"branchId": branch, "dateFrom": body["date"], "dateTo": body["date"]},
+    ).json()["items"]
+    assert any(item["id"] == appointment_id and item["resource"] is None for item in calendar)
 
 
 @pytest.mark.integration
@@ -991,6 +1218,33 @@ def test_booking_entry_context_scoped_to_branch_workspace(client, booking_setup,
     context_names = {item["name"] for item in context.get("workspaceBranches") or []}
     assert other_branch_name not in context_names
     assert other_branch_id not in {item["id"] for item in context.get("workspaceBranches") or []}
+
+
+@pytest.mark.integration
+def test_public_portal_flags_past_appointments_as_not_manageable(
+    client, booking_setup, monkeypatch
+):
+    _, _, branch, employee, service = booking_setup
+    body = payload_for(employee, service)
+    booked = client.post(
+        f"/api/v1/public/booking/branches/{branch}/appointments",
+        json=body,
+        headers={"Idempotency-Key": str(uuid7())},
+    )
+    assert booked.status_code == 201, booked.text
+    appointment_id = booked.json()["appointment"]["id"]
+    params = {"documentType": body["documentType"], "documentId": body["documentId"]}
+    route = f"/api/v1/public/portal/branches/{branch}/appointments"
+    upcoming = client.get(route, params=params)
+    assert upcoming.status_code == 200, upcoming.text
+    item = next(row for row in upcoming.json()["items"] if row["id"] == appointment_id)
+    assert item["canManageOnline"] is True
+    later = datetime.combine(
+        date.fromisoformat(body["date"]) + timedelta(days=1), datetime.min.time(), UTC
+    )
+    monkeypatch.setattr("app.services.public_booking.utc_now", lambda: later)
+    past = client.get(route, params=params).json()["items"]
+    assert next(row for row in past if row["id"] == appointment_id)["canManageOnline"] is False
 
 
 @pytest.mark.integration

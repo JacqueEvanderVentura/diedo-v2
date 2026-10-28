@@ -121,11 +121,10 @@ class CrmLead(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
         ),
         CheckConstraint("pipeline_value >= 0", name="pipeline_value_non_negative"),
         CheckConstraint(
-            "(status = 'cerrado' AND converted_customer_id IS NOT NULL AND "
-            "converted_at IS NOT NULL AND conversion_idempotency_key IS NOT NULL AND "
-            "conversion_request_fingerprint IS NOT NULL) OR "
-            "(status <> 'cerrado' AND converted_customer_id IS NULL AND converted_at IS NULL "
-            "AND conversion_idempotency_key IS NULL AND conversion_request_fingerprint IS NULL)",
+            "(status <> 'cerrado' OR converted_customer_id IS NOT NULL) AND "
+            "((converted_customer_id IS NULL) = (converted_at IS NULL)) AND "
+            "((conversion_idempotency_key IS NULL) = (conversion_request_fingerprint IS NULL)) AND "
+            "(conversion_idempotency_key IS NULL OR converted_customer_id IS NOT NULL)",
             name="conversion_state_consistent",
         ),
         CheckConstraint(
@@ -150,10 +149,9 @@ class CrmLead(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             name="conversion_fingerprint_length",
         ),
         Index(
-            "uq_crm_leads_workspace_converted_customer",
+            "ix_crm_leads_workspace_converted_customer",
             "workspace_id",
             "converted_customer_id",
-            unique=True,
             postgresql_where=text("converted_customer_id IS NOT NULL"),
         ),
         Index(

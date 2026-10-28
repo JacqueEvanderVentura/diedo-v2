@@ -211,7 +211,7 @@ function LeadsListaTab({ onEditLead }) {
         leadId,
         customerId: customer?.id || lead?.customerId || null,
       })
-      toast.success('Lead convertido a cliente')
+      toast.success('Cliente creado y vinculado; el lead sigue en su etapa actual')
     } catch (error) {
       toast.error(error.message || 'No se pudo convertir el lead')
     }
@@ -222,7 +222,7 @@ function LeadsListaTab({ onEditLead }) {
       leadId: lead.id,
       customerId: customer?.id || lead?.customerId || null,
     })
-    toast.success('Lead convertido a cliente')
+    toast.success('Cliente creado y vinculado; el lead sigue en su etapa actual')
     setConvertLeadTarget(null)
   }
 

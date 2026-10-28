@@ -764,10 +764,18 @@ def test_crm_http_flow_is_idempotent_and_reaches_quote(client: TestClient) -> No
     )
     assert changed_replay.status_code == 409
     converted_lead = client.get(f"/api/v1/crm/leads/{lead['id']}", headers=headers).json()
+    assert converted_lead["status"] != "cerrado"
+    assert converted_lead["customerId"] == converted.json()["id"]
+    won_lead = client.patch(
+        f"/api/v1/crm/leads/{lead['id']}",
+        headers=headers,
+        json={"version": converted_lead["version"], "status": "cerrado"},
+    )
+    assert won_lead.status_code == 200, won_lead.text
     immutable_lead = client.patch(
         f"/api/v1/crm/leads/{lead['id']}",
         headers=headers,
-        json={"version": converted_lead["version"], "status": "contactado"},
+        json={"version": won_lead.json()["version"], "name": "Otro nombre"},
     )
     assert immutable_lead.status_code == 409
     unknown_id = str(uuid7())
@@ -1541,6 +1549,13 @@ def test_crm_batch_delete_and_import_activities(client: TestClient) -> None:
         },
     )
     assert convert.status_code == 200, convert.text
+    linked_lead = client.get(f"/api/v1/crm/leads/{lead_id}", headers=headers).json()
+    won = client.patch(
+        f"/api/v1/crm/leads/{lead_id}",
+        headers=headers,
+        json={"version": linked_lead["version"], "status": "cerrado"},
+    )
+    assert won.status_code == 200, won.text
 
     converted_block = client.post(
         "/api/v1/crm/leads/batch-delete",

@@ -1,8 +1,16 @@
 import { apiClient } from '@/services/apiClient'
 import { mapDocumentAttachmentFromApi, mapDocumentAttachmentsFromApi } from '@/services/adapters/documentAttachments'
 
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+export const ATTACHMENT_TOO_LARGE_MESSAGE = 'El archivo excede el tamaño permitido (10 MB).'
+
+function assertAttachmentSize(file) {
+  if (file?.size > MAX_ATTACHMENT_BYTES) throw new Error(ATTACHMENT_TOO_LARGE_MESSAGE)
+}
+
 async function uploadFiles(path, attachments = []) {
   const pending = (attachments || []).filter((item) => item.pendingFile)
+  pending.forEach((item) => assertAttachmentSize(item.pendingFile))
   const uploaded = []
   for (const item of pending) {
     const formData = new FormData()
@@ -49,6 +57,7 @@ export async function uploadPurchaseDocument(requestId, purpose, attachment) {
     receipt: 'receipt',
   }[purpose]
   if (!path) throw new Error('Tipo de documento de compra no válido.')
+  assertAttachmentSize(attachment.pendingFile)
   const formData = new FormData()
   formData.append('file', attachment.pendingFile, attachment.name || attachment.pendingFile.name)
   const response = await apiClient.upload(`/api/v1/purchasing/requests/${requestId}/${path}`, formData)
