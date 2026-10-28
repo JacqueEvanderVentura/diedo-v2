@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  Globe,
   Pencil,
   PencilLine,
   Plus,
@@ -33,10 +34,13 @@ import {
   aclRowsToMap,
   cycleResourceAccess,
   fetchAllActiveUsers,
+  FULL_ACCESS_LABEL,
   normalizeAclUserId,
+  onlineBookingLabel,
   platformUserId,
   sortResources,
   userAssignedToBranch,
+  userHasAnyGrant,
 } from '../lib/agendaCabinas'
 import { configPageClass } from '../lib/pageShell'
 import { isSettingsBlockVisible } from '../lib/settingsSearch'
@@ -62,7 +66,14 @@ function roleLabel(user) {
   return name ? String(name).toLowerCase() : ''
 }
 
-function AccessPill({ access }) {
+function AccessPill({ access, unrestricted = false }) {
+  if (unrestricted) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">
+        {FULL_ACCESS_LABEL}
+      </span>
+    )
+  }
   const level = access || 'none'
   const label = ACL_LABELS[level] || ACL_LABELS.none
   return (
@@ -343,6 +354,23 @@ export default function AgendaCabinasPanel({ embedded = false, visibleBlockIds }
     }
   }
 
+  const toggleOnlineBooking = async (resource) => {
+    try {
+      const updated = await appointmentsApi.updateAppointmentResource(resource.id, activeBranchId, {
+        onlineBookingEnabled: !resource.onlineBookingEnabled,
+        version: resource.version,
+      })
+      setResources((current) => current.map((item) => (item.id === updated.id ? updated : item)))
+      toast.success(
+        updated.onlineBookingEnabled
+          ? `${updated.name} disponible para reserva en línea`
+          : `${updated.name} bloqueada para reserva en línea`,
+      )
+    } catch (error) {
+      toast.error(error.message || 'No se pudo actualizar la reserva en línea.')
+    }
+  }
+
   const saveStaff = async () => {
     if (!staffModal?.name?.trim()) {
       toast.error('El nombre es obligatorio.')
@@ -536,7 +564,10 @@ export default function AgendaCabinasPanel({ embedded = false, visibleBlockIds }
             <h4 className="font-heading text-lg font-bold text-slate-900">Asignación de Usuarios de Sistema</h4>
             <p className="mt-1 text-sm text-slate-500">
               Otorga el permiso a los usuarios del sistema (ej. recepcionistas) para ver y administrar la agenda de estas cabinas.
-              Sin usuarios asignados, la cabina queda abierta a todos.
+              Los usuarios sin asignaciones ven todas las cabinas. Al asignarle una cabina a un usuario, solo verá las cabinas que tenga asignadas.
+            </p>
+            <p className="mt-1 text-sm text-slate-500">
+              La fila Reserva en línea decide si los clientes pueden reservar esa cabina desde el booking online.
             </p>
           </Card>
 
@@ -579,6 +610,32 @@ export default function AgendaCabinasPanel({ embedded = false, visibleBlockIds }
                       <span>Usuario</span>
                       <span>Nivel de Acceso</span>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => toggleOnlineBooking(resource)}
+                      className={cn(
+                        'flex w-full items-center justify-between rounded-lg border border-dashed p-2 text-left text-sm transition-colors',
+                        resource.onlineBookingEnabled
+                          ? 'border-emerald-200 bg-emerald-50/60 hover:bg-emerald-50'
+                          : 'border-slate-200 hover:bg-slate-50',
+                      )}
+                      data-testid={`agenda-acl-online-${resource.id}`}
+                    >
+                      <span className="flex items-center gap-2 font-bold text-slate-700">
+                        <Globe className="h-4 w-4 text-blue-600" aria-hidden />
+                        Reserva en línea
+                      </span>
+                      <span
+                        className={cn(
+                          'inline-flex items-center rounded-full px-2 py-1 text-[10px] font-bold',
+                          resource.onlineBookingEnabled
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-slate-100 text-slate-500',
+                        )}
+                      >
+                        {onlineBookingLabel(resource.onlineBookingEnabled)}
+                      </span>
+                    </button>
                     {branchUsers.length === 0 ? (
                       <p className="px-2 py-4 text-center text-sm text-slate-500">
                         No hay usuarios activos con acceso a esta sucursal.
@@ -606,7 +663,10 @@ export default function AgendaCabinasPanel({ embedded = false, visibleBlockIds }
                               </span>
                             )}
                           </div>
-                          <AccessPill access={access} />
+                          <AccessPill
+                            access={access}
+                            unrestricted={!userHasAnyGrant(aclByResource, platformUserId(user))}
+                          />
                         </button>
                       )
                     })}

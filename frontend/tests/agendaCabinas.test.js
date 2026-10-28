@@ -9,10 +9,14 @@ import {
   cycleResourceAccess,
   aclRowsToMap,
   fetchAllActiveUsers,
+  FULL_ACCESS_LABEL,
   normalizeAclUserId,
+  onlineBookingLabel,
   sortResources,
   userAssignedToBranch,
+  userHasAnyGrant,
 } from '@/modules/configuracion/lib/agendaCabinas'
+import { mapAppointmentResourceFromApi } from '@/services/adapters/appointments'
 import { boundsForDate } from '@/modules/agenda/lib/branchOpeningHours'
 
 describe('agendaCabinas helpers', () => {
@@ -69,6 +73,25 @@ describe('agendaCabinas helpers', () => {
     expect(userAssignedToBranch({ branches: [{ id: 'hq' }] }, 'hq')).toBe(true)
     expect(userAssignedToBranch({ branchIds: ['hq'] }, 'hq')).toBe(true)
     expect(userAssignedToBranch({ branches: [], branchIds: [] }, 'hq')).toBe(false)
+  })
+
+  it('detects users restricted by at least one cabin grant', () => {
+    const acl = { cab1: { 'abc-111': 'use' }, cab2: {} }
+    expect(userHasAnyGrant(acl, 'ABC-111')).toBe(true)
+    expect(userHasAnyGrant(acl, 'def-222')).toBe(false)
+    expect(userHasAnyGrant({}, 'abc-111')).toBe(false)
+    expect(userHasAnyGrant(acl, null)).toBe(false)
+    expect(FULL_ACCESS_LABEL).toBe('Acceso total')
+  })
+
+  it('labels and maps the online booking switch per cabin', () => {
+    expect(onlineBookingLabel(true)).toBe('Permitida')
+    expect(onlineBookingLabel(false)).toBe('Bloqueada')
+    expect(mapAppointmentResourceFromApi({ id: 'c', name: 'C' }, 'hq').onlineBookingEnabled).toBe(true)
+    expect(
+      mapAppointmentResourceFromApi({ id: 'c', name: 'C', onlineBookingEnabled: false }, 'hq')
+        .onlineBookingEnabled,
+    ).toBe(false)
   })
 
   it('paginates active users with pageSize 100', async () => {

@@ -69,10 +69,10 @@ def portal_appointments(
     document_id: Annotated[str, Query(alias="documentId", max_length=64)],
 ) -> PublicPortalAppointmentsResponse:
     items = PublicPortalService(database).list_appointments(branch_id, document_type, document_id)
-    from app.schemas.public_booking import PublicAppointmentSummary
+    from app.schemas.public_portal import PublicPortalAppointmentItem
 
     return PublicPortalAppointmentsResponse(
-        items=[PublicAppointmentSummary.model_validate(item) for item in items]
+        items=[PublicPortalAppointmentItem.model_validate(item) for item in items]
     )
 
 

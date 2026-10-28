@@ -78,7 +78,7 @@ export default function CalendarioPage() {
 
   useEffect(() => {
     if (!branchId) return
-    hydrateResources({ branchId }).catch(() => {})
+    hydrateResources({ branchId, force: true }).catch(() => {})
   }, [branchId, hydrateResources])
 
   useEffect(() => {
