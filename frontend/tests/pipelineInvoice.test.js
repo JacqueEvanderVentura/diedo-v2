@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   buildDemoSaleFromPipeline,
   findBillableQuote,
   findLeadLinkedQuote,
   previewInvoiceNumber,
+  syncPipelineCloseCustomer,
   validatePipelineClose,
 } from '@/modules/crm/lib/pipelineInvoice'
 
@@ -77,5 +78,35 @@ describe('pipelineInvoice', () => {
 
   it('previsualiza un número de factura', () => {
     expect(previewInvoiceNumber(new Date('2026-09-08T12:30:45'))).toBe('FAC-20260908-123045')
+  })
+
+  it('vincula el cliente al lead antes de actualizar la cotización', async () => {
+    const calls = []
+    const updateLead = vi.fn(async () => { calls.push('lead') })
+    const updateQuote = vi.fn(async () => { calls.push('quote') })
+    await syncPipelineCloseCustomer({ leadId: 'lead-1', customerId: 'c9', quotes, updateLead, updateQuote })
+    expect(updateLead).toHaveBeenCalledWith('lead-1', { customerId: 'c9' })
+    expect(updateQuote).toHaveBeenCalledWith('qt-1', { customerId: 'c9' })
+    expect(calls).toEqual(['lead', 'quote'])
+  })
+
+  it('propaga el error al vincular y no toca cotizaciones facturadas', async () => {
+    const updateQuote = vi.fn()
+    await expect(syncPipelineCloseCustomer({
+      leadId: 'lead-1',
+      customerId: 'c9',
+      quotes,
+      updateLead: vi.fn().mockRejectedValue(new Error('El lead está vinculado a otro cliente.')),
+      updateQuote,
+    })).rejects.toThrow('otro cliente')
+    expect(updateQuote).not.toHaveBeenCalled()
+
+    await syncPipelineCloseCustomer({
+      leadId: 'lead-1',
+      customerId: 'c9',
+      quotes: [{ ...quotes[0], convertedSaleId: 'sale-1' }],
+      updateQuote,
+    })
+    expect(updateQuote).not.toHaveBeenCalled()
   })
 })

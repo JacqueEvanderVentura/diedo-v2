@@ -200,6 +200,21 @@ class CrmRepository:
             query = query.with_for_update()
         return self._session.scalar(query)
 
+    def lead_has_sale(self, workspace_id: UUID, lead_id: UUID) -> bool:
+        sale_id = self._session.scalar(
+            select(Sale.id)
+            .join(
+                SalesQuote,
+                (SalesQuote.workspace_id == Sale.workspace_id) & (SalesQuote.id == Sale.quote_id),
+            )
+            .where(
+                Sale.workspace_id == workspace_id,
+                SalesQuote.lead_id == lead_id,
+            )
+            .limit(1)
+        )
+        return sale_id is not None
+
     def lead_by_document(
         self,
         workspace_id: UUID,

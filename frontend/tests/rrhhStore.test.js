@@ -121,4 +121,89 @@ describe('rrhhStore alta de empleado', () => {
     expect(saved.id).toBe('emp-new')
     expect(saved.attachmentWarning).toMatch(/falló el archivo/)
   })
+
+  it('sube contrato y documentos con su clasificación al crear', async () => {
+    mocks.uploadEmployeeAttachment.mockResolvedValue({ id: 'att-x' })
+    mocks.employeeAttachments.mockResolvedValue([{ id: 'a' }, { id: 'b' }, { id: 'c' }])
+    const pdf = new File(['pdf'], 'contrato.pdf', { type: 'application/pdf' })
+    const img = new File(['img'], 'cedula.png', { type: 'image/png' })
+    const cert = new File(['pdf'], 'certificado.pdf', { type: 'application/pdf' })
+
+    const saved = await useRrhhStore.getState().addEmployee({
+      firstName: 'Camila',
+      lastName: 'Núñez',
+      position: 'Especialista',
+      hireDate: '2026-03-01',
+      branchIds: ['branch-1'],
+      attachments: [{ pendingFile: pdf, name: 'contrato.pdf' }],
+      documents: [
+        { pendingFile: img, name: 'cedula.png' },
+        { pendingFile: cert, name: 'certificado.pdf' },
+      ],
+    })
+
+    const classifications = mocks.uploadEmployeeAttachment.mock.calls.map(([, form]) => form.get('classification'))
+    expect(classifications).toEqual(['labor_contract', 'employee_document', 'employee_document'])
+    expect(mocks.employeeAttachments).toHaveBeenCalledTimes(1)
+    expect(saved.attachmentCount).toBe(3)
+    expect(saved.attachmentWarning).toBeUndefined()
+  })
+})
+
+describe('rrhhStore edición de documentos', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useSessionStore.setState({
+      status: 'online',
+      user: {
+        branchIds: ['branch-1'],
+        effectivePermissionCodes: ['employee.manage', 'hr.profile.manage', 'hr.profile.read'],
+      },
+    })
+    useRrhhStore.setState({
+      employees: [{
+        ...createdEmployee,
+        branchIds: ['branch-1'],
+        jefeIds: [],
+        workSchedule: {},
+        scheduleVersion: 1,
+      }],
+      employeeProfiles: [],
+    })
+    mocks.mutate.mockResolvedValue(createdEmployee)
+    mocks.uploadEmployeeAttachment.mockResolvedValue({ id: 'doc-new' })
+    mocks.deleteEmployeeAttachment.mockResolvedValue(undefined)
+    mocks.employeeAttachments.mockResolvedValue([{ id: 'contract-1' }, { id: 'doc-keep' }, { id: 'doc-new' }])
+  })
+
+  it('borra documentos quitados, sube los nuevos y no toca el contrato', async () => {
+    const img = new File(['img'], 'titulo.png', { type: 'image/png' })
+    const saved = await useRrhhStore.getState().updateEmployee('emp-new', {
+      attachments: [{ id: 'contract-1', name: 'contrato.pdf' }],
+      existingContractIds: ['contract-1'],
+      documents: [
+        { id: 'doc-keep', name: 'cedula.png' },
+        { pendingFile: img, name: 'titulo.png' },
+      ],
+      existingDocumentIds: ['doc-keep', 'doc-old'],
+    })
+
+    expect(mocks.deleteEmployeeAttachment).toHaveBeenCalledTimes(1)
+    expect(mocks.deleteEmployeeAttachment).toHaveBeenCalledWith('emp-new', 'doc-old')
+    expect(mocks.uploadEmployeeAttachment).toHaveBeenCalledTimes(1)
+    expect(mocks.uploadEmployeeAttachment.mock.calls[0][1].get('classification')).toBe('employee_document')
+    expect(saved.attachmentCount).toBe(3)
+  })
+
+  it('avisa si fallan los documentos sin perder el guardado', async () => {
+    mocks.uploadEmployeeAttachment.mockRejectedValue(new Error(''))
+    const img = new File(['img'], 'titulo.png', { type: 'image/png' })
+    const saved = await useRrhhStore.getState().updateEmployee('emp-new', {
+      documents: [{ pendingFile: img, name: 'titulo.png' }],
+      existingDocumentIds: [],
+    })
+
+    expect(saved.attachmentWarning).toMatch(/No se pudieron guardar los documentos/)
+    expect(mocks.employeeAttachments).not.toHaveBeenCalled()
+  })
 })

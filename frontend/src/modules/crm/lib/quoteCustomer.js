@@ -1,74 +1,60 @@
-import { buildLeadOfflineCustomer } from './leadConversion'
-import { leadCustomerDefaults } from './pipelineForm'
+import { leadHasDocument } from './leadConversion'
 import { syncPipelineCloseCustomer } from './pipelineInvoice'
 
+export const LEAD_NEEDS_DOCUMENT = 'lead_needs_document'
+
+export function leadNeedsDocumentError() {
+  const error = new Error('Ingresa la cédula, RNC o pasaporte del lead para crear el cliente.')
+  error.code = LEAD_NEEDS_DOCUMENT
+  return error
+}
+
+export function isLeadNeedsDocumentError(error) {
+  return error?.code === LEAD_NEEDS_DOCUMENT
+}
+
+/** Links (or creates) the lead's customer through the CRM convert endpoint, which keeps the lead open. */
 export async function ensureCustomerForLeadQuote({
   lead,
-  addCustomer,
-  updateLead,
+  convertToCustomer,
+  documentOverride = null,
 }) {
   if (!lead?.id) return null
   if (lead.customerId) {
     return { id: lead.customerId, leadId: lead.id }
   }
-  const branchId = lead.branchId
-  if (!branchId) return null
-  const customer = await addCustomer({
-    ...buildLeadOfflineCustomer(lead),
-    branchId,
-  })
-  return { id: customer.id, leadId: lead.id }
+  if (!documentOverride && !leadHasDocument(lead)) {
+    throw leadNeedsDocumentError()
+  }
+  const customer = await convertToCustomer(lead.id, documentOverride)
+  if (!customer?.id) return null
+  return { ...customer, id: customer.id, leadId: lead.id }
 }
 
 export async function ensureCustomerForQuote({
   customerId,
   lead,
-  addCustomer,
-  updateLead,
+  convertToCustomer,
+  documentOverride = null,
 }) {
   if (customerId) {
     return { id: customerId }
   }
   if (!lead) return null
-
-  const defaults = leadCustomerDefaults(lead)
-  const name = defaults.name?.trim()
-  const branchId = defaults.branchIds?.[0] || lead.branchId
-  if (!name || !branchId) return null
-
-  const customer = await addCustomer({
-    ...defaults,
-    branchId,
-    customerStatus: 'prospecto',
-  })
-
-  return customer
+  return ensureCustomerForLeadQuote({ lead, convertToCustomer, documentOverride })
 }
 
-/** Crea o reutiliza cliente para cerrar el pipeline sin marcar el lead como ganado todavía. */
+/** Links a customer to the lead for invoicing without marking it as won. */
 export async function preparePipelineCloseCustomer({
   lead,
-  addCustomer,
+  convertToCustomer,
   updateLead,
   updateQuote,
   quotes = [],
   documentOverride = null,
 }) {
   if (!lead?.id) return null
-  let customer = null
-  if (documentOverride) {
-    customer = await addCustomer({
-      ...buildLeadOfflineCustomer(lead, documentOverride),
-      branchId: lead.branchId,
-    })
-  } else {
-    customer = await ensureCustomerForQuote({
-      customerId: null,
-      lead,
-      addCustomer,
-      updateLead,
-    })
-  }
+  const customer = await ensureCustomerForLeadQuote({ lead, convertToCustomer, documentOverride })
   if (customer?.id) {
     await syncPipelineCloseCustomer({
       leadId: lead.id,

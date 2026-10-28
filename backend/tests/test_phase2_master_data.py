@@ -480,6 +480,10 @@ def test_phase2_customers_employees_schedules_and_attachments(
     )
     assert duplicate_link.status_code == 409
     assert duplicate_link.json()["parameter"] == "platformUserId"
+    assert (
+        f"Ada Supervisora {suffix} ({supervisor['employeeNumber']}, activo)"
+        in duplicate_link.json()["message"]
+    )
 
     duplicate_number = client.post(
         "/api/v1/employees",
@@ -588,3 +592,21 @@ def test_phase2_customers_employees_schedules_and_attachments(
         params={"email": customer["email"], "status": "archived"},
     )
     assert [item["id"] for item in archived_list.json()["items"]] == [customer["id"]]
+
+    supervisor_detail = client.get(f"/api/v1/employees/{supervisor['id']}", headers=headers)
+    archived_supervisor = client.patch(
+        f"/api/v1/employees/{supervisor['id']}",
+        headers=headers,
+        json={"status": "archived", "version": supervisor_detail.json()["version"]},
+    )
+    assert archived_supervisor.status_code == 200, archived_supervisor.text
+    assert archived_supervisor.json()["status"] == "archived"
+    assert archived_supervisor.json()["platformUserId"] is None
+    employee_latest = client.get(f"/api/v1/employees/{employee['id']}", headers=headers)
+    relinked = client.patch(
+        f"/api/v1/employees/{employee['id']}",
+        headers=headers,
+        json={"version": employee_latest.json()["version"], "platformUserId": platform_user_id},
+    )
+    assert relinked.status_code == 200, relinked.text
+    assert relinked.json()["platformUserId"] == platform_user_id

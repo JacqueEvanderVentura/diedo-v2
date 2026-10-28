@@ -12,6 +12,7 @@ const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random()
 const now = () => new Date().toISOString()
 const API_UNAVAILABLE = 'La API no está disponible.'
 const CONTRACT_SAVE_ERROR = 'No se pudo guardar el contrato. Intenta de nuevo o sigue sin archivo.'
+const DOCUMENTS_SAVE_ERROR = 'No se pudieron guardar los documentos. Intenta de nuevo desde editar.'
 const PROFILE_SAVE_ERROR = 'No se pudo guardar el salario o la residencia. Intenta de nuevo desde editar.'
 
 function canManageHrProfile() {
@@ -53,27 +54,53 @@ async function syncHrProfile(employee, data) {
   }
 }
 
-async function syncLaborContract(employeeId, attachments, previousIds = []) {
-  if (!canManageHrProfile()) return { warning: null, attachmentCount: null }
-  const current = attachments || []
+async function syncEmployeeAttachments(employeeId, items, previousIds, classification, fallbackError) {
+  const current = items || []
   const keptIds = new Set(current.filter((item) => item.id && !item.pendingFile).map((item) => item.id))
   const removed = (previousIds || []).filter((id) => !keptIds.has(id))
+  const pending = current.filter((item) => item.pendingFile)
+  let changed = false
   try {
     for (const attachmentId of removed) {
       await masterDataApi.deleteEmployeeAttachment(employeeId, attachmentId)
+      changed = true
     }
-    const pending = current.filter((item) => item.pendingFile)
     for (const item of pending) {
       const formData = new FormData()
       formData.append('file', item.pendingFile, item.name || item.pendingFile.name)
-      formData.append('classification', 'labor_contract')
+      formData.append('classification', classification)
       await masterDataApi.uploadEmployeeAttachment(employeeId, formData)
+      changed = true
     }
-    if (!removed.length && !pending.length) return { warning: null, attachmentCount: null }
-    const listed = await masterDataApi.employeeAttachments(employeeId)
-    return { warning: null, attachmentCount: listed.length }
+    return { warning: null, changed }
   } catch (error) {
-    return { warning: error.message || CONTRACT_SAVE_ERROR, attachmentCount: null }
+    return { warning: error.message || fallbackError, changed }
+  }
+}
+
+async function syncEmployeeFiles(employeeId, data, { creating = false } = {}) {
+  if (!canManageHrProfile()) return { warning: null, attachmentCount: null }
+  const contract = await syncEmployeeAttachments(
+    employeeId,
+    data.attachments,
+    creating ? [] : data.existingContractIds,
+    'labor_contract',
+    CONTRACT_SAVE_ERROR
+  )
+  const documents = await syncEmployeeAttachments(
+    employeeId,
+    data.documents,
+    creating ? [] : data.existingDocumentIds,
+    'employee_document',
+    DOCUMENTS_SAVE_ERROR
+  )
+  const warning = [contract.warning, documents.warning].filter(Boolean).join(' ') || null
+  if (!contract.changed && !documents.changed) return { warning, attachmentCount: null }
+  try {
+    const listed = await masterDataApi.employeeAttachments(employeeId)
+    return { warning, attachmentCount: listed.length }
+  } catch {
+    return { warning, attachmentCount: null }
   }
 }
 
@@ -245,10 +272,10 @@ export const useRrhhStore = create(
         let emp = normalizeEmployee(mapEmployeeFromApi(response))
         const { profile, profileWarning } = await syncHrProfile(emp, data)
         if (profile) emp = mergeProfile(emp, profile)
-        const { warning: attachmentWarning, attachmentCount } = await syncLaborContract(
+        const { warning: attachmentWarning, attachmentCount } = await syncEmployeeFiles(
           emp.id,
-          data.attachments || [],
-          []
+          data,
+          { creating: true }
         )
         if (attachmentCount != null) emp = { ...emp, attachmentCount }
         set((s) => ({
@@ -293,11 +320,7 @@ export const useRrhhStore = create(
         }
         const { profile, profileWarning } = await syncHrProfile(employee, data)
         if (profile) employee = mergeProfile(employee, profile)
-        const { warning: attachmentWarning, attachmentCount } = await syncLaborContract(
-          id,
-          data.attachments || [],
-          data.existingContractIds || []
-        )
+        const { warning: attachmentWarning, attachmentCount } = await syncEmployeeFiles(id, data)
         if (attachmentCount != null) employee = { ...employee, attachmentCount }
         set((state) => ({
           employees: state.employees.map((item) => (item.id === id ? {

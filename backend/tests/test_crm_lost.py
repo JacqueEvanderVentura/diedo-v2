@@ -149,7 +149,7 @@ def test_lost_lead_persists_and_reopening_preserves_audit() -> None:
 
 
 @pytest.mark.integration
-def test_reopening_does_not_change_a_closed_lead() -> None:
+def test_converted_lead_stays_open_and_can_be_marked_lost() -> None:
     marker = uuid7().hex[-12:]
     with TestClient(app) as client:
         headers, branch_id = _owner(client)
@@ -171,6 +171,8 @@ def test_reopening_does_not_change_a_closed_lead() -> None:
         )
         assert converted.status_code == 200, converted.text
         current_lead = client.get(f"/api/v1/crm/leads/{lead.json()['id']}", headers=headers).json()
+        assert current_lead["status"] == "nuevo"
+        assert current_lead["customerId"] == converted.json()["id"]
         lost = client.patch(
             f"/api/v1/crm/leads/{lead.json()['id']}",
             headers=headers,
@@ -180,7 +182,8 @@ def test_reopening_does_not_change_a_closed_lead() -> None:
                 "lostReason": "Otro motivo",
             },
         )
-        assert lost.status_code == 409
+        assert lost.status_code == 200, lost.text
+        assert lost.json()["customerId"] == converted.json()["id"]
 
 
 @pytest.mark.integration

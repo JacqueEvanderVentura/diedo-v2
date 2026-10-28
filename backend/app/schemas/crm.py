@@ -198,6 +198,7 @@ class ImportLeadsRequest(ApiModel):
 class UpdateLeadRequest(ApiModel):
     version: int = Field(ge=1)
     assigned_membership_id: UUID | None = None
+    customer_id: UUID | None = None
     name: str | None = Field(default=None, max_length=200)
     company: str | None = Field(default=None, max_length=200)
     email: EmailStr | None = None

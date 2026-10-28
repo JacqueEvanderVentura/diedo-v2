@@ -48,6 +48,7 @@ from app.services.errors import (
 
 _LABOR_CONTRACT = "labor_contract"
 _EMPLOYEE_DOCUMENT_TYPES = frozenset({"cedula", "pasaporte"})
+_EMPLOYEE_STATUS_LABELS = {"active": "activo", "inactive": "inactivo", "archived": "archivado"}
 _ALLOWED_CONTENT_TYPES = {
     "application/pdf": ".pdf",
     "image/jpeg": ".jpg",
@@ -591,6 +592,8 @@ class MasterDataService:
                 f"{changes.get('last_name', employee.last_name)}"
             )
         prepared = self._prepare_employee_values(grant.workspace_id, changes)
+        if prepared.get("status", employee.status) == "archived":
+            prepared["platform_user_id"] = None
         self._validate_employee_uniques(grant.workspace_id, prepared, exclude_id=employee_id)
         try:
             record = self._repository.update_employee(
@@ -830,11 +833,16 @@ class MasterDataService:
                 raise ResourceNotFoundError(
                     "El usuario no pertenece al workspace.", "platformUserId"
                 )
-            if self._repository.platform_user_link_exists(
+            holder = self._repository.find_employee_by_platform_user(
                 workspace_id, platform_user_id, exclude_id
-            ):
+            )
+            if holder is not None:
+                status_label = _EMPLOYEE_STATUS_LABELS.get(holder.status, holder.status)
                 raise ConflictError(
-                    "El usuario ya está vinculado a otro empleado.", "platformUserId"
+                    "El usuario ya está vinculado a "
+                    f"{holder.first_name} {holder.last_name} "
+                    f"({holder.employee_number}, {status_label}).",
+                    "platformUserId",
                 )
         normalized_document_id = values.get("normalized_document_id")
         if isinstance(normalized_document_id, str) and self._repository.employee_by_document(

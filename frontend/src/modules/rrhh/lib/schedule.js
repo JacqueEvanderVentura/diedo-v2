@@ -55,24 +55,79 @@ export function normalizeTime(value) {
   return str
 }
 
+export const OVERNIGHT_HINT =
+  'Si el turno pasa de medianoche, divídelo en dos bloques (ej. 20:00–23:59 y 00:00–02:00 del día siguiente).'
+
+export function coerceWorkSchedule(input) {
+  const schedule = emptyWorkSchedule()
+  if (!input || typeof input !== 'object') return schedule
+  for (const day of WEEKDAY_KEYS) {
+    schedule[day] = Array.isArray(input[day])
+      ? input[day].map((block) => ({ start: block?.start ?? '', end: block?.end ?? '' }))
+      : []
+  }
+  return schedule
+}
+
+function isValidBlock(block) {
+  const start = normalizeTime(block?.start)
+  const end = normalizeTime(block?.end)
+  return Boolean(start && end) && timeToMinutes(end) > timeToMinutes(start)
+}
+
+function blockIssue(blocks, index) {
+  const block = blocks[index]
+  const start = normalizeTime(block?.start)
+  const end = normalizeTime(block?.end)
+  if (!start || !end) {
+    return { kind: 'incomplete', message: 'Completa la hora de entrada y de salida.' }
+  }
+  const startMin = timeToMinutes(start)
+  const endMin = timeToMinutes(end)
+  if (startMin === endMin) {
+    return { kind: 'order', message: `La entrada y la salida no pueden ser la misma hora (${start}).` }
+  }
+  if (endMin < startMin) {
+    return {
+      kind: 'order',
+      message: `La entrada no puede ser posterior a la salida (${start} – ${end}). ${OVERNIGHT_HINT}`,
+    }
+  }
+  const otherIndex = blocks.findIndex((other, i) => {
+    if (i === index || !isValidBlock(other)) return false
+    return startMin < timeToMinutes(other.end) && timeToMinutes(other.start) < endMin
+  })
+  if (otherIndex >= 0) {
+    const other = blocks[otherIndex]
+    return {
+      kind: 'overlap',
+      otherIndex,
+      message: `Se solapa con el bloque ${normalizeTime(other.start)} – ${normalizeTime(other.end)}.`,
+    }
+  }
+  return null
+}
+
+export function getBlockError(blocks, index) {
+  if (!Array.isArray(blocks) || !blocks[index]) return null
+  return blockIssue(blocks, index)?.message || null
+}
+
+export function dayHasErrors(blocks) {
+  return Array.isArray(blocks) && blocks.some((_, index) => getBlockError(blocks, index))
+}
+
 export function validateWorkSchedule(input) {
   const errors = []
   if (!input || typeof input !== 'object') return errors
 
   for (const day of WEEKDAY_KEYS) {
     const blocks = Array.isArray(input[day]) ? input[day] : []
-    blocks.forEach((block) => {
-      const start = normalizeTime(block?.start)
-      const end = normalizeTime(block?.end)
-      if (!start || !end) return
-      const startMin = timeToMinutes(start)
-      const endMin = timeToMinutes(end)
-      const label = WEEKDAY_LABELS[day]
-      if (startMin === endMin) {
-        errors.push(`${label}: la entrada y la salida no pueden ser la misma hora (${start}).`)
-      } else if (endMin <= startMin) {
-        errors.push(`${label}: la entrada no puede ser posterior a la salida (${start} – ${end}).`)
-      }
+    blocks.forEach((_, index) => {
+      const issue = blockIssue(blocks, index)
+      if (!issue) return
+      if (issue.kind === 'overlap' && issue.otherIndex < index) return
+      errors.push(`${WEEKDAY_LABELS[day]}: ${issue.message}`)
     })
   }
 

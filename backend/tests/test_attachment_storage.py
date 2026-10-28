@@ -11,7 +11,7 @@ from app.services.attachment_storage import (
     S3AttachmentStorage,
 )
 from app.services.errors import ServiceUnavailableError
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EndpointConnectionError, NoCredentialsError
 
 
 class FakeS3Client:
@@ -158,6 +158,60 @@ def test_s3_storage_maps_exception_group_client_errors() -> None:
             content_type="application/pdf",
             max_bytes=1024,
         )
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        EndpointConnectionError(endpoint_url="https://storage.example.invalid"),
+        NoCredentialsError(),
+        ExceptionGroup("s3", [NoCredentialsError()]),
+    ],
+)
+def test_s3_storage_maps_botocore_errors_to_domain_unavailable(error: Exception) -> None:
+    class UnreachableS3Client(FakeS3Client):
+        def upload_fileobj(self, *args: object, **kwargs: object) -> None:
+            raise error
+
+    storage = _storage(UnreachableS3Client())
+    with pytest.raises(ServiceUnavailableError, match=STORAGE_UNAVAILABLE_MESSAGE):
+        storage.save(
+            BytesIO(b"%PDF-1.4\nproof\n%%EOF"),
+            storage_key="workspace/expense/proof.pdf",
+            content_type="application/pdf",
+            max_bytes=1024,
+        )
+
+
+def test_s3_storage_keeps_unexpected_errors_unmapped() -> None:
+    class BrokenS3Client(FakeS3Client):
+        def upload_fileobj(self, *args: object, **kwargs: object) -> None:
+            raise RuntimeError("boom")
+
+    storage = _storage(BrokenS3Client())
+    with pytest.raises(RuntimeError, match="boom"):
+        storage.save(
+            BytesIO(b"%PDF-1.4\nproof\n%%EOF"),
+            storage_key="workspace/expense/proof.pdf",
+            content_type="application/pdf",
+            max_bytes=1024,
+        )
+
+
+@pytest.mark.parametrize("header", [b"GIF87a", b"GIF89a"])
+def test_s3_storage_accepts_gif_uploads(header: bytes) -> None:
+    client = FakeS3Client()
+    storage = _storage(client)
+    content = header + b"\x01\x00\x01\x00gif-body"
+
+    blob = storage.save(
+        BytesIO(content),
+        storage_key="workspace/expense/proof.gif",
+        content_type="image/gif",
+        max_bytes=1024,
+    )
+
+    assert client.objects[("uploads", blob.storage_key)] == content
 
 
 def test_local_storage_open_uses_the_confined_path(tmp_path: Path) -> None:

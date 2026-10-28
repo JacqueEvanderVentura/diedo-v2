@@ -1,7 +1,7 @@
 import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { CalendarPlus, FileText, GripVertical, Link2, Plus, Search, UserCheck, UserPlus } from 'lucide-react'
+import { CalendarPlus, FileText, GripVertical, Link2, Plus, Search, UserCheck } from 'lucide-react'
 import { useCrmStore } from '@/stores/crmStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useCustomersStore } from '@/stores/customersStore'
@@ -12,7 +12,6 @@ import { OPPORTUNITY_STAGES, STAGE_META } from '@/data/crm'
 import { formatDOP } from '@/lib/format'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { Select } from '@/components/ui/Select'
 import { cn } from '@/lib/utils'
 import { useSessionStore } from '@/stores/sessionStore'
 import { usePointerKanban } from '@/modules/crm/hooks/usePointerKanban'
@@ -23,32 +22,26 @@ import { findLeadLinkedQuote, PIPELINE_INVOICE_PERMISSION, syncPipelineCloseCust
 import {
   effectiveLeadCustomerId,
   leadCompanyLabel,
-  resolveCustomerForLead,
 } from '@/modules/crm/lib/leadCustomer'
+import { listCheckoutPaymentMethods } from '@/modules/crm/lib/quoteInvoice'
+import { CustomerPicker } from '@/components/customers/CustomerPicker'
 import { leadDisplayTitle, leadPipelineStage } from '@/modules/crm/lib/pipelineLeads'
 import { useCatalogStore, isPosSellable } from '@/stores/catalogStore'
 import { isProductAvailableAtBranch } from '@/lib/catalogSync'
 import { PipelineStageHeaders, PIPELINE_COLUMN_WIDTH_CLASS } from '../components/PipelineStageHeaders'
 import { ActivityFormModal } from '../components/ActivityFormModal'
-import { CustomerFormModal } from '../components/CustomerFormModal'
 import { LeadConvertModal } from '../components/LeadConvertModal'
 import { leadHasDocument } from '../lib/leadConversion'
 import { QuoteFormModal } from '../components/QuoteFormModal'
 import { QuoteDocumentHandoffModal } from '../components/QuoteDocumentHandoffModal'
 import {
-  customersForOpportunityBranch,
-  leadCustomerDefaults,
-} from '../lib/pipelineForm'
-import { ensureCustomerForQuote, preparePipelineCloseCustomer } from '../lib/quoteCustomer'
+  ensureCustomerForQuote,
+  isLeadNeedsDocumentError,
+  preparePipelineCloseCustomer,
+} from '../lib/quoteCustomer'
 import { leadMatchesQuery } from '../lib/pipelineSearch'
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
 import { IncrementalListFooter } from '@/components/ui/IncrementalListFooter'
-
-function belongsToBranch(customer, branchId) {
-  if (!branchId) return true
-  const branchIds = customer.branchIds?.length ? customer.branchIds : [customer.branchId].filter(Boolean)
-  return branchIds.includes(branchId)
-}
 
 function DealCard({
   lead,
@@ -144,6 +137,8 @@ export default function PipelinePage() {
   const updateLeadStage = useCrmStore((state) => state.updateLeadStage)
   const updateLead = useCrmStore((state) => state.updateLead)
   const closeLeadWithInvoice = useCrmStore((state) => state.closeLeadWithInvoice)
+  const closeLeadWithoutInvoice = useCrmStore((state) => state.closeLeadWithoutInvoice)
+  const fetchLeadQuotes = useCrmStore((state) => state.fetchLeadQuotes)
   const addQuote = useCrmStore((state) => state.addQuote)
   const updateQuote = useCrmStore((state) => state.updateQuote)
   const products = useCatalogStore((state) => state.products)
@@ -161,22 +156,19 @@ export default function PipelinePage() {
   const hydrateQuotesSection = useCrmStore((state) => state.hydrateSection)
   const isOnline = useSessionStore((state) => state.status === 'online')
   const [linkingLead, setLinkingLead] = useState(null)
-  const [linkCustomerId, setLinkCustomerId] = useState('')
+  const [linkCustomer, setLinkCustomer] = useState(null)
   const [branchIds, setBranchIds] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [busyLeadId, setBusyLeadId] = useState(null)
   const [pendingClose, setPendingClose] = useState(null)
-  const [closePaymentMethod, setClosePaymentMethod] = useState('efectivo')
+  const [closePaymentMethod, setClosePaymentMethod] = useState('')
   const [elevationOpen, setElevationOpen] = useState(false)
   const [closeQuoteBusy, setCloseQuoteBusy] = useState(false)
   const [closeConvertBusy, setCloseConvertBusy] = useState(false)
   const [closeQuoteFormOpen, setCloseQuoteFormOpen] = useState(false)
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false)
   const [followUpLeadId, setFollowUpLeadId] = useState('')
-  const [customerFormOpen, setCustomerFormOpen] = useState(false)
   const [convertModalLead, setConvertModalLead] = useState(null)
-  const [customerFormDefaults, setCustomerFormDefaults] = useState(null)
-  const [customerFormTarget, setCustomerFormTarget] = useState(null)
 
   const pendingLead = useMemo(() => {
     if (!pendingClose) return null
@@ -209,11 +201,6 @@ export default function PipelinePage() {
     [visibleCustomers]
   )
 
-  const closeLinkableCustomers = useMemo(
-    () => customersForOpportunityBranch(activeCustomers, pendingLead?.branchId),
-    [activeCustomers, pendingLead?.branchId],
-  )
-
   const closeDocumentCtx = useMemo(
     () => ({
       branches,
@@ -239,12 +226,14 @@ export default function PipelinePage() {
     return quotes.find((item) => item.id === quoteHandoff.id) || quoteHandoff
   }, [quotes, quoteHandoff])
 
+  const pendingLeadId = pendingLead?.id
+  const closeModalOpen = Boolean(pendingLeadId) && canInvoice
   useEffect(() => {
-    if (!pendingLead || pendingLead.customerId) return
-    const match = resolveCustomerForLead(pendingLead, activeCustomers)
-    if (!match) return
-    updateLead(pendingLead.id, { customerId: match.id }).catch(() => {})
-  }, [pendingLead, activeCustomers, updateLead])
+    if (!closeModalOpen || !pendingLeadId) return
+    fetchLeadQuotes?.(pendingLeadId)?.catch?.(() => {})
+  }, [closeModalOpen, pendingLeadId, fetchLeadQuotes])
+
+  const defaultPaymentMethodId = () => listCheckoutPaymentMethods(paymentMethods)[0]?.id || ''
 
   const customerById = useMemo(
     () => new Map(visibleCustomers.map((customer) => [customer.id, customer])),
@@ -289,7 +278,7 @@ export default function PipelinePage() {
         return
       }
       setPendingClose(lead)
-      setClosePaymentMethod('efectivo')
+      setClosePaymentMethod(defaultPaymentMethodId())
       return
     }
 
@@ -305,7 +294,7 @@ export default function PipelinePage() {
   }
 
   const ensureCloseCustomerLinked = async (lead) => {
-    const customerId = effectiveLeadCustomerId(lead, activeCustomers)
+    const customerId = effectiveLeadCustomerId(lead, quotes)
     if (!customerId || lead.customerId) return customerId
     await updateLead(lead.id, { customerId })
     return customerId
@@ -314,13 +303,18 @@ export default function PipelinePage() {
   const resolveCloseQuoteCustomerId = async (lead) => {
     const linked = await ensureCloseCustomerLinked(lead)
     if (linked) return linked
-    const ensured = await ensureCustomerForQuote({
-      customerId: null,
-      lead,
-      addCustomer: useCustomersStore.getState().addCustomer,
-      updateLead,
-    })
-    return ensured?.id || null
+    try {
+      const ensured = await ensureCustomerForQuote({
+        customerId: null,
+        lead,
+        convertToCustomer,
+      })
+      return ensured?.id || null
+    } catch (error) {
+      if (!isLeadNeedsDocumentError(error)) throw error
+      setConvertModalLead(lead)
+      return null
+    }
   }
 
   const handleCloseCreateQuote = async (payload) => {
@@ -329,7 +323,7 @@ export default function PipelinePage() {
     try {
       const customerId = payload.customerId || await resolveCloseQuoteCustomerId(pendingLead)
       if (!customerId) {
-        toast.error('El lead necesita nombre y sucursal para crear el cliente al cotizar.')
+        toast.message('Ingresa el documento del lead para crear el cliente y cotizar.')
         return
       }
       await addQuote({ ...payload, customerId })
@@ -355,14 +349,24 @@ export default function PipelinePage() {
     }
   }
 
-  const confirmCloseWithInvoice = async ({ customerId } = {}) => {
+  const confirmCloseWithInvoice = async ({
+    customerId,
+    paymentMethod: methodOverride,
+    collectionMode,
+    reference,
+    proof,
+  } = {}) => {
     if (!pendingLead) return
     setBusyLeadId(pendingLead.id)
     try {
       const resolvedCustomerId = customerId
         || await resolveCloseQuoteCustomerId(pendingLead)
+      if (!resolvedCustomerId) return
       const sale = await closeLeadWithInvoice(pendingLead.id, {
-        paymentMethod: closePaymentMethod,
+        paymentMethod: methodOverride || closePaymentMethod,
+        collectionMode,
+        reference,
+        proof,
         customerId: resolvedCustomerId,
       })
       if (sale) {
@@ -388,10 +392,6 @@ export default function PipelinePage() {
     onMove: handleStageMove,
     isDisabled: Boolean(busyLeadId),
   })
-
-  const linkableCustomers = linkingLead
-    ? activeCustomers.filter((customer) => belongsToBranch(customer, linkingLead.branchId))
-    : []
 
   const openNewQuote = () => {
     setNewQuoteContext({
@@ -425,7 +425,7 @@ export default function PipelinePage() {
     setBusyLeadId(lead.id)
     try {
       await convertToCustomer(lead.id)
-      toast.success('Lead convertido y vinculado al cliente')
+      toast.success('Cliente vinculado; el lead sigue en su etapa actual')
     } catch (error) {
       toast.error(error.message || 'No se pudo convertir el lead')
     } finally {
@@ -435,7 +435,7 @@ export default function PipelinePage() {
 
   const openLinkCustomer = (lead) => {
     setLinkingLead(lead)
-    setLinkCustomerId('')
+    setLinkCustomer(null)
   }
 
   const openFollowUp = (lead) => {
@@ -443,23 +443,14 @@ export default function PipelinePage() {
     setFollowUpModalOpen(true)
   }
 
-  const openCreateCustomerForLink = () => {
-    if (!linkingLead) return
-    setCustomerFormDefaults(leadCustomerDefaults(linkingLead))
-    setCustomerFormTarget('link')
-    setCustomerFormOpen(true)
-  }
-
-  const attachCustomerToLead = async (lead, customer, { closeLinkModal = true } = {}) => {
+  const attachCustomerToLead = async (lead, customer) => {
     if (!lead?.id || !customer?.id) return
     setBusyLeadId(lead.id)
     try {
       await updateLead(lead.id, { customerId: customer.id })
       toast.success('Cliente vinculado al lead')
-      if (closeLinkModal) {
-        setLinkingLead(null)
-        setLinkCustomerId('')
-      }
+      setLinkingLead(null)
+      setLinkCustomer(null)
     } catch (error) {
       toast.error(error.message || 'No se pudo vincular el cliente')
     } finally {
@@ -467,26 +458,28 @@ export default function PipelinePage() {
     }
   }
 
-  const openCreateCustomerForClose = () => {
-    if (!pendingLead) return
-    setCustomerFormDefaults(leadCustomerDefaults(pendingLead))
-    setCustomerFormTarget('close-invoice')
-    setCustomerFormOpen(true)
-  }
-
   const linkCustomerOnClose = async (customerId) => {
-    const customer = activeCustomers.find((item) => item.id === customerId)
-    if (!customer || !pendingLead) {
-      toast.error('Selecciona un cliente válido')
-      return
-    }
+    if (!pendingLead || !customerId) return
     await syncPipelineCloseCustomer({
       leadId: pendingLead.id,
-      customerId: customer.id,
+      customerId,
       quotes,
       updateQuote,
       updateLead,
     })
+    toast.success('Cliente vinculado al lead')
+  }
+
+  const closeWithoutInvoice = async ({ customerId } = {}) => {
+    if (!pendingLead) return
+    setBusyLeadId(pendingLead.id)
+    try {
+      await closeLeadWithoutInvoice(pendingLead.id, { customerId })
+      setPendingClose(null)
+      toast.success('Lead cerrado como ganado')
+    } finally {
+      setBusyLeadId(null)
+    }
   }
 
   const convertLeadForClose = async () => {
@@ -499,7 +492,7 @@ export default function PipelinePage() {
     try {
       await preparePipelineCloseCustomer({
         lead: pendingLead,
-        addCustomer: useCustomersStore.getState().addCustomer,
+        convertToCustomer,
         updateLead,
         updateQuote,
         quotes,
@@ -512,43 +505,18 @@ export default function PipelinePage() {
     }
   }
 
-  const handleLeadConverted = async (customer, lead) => {
+  const handleLeadConverted = (customer, lead) => {
     if (customer?.id && lead?.id && lead.id === pendingLead?.id) {
-      await syncPipelineCloseCustomer({
-        leadId: pendingLead.id,
-        customerId: customer.id,
-        quotes,
-        updateQuote,
-        updateLead,
-      })
       toast.success('Cliente listo para facturar')
     } else if (customer?.id && lead?.id) {
-      await attachCustomerToLead(lead, customer, { closeLinkModal: false })
-      toast.success('Lead convertido a cliente')
+      toast.success('Cliente vinculado; el lead sigue en su etapa actual')
     }
     setConvertModalLead(null)
   }
 
-  const handleCustomerCreated = async (customer) => {
-    if (customerFormTarget === 'close-invoice' && pendingLead) {
-      await syncPipelineCloseCustomer({
-        leadId: pendingLead.id,
-        customerId: customer.id,
-        quotes,
-        updateQuote,
-        updateLead,
-      })
-      return
-    }
-    if (customerFormTarget === 'link' && linkingLead) {
-      await attachCustomerToLead(linkingLead, customer)
-    }
-  }
-
-  const linkCustomer = async () => {
-    const customer = linkableCustomers.find((item) => item.id === linkCustomerId)
-    if (!customer || !linkingLead) return toast.error('Selecciona un cliente de la misma sucursal')
-    await attachCustomerToLead(linkingLead, customer)
+  const submitLinkCustomer = async () => {
+    if (!linkCustomer?.id || !linkingLead) return toast.error('Selecciona un cliente de la sucursal')
+    await attachCustomerToLead(linkingLead, linkCustomer)
   }
 
   const toolbarRef = useRef(null)
@@ -747,7 +715,7 @@ export default function PipelinePage() {
       />
 
       <CloseLeadInvoiceModal
-        open={Boolean(pendingLead) && canInvoice}
+        open={closeModalOpen}
         onClose={() => {
           setPendingClose(null)
           setCloseQuoteFormOpen(false)
@@ -756,16 +724,16 @@ export default function PipelinePage() {
         quotes={quotes}
         branches={branches}
         customers={activeCustomers}
-        linkableCustomers={closeLinkableCustomers}
         products={closeCatalogProducts}
+        paymentMethods={paymentMethods}
         paymentMethod={closePaymentMethod}
         onPaymentMethodChange={setClosePaymentMethod}
         onCreateQuote={handleCloseCreateQuote}
         onLinkQuote={handleCloseLinkQuote}
         onConfirm={confirmCloseWithInvoice}
-        onCreateCustomer={openCreateCustomerForClose}
         onLinkCustomer={linkCustomerOnClose}
         onConvertLead={pendingLead ? convertLeadForClose : undefined}
+        onCloseWithoutInvoice={pendingLead && pendingLead.status !== 'cerrado' ? closeWithoutInvoice : undefined}
         onOpenQuoteBuilder={() => setCloseQuoteFormOpen(true)}
         documentCtx={closeDocumentCtx}
         loading={busyLeadId === pendingLead?.id}
@@ -789,7 +757,7 @@ export default function PipelinePage() {
         permissionCode={PIPELINE_INVOICE_PERMISSION}
         title="Autorizar facturación"
         description="Para cerrar una oportunidad y generar la factura, un supervisor debe autorizar el permiso de venta por 3 minutos."
-        onElevated={() => setClosePaymentMethod('efectivo')}
+        onElevated={() => setClosePaymentMethod(defaultPaymentMethodId())}
       />
 
       <Modal
@@ -801,24 +769,16 @@ export default function PipelinePage() {
           <p className="text-sm text-slate-500">
             Selecciona un cliente de la sucursal de {linkingLead ? leadDisplayTitle(linkingLead) : ''}. Después podrás generar su cotización.
           </p>
-          <Select
-            value={linkCustomerId}
-            onChange={setLinkCustomerId}
-            options={[
-              { value: '', label: 'Seleccionar cliente' },
-              ...linkableCustomers.map((customer) => ({ value: customer.id, label: customer.name })),
-            ]}
-            data-testid="opportunity-link-customer"
+          <CustomerPicker
+            value={linkCustomer}
+            onChange={setLinkCustomer}
+            branchId={linkingLead?.branchId || null}
+            placeholder="Buscar cliente por nombre, teléfono o cédula…"
+            testIdPrefix="opportunity-link-customer"
           />
-          {linkableCustomers.length === 0 && (
-            <p className="text-sm text-amber-600">No hay clientes en esta sucursal. Puedes crear uno aquí.</p>
-          )}
-          <Button type="button" size="sm" variant="secondary" onClick={openCreateCustomerForLink} data-testid="pipeline-link-create-customer">
-            <UserPlus className="h-3.5 w-3.5" /> Crear cliente
-          </Button>
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setLinkingLead(null)}>Cancelar</Button>
-            <Button onClick={linkCustomer} disabled={!linkCustomerId || Boolean(busyLeadId)}>
+            <Button onClick={submitLinkCustomer} disabled={!linkCustomer?.id || Boolean(busyLeadId)}>
               Vincular
             </Button>
           </div>
@@ -831,17 +791,6 @@ export default function PipelinePage() {
         forPipelineClose={Boolean(convertModalLead && pendingLead?.id === convertModalLead.id)}
         onClose={() => setConvertModalLead(null)}
         onConverted={handleLeadConverted}
-      />
-
-      <CustomerFormModal
-        open={customerFormOpen}
-        onClose={() => {
-          setCustomerFormOpen(false)
-          setCustomerFormDefaults(null)
-          setCustomerFormTarget(null)
-        }}
-        defaults={customerFormDefaults}
-        onCreated={handleCustomerCreated}
       />
 
       <ActivityFormModal

@@ -32,8 +32,10 @@ import { leadCustomerDefaults } from '../lib/pipelineForm'
 import {
   ensureCustomerForLeadQuote,
   ensureCustomerForQuote,
+  isLeadNeedsDocumentError,
   syncLeadPipelineValue,
 } from '../lib/quoteCustomer'
+import { LeadConvertModal } from './LeadConvertModal'
 import { QuotePartyPicker } from './QuotePartyPicker'
 import { crmApi } from '@/services/crmApi'
 import { mapLeadFromApi } from '@/services/adapters/crm'
@@ -47,7 +49,7 @@ export function QuoteFormModal({
 }) {
   const branches = useConfigStore((s) => s.branches)
   const customers = useCustomersStore((s) => s.customers)
-  const addCustomer = useCustomersStore((s) => s.addCustomer)
+  const convertToCustomer = useCrmStore((s) => s.convertToCustomer)
   const products = useCatalogStore((s) => s.products)
   const catalogHydrated = useCatalogStore((s) => s.apiContext.hydrated)
   const hydrateCatalog = useCatalogStore((s) => s.hydrateFromApi)
@@ -60,6 +62,7 @@ export function QuoteFormModal({
   const [draft, setDraft] = useState(emptyQuoteDraft)
   const [saving, setSaving] = useState(false)
   const [customerModalOpen, setCustomerModalOpen] = useState(false)
+  const [documentLead, setDocumentLead] = useState(null)
   const [catalogLoading, setCatalogLoading] = useState(false)
   const [contextLead, setContextLead] = useState(null)
   const [focusSectionKey, setFocusSectionKey] = useState(null)
@@ -265,7 +268,7 @@ export function QuoteFormModal({
         lead = selectedLead || leads.find((item) => item.id === draft.leadId)
         const ensured = await ensureCustomerForLeadQuote({
           lead,
-          addCustomer,
+          convertToCustomer,
         })
         if (!ensured?.id) {
           toast.error('El lead necesita sucursal para cotizar')
@@ -279,7 +282,7 @@ export function QuoteFormModal({
         const ensured = await ensureCustomerForQuote({
           customerId: draft.customerId || null,
           lead: selectedLead,
-          addCustomer,
+          convertToCustomer,
         })
         if (!ensured?.id) {
           toast.error('Selecciona un lead o cliente para continuar')
@@ -336,6 +339,11 @@ export function QuoteFormModal({
       onSaved?.(saved)
       onClose()
     } catch (error) {
+      if (isLeadNeedsDocumentError(error)) {
+        setDocumentLead(selectedLead || leads.find((item) => item.id === draft.leadId) || null)
+        toast.message(error.message)
+        return
+      }
       toast.error(error.message || 'No se pudo guardar la cotización')
     } finally {
       setSaving(false)
@@ -613,6 +621,18 @@ export function QuoteFormModal({
         onClose={() => setCustomerModalOpen(false)}
         defaults={customerDefaults}
         onCreated={handleCustomerCreated}
+      />
+
+      <LeadConvertModal
+        open={Boolean(documentLead)}
+        lead={documentLead}
+        onClose={() => setDocumentLead(null)}
+        onConverted={(customer) => {
+          if (!customer?.id) return
+          setDraft((current) => ({ ...current, customerId: customer.id }))
+          setContextLead((current) => (current ? { ...current, customerId: customer.id } : current))
+          toast.success('Cliente vinculado al lead. Ya puedes guardar la cotización.')
+        }}
       />
     </>
   )

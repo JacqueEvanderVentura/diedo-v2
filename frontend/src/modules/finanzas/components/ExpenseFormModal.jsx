@@ -120,7 +120,9 @@ export function ExpenseFormModal({ open, onClose, expense, mode = 'variable' }) 
         ? await (editing ? updateFixed(expense.id, payload) : addFixed(payload))
         : await (editing ? updateExpense(expense.id, payload) : addExpense(payload))
       if (saved?.attachmentWarning) {
-        toast.error(`${editing ? 'Gasto actualizado' : 'Gasto registrado'}. ${saved.attachmentWarning}`)
+        toast.warning(`${editing ? 'Gasto actualizado' : 'Gasto registrado'}, pero el comprobante no se subió.`, {
+          description: saved.attachmentWarning,
+        })
       } else {
         toast.success(editing ? 'Gasto actualizado' : 'Gasto registrado')
       }

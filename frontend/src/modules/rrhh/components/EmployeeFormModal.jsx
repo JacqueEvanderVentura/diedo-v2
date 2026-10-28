@@ -9,7 +9,7 @@ import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { DEPARTMENTS } from '@/data/rrhh'
 import { fullName } from '../lib/rrhh'
-import { emptyWorkSchedule, validateWorkSchedule } from '../lib/schedule'
+import { emptyWorkSchedule, normalizeWorkSchedule, validateWorkSchedule } from '../lib/schedule'
 import { EmployeeScheduleEditor } from './EmployeeScheduleEditor'
 import { cn } from '@/lib/utils'
 import { formatDOP } from '@/lib/format'
@@ -31,6 +31,8 @@ const empty = () => ({
   salary: '',
   attachments: [],
   existingContractIds: [],
+  documents: [],
+  existingDocumentIds: [],
   usuarioId: '',
   jefeIds: [],
   active: true,
@@ -39,12 +41,14 @@ const empty = () => ({
   workSchedule: emptyWorkSchedule(),
 })
 
-function mapContractAttachments(items = []) {
+const MAX_EMPLOYEE_DOCUMENTS = 10
+
+function mapEmployeeAttachments(items, classification, fallbackName) {
   return (items || [])
-    .filter((item) => item.classification === 'labor_contract')
+    .filter((item) => item.classification === classification)
     .map((item) => ({
       id: item.id,
-      name: item.originalFilename || item.name || 'Contrato',
+      name: item.originalFilename || item.name || fallbackName,
       contentType: item.contentType || 'application/pdf',
     }))
 }
@@ -111,15 +115,18 @@ export function EmployeeFormModal({ open, onClose, employee, employees, platform
     masterDataApi.employeeAttachments(employee.id)
       .then((items) => {
         if (cancelled) return
-        const attachments = mapContractAttachments(items)
+        const attachments = mapEmployeeAttachments(items, 'labor_contract', 'Contrato')
+        const documents = mapEmployeeAttachments(items, 'employee_document', 'Documento')
         setForm((current) => ({
           ...current,
           attachments,
           existingContractIds: attachments.map((item) => item.id).filter(Boolean),
+          documents,
+          existingDocumentIds: documents.map((item) => item.id).filter(Boolean),
         }))
       })
       .catch(() => {
-        if (!cancelled) toast.error('No se pudieron cargar el contrato existente.')
+        if (!cancelled) toast.error('No se pudieron cargar el contrato y los documentos existentes.')
       })
     return () => { cancelled = true }
   }, [open, employee, canReadHr, sessionStatus])
@@ -155,6 +162,7 @@ export function EmployeeFormModal({ open, onClose, employee, employees, platform
     try {
       const saved = await onSubmit({
         ...form,
+        workSchedule: normalizeWorkSchedule(form.workSchedule),
         documentType: form.documentId.trim() ? 'cedula' : null,
         documentId: form.documentId.trim() || null,
         usuarioId: form.usuarioId || null,
@@ -306,6 +314,20 @@ export function EmployeeFormModal({ open, onClose, employee, employees, platform
                 multiple={false}
                 maxFiles={1}
                 testId="employee-contract-attachment"
+              />
+            </div>
+          )}
+          {canReadHr && (
+            <div className="mt-4">
+              <AttachmentField
+                value={form.documents}
+                onChange={(documents) => set('documents', documents)}
+                disabled={!canManageHr}
+                label="Documentos"
+                emptyText="Sin documentos adjuntos"
+                helpText={`Copia de cédula, certificados u otros. PDF o imagen, hasta ${MAX_EMPLOYEE_DOCUMENTS} archivos. Opcional.`}
+                maxFiles={MAX_EMPLOYEE_DOCUMENTS}
+                testId="employee-documents-attachment"
               />
             </div>
           )}

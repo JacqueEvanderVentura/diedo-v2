@@ -16,7 +16,7 @@ export const masterDataApi = {
   updateCustomer: (id, payload) => apiClient.patch(`/api/v1/customers/${id}`, payload),
   deleteCustomersBatch: (payload) => apiClient.post('/api/v1/customers/batch-delete', payload),
   customerTimeline: (id) => apiClient.get(`/api/v1/customers/${id}/timeline`),
-  employees: async (params = {}) => (await apiClient.get('/api/v1/employees', { pageSize: 100, ...params })).items,
+  employees: async (params = {}) => (await readAllPages((query) => apiClient.get('/api/v1/employees', query), { pageSize: 100, ...params })).items,
   createEmployee: (payload) => apiClient.post('/api/v1/employees', payload),
   updateEmployee: (id, payload) => apiClient.patch(`/api/v1/employees/${id}`, payload),
   employeeSchedule: (id) => apiClient.get(`/api/v1/employees/${id}/schedule`),
