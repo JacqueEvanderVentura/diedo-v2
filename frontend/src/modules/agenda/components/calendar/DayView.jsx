@@ -12,6 +12,7 @@ import {
   calendarResourcesWithUnassigned,
   CALENDAR_ROW_PX,
   CALENDAR_SLOT_MINUTES,
+  slotLaneCount,
 } from '../../lib/dayViewSlots'
 import { useCalendarResourceDrag } from '../../hooks/useCalendarResourceDrag'
 import { cn } from '@/lib/utils'
@@ -126,11 +127,12 @@ export function DayView({
                       includeCancelled: showCancelled,
                     })
                     const blockingAppointments = activeAppointmentsForResource(appointments, dateKey, c.id)
-                    const { assignment, laneCount } = laneLayoutByResource.get(c.id) || {
+                    const { assignment, laneCountById } = laneLayoutByResource.get(c.id) || {
                       assignment: new Map(),
-                      laneCount: 1,
+                      laneCountById: new Map(),
                     }
                     const overlapping = appointmentsOverlappingSlot(displayAppointments, slot)
+                    const laneCount = slotLaneCount(overlapping, laneCountById)
                     const blockingOverlap = appointmentsOverlappingSlot(blockingAppointments, slot)
                     const busy = blockingOverlap.length > 0
                     const showLanes = overlapping.length > 0
@@ -233,12 +235,14 @@ export function DayView({
           style={{
             width: Math.max(160, dragState.width),
             left: dragState.x - Math.max(160, dragState.width) / 2,
-            top: dragState.y - 20,
+            top: dragState.y - (dragState.grabOffsetY ?? 20),
           }}
           data-testid="calendar-drag-ghost"
         >
           <p className="text-sm font-semibold text-slate-900">{dragState.label}</p>
-          <p className="text-xs text-slate-500">{dragState.time}</p>
+          <p className="text-xs text-slate-500" data-testid="calendar-drag-ghost-time">
+            {hoverTarget?.slot || dragState.time}
+          </p>
         </div>
       )}
     </Card>
