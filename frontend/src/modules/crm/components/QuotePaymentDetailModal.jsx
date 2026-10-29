@@ -12,6 +12,7 @@ import { ProofImagePreview } from '@/modules/pos/components/ProofImagePreview'
 import { InvoicePaymentLog } from '@/modules/pos/components/InvoicePaymentLog'
 import { getBalance, getPaidAmount } from '@/modules/pos/lib/receivables'
 import { findQuoteReceivable } from '../lib/quoteInvoice'
+import { collectSalePaymentProofs } from '../lib/saleProofs'
 import { fmtDateTime, METHOD_ICON, METHOD_LABELS } from '../lib/crm'
 
 export function QuotePaymentDetailModal({ open, onClose, quote }) {
@@ -91,9 +92,10 @@ export function QuotePaymentDetailModal({ open, onClose, quote }) {
     || methodCode
   const MethodIcon = Icons[METHOD_ICON[methodCode]] || Icons.Wallet
   const reference = receivable?.reference || sale?.reference || sale?.payment?.reference || null
-  const receivableProof = receivable?.proof || null
-  const saleProof = sale?.payment?.proof || sale?.payment?.proofs?.[0] || null
-  const displayProof = receivableProof || saleProof
+  const paymentProofs = useMemo(
+    () => collectSalePaymentProofs(sale, receivable),
+    [sale, receivable],
+  )
   const collectedAt = sale?.createdAt || receivable?.paidAt || receivable?.updatedAt
 
   return (
@@ -155,12 +157,18 @@ export function QuotePaymentDetailModal({ open, onClose, quote }) {
               )}
             </dl>
 
-            {displayProof && (
-              <ProofImagePreview
-                proof={displayProof}
-                loadProof={downloadPaymentProof}
-                onDownload={handleDownloadProof}
-              />
+            {paymentProofs.length > 0 && (
+              <div className="space-y-4" data-testid="quote-payment-proofs">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Comprobantes</p>
+                {paymentProofs.map((proof) => (
+                  <ProofImagePreview
+                    key={proof.id || proof.downloadUrl || proof.name}
+                    proof={proof}
+                    loadProof={downloadPaymentProof}
+                    onDownload={handleDownloadProof}
+                  />
+                ))}
+              </div>
             )}
 
             <div data-testid="quote-payment-log">
@@ -175,7 +183,7 @@ export function QuotePaymentDetailModal({ open, onClose, quote }) {
               />
             </div>
 
-            {!receivable && !displayProof && !sale?.tenders?.length && (
+            {!receivable && paymentProofs.length === 0 && !sale?.tenders?.length && (
               <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
                 Cobro registrado al emitir la factura
                 {reference ? ` · Ref. ${reference}` : ''}.
