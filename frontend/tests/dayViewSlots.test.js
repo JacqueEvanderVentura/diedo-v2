@@ -11,6 +11,7 @@ import {
   calendarRowSpan,
   CALENDAR_ROW_PX,
   UNASSIGNED_RESOURCE_ID,
+  slotLaneCount,
 } from '@/modules/agenda/lib/dayViewSlots'
 
 const DATE = '2026-09-16'
@@ -143,5 +144,44 @@ describe('dayViewSlots', () => {
     const { assignment, laneCount } = assignAppointmentLanes(overlapping)
     expect(laneCount).toBe(2)
     expect(assignment.get('a1')).not.toBe(assignment.get('a3'))
+  })
+
+  it('scopes lane count to the overlap group instead of the whole column', () => {
+    const apt = (id, time, duration) => ({ id, date: DATE, time, duration, cabinaId: CAB, status: 'confirmada' })
+    const { assignment, laneCount, laneCountById } = assignAppointmentLanes([
+      apt('solo-morning', '08:00', 30),
+      apt('pair-a', '10:00', 30),
+      apt('pair-b', '10:00', 30),
+      apt('solo-afternoon', '14:00', 60),
+    ])
+    expect(laneCount).toBe(2)
+    expect(laneCountById.get('pair-a')).toBe(2)
+    expect(laneCountById.get('pair-b')).toBe(2)
+    expect(laneCountById.get('solo-morning')).toBe(1)
+    expect(laneCountById.get('solo-afternoon')).toBe(1)
+    expect(assignment.get('solo-afternoon')).toBe(0)
+  })
+
+  it('keeps chained overlaps in one group', () => {
+    const apt = (id, time, duration) => ({ id, date: DATE, time, duration, cabinaId: CAB, status: 'confirmada' })
+    const { assignment, laneCountById } = assignAppointmentLanes([
+      apt('a', '10:00', 60),
+      apt('b', '10:30', 60),
+      apt('c', '11:00', 60),
+      apt('after', '12:00', 30),
+    ])
+    expect(laneCountById.get('a')).toBe(2)
+    expect(laneCountById.get('b')).toBe(2)
+    expect(laneCountById.get('c')).toBe(2)
+    expect(assignment.get('c')).toBe(assignment.get('a'))
+    expect(laneCountById.get('after')).toBe(1)
+  })
+
+  it('uses the widest overlap group visible in a slot', () => {
+    const laneCountById = new Map([['a', 2], ['b', 1]])
+    expect(slotLaneCount([], laneCountById)).toBe(1)
+    expect(slotLaneCount([{ id: 'b' }], laneCountById)).toBe(1)
+    expect(slotLaneCount([{ id: 'a' }, { id: 'b' }], laneCountById)).toBe(2)
+    expect(slotLaneCount([{ id: 'unknown' }], laneCountById)).toBe(1)
   })
 })

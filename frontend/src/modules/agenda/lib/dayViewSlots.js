@@ -82,37 +82,70 @@ export function appointmentStartsAtSlot(appointment, slot) {
   return normalizeAppointmentTime(appointment.time) === normalizeAppointmentTime(slot)
 }
 
-/** Assign parallel lanes so overlapping appointments remain visible side by side. */
+function appointmentEndMinutes(appointment) {
+  return appointmentStartMinutes(appointment) + (Number(appointment?.duration) || CALENDAR_SLOT_MINUTES)
+}
+
+function assignClusterLanes(cluster, assignment, laneCountById) {
+  const lanes = []
+  for (const appointment of cluster) {
+    let laneIndex = lanes.findIndex((lane) => !lane.some((other) => timeRangesOverlap(
+      appointment.time,
+      appointment.duration,
+      other.time,
+      other.duration
+    )))
+    if (laneIndex === -1) {
+      laneIndex = lanes.length
+      lanes.push([])
+    }
+    lanes[laneIndex].push(appointment)
+    assignment.set(appointment.id, laneIndex)
+  }
+  for (const appointment of cluster) laneCountById.set(appointment.id, lanes.length)
+  return lanes.length
+}
+
+/**
+ * Assign parallel lanes so overlapping appointments remain visible side by side.
+ * Lanes are scoped to each group of transitively overlapping appointments, so a single
+ * overlap does not narrow every other card in the same column.
+ */
 export function assignAppointmentLanes(appointments) {
   const sorted = [...appointments].sort(
     (a, b) => appointmentStartMinutes(a) - appointmentStartMinutes(b)
   )
-  const lanes = []
   const assignment = new Map()
+  const laneCountById = new Map()
+  let laneCount = 1
+  let cluster = []
+  let clusterEnd = -Infinity
 
-  for (const appointment of sorted) {
-    let placed = false
-    for (let laneIndex = 0; laneIndex < lanes.length; laneIndex += 1) {
-      const conflicts = lanes[laneIndex].some((other) => timeRangesOverlap(
-        appointment.time,
-        appointment.duration,
-        other.time,
-        other.duration
-      ))
-      if (!conflicts) {
-        lanes[laneIndex].push(appointment)
-        assignment.set(appointment.id, laneIndex)
-        placed = true
-        break
-      }
-    }
-    if (!placed) {
-      assignment.set(appointment.id, lanes.length)
-      lanes.push([appointment])
-    }
+  const flush = () => {
+    if (!cluster.length) return
+    laneCount = Math.max(laneCount, assignClusterLanes(cluster, assignment, laneCountById))
+    cluster = []
   }
 
-  return { assignment, laneCount: Math.max(1, lanes.length) }
+  for (const appointment of sorted) {
+    if (appointmentStartMinutes(appointment) >= clusterEnd) {
+      flush()
+      clusterEnd = -Infinity
+    }
+    cluster.push(appointment)
+    clusterEnd = Math.max(clusterEnd, appointmentEndMinutes(appointment))
+  }
+  flush()
+
+  return { assignment, laneCount, laneCountById }
+}
+
+/** Lane count for a slot: the widest overlap group among the appointments visible in it. */
+export function slotLaneCount(overlappingAppointments, laneCountById) {
+  return overlappingAppointments.reduce(
+    (max, appointment) => Math.max(max, laneCountById?.get(appointment.id) || 1),
+    1,
+  )
 }
 
 export function calendarRowSpan(durationMinutes = 30, slotMinutes = CALENDAR_SLOT_MINUTES) {
