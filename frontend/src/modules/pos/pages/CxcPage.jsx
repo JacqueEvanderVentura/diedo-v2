@@ -76,6 +76,7 @@ import { useSortedRows } from '@/hooks/useTableControls'
 import { cn } from '@/lib/utils'
 import { PosSyncStatus } from '../components/PosSyncStatus'
 import { useCxcPageState } from '../hooks/useCxcPageState'
+import { collectSalePaymentProofs } from '@/modules/crm/lib/saleProofs'
 
 const METHOD_LABELS = {
   transferencia: { label: 'Transferencia', icon: ArrowLeftRight },
@@ -154,6 +155,15 @@ export default function CxcPage() {
   const detailVoidPolicy = detail?.kind === 'receivable'
     ? getReceivableVoidPolicy(detail)
     : null
+
+  const detailPaymentProofs = useMemo(() => {
+    if (!detail) return []
+    if (detail.kind === 'receivable') {
+      return collectSalePaymentProofs(saleForPaymentLog, detail)
+    }
+    if (detail.proof) return [detail.proof]
+    return []
+  }, [detail, saleForPaymentLog])
 
   const allRows = useMemo(
     () => buildCxcAccountRows({ receivables, openQuotes, heldCarts, taxPct }),
@@ -830,12 +840,18 @@ export default function CxcPage() {
               <div className="flex justify-between sm:block"><dt className="text-slate-500">Actualizada</dt><dd className="font-medium">{fmtDateShort(detail.dueDate)}</dd></div>
             </dl>
 
-            {detail.proof && (
-              <ProofImagePreview
-                proof={detail.proof}
-                loadProof={downloadPaymentProof}
-                onDownload={handleDownloadProof}
-              />
+            {detailPaymentProofs.length > 0 && (
+              <div className="space-y-4" data-testid="cxc-detail-proofs">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Comprobantes</p>
+                {detailPaymentProofs.map((proof) => (
+                  <ProofImagePreview
+                    key={proof.id || proof.downloadUrl || proof.name}
+                    proof={proof}
+                    loadProof={downloadPaymentProof}
+                    onDownload={handleDownloadProof}
+                  />
+                ))}
+              </div>
             )}
 
             {detail.notes && (

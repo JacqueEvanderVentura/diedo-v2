@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   checkoutToApiPayload,
+  mapProof,
   mapReceivableFromApi,
   mapRegisterHistoryEntry,
   mapPaymentMethodsFromApi,
@@ -260,6 +261,45 @@ describe('adaptadores de Terminal POS', () => {
       status: 'cancelled',
       overdue: true,
     }).status).toBe('voided')
+  })
+
+  it('mapea owner de comprobante y agrega proofs desde abonos de CxC', () => {
+    expect(mapProof({
+      id: 'proof-pay',
+      originalFilename: 'abono.png',
+      owner_type: 'customer_payment',
+      owner_id: 'payment-1',
+      content_url: '/api/v1/pos/proofs/proof-pay/content',
+    })).toMatchObject({
+      id: 'proof-pay',
+      name: 'abono.png',
+      ownerType: 'customer_payment',
+      ownerId: 'payment-1',
+      paymentId: 'payment-1',
+    })
+
+    const mapped = mapReceivableFromApi({
+      id: 'receivable-1',
+      amount: '2',
+      paidAmount: '2',
+      balance: '0',
+      status: 'paid',
+      payments: [{
+        id: 'payment-1',
+        amount: '1',
+        paymentMethod: { code: 'bank_transfer' },
+        proofs: [{
+          id: 'proof-pay',
+          originalFilename: 'CnP.png',
+          owner_type: 'customer_payment',
+          owner_id: 'payment-1',
+        }],
+      }],
+    })
+
+    expect(mapped.proof).toMatchObject({ id: 'proof-pay', name: 'CnP.png' })
+    expect(mapped.proofs).toHaveLength(1)
+    expect(mapped.proofs[0].paymentId).toBe('payment-1')
   })
 
   it('reconcilia el monto de un gasto itemizado con la suma de sus líneas', () => {

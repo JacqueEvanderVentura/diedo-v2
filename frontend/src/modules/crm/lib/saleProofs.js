@@ -15,8 +15,12 @@ function pushProof(rows, proof) {
 function proofsFromReceivable(receivable) {
   if (!receivable) return []
   const rows = []
-  pushProof(rows, receivable.proof ? mapProof(receivable.proof) : null)
-  ;(receivable.proofs || []).forEach((proof) => pushProof(rows, mapProof(proof)))
+  if (Array.isArray(receivable.proofs) && receivable.proofs.length) {
+    receivable.proofs.forEach((proof) => pushProof(rows, mapProof(proof)))
+  } else {
+    pushProof(rows, receivable.proof ? mapProof(receivable.proof) : null)
+    ;(receivable.proofs || []).forEach((proof) => pushProof(rows, mapProof(proof)))
+  }
   ;(receivable.payments || []).forEach((payment) => {
     pushProof(rows, payment.proof ? mapProof(payment.proof) : null)
     ;(payment.proofs || []).forEach((proof) => pushProof(rows, mapProof(proof)))
@@ -25,11 +29,12 @@ function proofsFromReceivable(receivable) {
 }
 
 export function collectSalePaymentProofs(sale, receivable = null) {
-  if (!sale) return []
   const rows = []
-  pushProof(rows, sale.proof ? mapProof(sale.proof) : null)
-  pushProof(rows, mapProof(sale.payment?.proof))
-  ;(sale.payment?.proofs || []).forEach((proof) => pushProof(rows, mapProof(proof)))
+  if (sale) {
+    pushProof(rows, sale.proof ? mapProof(sale.proof) : null)
+    pushProof(rows, mapProof(sale.payment?.proof))
+    ;(sale.payment?.proofs || []).forEach((proof) => pushProof(rows, mapProof(proof)))
+  }
   proofsFromReceivable(receivable).forEach((proof) => pushProof(rows, proof))
   return rows
 }

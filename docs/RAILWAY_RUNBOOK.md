@@ -33,6 +33,18 @@ del primer despliegue.
 El backend usa `ATTACHMENT_STORAGE_BACKEND=s3`; las credenciales se inyectan como
 `AWS_ACCESS_KEY_ID` y `AWS_SECRET_ACCESS_KEY`, nunca se almacenan en Git.
 
+Las variables S3 de `api` deben ser referencias al bucket, no valores pegados a mano, para que
+sobrevivan a un reset de credenciales:
+
+- `AWS_ACCESS_KEY_ID=${{uploads.ACCESS_KEY_ID}}`
+- `AWS_SECRET_ACCESS_KEY=${{uploads.SECRET_ACCESS_KEY}}`
+- `S3_BUCKET=${{uploads.BUCKET}}`
+- `S3_ENDPOINT_URL=${{uploads.ENDPOINT}}`
+- `S3_REGION=${{uploads.REGION}}`
+
+Si las subidas devuelven 503 ("No se pudo guardar el comprobante") y los logs muestran
+`SignatureDoesNotMatch`, revisar primero estas referencias.
+
 El seed requiere simultÃ¡neamente `DEMO_SEED_ENABLED=true`,
 `ALLOW_PRODUCTION_DEMO_SEED=true` y `DEMO_ADMIN_PASSWORD`. La operaciÃ³n es reconciliadora e
 idempotente. Cambiar `DEMO_SEED_ENABLED` a `false` detiene futuras reconciliaciones y no elimina datos.

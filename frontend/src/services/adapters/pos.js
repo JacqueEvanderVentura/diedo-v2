@@ -179,6 +179,13 @@ export function mapProof(proof) {
     return { id: null, name: proof.split('/').pop() || 'Comprobante', downloadUrl: proof }
   }
   const id = proof.id || proof.attachmentId || null
+  const ownerType = first(proof.ownerType, proof.owner_type, null)
+  const ownerId = first(proof.ownerId, proof.owner_id, null)
+  const paymentId = first(
+    proof.paymentId,
+    proof.customerPaymentId,
+    ownerType === 'customer_payment' ? ownerId : null,
+  )
   return {
     id,
     name: proof.name || proof.originalFilename || proof.filename || proof.original_filename || 'Comprobante',
@@ -190,7 +197,9 @@ export function mapProof(proof) {
       || proof.previewUrl
       || proof.content_url
       || (id ? `/api/v1/pos/proofs/${id}/content` : null),
-    paymentId: proof.paymentId || proof.customerPaymentId || null,
+    ownerType,
+    ownerId,
+    paymentId,
   }
 }
 
@@ -307,6 +316,24 @@ export function mapReceivableFromApi(receivable) {
     ? 'overdue'
     : mappedStatus
 
+  const receivableLevelProofs = collection(receivable.proofs).map(mapProof).filter((proof) => proof?.id || proof?.name)
+  const primaryReceivableProof = mapProof(receivable.proof || receivable.attachment || receivableLevelProofs[0])
+  const proofs = []
+  const seenProofKeys = new Set()
+  const pushMappedProof = (proof) => {
+    if (!proof) return
+    const key = proof.id || proof.downloadUrl || proof.name
+    if (!key || seenProofKeys.has(key)) return
+    seenProofKeys.add(key)
+    proofs.push(proof)
+  }
+  pushMappedProof(primaryReceivableProof)
+  receivableLevelProofs.forEach(pushMappedProof)
+  payments.forEach((payment) => {
+    pushMappedProof(payment.proof)
+    ;(payment.proofs || []).forEach(pushMappedProof)
+  })
+
   return {
     id: receivable.id,
     saleId: first(receivable.saleId, receivable.sale_id, receivable.sale?.id, null),
@@ -331,7 +358,8 @@ export function mapReceivableFromApi(receivable) {
     notes: receivable.notes || '',
     payments,
     items: collection(first(receivable.items, receivable.lines)).map(mapPosLineFromApi),
-    proof: mapProof(receivable.proof || receivable.attachment || collection(receivable.proofs)[0]),
+    proofs,
+    proof: proofs[0] || primaryReceivableProof,
     paidAt: receivable.paidAt || null,
     paidMethod: receivable.paidMethod ? paymentMethodSemanticCode(receivable.paidMethod) : null,
     version: receivable.version ?? null,

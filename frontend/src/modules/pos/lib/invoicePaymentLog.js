@@ -30,15 +30,37 @@ function paymentProofs(payment) {
   return payment?.proof ? [payment.proof] : []
 }
 
-function saleCheckoutProofs(sale) {
+function proofKey(proof) {
+  if (!proof) return null
+  return proof.id || proof.downloadUrl || proof.name || null
+}
+
+function proofBelongsToReceivablePayment(proof, receivable) {
+  if (!proof || !receivable) return false
+  const ownerType = proof.ownerType || proof.owner_type
+  if (ownerType === 'customer_payment') return true
+  const paymentId = proof.paymentId || proof.customerPaymentId
+  if (paymentId && collection(receivable.payments).some((payment) => payment.id === paymentId)) {
+    return true
+  }
+  const key = proofKey(proof)
+  if (!key) return false
+  return collection(receivable.payments).some((payment) => (
+    paymentProofs(payment).some((item) => proofKey(item) === key)
+  ))
+}
+
+function saleCheckoutProofs(sale, receivable = null) {
   const fromPayment = collection(sale?.payment?.proofs).filter(Boolean)
-  if (fromPayment.length) return fromPayment
-  return sale?.payment?.proof ? [sale.payment.proof] : []
+  const raw = fromPayment.length ? fromPayment : (sale?.payment?.proof ? [sale.payment.proof] : [])
+  if (!receivable) return raw
+  return raw.filter((proof) => !proofBelongsToReceivablePayment(proof, receivable))
 }
 
 function proofsForCheckoutTender(tender, saleProofs, tenderIndex, tenderCount) {
   if (!saleProofs.length) return []
   const method = tenderMethodCode(tender)
+  if (method === 'cxc') return []
   if (EVIDENCE_METHODS.has(method)) return saleProofs
   if (tenderCount === 1) return saleProofs
   if (tenderIndex === 0) return saleProofs
@@ -63,7 +85,7 @@ function proofsForCheckoutTender(tender, saleProofs, tenderIndex, tenderCount) {
  */
 export function buildInvoicePaymentLog({ sale = null, receivable = null } = {}) {
   const entries = []
-  const saleProofs = saleCheckoutProofs(sale)
+  const saleProofs = saleCheckoutProofs(sale, receivable)
   const tenders = collection(sale?.tenders)
 
   tenders.forEach((tender, index) => {

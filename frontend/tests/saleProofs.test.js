@@ -29,4 +29,16 @@ describe('saleProofs', () => {
     expect(proofs).toHaveLength(3)
     expect(findReceivableForSale([receivable], 'sale-1')).toBe(receivable)
   })
+
+  it('recolecta comprobantes de CxC aunque no haya venta cargada', () => {
+    const receivable = {
+      proofs: [{ id: 'p-pay', name: 'abono.png' }],
+      payments: [{ id: 'pay-1', proofs: [{ id: 'p-pay', name: 'abono.png' }] }],
+    }
+    expect(collectSalePaymentProofs(null, receivable)).toHaveLength(1)
+    expect(collectSalePaymentProofs(null, receivable)[0]).toMatchObject({
+      id: 'p-pay',
+      name: 'abono.png',
+    })
+  })
 })

@@ -22,22 +22,9 @@ export function FinanceAttachmentsModal({
       ) : (
         <AttachmentProofSection
           items={items}
-          loadProof={loadProof || ((attachment) => {
-            if (attachment.dataUrl || attachment.previewObjectUrl) {
-              return loadFinanceAttachmentBlob(attachment)
-            }
-            if (attachment.downloadUrl?.startsWith('data:')) {
-              return fetch(attachment.downloadUrl).then((response) => response.blob())
-            }
-            if (attachment.downloadUrl) {
-              return fetch(attachment.downloadUrl).then((response) => response.blob())
-            }
-            throw new Error('No se pudo cargar el comprobante.')
-          })}
+          loadProof={loadProof || loadFinanceAttachmentBlob}
           onDownload={onDownload || (async (attachment) => {
-            const blob = attachment.dataUrl || attachment.previewObjectUrl
-              ? await loadFinanceAttachmentBlob(attachment)
-              : await fetch(attachment.downloadUrl).then((response) => response.blob())
+            const blob = await loadFinanceAttachmentBlob(attachment)
             const url = URL.createObjectURL(blob)
             const anchor = document.createElement('a')
             anchor.href = url
