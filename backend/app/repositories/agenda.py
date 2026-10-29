@@ -575,6 +575,42 @@ class AgendaRepository:
             statement = statement.where(Appointment.id != exclude_appointment_id)
         return self._session.scalar(statement.order_by(Appointment.starts_at).limit(1))
 
+    def lock_resource(
+        self, workspace_id: UUID, branch_id: UUID, resource_id: UUID
+    ) -> AppointmentResource | None:
+        return self._session.scalar(
+            select(AppointmentResource)
+            .where(
+                AppointmentResource.workspace_id == workspace_id,
+                AppointmentResource.branch_id == branch_id,
+                AppointmentResource.id == resource_id,
+            )
+            .with_for_update()
+        )
+
+    def overlapping_resource_appointments(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID,
+        resource_id: UUID,
+        starts_at: datetime,
+        ends_at: datetime,
+        exclude_appointment_id: UUID | None = None,
+    ) -> tuple[Appointment, ...]:
+        statement = select(Appointment).where(
+            Appointment.workspace_id == workspace_id,
+            Appointment.branch_id == branch_id,
+            Appointment.resource_id == resource_id,
+            Appointment.record_status == "active",
+            Appointment.status.in_(ACTIVE_APPOINTMENT_STATUSES),
+            Appointment.starts_at < ends_at,
+            Appointment.ends_at > starts_at,
+        )
+        if exclude_appointment_id is not None:
+            statement = statement.where(Appointment.id != exclude_appointment_id)
+        return tuple(self._session.scalars(statement.order_by(Appointment.starts_at)))
+
     def add_appointment(self, appointment: Appointment) -> None:
         self._session.add(appointment)
 

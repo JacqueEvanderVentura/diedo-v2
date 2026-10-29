@@ -3,7 +3,7 @@ import { todayKey } from '@/stores/agendaStore'
 const CLOSED_STATUSES = new Set(['cancelada', 'cumplida', 'noshow'])
 
 export const APPOINTMENT_NOTES_MAX_LENGTH = 60
-export const APPOINTMENT_CARD_NOTE_MAX_LENGTH = 15
+export const APPOINTMENT_CARD_NOTE_MAX_LENGTH = 40
 
 export function normalizeAppointmentNote(note) {
   return String(note || '').trim().replace(/\s+/g, ' ')
@@ -11,7 +11,7 @@ export function normalizeAppointmentNote(note) {
 
 export function appointmentCardNote(note) {
   const normalized = normalizeAppointmentNote(note)
-  if (!normalized) return 'Sin nota'
+  if (!normalized) return ''
   const characters = Array.from(normalized)
   if (characters.length <= APPOINTMENT_CARD_NOTE_MAX_LENGTH) return normalized
   return `${characters.slice(0, APPOINTMENT_CARD_NOTE_MAX_LENGTH - 1).join('')}…`

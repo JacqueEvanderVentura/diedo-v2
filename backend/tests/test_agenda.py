@@ -4,7 +4,6 @@ from decimal import Decimal
 from threading import Barrier
 from typing import cast
 from uuid import UUID, uuid7
-from zoneinfo import ZoneInfo
 
 import pytest
 from app.core.security import hash_password
@@ -20,7 +19,7 @@ from app.db.models import (
     RolePermission,
     WorkspaceMembership,
 )
-from app.db.session import get_session_factory, session_scope
+from app.db.session import session_scope
 from app.schemas.agenda import (
     CreateAppointmentRequest,
     CreateAppointmentResourceRequest,
@@ -30,12 +29,11 @@ from app.schemas.agenda import (
     UpdateAppointmentRequest,
     UpdateAppointmentResourceRequest,
 )
-from app.services.agenda import AgendaService, appointment_created_by_label
+from app.services.agenda import AgendaService, appointment_created_by_label, peak_occupancy
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 
 from tests.customer_payloads import unique_cedula_document_id
 
@@ -687,13 +685,20 @@ def test_agenda_calendar_management_conflicts_recurrence_and_fresh_reads(
         scheduled_time="14:30",
         customer_name=f"Conflicto Cabina {suffix}",
     )
+    shared = client.post(
+        "/api/v1/appointments",
+        headers={**headers, "Idempotency-Key": f"agenda-room-shared-{suffix}"},
+        json=overlapping,
+    )
+    assert shared.status_code == 201, shared.text
     conflict = client.post(
         "/api/v1/appointments",
         headers={**headers, "Idempotency-Key": f"agenda-room-conflict-{suffix}"},
-        json=overlapping,
+        json={**overlapping, "customerName": f"Tercera Cabina {suffix}"},
     )
     assert conflict.status_code == 409, conflict.text
-    assert conflict.json()["parameter"] == "time"
+    assert conflict.json()["parameter"] == "cabinaId"
+    assert "ya tiene 2 personas" in conflict.json()["message"]
 
     parallel = client.post(
         "/api/v1/appointments",
@@ -818,6 +823,18 @@ def test_agenda_calendar_management_conflicts_recurrence_and_fresh_reads(
         ),
     )
     assert blocker.status_code == 201, blocker.text
+    second_blocker = client.post(
+        "/api/v1/appointments",
+        headers={**headers, "Idempotency-Key": f"agenda-blocker-2-{suffix}"},
+        json=_appointment_payload(
+            branch_id=branch_id,
+            resource_id=first_resource_id,
+            scheduled_date=blocker_date,
+            scheduled_time="10:00",
+            customer_name=f"Bloqueador Dos {suffix}",
+        ),
+    )
+    assert second_blocker.status_code == 201, second_blocker.text
     series_name = f"Serie Atómica {suffix}"
     series = client.post(
         "/api/v1/appointments",
@@ -1410,73 +1427,131 @@ def test_appointment_resource_config_crud_reorder_hours_and_acl(client: TestClie
         assert cleared_acl.status_code == 200, cleared_acl.text
 
 
+def test_peak_occupancy_counts_simultaneous_appointments_only() -> None:
+    base = datetime(2026, 10, 29, 14, 0, tzinfo=UTC)
+
+    def at(minutes: int) -> datetime:
+        return base + timedelta(minutes=minutes)
+
+    assert peak_occupancy(at(0), at(60), []) == 1
+    assert peak_occupancy(at(0), at(60), [(at(0), at(30)), (at(30), at(60))]) == 2
+    assert peak_occupancy(at(0), at(60), [(at(0), at(60)), (at(15), at(45))]) == 3
+    assert peak_occupancy(at(30), at(60), [(at(0), at(45)), (at(-30), at(31))]) == 3
+
+
+def _first_two_resources(client: TestClient, headers: dict[str, str], branch_id: str) -> list[str]:
+    response = client.get(
+        "/api/v1/appointment-resources",
+        headers=headers,
+        params={"branchId": branch_id},
+    )
+    assert response.status_code == 200, response.text
+    items = response.json()["items"]
+    assert len(items) >= 2
+    return [items[0]["id"], items[1]["id"]]
+
+
 @pytest.mark.integration
-def test_database_exclusion_constraint_serializes_concurrent_room_booking(
+def test_internal_agenda_shares_cabin_with_two_people_and_blocks_the_third(
     client: TestClient,
 ) -> None:
     headers, session_context = _bootstrap_and_login(client)
-    branch_id = UUID(_hq_branch_id(session_context))
-    workspace_id = UUID(str(session_context["workspaceId"]))
-    actor_id = UUID(str(session_context["userId"]))
-    resources_response = client.get(
-        "/api/v1/appointment-resources",
+    branch_id = _hq_branch_id(session_context)
+    first_resource_id, second_resource_id = _first_two_resources(client, headers, branch_id)
+    nonce = uuid7()
+    scheduled_date = date.today() + timedelta(days=1_200 + nonce.int % 10_000)
+    suffix = nonce.hex[-10:]
+
+    def book(name: str, scheduled_time: str, resource_id: str, duration: int = 60):
+        return client.post(
+            "/api/v1/appointments",
+            headers={**headers, "Idempotency-Key": f"shared-{name}-{suffix}"},
+            json={
+                **_appointment_payload(
+                    branch_id=branch_id,
+                    resource_id=resource_id,
+                    scheduled_date=scheduled_date,
+                    scheduled_time=scheduled_time,
+                    customer_name=f"{name} {suffix}",
+                ),
+                "duration": duration,
+            },
+        )
+
+    assert book("first", "10:00", first_resource_id).status_code == 201
+    assert book("second", "10:00", first_resource_id).status_code == 201
+    elsewhere = book("elsewhere", "10:00", second_resource_id)
+    assert elsewhere.status_code == 201, elsewhere.text
+    moved = elsewhere.json()["items"][0]
+    blocked_move = client.patch(
+        f"/api/v1/appointments/{moved['id']}",
         headers=headers,
-        params={"branchId": str(branch_id)},
+        json={"version": moved["version"], "resourceId": first_resource_id},
     )
-    resource_id = UUID(resources_response.json()["items"][0]["id"])
-    scheduled_date = date.today() + timedelta(days=900 + uuid7().int % 10_000)
-    zone = ZoneInfo("America/Santo_Domingo")
-    starts_at = datetime.combine(scheduled_date, time(9, 0), tzinfo=zone).astimezone(UTC)
-    ends_at = starts_at + timedelta(minutes=60)
-    barrier = Barrier(2)
+    assert blocked_move.status_code == 409, blocked_move.text
+    assert blocked_move.json()["parameter"] == "cabinaId"
 
-    def attempt(index: int) -> str:
-        factory = get_session_factory()
-        with factory() as database:
-            appointment = Appointment(
-                workspace_id=workspace_id,
-                branch_id=branch_id,
-                resource_id=resource_id,
-                customer_id=None,
-                employee_id=None,
-                service_id=None,
-                scheduled_date=scheduled_date,
-                scheduled_time=time(9, 0),
-                timezone="America/Santo_Domingo",
-                starts_at=starts_at,
-                ends_at=ends_at,
-                duration_minutes=60,
-                customer_name=f"Concurrente {index}",
-                customer_phone=None,
-                service_name="Sesión de terapia",
-                price=Decimal("1000.00"),
-                status="confirmed",
-                notes=None,
-                pending_payment=False,
-                pending_amount=Decimal("0"),
-                first_time=False,
-                free_trial=False,
-                reminder_sent=False,
-                source="staff",
-                recurrence="none",
-                recurrence_group_id=None,
-                occurrence_index=0,
-                repeat_count=1,
-                idempotency_key=f"concurrent-{uuid7()}-{index}",
-                request_fingerprint="0" * 64,
-                created_by_platform_user_id=actor_id,
-                updated_by_platform_user_id=actor_id,
-            )
-            database.add(appointment)
+    assert book("early", "14:00", first_resource_id, 30).status_code == 201
+    assert book("late", "14:30", first_resource_id, 30).status_code == 201
+    chained = book("chained", "14:00", first_resource_id, 60)
+    assert chained.status_code == 201, chained.text
+    overflow = book("overflow", "14:15", first_resource_id, 30)
+    assert overflow.status_code == 409, overflow.text
+    assert overflow.json()["parameter"] == "cabinaId"
+
+    occupied = book("occupied", "17:00", first_resource_id)
+    assert occupied.status_code == 201, occupied.text
+    any_available = client.post(
+        "/api/v1/appointments",
+        headers={**headers, "Idempotency-Key": f"shared-any-{suffix}"},
+        json={
+            **{
+                key: value
+                for key, value in _appointment_payload(
+                    branch_id=branch_id,
+                    resource_id=first_resource_id,
+                    scheduled_date=scheduled_date,
+                    scheduled_time="17:00",
+                    customer_name=f"Cualquiera {suffix}",
+                ).items()
+                if key not in {"resourceId", "employeeId"}
+            },
+            "anyAvailable": True,
+        },
+    )
+    assert any_available.status_code == 201, any_available.text
+    assert any_available.json()["items"][0]["resource"]["id"] != first_resource_id
+
+
+@pytest.mark.integration
+def test_concurrent_internal_bookings_never_put_three_people_in_a_cabin(
+    client: TestClient,
+) -> None:
+    headers, session_context = _bootstrap_and_login(client)
+    branch_id = _hq_branch_id(session_context)
+    first_resource_id, _ = _first_two_resources(client, headers, branch_id)
+    nonce = uuid7()
+    scheduled_date = date.today() + timedelta(days=1_400 + nonce.int % 10_000)
+    suffix = nonce.hex[-10:]
+    barrier = Barrier(3)
+
+    def attempt(index: int) -> int:
+        from app.main import app
+
+        with TestClient(app) as guest:
             barrier.wait(timeout=10)
-            try:
-                database.commit()
-                return "created"
-            except IntegrityError as exc:
-                database.rollback()
-                return getattr(getattr(exc.orig, "diag", None), "constraint_name", "conflict")
+            return guest.post(
+                "/api/v1/appointments",
+                headers={**headers, "Idempotency-Key": f"concurrent-{index}-{suffix}"},
+                json=_appointment_payload(
+                    branch_id=branch_id,
+                    resource_id=first_resource_id,
+                    scheduled_date=scheduled_date,
+                    scheduled_time="09:00",
+                    customer_name=f"Concurrente {index} {suffix}",
+                ),
+            ).status_code
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        results = list(executor.map(attempt, (1, 2)))
-    assert results.count("created") == 1
-    assert results.count("excl_appointments_resource_period") == 1
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        results = sorted(executor.map(attempt, (1, 2, 3)))
+    assert results == [201, 201, 409]

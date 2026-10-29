@@ -33,7 +33,12 @@ import { appointmentsApi } from '@/services/appointmentsApi'
 import { isAppointmentConflict } from '@/services/adapters/appointments'
 import { canBookResource, canEditResource, sortResources } from '@/modules/configuracion/lib/agendaCabinas'
 import { boundsForDate } from '../lib/branchOpeningHours'
-import { explainAppointmentResourceMove } from '../lib/calendarResourceMove'
+import {
+  appointmentBlocksConfirmedSlot,
+  explainAppointmentResourceMove,
+  findResourceSharing,
+  sharedResourceWarning,
+} from '../lib/calendarResourceMove'
 import { normalizeAppointmentStatus } from '../lib/completion'
 
 const VIEWS = [
@@ -184,12 +189,26 @@ export default function CalendarioPage() {
       toast.error(blocked)
       return
     }
+    const sharedWith = appointmentBlocksConfirmedSlot(appointment)
+      ? findResourceSharing({
+        appointments,
+        resourceId: targetResource.id,
+        date: appointment.date,
+        time: nextTime,
+        duration: appointment.duration,
+        excludeId: appointment.id,
+      })
+      : null
     try {
       await updateAppointment(appointment.id, {
         cabinaId: targetResource.id,
         resourceId: targetResource.id,
         time: nextTime,
       })
+      if (sharedWith) {
+        toast.warning(sharedResourceWarning({ resourceName: targetResource.name, occupant: sharedWith }))
+        return
+      }
       const timeChanged = nextTime !== appointment.time
       toast.success(
         timeChanged
