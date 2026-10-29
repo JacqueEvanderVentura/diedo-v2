@@ -13,6 +13,7 @@ from app.api.deps import (
     DatabaseSession,
 )
 from app.db.models import AppointmentResource, AppointmentResourceAcl, BranchOpeningHour
+from app.db.models.agenda import SHARED_RESOURCE_CAPACITY
 from app.repositories.agenda import AppointmentRecord, ListedAppointmentResource
 from app.schemas.agenda import (
     AppointmentHistoryChange,
@@ -474,6 +475,7 @@ def create_appointments(
         grant=grant,
         values=payload.model_dump(by_alias=False),
         idempotency_key=idempotency_key,
+        resource_capacity=SHARED_RESOURCE_CAPACITY,
     )
     return CreatedAppointmentsResponse(items=[_appointment_response(item) for item in records])
 
@@ -505,6 +507,7 @@ def update_appointment(
             exclude={"version"},
             by_alias=False,
         ),
+        resource_capacity=SHARED_RESOURCE_CAPACITY,
     )
     return _appointment_response(record)
 

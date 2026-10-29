@@ -65,6 +65,7 @@ export function mapAppointmentFromApi(item) {
     serviceId: item.serviceId || item.service?.id || null,
     serviceName: item.serviceName || item.service?.name || '',
     employeeId: item.employeeId || item.employee?.id || null,
+    employeeName: item.employee?.name || item.employeeName || '',
     cabinaId: item.resourceId || resource?.id || null,
     resourceId: item.resourceId || resource?.id || null,
     resourceName: resource?.name || item.resourceName || '',

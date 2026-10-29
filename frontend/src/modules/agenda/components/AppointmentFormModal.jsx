@@ -42,6 +42,14 @@ import {
   getAppointmentReceivablePolicy,
 } from '../lib/receivablePermissions'
 import { buildCompletionPayload } from '../lib/completion'
+import {
+  SHARED_RESOURCE_CAPACITY,
+  appointmentBlocksConfirmedSlot,
+  findResourceSharing,
+  resourceCapacityMessage,
+  resourcePeakOccupancy,
+  sharedResourceWarning,
+} from '../lib/calendarResourceMove'
 import { fetchLastVisitBookingDefaults } from '../lib/customerBookingDefaults'
 import {
   appointmentScheduleChanged,
@@ -344,6 +352,24 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     if (payload.status === 'cumplida' && !payload.completionPunctuality) {
       payload = { ...payload, ...buildCompletionPayload({ punctuality: 'on_time' }) }
     }
+    const occupancyQuery = payload.cabinaId && appointmentBlocksConfirmedSlot(payload)
+      ? {
+        appointments,
+        resourceId: payload.cabinaId,
+        date: payload.date,
+        time: payload.time,
+        duration: payload.duration,
+        excludeId: appointment?.id ?? null,
+      }
+      : null
+    const cabinaName = branchResources.find((resource) => resource.id === payload.cabinaId)?.name
+    if (occupancyQuery && resourcePeakOccupancy(occupancyQuery) > SHARED_RESOURCE_CAPACITY) {
+      return setErr(resourceCapacityMessage(cabinaName))
+    }
+    const sharedWith = occupancyQuery ? findResourceSharing(occupancyQuery) : null
+    const sharedWarning = sharedWith
+      ? sharedResourceWarning({ resourceName: cabinaName, occupant: sharedWith })
+      : ''
     setSaving(true)
     setErr('')
     try {
@@ -358,6 +384,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
           `${count > 1 ? `${count} citas agendadas` : 'Cita agendada'}. ${emailResultMessage(first?.notification)}`
         )
       }
+      if (sharedWarning) toast.warning(sharedWarning)
       onClose()
     } catch (error) {
       if (isAppointmentConflict(error)) {

@@ -50,6 +50,19 @@ _APPOINTMENT_NOTES_MAX_LENGTH = 60
 logger = logging.getLogger(__name__)
 
 
+def peak_occupancy(
+    starts_at: datetime,
+    ends_at: datetime,
+    others: list[tuple[datetime, datetime]],
+) -> int:
+    """Max simultaneous appointments inside [starts_at, ends_at), counting the new one."""
+    checkpoints = {starts_at, *(start for start, _ in others if starts_at < start < ends_at)}
+    return 1 + max(
+        (sum(1 for start, end in others if start <= point < end) for point in checkpoints),
+        default=0,
+    )
+
+
 def appointment_created_by_label(appointment: Appointment, platform_user_name: str) -> str:
     """Self-service bookings are attributed to the client, not the platform actor."""
     if appointment.source == "self":
@@ -435,6 +448,7 @@ class AgendaService:
         idempotency_key: str,
         commit: bool = True,
         enforce_resource_acl: bool = True,
+        resource_capacity: int = 1,
     ) -> tuple[AppointmentRecord, ...]:
         branch_id = cast(UUID, values["branch_id"])
         self._validate_notes(values.get("notes"))
@@ -542,16 +556,15 @@ class AgendaService:
                         starts_at=starts_at,
                         ends_at=ends_at,
                     )
-                conflict = self._repository.conflicting_appointment(
+                self._ensure_slot_available(
                     workspace_id=grant.workspace_id,
                     branch_id=branch_id,
                     resource_id=occurrence_resource_id,
                     employee_id=occurrence_employee_id,
                     starts_at=starts_at,
                     ends_at=ends_at,
+                    resource_capacity=1 if staff_any_available else resource_capacity,
                 )
-                if conflict is not None:
-                    raise self._slot_conflict()
 
                 status = cast(str, values["status"])
                 is_cancelled = status == "cancelled"
@@ -687,6 +700,7 @@ class AgendaService:
         changes: dict[str, Any],
         commit: bool = True,
         enforce_resource_acl: bool = True,
+        resource_capacity: int = 1,
     ) -> AppointmentRecord:
         appointment = self._repository.get_appointment(
             workspace_id=grant.workspace_id,
@@ -783,7 +797,7 @@ class AgendaService:
                 starts_at=starts_at,
                 ends_at=ends_at,
             )
-            conflict = self._repository.conflicting_appointment(
+            self._ensure_slot_available(
                 workspace_id=grant.workspace_id,
                 branch_id=branch_id,
                 resource_id=resource_id,
@@ -791,9 +805,8 @@ class AgendaService:
                 starts_at=starts_at,
                 ends_at=ends_at,
                 exclude_appointment_id=appointment.id,
+                resource_capacity=1 if any_available is True else resource_capacity,
             )
-            if conflict is not None:
-                raise self._slot_conflict()
 
         final_money = {
             "price": changes.get("price", appointment.price),
@@ -1269,6 +1282,65 @@ class AgendaService:
             for internal, (field, label) in _FIELD_META.items()
             if before[internal] != after[internal]
         ]
+
+    def _ensure_slot_available(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID,
+        resource_id: UUID | None,
+        employee_id: UUID | None,
+        starts_at: datetime,
+        ends_at: datetime,
+        resource_capacity: int,
+        exclude_appointment_id: UUID | None = None,
+    ) -> None:
+        # The cabin has no exclusion constraint anymore; this row lock serializes its bookings.
+        resource = (
+            self._repository.lock_resource(workspace_id, branch_id, resource_id)
+            if resource_id is not None
+            else None
+        )
+        if resource_capacity <= 1 or resource_id is None:
+            conflict = self._repository.conflicting_appointment(
+                workspace_id=workspace_id,
+                branch_id=branch_id,
+                resource_id=resource_id,
+                employee_id=employee_id,
+                starts_at=starts_at,
+                ends_at=ends_at,
+                exclude_appointment_id=exclude_appointment_id,
+            )
+            if conflict is not None:
+                raise self._slot_conflict()
+            return
+        if employee_id is not None:
+            conflict = self._repository.conflicting_appointment(
+                workspace_id=workspace_id,
+                branch_id=branch_id,
+                resource_id=None,
+                employee_id=employee_id,
+                starts_at=starts_at,
+                ends_at=ends_at,
+                exclude_appointment_id=exclude_appointment_id,
+            )
+            if conflict is not None:
+                raise self._slot_conflict()
+        overlapping = self._repository.overlapping_resource_appointments(
+            workspace_id=workspace_id,
+            branch_id=branch_id,
+            resource_id=resource_id,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            exclude_appointment_id=exclude_appointment_id,
+        )
+        windows = [(item.starts_at, item.ends_at) for item in overlapping]
+        if peak_occupancy(starts_at, ends_at, windows) > resource_capacity:
+            name = resource.name if resource is not None else "La cabina"
+            raise ConflictError(
+                f"{name} ya tiene {resource_capacity} personas en ese horario.",
+                "cabinaId",
+            )
 
     @staticmethod
     def _slot_conflict() -> ConflictError:

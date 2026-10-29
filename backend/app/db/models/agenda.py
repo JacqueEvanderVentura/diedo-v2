@@ -26,6 +26,8 @@ from app.db.base import Base
 from app.db.models.mixins import TimestampMixin, UuidPrimaryKeyMixin, VersionMixin
 
 ACTIVE_APPOINTMENT_STATUSES = ("confirmed",)
+# Internal agenda may double-book a cabin; public booking and "any available" stay exclusive.
+SHARED_RESOURCE_CAPACITY = 2
 DEFAULT_APPOINTMENT_RESOURCES = (
     ("cab1", "Cabina 1"),
     ("cab2", "Cabina 2"),
@@ -254,17 +256,6 @@ class Appointment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             name="occurrence_index_range",
         ),
         CheckConstraint("char_length(idempotency_key) >= 8", name="idempotency_key_length"),
-        ExcludeConstraint(
-            ("workspace_id", "="),
-            ("branch_id", "="),
-            ("resource_id", "="),
-            ("scheduled_period", "&&"),
-            where=text(
-                "resource_id IS NOT NULL AND record_status = 'active' AND status = 'confirmed'"
-            ),
-            using="gist",
-            name="excl_appointments_resource_period",
-        ),
         ExcludeConstraint(
             ("workspace_id", "="),
             ("employee_id", "="),
