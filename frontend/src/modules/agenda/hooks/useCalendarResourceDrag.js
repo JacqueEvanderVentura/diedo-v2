@@ -1,15 +1,33 @@
 import { useCallback, useRef, useState } from 'react'
 
 const DRAG_THRESHOLD_PX = 6
+const CARD_TOP_PROBE_PX = 4
 
-export function resolveCalendarDrop(clientX, clientY) {
+function elementsAtPoint(clientX, clientY) {
+  if (typeof document.elementsFromPoint === 'function') {
+    return document.elementsFromPoint(clientX, clientY) || []
+  }
   const element = document.elementFromPoint(clientX, clientY)
-  const cell = element?.closest('[data-calendar-resource]')
+  return element ? [element] : []
+}
+
+/** Chips overflow their start cell, so prefer the slot cell physically under the point over `closest()`. */
+export function resolveCalendarDrop(clientX, clientY) {
+  const elements = elementsAtPoint(clientX, clientY)
+  const slotCell = elements.find((element) => element?.dataset?.calendarSlot && element.dataset.calendarResource)
+  const cell = slotCell || elements[0]?.closest?.('[data-calendar-resource]')
   if (!cell?.dataset.calendarResource) return null
   return {
     resourceId: cell.dataset.calendarResource,
     slot: cell.dataset.calendarSlot || null,
   }
+}
+
+/** Target slot follows the card's top edge, not the pointer, so grabbing a long card low does not shift its time. */
+export function resolveCalendarDropForCard(clientX, clientY, grabOffsetY = 0) {
+  const cardTop = resolveCalendarDrop(clientX, clientY - grabOffsetY + CARD_TOP_PROBE_PX)
+  if (cardTop?.slot) return cardTop
+  return resolveCalendarDrop(clientX, clientY)
 }
 
 export function useCalendarResourceDrag({ onMove, isDisabled = false }) {
@@ -28,6 +46,7 @@ export function useCalendarResourceDrag({ onMove, isDisabled = false }) {
       x: event.clientX,
       y: event.clientY,
       width: rect.width,
+      grabOffsetY: Math.max(0, event.clientY - rect.top),
     }
     didDragRef.current = false
     target.setPointerCapture?.(event.pointerId)
@@ -47,17 +66,20 @@ export function useCalendarResourceDrag({ onMove, isDisabled = false }) {
       time: origin.appointment.time,
       label: origin.appointment.customerName,
       width: origin.width,
+      grabOffsetY: origin.grabOffsetY,
       x: event.clientX,
       y: event.clientY,
     })
-    setHoverTarget(resolveCalendarDrop(event.clientX, event.clientY))
+    setHoverTarget(resolveCalendarDropForCard(event.clientX, event.clientY, origin.grabOffsetY))
   }, [])
 
   const endDrag = useCallback(async (event) => {
     const origin = originRef.current
     originRef.current = null
     event.currentTarget?.releasePointerCapture?.(event.pointerId)
-    const hover = resolveCalendarDrop(event.clientX, event.clientY)
+    const hover = origin
+      ? resolveCalendarDropForCard(event.clientX, event.clientY, origin.grabOffsetY)
+      : null
     setHoverTarget(null)
     setDragState(null)
     if (!origin || !didDragRef.current) return
