@@ -18,6 +18,8 @@ sample-1,Juan Pérez,,juan@example.com,8095550001,,,whatsapp,contactado,0,,,fals
 sample-c-1,person,Juan Pérez,Juan,Pérez,,juan@example.com,8095550001,otros`,
   activities: `externalId,leadExternalId,contactName,title,description,dueAt
 sample-a-1,sample-1,Juan Pérez,Llamada de seguimiento,Notas,2026-09-20T10:00:00.000Z`,
+  agenda: `externalId,date,time,duration,customerName,customerPhone,customerEmail,serviceName,resourceName,specialistName,price,notes
+sample-cita-1,2026-11-15,10:00,30,María Pérez,8095550101,maria@example.com,Limpieza Facial,Cabina 1,Dra. Soto,2500,`,
 }
 
 export const IMPORT_TEMPLATE_FORMAT_ERROR =
@@ -181,6 +183,107 @@ export function prepareActivityRows(parsedRows) {
   return parsedRows.map((row) => pickImportKeys(mapCsvRowToApi(row), ACTIVITY_IMPORT_KEYS))
 }
 
+const AGENDA_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+const AGENDA_TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/
+
+function parseAgendaDuration(raw) {
+  if (raw === '' || raw === undefined || raw === null) return 30
+  const value = Number(raw)
+  if (!Number.isFinite(value) || value < 5 || value > 480) return null
+  return Math.trunc(value)
+}
+
+function parseAgendaPrice(raw) {
+  if (raw === '' || raw === undefined || raw === null) return 0
+  const value = Number(String(raw).replace(',', '.'))
+  if (!Number.isFinite(value) || value < 0) return null
+  return value
+}
+
+export function prepareAgendaRows(parsedRows) {
+  const validRows = []
+  const invalidRows = []
+  parsedRows.forEach((row, index) => {
+    const mapped = pickImportKeys(mapCsvRowToApi(row), AGENDA_IMPORT_KEYS)
+    const rowNumber = index + 2
+
+    const date = (mapped.date ?? row.date ?? '').trim()
+    if (!AGENDA_DATE_RE.test(date)) {
+      invalidRows.push({
+        externalId: mapped.externalId || null,
+        status: 'error',
+        message: 'Fecha: usa el formato AAAA-MM-DD.',
+        rowNumber,
+      })
+      return
+    }
+
+    const time = (mapped.time ?? row.time ?? '').trim()
+    if (!AGENDA_TIME_RE.test(time)) {
+      invalidRows.push({
+        externalId: mapped.externalId || null,
+        status: 'error',
+        message: 'Hora: usa el formato HH:MM (24 h).',
+        rowNumber,
+      })
+      return
+    }
+
+    const customerName = (mapped.customerName ?? row.customerName ?? '').trim()
+    const customerPhone = (mapped.customerPhone ?? row.customerPhone ?? '').trim()
+    const customerEmail = (mapped.customerEmail ?? row.customerEmail ?? '').trim()
+    if (!customerName && !customerPhone && !customerEmail) {
+      invalidRows.push({
+        externalId: mapped.externalId || null,
+        status: 'error',
+        message: 'Indica nombre, teléfono o correo del cliente.',
+        rowNumber,
+      })
+      return
+    }
+
+    const resourceName = (mapped.resourceName ?? row.resourceName ?? '').trim()
+
+    const duration = parseAgendaDuration(mapped.duration ?? row.duration)
+    if (duration === null) {
+      invalidRows.push({
+        externalId: mapped.externalId || null,
+        status: 'error',
+        message: 'Duración: entre 5 y 480 minutos.',
+        rowNumber,
+      })
+      return
+    }
+
+    const price = parseAgendaPrice(mapped.price ?? row.price)
+    if (price === null) {
+      invalidRows.push({
+        externalId: mapped.externalId || null,
+        status: 'error',
+        message: 'Precio: debe ser un número mayor o igual a 0.',
+        rowNumber,
+      })
+      return
+    }
+
+    validRows.push({
+      externalId: mapped.externalId || undefined,
+      date,
+      time,
+      duration,
+      customerName: customerName || undefined,
+      customerPhone: customerPhone || undefined,
+      customerEmail: customerEmail || undefined,
+      serviceName: (mapped.serviceName ?? row.serviceName ?? '').trim(),
+      ...(resourceName ? { resourceName } : {}),
+      specialistName: (mapped.specialistName ?? row.specialistName ?? '').trim() || undefined,
+      price,
+      notes: (mapped.notes ?? row.notes ?? '').trim() || undefined,
+    })
+  })
+  return { validRows, invalidRows }
+}
+
 export function batchErrorResults(batch, chunkIndex, chunkSize, error) {
   const message = formatImportApiError(error)
   const parameter = error?.parameter || ''
@@ -246,6 +349,21 @@ const ACTIVITY_IMPORT_KEYS = new Set([
   'dueAt',
 ])
 
+const AGENDA_IMPORT_KEYS = new Set([
+  'externalId',
+  'date',
+  'time',
+  'duration',
+  'customerName',
+  'customerPhone',
+  'customerEmail',
+  'serviceName',
+  'resourceName',
+  'specialistName',
+  'price',
+  'notes',
+])
+
 const PIPELINE_IMPORT_KEYS = new Set([
   'externalId',
   'name',
@@ -300,6 +418,14 @@ export function mapCsvRowToApi(row) {
     }
     if (apiKey === 'value') {
       mapped.value = Number(value) || 0
+      return
+    }
+    if (apiKey === 'duration') {
+      mapped.duration = value
+      return
+    }
+    if (apiKey === 'price') {
+      mapped.price = value
       return
     }
     mapped[apiKey] = value

@@ -57,6 +57,11 @@ export const appointmentsApi = {
     )
     return (response.items || []).map(mapAppointmentFromApi)
   },
+  importAppointments: (payload, key) => apiClient.post(
+    '/api/v1/appointments/import',
+    payload,
+    { headers: { 'Idempotency-Key': key || crypto.randomUUID() } },
+  ),
   updateAppointment: async (id, payload, version) => mapAppointmentFromApi(
     await apiClient.patch(
       `/api/v1/appointments/${id}`,

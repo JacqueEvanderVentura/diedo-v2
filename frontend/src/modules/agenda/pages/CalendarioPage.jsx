@@ -6,6 +6,7 @@ import { useActiveBranchScope } from '@/hooks/useActiveBranchScope'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { AppointmentFormModal } from '../components/AppointmentFormModal'
+import { ImportStackedAppointmentsModal } from '../components/ImportStackedAppointmentsModal'
 import { BookingLinkModal } from '../components/BookingLinkModal'
 import { BranchSchedulesModal } from '../components/BranchSchedulesModal'
 import { WeekView } from '../components/calendar/WeekView'
@@ -67,6 +68,7 @@ export default function CalendarioPage() {
   const [schedulesModalOpen, setSchedulesModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [defaults, setDefaults] = useState({})
+  const [importStackModal, setImportStackModal] = useState([])
 
   const appointmentQuery = useMemo(() => {
     if (!branchId) return {}
@@ -362,6 +364,7 @@ export default function CalendarioPage() {
             canDragAppointment={canDragAppointment}
             showCancelled={showCancelled}
             onResourceMove={handleResourceMove}
+            onViewImportStack={setImportStackModal}
           />
         )}
         {view === 'month' && (
@@ -399,6 +402,12 @@ export default function CalendarioPage() {
           referenceDate={cursor}
         />
       )}
+
+      <ImportStackedAppointmentsModal
+        open={importStackModal.length > 0}
+        onClose={() => setImportStackModal([])}
+        appointments={importStackModal}
+      />
     </div>
   )
 }

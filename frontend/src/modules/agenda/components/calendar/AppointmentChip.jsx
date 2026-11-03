@@ -1,5 +1,6 @@
 import { formatDOP } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { Eye } from 'lucide-react'
 import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
 import { useStaffName } from '@/modules/rrhh/lib/staff'
 import { aptTone } from '../../lib/calendar'
@@ -31,6 +32,8 @@ export function AppointmentChip({
   dragging = false,
   onPointerDown,
   showDayNote = false,
+  importStackSiblings = [],
+  onViewImportStack,
 }) {
   const staffName = useStaffName()
   const tone = aptTone(apt)
@@ -43,6 +46,7 @@ export function AppointmentChip({
   const showNote = showDayNote && Boolean(fullNote)
   const hasPendingAmount = apt.pendingPayment && apt.pendingAmount > 0
   const showFooter = showNote || !showDayNote || hasPendingAmount
+  const showImportStack = importStackSiblings.length > 1
   return (
     <div
       role="button"
@@ -74,10 +78,25 @@ export function AppointmentChip({
       )}
     >
       <span
-        className="absolute right-1 top-1 z-10"
+        className="absolute right-1 top-1 z-10 flex items-center gap-0.5"
         data-no-calendar-drag
         onPointerDown={(event) => event.stopPropagation()}
       >
+        {showImportStack ? (
+          <button
+            type="button"
+            className="rounded-md p-0.5 text-slate-500 opacity-80 hover:bg-white/70 hover:text-slate-800"
+            title="Ver citas importadas agrupadas en este horario"
+            aria-label="Ver citas importadas agrupadas en este horario"
+            data-testid={`calendar-apt-import-stack-${apt.id}`}
+            onClick={(event) => {
+              event.stopPropagation()
+              onViewImportStack?.(importStackSiblings)
+            }}
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
         <WhatsAppMenuButton
           phone={apt.customerPhone}
           context="agenda"
@@ -91,7 +110,7 @@ export function AppointmentChip({
           data-testid={`calendar-apt-wa-${apt.id}`}
         />
       </span>
-      <p className={cn('min-w-0 truncate pr-6 font-semibold', compact ? 'text-[11px]' : 'text-xs')}>
+      <p className={cn('min-w-0 truncate font-semibold', compact ? 'text-[11px]' : 'text-xs', showImportStack ? 'pr-10' : 'pr-6')}>
         {apt.customerName}
       </p>
       {(spanFullHeight || apt.serviceName) && (
