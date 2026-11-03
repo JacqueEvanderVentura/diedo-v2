@@ -75,9 +75,7 @@ def _import_appointments(
     *,
     key_suffix: str | None = None,
 ) -> tuple[int, list[dict[str, object]]]:
-    response = _post_import_appointments(
-        client, headers, branch_id, items, key_suffix=key_suffix
-    )
+    response = _post_import_appointments(client, headers, branch_id, items, key_suffix=key_suffix)
     assert response.status_code == 201, response.text
     return response.status_code, response.json()["items"]
 
