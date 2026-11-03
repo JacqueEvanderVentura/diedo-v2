@@ -51,6 +51,22 @@ def _import_customers(
     return response.json()["items"]
 
 
+def _post_import_appointments(
+    client: TestClient,
+    headers: dict[str, str],
+    branch_id: str,
+    items: list[dict[str, object]],
+    *,
+    key_suffix: str | None = None,
+):
+    suffix = key_suffix or uuid7().hex[-8:]
+    return client.post(
+        "/api/v1/appointments/import",
+        headers={**headers, "Idempotency-Key": sha256(suffix.encode()).hexdigest()},
+        json={"branchId": branch_id, "items": items},
+    )
+
+
 def _import_appointments(
     client: TestClient,
     headers: dict[str, str],
@@ -59,14 +75,10 @@ def _import_appointments(
     *,
     key_suffix: str | None = None,
 ) -> tuple[int, list[dict[str, object]]]:
-    suffix = key_suffix or uuid7().hex[-8:]
-    response = client.post(
-        "/api/v1/appointments/import",
-        headers={**headers, "Idempotency-Key": sha256(suffix.encode()).hexdigest()},
-        json={"branchId": branch_id, "items": items},
+    response = _post_import_appointments(
+        client, headers, branch_id, items, key_suffix=key_suffix
     )
-    if response.status_code != 201:
-        return response.status_code, []
+    assert response.status_code == 201, response.text
     return response.status_code, response.json()["items"]
 
 
@@ -222,7 +234,6 @@ def test_agenda_import_without_resource_creates_cabina_1(client: TestClient) -> 
             }
         ],
     )
-    assert rows, "import should return row results (check HTTP status if empty)"
     assert rows[0]["status"] == "created"
 
     with session_scope() as db:
@@ -408,7 +419,7 @@ def test_agenda_import_requires_manage_permission(client: TestClient) -> None:
     )
     assert login.status_code == 200, login.text
     reader_headers = {"Authorization": f"Bearer {login.json()['accessToken']}"}
-    status_code, _ = _import_appointments(
+    response = _post_import_appointments(
         client,
         reader_headers,
         branch_id,
@@ -421,7 +432,7 @@ def test_agenda_import_requires_manage_permission(client: TestClient) -> None:
             }
         ],
     )
-    assert status_code == 403
+    assert response.status_code == 403
 
 
 @pytest.mark.integration
