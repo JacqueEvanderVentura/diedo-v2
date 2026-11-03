@@ -3,7 +3,7 @@ from math import ceil
 from typing import Annotated, Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Header, Query, Response, status
+from fastapi import APIRouter, Header, Query, Request, Response, status
 
 from app.api.deps import (
     AppointmentDeleteGrant,
@@ -12,6 +12,7 @@ from app.api.deps import (
     CurrentPrincipal,
     DatabaseSession,
 )
+from app.core.errors import raise_api_error
 from app.db.models import AppointmentResource, AppointmentResourceAcl, BranchOpeningHour
 from app.db.models.agenda import SHARED_RESOURCE_CAPACITY
 from app.repositories.agenda import AppointmentRecord, ListedAppointmentResource
@@ -32,6 +33,8 @@ from app.schemas.agenda import (
     CreateAppointmentRequest,
     CreateAppointmentResourceRequest,
     CreatedAppointmentsResponse,
+    ImportAppointmentRowResult,
+    ImportAppointmentsResponse,
     PaginatedAppointmentsResponse,
     ReorderAppointmentResourcesRequest,
     ReplaceAppointmentResourceAclRequest,
@@ -478,6 +481,59 @@ def create_appointments(
         resource_capacity=SHARED_RESOURCE_CAPACITY,
     )
     return CreatedAppointmentsResponse(items=[_appointment_response(item) for item in records])
+
+
+@router.post(
+    "/appointments/import",
+    status_code=status.HTTP_201_CREATED,
+    summary="Importar citas del calendario en lote",
+    responses={
+        **_SECURITY_RESPONSES,
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+    },
+)
+async def import_appointments(
+    request: Request,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: AppointmentManageGrant,
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=8, max_length=128),
+    ],
+) -> ImportAppointmentsResponse:
+    del idempotency_key
+    try:
+        body = await request.json()
+    except Exception:
+        raise_api_error(400, "Cuerpo JSON invalido.", None)
+    if not isinstance(body, dict):
+        raise_api_error(400, "Cuerpo JSON invalido.", None)
+    branch_raw = body.get("branchId", body.get("branch_id"))
+    try:
+        branch_id = UUID(str(branch_raw))
+    except TypeError, ValueError:
+        raise_api_error(400, "branchId invalido.", "branchId")
+    items_raw = body.get("items")
+    if not isinstance(items_raw, list) or not items_raw:
+        raise_api_error(400, "Debes enviar al menos una fila.", "items")
+    if len(items_raw) > 100:
+        raise_api_error(400, "Maximo 100 filas por lote.", "items")
+    items: list[dict[str, Any]] = []
+    for index, row in enumerate(items_raw):
+        if not isinstance(row, dict):
+            raise_api_error(400, "Cada fila debe ser un objeto.", f"items[{index}]")
+        items.append(row)
+    rows = AgendaService(database).import_appointments(
+        principal=principal,
+        grant=grant,
+        branch_id=branch_id,
+        items=items,
+    )
+    return ImportAppointmentsResponse(
+        items=[ImportAppointmentRowResult.model_validate(row) for row in rows]
+    )
 
 
 @router.patch(

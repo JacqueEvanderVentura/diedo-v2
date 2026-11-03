@@ -18,6 +18,8 @@ import { crmApi, createCrmIdempotencyKey } from '@/services/crmApi'
 
 import { masterDataApi } from '@/services/masterDataApi'
 
+import { appointmentsApi } from '@/services/appointmentsApi'
+
 import {
 
   batchErrorResults,
@@ -34,6 +36,8 @@ import {
 
   prepareActivityRows,
 
+  prepareAgendaRows,
+
   prepareCustomerRows,
 
   toPipelineImportItem,
@@ -44,8 +48,14 @@ import {
 
 } from '@/modules/configuracion/lib/csvImport'
 import { isSettingsBlockVisible } from '@/modules/configuracion/lib/settingsSearch'
+import {
+  appendTickerRowsCapped,
+  computeTickerLimit,
+  sequentialTickerRowsFromBatch,
+} from '@/modules/configuracion/lib/importProgressTicker'
+import { ImportProgressTicker } from '@/modules/configuracion/components/ImportProgressTicker'
 
-const IMPORT_KINDS = ['pipeline', 'customers', 'activities']
+const IMPORT_KINDS = ['pipeline', 'customers', 'activities', 'agenda']
 
 function shouldShowBranchPicker(visibleBlockIds) {
   if (isSettingsBlockVisible(visibleBlockIds, 'branch')) return true
@@ -76,16 +86,21 @@ function normalizeResultRow(row, sourceRow = null) {
 
   const displayName = row.displayName
     ?? row.display_name
+    ?? row.customerName
+    ?? row.customer_name
     ?? sourceRow?.displayName
+    ?? sourceRow?.customerName
     ?? null
 
-  const phone = row.phone ?? sourceRow?.phone ?? null
+  const phone = row.phone ?? row.customerPhone ?? sourceRow?.phone ?? sourceRow?.customerPhone ?? null
 
   const email = row.email ?? sourceRow?.email ?? null
 
   return {
 
     externalId: row.externalId ?? row.external_id ?? null,
+
+    appointmentId: row.appointmentId ?? row.appointment_id ?? null,
 
     status: row.status,
 
@@ -98,6 +113,14 @@ function normalizeResultRow(row, sourceRow = null) {
     phone,
 
     email,
+
+    customerLinked: row.customerLinked ?? row.customer_linked ?? null,
+
+    date: row.date ?? null,
+
+    time: row.time ?? null,
+
+    serviceName: row.serviceName ?? row.service_name ?? null,
 
   }
 
@@ -151,7 +174,7 @@ function summarizeImportResults(rows, totalInFile) {
 
 
 
-async function importBatches({ rows, chunkSize, runBatch }) {
+async function importBatches({ rows, chunkSize, runBatch, onProgress }) {
 
   const chunks = chunkRows(rows, chunkSize)
 
@@ -165,11 +188,34 @@ async function importBatches({ rows, chunkSize, runBatch }) {
 
       const response = await runBatch(batch, index)
 
-      allResults.push(...(response.items || []).map((item, rowIndex) => normalizeResultRow(item, batch[rowIndex])))
+      const batchResults = (response.items || []).map((item, rowIndex) => normalizeResultRow(item, batch[rowIndex]))
+
+      allResults.push(...batchResults)
+
+      if (onProgress) {
+        const tickerSample = sequentialTickerRowsFromBatch(batchResults)
+        onProgress({
+          processed: allResults.length,
+          total: rows.length,
+          batchIndex: index + 1,
+          batchCount: chunks.length,
+          tickerSample,
+        })
+      }
 
     } catch (error) {
 
       allResults.push(...batchErrorResults(batch, index, chunkSize, error))
+
+      if (onProgress) {
+        onProgress({
+          processed: allResults.length,
+          total: rows.length,
+          batchIndex: index + 1,
+          batchCount: chunks.length,
+          tickerSample: [],
+        })
+      }
 
     }
 
@@ -431,6 +477,12 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
   const [pendingBranchId, setPendingBranchId] = useState('')
 
+  const [progress, setProgress] = useState(null)
+
+  const [tickerRows, setTickerRows] = useState([])
+
+  const agendaTickerCapRef = useRef(0)
+
   const showBranchPicker = shouldShowBranchPicker(visibleBlockIds)
 
   const activeBranchId = useMemo(() => {
@@ -475,6 +527,11 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
     setDetailModal(null)
 
+    setProgress(null)
+
+    setTickerRows([])
+    agendaTickerCapRef.current = 0
+
     try {
 
       const text = await file.text()
@@ -504,6 +561,17 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
       let items = []
 
       let preInvalid = []
+
+      const batchProgress = (update) => {
+        setProgress(update)
+        if (update.tickerSample?.length && agendaTickerCapRef.current > 0) {
+          setTickerRows((prev) => appendTickerRowsCapped(
+            prev,
+            update.tickerSample,
+            agendaTickerCapRef.current,
+          ))
+        }
+      }
 
 
 
@@ -557,6 +625,32 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
         })
 
+      } else if (kind === 'agenda') {
+
+        const { validRows, invalidRows } = prepareAgendaRows(parsed)
+
+        preInvalid = invalidRows
+
+        agendaTickerCapRef.current = computeTickerLimit(validRows.length)
+
+        items = await importBatches({
+
+          rows: validRows,
+
+          chunkSize: 100,
+
+          onProgress: batchProgress,
+
+          runBatch: (batch, index) => appointmentsApi.importAppointments(
+
+            { branchId: targetBranchId, items: batch },
+
+            createCrmIdempotencyKey(`agenda-${file.name}-${index}`),
+
+          ),
+
+        })
+
       } else {
 
         const mapped = prepareActivityRows(parsed)
@@ -587,6 +681,22 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
       const branchName = branches.find((branch) => branch.id === targetBranchId)?.name || null
 
+      let agendaSummary = null
+
+      if (kind === 'agenda') {
+
+        const createdRows = allRows.filter((row) => row.status === 'created')
+
+        agendaSummary = {
+
+          linked: createdRows.filter((row) => row.customerLinked).length,
+
+          unlinked: createdRows.filter((row) => !row.customerLinked).length,
+
+        }
+
+      }
+
       setReport({
 
         kind,
@@ -594,6 +704,8 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
         branchName,
 
         ...stats,
+
+        agendaSummary,
 
         rows: allRows,
 
@@ -608,6 +720,11 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
     } finally {
 
       setRunning(null)
+
+      setProgress(null)
+
+      setTickerRows([])
+      agendaTickerCapRef.current = 0
 
     }
 
@@ -685,13 +802,21 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
 
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
 
         {IMPORT_KINDS.filter((kind) => isSettingsBlockVisible(visibleBlockIds, kind)).map((kind) => (
 
-          <div key={kind} className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft">
+          <div key={kind} className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft" data-settings-block={`datos:${kind}`}>
 
-            <h3 className="font-semibold capitalize text-slate-900">{kind === 'pipeline' ? 'Embudo (leads)' : kind === 'customers' ? 'Clientes' : 'Actividades'}</h3>
+            <h3 className="font-semibold capitalize text-slate-900">
+              {kind === 'pipeline'
+                ? 'Embudo (leads)'
+                : kind === 'customers'
+                  ? 'Clientes'
+                  : kind === 'agenda'
+                    ? 'Agenda (citas)'
+                    : 'Actividades'}
+            </h3>
 
             <p className="mt-1 text-xs text-slate-500">
 
@@ -700,6 +825,8 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
               {kind === 'customers' && 'Directorio compartido (POS / Clientes). Se envían lotes de hasta 100 filas por solicitud.'}
 
               {kind === 'activities' && 'Tareas de seguimiento vinculadas por leadExternalId.'}
+
+              {kind === 'agenda' && 'Importa citas al calendario. Importa Clientes primero; vinculación por teléfono y correo. Sin cabina en el CSV se asigna Cabina 1 (se crea solo si no hay ninguna). Si hay choques se usan otras cabinas o, en importación, se agrupan en el mismo horario. Lotes de hasta 100 filas.'}
 
             </p>
 
@@ -735,6 +862,28 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
 
 
 
+      {progress && running === 'agenda' && (
+        <div className="rounded-xl border border-blue-100 bg-blue-50/80 p-4 text-sm" data-testid="data-import-progress">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-slate-700">
+            <span>
+              Lote {progress.batchIndex} de {progress.batchCount}
+            </span>
+            <span>
+              {progress.processed} / {progress.total} citas
+            </span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-blue-100">
+            <div
+              className="h-full rounded-full bg-blue-600 transition-[width] duration-300 ease-out"
+              style={{ width: `${Math.min(100, Math.round((progress.processed / progress.total) * 100))}%` }}
+            />
+          </div>
+          {tickerRows.length > 0 ? <ImportProgressTicker rows={tickerRows} /> : null}
+        </div>
+      )}
+
+
+
       {report && (
 
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm" data-testid="data-import-report">
@@ -747,6 +896,12 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
             {report.branchName ? ` · sucursal: ${report.branchName}` : ''}
 
           </p>
+
+          {report.agendaSummary ? (
+            <p className="mt-2 text-xs text-slate-600">
+              {report.agendaSummary.linked} vinculadas al directorio · {report.agendaSummary.unlinked} sin cliente (revisar nota en la cita)
+            </p>
+          ) : null}
 
           <ul className="mt-3 space-y-1.5 text-slate-800">
 
@@ -798,7 +953,7 @@ export default function DataImportPanel({ embedded = false, visibleBlockIds }) {
         title="Sucursal destino"
         testId="data-import-branch-modal"
       >
-        <div className="space-y-4 p-5">
+        <div className="space-y-4">
           <p className="text-sm text-slate-600">
             Elige la sucursal a la que se asignarán los registros de este archivo antes de importar.
           </p>

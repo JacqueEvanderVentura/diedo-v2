@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Card } from '@/components/ui/Card'
 import { formatLongDate, timeSlots } from '../../lib/calendar'
+import { importStackSiblings } from '../../lib/importStacked'
 import { AppointmentChip } from './AppointmentChip'
 import {
   activeAppointmentsForResource,
@@ -27,6 +28,7 @@ export function DayView({
   onSlotClick,
   onAppointmentClick,
   onResourceMove,
+  onViewImportStack,
   canDrag = false,
   canDragAppointment,
   showCancelled = false,
@@ -194,6 +196,8 @@ export function DayView({
                                         onPointerDown={startDrag}
                                         onClick={handleChipClick}
                                         showDayNote
+                                        importStackSiblings={importStackSiblings(appointments, laneAppointment)}
+                                        onViewImportStack={onViewImportStack}
                                       />
                                     </div>
                                   </div>

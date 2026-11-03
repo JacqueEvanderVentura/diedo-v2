@@ -7,6 +7,7 @@ import {
   mapCsvRowToApi,
   parseCsv,
   prepareActivityRows,
+  prepareAgendaRows,
   prepareCustomerRows,
   validateImportTemplateHeaders,
 } from '@/modules/configuracion/lib/csvImport'
@@ -107,5 +108,90 @@ describe('csvImport', () => {
     const result = validateImportTemplateHeaders('customers', ['name', 'email', 'phone'])
     expect(result.ok).toBe(false)
     expect(result.missing.length).toBeGreaterThan(0)
+  })
+
+  it('accepts agenda csv with full template headers', () => {
+    const headers = getImportTemplateColumns('agenda')
+    const result = validateImportTemplateHeaders('agenda', headers)
+    expect(result.ok).toBe(true)
+  })
+
+  it('prepares valid agenda rows with defaults', () => {
+    const { validRows, invalidRows } = prepareAgendaRows([
+      {
+        externalId: 'c1',
+        date: '2026-11-15',
+        time: '10:00',
+        duration: '',
+        customerName: 'María Pérez',
+        customerPhone: '8095550101',
+        customerEmail: 'maria@example.com',
+        serviceName: 'Facial',
+        resourceName: 'Cabina 1',
+        specialistName: 'Dra. Soto',
+        price: '2500',
+        notes: '',
+      },
+    ])
+    expect(invalidRows).toHaveLength(0)
+    expect(validRows[0]).toMatchObject({
+      externalId: 'c1',
+      date: '2026-11-15',
+      time: '10:00',
+      duration: 30,
+      customerName: 'María Pérez',
+      customerPhone: '8095550101',
+      customerEmail: 'maria@example.com',
+      price: 2500,
+    })
+  })
+
+  it('accepts agenda rows without resourceName', () => {
+    const { validRows, invalidRows } = prepareAgendaRows([
+      {
+        date: '2026-11-15',
+        time: '10:00',
+        customerName: 'Ana',
+        resourceName: '',
+      },
+    ])
+    expect(invalidRows).toHaveLength(0)
+    expect(validRows[0].resourceName).toBeUndefined()
+  })
+
+  it('accepts agenda rows with phone only when customer name is empty', () => {
+    const { validRows, invalidRows } = prepareAgendaRows([
+      {
+        date: '2026-11-15',
+        time: '10:00',
+        customerName: '',
+        customerPhone: '8095550101',
+      },
+    ])
+    expect(invalidRows).toHaveLength(0)
+    expect(validRows[0].customerName).toBeUndefined()
+    expect(validRows[0].customerPhone).toBe('8095550101')
+  })
+
+  it('rejects agenda rows with invalid date or duration', () => {
+    const { validRows, invalidRows } = prepareAgendaRows([
+      {
+        date: '15-11-2026',
+        time: '10:00',
+        customerName: 'Ana',
+        resourceName: 'Cabina 1',
+      },
+      {
+        date: '2026-11-15',
+        time: '10:00',
+        duration: '2',
+        customerName: 'Ana',
+        resourceName: 'Cabina 1',
+      },
+    ])
+    expect(validRows).toHaveLength(0)
+    expect(invalidRows).toHaveLength(2)
+    expect(invalidRows[0].message).toContain('Fecha')
+    expect(invalidRows[1].message).toContain('Duración')
   })
 })

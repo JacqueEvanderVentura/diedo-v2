@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any, Literal, Self
 from uuid import UUID
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import EmailStr, Field, field_validator, model_validator
 
 from app.schemas.common import ApiModel
 from app.schemas.public_booking import EmailNotificationResponse
@@ -372,3 +372,77 @@ class UpdateAppointmentRequest(ApiModel):
         ):
             raise ValueError("Este campo no puede ser nulo.")
         return self
+
+
+class ImportAppointmentItem(ApiModel):
+    external_id: str | None = Field(default=None, max_length=64)
+    date: DateValue
+    time: TimeValue
+    duration: int = Field(default=30, ge=5, le=480)
+    customer_name: str | None = Field(default=None, max_length=200)
+    customer_phone: str | None = Field(default=None, max_length=40)
+    customer_email: EmailStr | None = None
+    service_name: str = Field(default="", max_length=200)
+    resource_name: str | None = Field(default=None, max_length=120)
+    specialist_name: str | None = Field(default=None, max_length=200)
+    price: Decimal = Field(default=Decimal("0"), ge=0, max_digits=14, decimal_places=2)
+    notes: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="before")
+    @classmethod
+    def strip_empty_import_fields(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        for key in ("resource_name", "resourceName"):
+            if key in data and (data[key] is None or not str(data[key]).strip()):
+                data.pop(key, None)
+        for key in ("customer_name", "customerName"):
+            if key in data and (data[key] is None or not str(data[key]).strip()):
+                data[key] = None
+        return data
+
+    @model_validator(mode="after")
+    def require_customer_identity(self) -> Self:
+        name = (self.customer_name or "").strip()
+        if name or self.customer_phone or self.customer_email:
+            return self
+        raise ValueError("Indica nombre, teléfono o correo del cliente.")
+
+    @field_validator("customer_name", "service_name")
+    @classmethod
+    def normalize_import_required_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _normalize_required_text(value)
+
+    @field_validator("customer_phone", "specialist_name", "notes", "resource_name")
+    @classmethod
+    def normalize_import_optional_text(cls, value: str | None) -> str | None:
+        return _normalize_optional_text(value)
+
+
+class ImportAppointmentsRequest(ApiModel):
+    """Documentación OpenAPI; el handler parsea el JSON sin validar cada fila aquí."""
+
+    branch_id: UUID
+    items: list[Any] = Field(min_length=1, max_length=100)
+
+
+class ImportAppointmentRowResult(ApiModel):
+    external_id: str | None = None
+    appointment_id: UUID | None = None
+    customer_id: UUID | None = None
+    customer_linked: bool = False
+    status: Literal["created", "skipped", "error"]
+    message: str | None = None
+    customer_name: str | None = None
+    phone: str | None = None
+    date: DateValue | None = None
+    time: str | None = None
+    service_name: str | None = None
+    import_stacked: bool = False
+
+
+class ImportAppointmentsResponse(ApiModel):
+    items: list[ImportAppointmentRowResult]

@@ -160,6 +160,7 @@ export const SETTINGS_SECTIONS = [
           { id: 'pipeline', title: 'Embudo (leads)' },
           { id: 'customers', title: 'Clientes' },
           { id: 'activities', title: 'Actividades' },
+          { id: 'agenda', title: 'Agenda (citas)' },
         ],
       },
     ],

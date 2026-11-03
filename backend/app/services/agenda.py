@@ -11,10 +11,12 @@ from typing import Any, cast
 from uuid import UUID, uuid7
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.errors import friendly_validation_message
 from app.core.request_context import get_request_id
 from app.db.models import (
     Appointment,
@@ -22,9 +24,14 @@ from app.db.models import (
     Branch,
     BranchOpeningHour,
     Customer,
+    Employee,
+    EmployeeBranchAssignment,
+    InventoryItemProfile,
+    Item,
+    ItemBranchAssignment,
     Workspace,
 )
-from app.db.models.agenda import ACTIVE_APPOINTMENT_STATUSES
+from app.db.models.agenda import ACTIVE_APPOINTMENT_STATUSES, SHARED_RESOURCE_CAPACITY
 from app.db.models.email_notifications import EmailNotification
 from app.repositories.agenda import (
     AgendaRepository,
@@ -32,9 +39,12 @@ from app.repositories.agenda import (
     AppointmentRecord,
     ListedAppointmentResource,
 )
+from app.repositories.master_data import MasterDataRepository
+from app.schemas.agenda import ImportAppointmentItem
 from app.services.auth import AuthPrincipal
 from app.services.authorization import AuthorizationService, PermissionGrant
 from app.services.booking_tokens import issue_appointment_management_token
+from app.services.customer_import_merge import find_import_customer_matches, normalize_name
 from app.services.email_notifications import deliver_email, enqueue_email
 from app.services.errors import (
     AuthorizationError,
@@ -47,6 +57,13 @@ from app.services.pos import PosService
 
 _WEEKDAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 _APPOINTMENT_NOTES_MAX_LENGTH = 60
+_APPOINTMENT_NOTES_DB_MAX_LENGTH = 2000
+_IMPORT_DEFAULT_RESOURCE_NAME = "Cabina 1"
+_IMPORT_DEFAULT_RESOURCE_CODE = "cabina-1"
+_IMPORT_STACK_NOTE = (
+    "Importación: agrupada con otras citas en el mismo horario y cabina "
+    "(solo por cómo se importó el archivo)."
+)
 logger = logging.getLogger(__name__)
 
 
@@ -449,9 +466,15 @@ class AgendaService:
         commit: bool = True,
         enforce_resource_acl: bool = True,
         resource_capacity: int = 1,
+        notify: bool = True,
+        allow_long_notes: bool = False,
+        skip_slot_check: bool = False,
     ) -> tuple[AppointmentRecord, ...]:
         branch_id = cast(UUID, values["branch_id"])
-        self._validate_notes(values.get("notes"))
+        notes_limit = (
+            _APPOINTMENT_NOTES_DB_MAX_LENGTH if allow_long_notes else _APPOINTMENT_NOTES_MAX_LENGTH
+        )
+        self._validate_notes(values.get("notes"), max_length=notes_limit)
         self._require_branch_access(grant, branch_id)
         branch = self._repository.branch(grant.workspace_id, branch_id)
         if branch is None:
@@ -556,15 +579,16 @@ class AgendaService:
                         starts_at=starts_at,
                         ends_at=ends_at,
                     )
-                self._ensure_slot_available(
-                    workspace_id=grant.workspace_id,
-                    branch_id=branch_id,
-                    resource_id=occurrence_resource_id,
-                    employee_id=occurrence_employee_id,
-                    starts_at=starts_at,
-                    ends_at=ends_at,
-                    resource_capacity=1 if staff_any_available else resource_capacity,
-                )
+                if not skip_slot_check:
+                    self._ensure_slot_available(
+                        workspace_id=grant.workspace_id,
+                        branch_id=branch_id,
+                        resource_id=occurrence_resource_id,
+                        employee_id=occurrence_employee_id,
+                        starts_at=starts_at,
+                        ends_at=ends_at,
+                        resource_capacity=1 if staff_any_available else resource_capacity,
+                    )
 
                 status = cast(str, values["status"])
                 is_cancelled = status == "cancelled"
@@ -608,7 +632,7 @@ class AgendaService:
                 )
                 self._repository.add_appointment(appointment)
                 self._session.flush()
-                if workspace is not None and status == "confirmed":
+                if workspace is not None and status == "confirmed" and notify:
                     queued = self._enqueue_notification(
                         appointment, "appointment.confirmed", branch, workspace
                     )
@@ -1034,6 +1058,508 @@ class AgendaService:
             self._session.rollback()
             raise ConflictError("No fue posible eliminar la cita.") from exc
 
+    @staticmethod
+    def _appointment_import_idempotency_key(external_id: str) -> str:
+        safe = external_id.strip()[:100]
+        return f"ag-imp-{safe}"[:128]
+
+    @staticmethod
+    def _import_unlinked_customer_note(customer_name: str, customer_phone: str | None) -> str:
+        if customer_phone:
+            lead = f"{customer_name} ({customer_phone}) vinculado al importar."
+        else:
+            lead = f"{customer_name} vinculado al importar."
+        return (
+            f"{lead} No existía dicho cliente. "
+            "Proceder a crearlo o seleccionar el cliente correspondiente."
+        )
+
+    @staticmethod
+    def _compose_import_notes(
+        customer_name: str,
+        customer_phone: str | None,
+        user_notes: str | None,
+        *,
+        customer_linked: bool,
+    ) -> str | None:
+        if customer_linked:
+            return user_notes
+        warning = AgendaService._import_unlinked_customer_note(customer_name, customer_phone)
+        if user_notes:
+            combined = f"{warning} {user_notes}"
+            return combined[:_APPOINTMENT_NOTES_DB_MAX_LENGTH]
+        return warning
+
+    @staticmethod
+    def _register_import_resource_lookups(
+        resource: AppointmentResource,
+        resource_by_code: dict[str, AppointmentResource],
+        resource_by_name: dict[str, AppointmentResource],
+    ) -> None:
+        resource_by_code[normalize_name(resource.code)] = resource
+        resource_by_name[normalize_name(resource.name)] = resource
+        compact = normalize_name(resource.name).replace(" ", "")
+        if compact:
+            resource_by_name.setdefault(compact, resource)
+
+    def _create_import_cabina_1_if_branch_empty(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID,
+        active_resources: list[AppointmentResource],
+        resource_by_code: dict[str, AppointmentResource],
+        resource_by_name: dict[str, AppointmentResource],
+    ) -> AppointmentResource:
+        if active_resources:
+            raise ValueError("active_resources must be empty when creating import Cabina 1")
+        code_key = normalize_name(_IMPORT_DEFAULT_RESOURCE_CODE)
+        existing = resource_by_code.get(code_key)
+        if existing is not None:
+            return existing
+        stored = self._repository.resource_by_code(
+            workspace_id, branch_id, _IMPORT_DEFAULT_RESOURCE_CODE
+        )
+        if stored is not None:
+            if stored.status != "active":
+                stored.status = "active"
+                self._session.flush()
+            self._register_import_resource_lookups(stored, resource_by_code, resource_by_name)
+            active_resources.append(stored)
+            return stored
+        resource = AppointmentResource(
+            workspace_id=workspace_id,
+            branch_id=branch_id,
+            code=_IMPORT_DEFAULT_RESOURCE_CODE,
+            name=_IMPORT_DEFAULT_RESOURCE_NAME,
+            description=None,
+            resource_type="room",
+            status="active",
+            sort_order=self._repository.next_resource_sort_order(workspace_id, branch_id),
+        )
+        self._repository.add_resource(resource)
+        self._session.flush()
+        self._register_import_resource_lookups(resource, resource_by_code, resource_by_name)
+        active_resources.append(resource)
+        return resource
+
+    @staticmethod
+    def _ordered_import_resources(
+        resources: list[AppointmentResource],
+    ) -> list[AppointmentResource]:
+        cabina_aliases = {"cabina 1", "cabina1", "cab1", normalize_name("cabina-1")}
+
+        def priority(resource: AppointmentResource) -> tuple[int, int, str]:
+            keys = {
+                normalize_name(resource.name),
+                normalize_name(resource.code),
+                normalize_name(resource.name).replace(" ", ""),
+            }
+            is_cabina_1 = bool(keys & cabina_aliases) or normalize_name(resource.name) == "cabina 1"
+            return (0 if is_cabina_1 else 1, resource.sort_order, resource.name.casefold())
+
+        return sorted(resources, key=priority)
+
+    def _resource_fits_import_slot(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID,
+        resource_id: UUID,
+        employee_id: UUID | None,
+        starts_at: datetime,
+        ends_at: datetime,
+    ) -> bool:
+        try:
+            self._ensure_slot_available(
+                workspace_id=workspace_id,
+                branch_id=branch_id,
+                resource_id=resource_id,
+                employee_id=employee_id,
+                starts_at=starts_at,
+                ends_at=ends_at,
+                resource_capacity=SHARED_RESOURCE_CAPACITY,
+            )
+            return True
+        except ConflictError:
+            return False
+
+    def _resolve_import_resource(
+        self,
+        *,
+        item: dict[str, Any],
+        workspace_id: UUID,
+        branch_id: UUID,
+        branch: Branch,
+        active_resources: list[AppointmentResource],
+        resource_by_code: dict[str, AppointmentResource],
+        resource_by_name: dict[str, AppointmentResource],
+        employee_id: UUID | None,
+    ) -> tuple[AppointmentResource, bool, datetime, datetime]:
+        scheduled_date = cast(date, item["date"])
+        scheduled_time = cast(time, item["time"])
+        starts_at, ends_at = self._schedule_window(
+            scheduled_date=scheduled_date,
+            scheduled_time=scheduled_time,
+            duration_minutes=cast(int, item["duration"]),
+            timezone=branch.timezone,
+        )
+        raw_resource_name = cast(str | None, item.get("resource_name"))
+        if raw_resource_name:
+            resource_key = normalize_name(raw_resource_name)
+            matched = resource_by_code.get(resource_key) or resource_by_name.get(resource_key)
+            if matched is not None:
+                if self._resource_fits_import_slot(
+                    workspace_id=workspace_id,
+                    branch_id=branch_id,
+                    resource_id=matched.id,
+                    employee_id=employee_id,
+                    starts_at=starts_at,
+                    ends_at=ends_at,
+                ):
+                    return matched, False, starts_at, ends_at
+                return matched, True, starts_at, ends_at
+
+        default_key = normalize_name(_IMPORT_DEFAULT_RESOURCE_CODE)
+        preferred = resource_by_code.get(default_key)
+        if preferred is not None:
+            if self._resource_fits_import_slot(
+                workspace_id=workspace_id,
+                branch_id=branch_id,
+                resource_id=preferred.id,
+                employee_id=employee_id,
+                starts_at=starts_at,
+                ends_at=ends_at,
+            ):
+                return preferred, False, starts_at, ends_at
+            return preferred, True, starts_at, ends_at
+
+        if not active_resources:
+            resource = self._create_import_cabina_1_if_branch_empty(
+                workspace_id=workspace_id,
+                branch_id=branch_id,
+                active_resources=active_resources,
+                resource_by_code=resource_by_code,
+                resource_by_name=resource_by_name,
+            )
+            return resource, False, starts_at, ends_at
+
+        if len(active_resources) == 1:
+            resource = active_resources[0]
+            if self._resource_fits_import_slot(
+                workspace_id=workspace_id,
+                branch_id=branch_id,
+                resource_id=resource.id,
+                employee_id=employee_id,
+                starts_at=starts_at,
+                ends_at=ends_at,
+            ):
+                return resource, False, starts_at, ends_at
+            return resource, True, starts_at, ends_at
+
+        for resource in self._ordered_import_resources(active_resources):
+            if self._resource_fits_import_slot(
+                workspace_id=workspace_id,
+                branch_id=branch_id,
+                resource_id=resource.id,
+                employee_id=employee_id,
+                starts_at=starts_at,
+                ends_at=ends_at,
+            ):
+                return resource, False, starts_at, ends_at
+
+        fallback = self._ordered_import_resources(active_resources)[0]
+        return fallback, True, starts_at, ends_at
+
+    def import_appointments(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        branch_id: UUID,
+        items: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        self._require_branch_access(grant, branch_id)
+        workspace_id = grant.workspace_id
+        branch = self._repository.branch(workspace_id, branch_id)
+        if branch is None:
+            raise ResourceNotFoundError("La sucursal no existe o no está activa.", "branchId")
+        destination_branch_ids = {branch_id}
+        master_repo = MasterDataRepository(self._session)
+
+        resources = [
+            resource
+            for resource in self._repository.list_resources(
+                workspace_id=workspace_id, branch_id=branch_id
+            )
+            if resource.status == "active"
+        ]
+        resource_by_code: dict[str, AppointmentResource] = {}
+        resource_by_name: dict[str, AppointmentResource] = {}
+        for resource in resources:
+            self._register_import_resource_lookups(resource, resource_by_code, resource_by_name)
+
+        employee_rows = self._session.execute(
+            select(Employee.id, Employee.first_name, Employee.last_name)
+            .join(
+                EmployeeBranchAssignment,
+                (EmployeeBranchAssignment.workspace_id == Employee.workspace_id)
+                & (EmployeeBranchAssignment.employee_id == Employee.id),
+            )
+            .where(
+                Employee.workspace_id == workspace_id,
+                Employee.status == "active",
+                EmployeeBranchAssignment.branch_id == branch_id,
+                EmployeeBranchAssignment.status == "active",
+            )
+        )
+        employee_by_name: dict[str, UUID] = {}
+        for row_employee_id, first_name, last_name in employee_rows:
+            label = normalize_name(f"{first_name} {last_name}")
+            employee_by_name.setdefault(label, row_employee_id)
+
+        service_rows = self._session.execute(
+            select(Item.id, Item.name)
+            .join(
+                ItemBranchAssignment,
+                (ItemBranchAssignment.workspace_id == Item.workspace_id)
+                & (ItemBranchAssignment.item_id == Item.id),
+            )
+            .join(
+                InventoryItemProfile,
+                (InventoryItemProfile.workspace_id == Item.workspace_id)
+                & (InventoryItemProfile.item_id == Item.id),
+            )
+            .where(
+                Item.workspace_id == workspace_id,
+                Item.item_type == "service",
+                Item.status == "active",
+                ItemBranchAssignment.branch_id == branch_id,
+                ItemBranchAssignment.status == "active",
+                InventoryItemProfile.available_in_agenda.is_(True),
+            )
+        )
+        service_by_name: dict[str, UUID] = {}
+        for row_service_id, service_name in service_rows:
+            service_by_name.setdefault(normalize_name(service_name), row_service_id)
+
+        results: list[dict[str, Any]] = []
+        for raw in items:
+            external_hint = raw.get("external_id") or raw.get("externalId")
+            try:
+                item = ImportAppointmentItem.model_validate(raw).model_dump(by_alias=False)
+            except ValidationError as exc:
+                first = cast(dict[str, Any], exc.errors()[0])
+                message = friendly_validation_message(first)
+                if first.get("type") == "value_error":
+                    raw_msg = str(first.get("msg", ""))
+                    if raw_msg.startswith("Value error, "):
+                        message = raw_msg.removeprefix("Value error, ")
+                    elif raw_msg:
+                        message = raw_msg
+                results.append(
+                    {
+                        "external_id": external_hint,
+                        "appointment_id": None,
+                        "customer_id": None,
+                        "customer_linked": False,
+                        "status": "error",
+                        "message": message,
+                        "customer_name": raw.get("customer_name") or raw.get("customerName"),
+                        "phone": raw.get("customer_phone") or raw.get("customerPhone"),
+                        "date": raw.get("date"),
+                        "time": str(raw.get("time")) if raw.get("time") else None,
+                        "service_name": raw.get("service_name") or raw.get("serviceName"),
+                    }
+                )
+                continue
+
+            external_id = item.get("external_id")
+            customer_name = (item.get("customer_name") or "").strip()
+            customer_phone = cast(str | None, item.get("customer_phone"))
+            service_name = cast(str, item.get("service_name") or "")
+            scheduled_date = cast(date, item["date"])
+            scheduled_time = cast(time, item["time"])
+            time_label = scheduled_time.strftime("%H:%M")
+
+            if external_id:
+                idempotency_key = self._appointment_import_idempotency_key(str(external_id))
+                existing = self._repository.records_for_idempotency_key(
+                    workspace_id, idempotency_key
+                )
+                if existing and all(
+                    record.appointment.record_status == "active" for record in existing
+                ):
+                    first_record = existing[0].appointment
+                    results.append(
+                        {
+                            "external_id": external_id,
+                            "appointment_id": first_record.id,
+                            "customer_id": first_record.customer_id,
+                            "customer_linked": first_record.customer_id is not None,
+                            "status": "skipped",
+                            "message": "Ya importado para este externalId.",
+                            "customer_name": first_record.customer_name,
+                            "phone": first_record.customer_phone,
+                            "date": first_record.scheduled_date,
+                            "time": first_record.scheduled_time.strftime("%H:%M"),
+                            "service_name": first_record.service_name,
+                        }
+                    )
+                    continue
+            else:
+                idempotency_key = f"ag-imp-row-{uuid7()}"[:128]
+
+            employee_id: UUID | None = None
+            specialist_name = cast(str | None, item.get("specialist_name"))
+            if specialist_name:
+                employee_id = employee_by_name.get(normalize_name(specialist_name))
+
+            matched_resource, import_stacked, _starts_at, _ends_at = self._resolve_import_resource(
+                item=item,
+                workspace_id=workspace_id,
+                branch_id=branch_id,
+                branch=branch,
+                active_resources=resources,
+                resource_by_code=resource_by_code,
+                resource_by_name=resource_by_name,
+                employee_id=employee_id,
+            )
+
+            service_id: UUID | None = None
+            if service_name:
+                service_id = service_by_name.get(normalize_name(service_name))
+
+            match_raw: dict[str, Any] = {}
+            if customer_phone:
+                match_raw["phone"] = customer_phone
+            customer_email = item.get("customer_email")
+            if customer_email:
+                match_raw["email"] = str(customer_email)
+            matches = find_import_customer_matches(
+                master_repo,
+                workspace_id=workspace_id,
+                allowed_branch_ids=grant.allowed_branch_ids,
+                destination_branch_ids=destination_branch_ids,
+                raw=match_raw,
+            )
+            customer_id = matches[0].id if matches else None
+            customer_linked = customer_id is not None
+            if customer_linked and not customer_name:
+                customer_name = (matches[0].display_name or "").strip()
+            if not customer_name:
+                customer_name = (
+                    (customer_phone or "").strip()
+                    or (str(customer_email).strip() if customer_email else "")
+                    or "Cliente"
+                )
+            import_notes = self._compose_import_notes(
+                customer_name,
+                customer_phone,
+                cast(str | None, item.get("notes")),
+                customer_linked=customer_linked,
+            )
+            if import_stacked:
+                import_notes = (
+                    f"{_IMPORT_STACK_NOTE} {import_notes}".strip()
+                    if import_notes
+                    else _IMPORT_STACK_NOTE
+                )[:_APPOINTMENT_NOTES_DB_MAX_LENGTH]
+            unlinked_message = (
+                None
+                if customer_linked
+                else self._import_unlinked_customer_note(customer_name, customer_phone)
+            )
+
+            values: dict[str, Any] = {
+                "branch_id": branch_id,
+                "resource_id": matched_resource.id,
+                "customer_id": customer_id,
+                "employee_id": employee_id,
+                "service_id": service_id,
+                "any_available": False,
+                "date": scheduled_date,
+                "time": scheduled_time,
+                "duration": item["duration"],
+                "customer_name": customer_name,
+                "customer_phone": customer_phone,
+                "service_name": service_name,
+                "price": item["price"],
+                "status": "confirmed",
+                "notes": import_notes,
+                "pending_payment": False,
+                "pending_amount": Decimal("0"),
+                "first_time": False,
+                "free_trial": False,
+                "reminder_sent": False,
+                "source": "staff",
+                "recurrence": "none",
+                "repeat_count": 1,
+            }
+
+            try:
+                records = self.create_appointments(
+                    principal=principal,
+                    grant=grant,
+                    values=values,
+                    idempotency_key=idempotency_key,
+                    notify=False,
+                    allow_long_notes=True,
+                    resource_capacity=SHARED_RESOURCE_CAPACITY,
+                    skip_slot_check=import_stacked,
+                )
+                appointment = records[0].appointment
+                results.append(
+                    {
+                        "external_id": external_id,
+                        "appointment_id": appointment.id,
+                        "customer_id": appointment.customer_id,
+                        "customer_linked": customer_linked,
+                        "status": "created",
+                        "message": unlinked_message,
+                        "customer_name": customer_name,
+                        "phone": customer_phone,
+                        "date": scheduled_date,
+                        "time": time_label,
+                        "service_name": service_name or None,
+                        "import_stacked": import_stacked,
+                    }
+                )
+            except (ConflictError, InvalidOperationError, ResourceNotFoundError) as exc:
+                results.append(
+                    {
+                        "external_id": external_id,
+                        "appointment_id": None,
+                        "customer_id": None,
+                        "customer_linked": False,
+                        "status": "error",
+                        "message": str(exc),
+                        "customer_name": customer_name,
+                        "phone": customer_phone,
+                        "date": scheduled_date,
+                        "time": time_label,
+                        "service_name": service_name or None,
+                    }
+                )
+            except Exception as exc:  # noqa: BLE001 - per-row import report
+                self._session.rollback()
+                results.append(
+                    {
+                        "external_id": external_id,
+                        "appointment_id": None,
+                        "customer_id": None,
+                        "customer_linked": False,
+                        "status": "error",
+                        "message": str(exc),
+                        "customer_name": customer_name,
+                        "phone": customer_phone,
+                        "date": scheduled_date,
+                        "time": time_label,
+                        "service_name": service_name or None,
+                    }
+                )
+        return results
+
     def _validate_references(
         self,
         *,
@@ -1163,10 +1689,12 @@ class AgendaService:
             )
 
     @staticmethod
-    def _validate_notes(notes: Any, *, existing: str | None = None) -> None:
+    def _validate_notes(
+        notes: Any, *, existing: str | None = None, max_length: int = _APPOINTMENT_NOTES_MAX_LENGTH
+    ) -> None:
         if notes == existing:
             return
-        if len(cast(str | None, notes) or "") > _APPOINTMENT_NOTES_MAX_LENGTH:
+        if len(cast(str | None, notes) or "") > max_length:
             raise InvalidOperationError(
                 "Las notas de la cita admiten un máximo de 60 caracteres.",
                 "notes",

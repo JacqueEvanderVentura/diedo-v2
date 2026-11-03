@@ -420,6 +420,17 @@ class AgendaRepository:
             )
         )
 
+    def resource_by_code(
+        self, workspace_id: UUID, branch_id: UUID, code: str
+    ) -> AppointmentResource | None:
+        return self._session.scalar(
+            select(AppointmentResource).where(
+                AppointmentResource.workspace_id == workspace_id,
+                AppointmentResource.branch_id == branch_id,
+                AppointmentResource.code == code,
+            )
+        )
+
     def list_active_branch_employee_ids(
         self, workspace_id: UUID, branch_id: UUID
     ) -> tuple[UUID, ...]:
