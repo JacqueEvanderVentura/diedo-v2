@@ -1,11 +1,14 @@
 import { Menu, Search } from 'lucide-react'
 import { useUiStore } from '@/stores/uiStore'
+import { useImportJobStore } from '@/stores/importJobStore'
 import { FEATURES } from '@/config/features'
 import { NotificationsPanel } from './NotificationsPanel'
 import { UserProfileMenu } from './UserProfileMenu'
+import { ImportJobBanner } from './ImportJobBanner'
 
 export function Navbar({ title, subtitle }) {
   const toggleSidebar = useUiStore((s) => s.toggleSidebar)
+  const importActive = useImportJobStore((s) => s.status !== 'idle')
 
   return (
     <header className="sticky top-0 z-30 flex h-20 shrink-0 items-center gap-4 border-b border-slate-100 bg-white/85 px-4 backdrop-blur-md sm:px-6">
@@ -24,7 +27,7 @@ export function Navbar({ title, subtitle }) {
         {subtitle && <p className="truncate text-xs text-slate-400 sm:text-sm">{subtitle}</p>}
       </div>
 
-      <div className="relative hidden max-w-sm flex-1 md:block">
+      <div className={importActive ? 'relative hidden max-w-sm flex-1 lg:block' : 'relative hidden max-w-sm flex-1 md:block'}>
         <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input
           data-testid="navbar-search"
@@ -33,7 +36,8 @@ export function Navbar({ title, subtitle }) {
         />
       </div>
 
-      <div className="flex items-center gap-1.5">
+      <div className="flex shrink-0 items-center gap-1.5">
+        <ImportJobBanner className="hidden sm:flex" />
         {FEATURES.notifications && <NotificationsPanel />}
         <UserProfileMenu />
       </div>

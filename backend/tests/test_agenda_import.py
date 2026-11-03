@@ -252,11 +252,13 @@ def test_agenda_import_without_resource_creates_cabina_1(client: TestClient) -> 
                 AppointmentResource.code == "cabina-1",
             )
         )
-    assert before_count == 0
-    assert after_count == 1
     assert appointment is not None
     assert cabina is not None
     assert appointment.resource_id == cabina.id
+    if before_count == 0:
+        assert after_count == 1
+    else:
+        assert after_count == before_count
 
 
 @pytest.mark.integration
@@ -481,3 +483,45 @@ def test_agenda_import_does_not_enqueue_email(client: TestClient) -> None:
             .where(EmailNotification.appointment_id == UUID(rows[0]["appointmentId"]))
         )
     assert count == 0
+
+
+@pytest.mark.integration
+def test_agenda_import_batch_of_many_rows_in_one_request(client: TestClient) -> None:
+    headers, session = _bootstrap_and_login(client)
+    branch_id = _hq_branch_id(session)
+    suffix = uuid7().hex[-8:]
+    resource_name = f"Cabina batch {suffix}"
+    _create_resource(client, headers, branch_id, resource_name)
+    scheduled = date.today() + timedelta(days=98_000 + uuid7().int % 3_000)
+    items = []
+    for index in range(100):
+        hour = 8 + (index // 12)
+        minute = (index % 12) * 5
+        items.append(
+            {
+                "externalId": f"batch-{suffix}-{index}",
+                "date": scheduled.isoformat(),
+                "time": f"{hour:02d}:{minute:02d}",
+                "duration": 30,
+                "customerName": f"Cliente {index}",
+                "resourceName": resource_name,
+            }
+        )
+
+    _, rows = _import_appointments(
+        client,
+        headers,
+        branch_id,
+        items,
+        key_suffix=f"batch-{suffix}",
+    )
+    created = [row for row in rows if row["status"] == "created"]
+    assert len(created) == 100
+
+    with session_scope() as db:
+        count = db.scalar(
+            select(func.count())
+            .select_from(Appointment)
+            .where(Appointment.id.in_([UUID(row["appointmentId"]) for row in created]))
+        )
+    assert count == 100

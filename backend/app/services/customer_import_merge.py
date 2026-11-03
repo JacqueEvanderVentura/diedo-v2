@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections import defaultdict
+from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
@@ -254,6 +257,112 @@ def find_import_customer_match(
         raw=raw,
     )
     return matches[0] if matches else None
+
+
+@dataclass(frozen=True)
+class ImportCustomerMatchLookup:
+    destination_branch_ids: frozenset[UUID]
+    customers_by_phone: dict[str, tuple[Customer, ...]]
+    customers_by_email: dict[str, tuple[Customer, ...]]
+    branch_ids_by_customer: dict[UUID, frozenset[UUID]]
+
+
+def _customers_in_destination_from_lookup(
+    lookup: ImportCustomerMatchLookup,
+    customers: Sequence[Customer],
+) -> list[Customer]:
+    if not customers:
+        return []
+    return [
+        customer
+        for customer in customers
+        if lookup.branch_ids_by_customer.get(customer.id, frozenset())
+        & lookup.destination_branch_ids
+    ]
+
+
+def _import_match_raw_from_agenda_item(raw: dict[str, Any]) -> dict[str, Any]:
+    match_raw: dict[str, Any] = {}
+    phone = _text(raw.get("phone") or raw.get("customer_phone") or raw.get("customerPhone"))
+    if phone:
+        match_raw["phone"] = phone
+    email = _text(raw.get("email") or raw.get("customer_email") or raw.get("customerEmail"))
+    if email:
+        match_raw["email"] = email
+    return match_raw
+
+
+def build_import_customer_match_lookup(
+    repository: MasterDataRepository,
+    *,
+    workspace_id: UUID,
+    allowed_branch_ids: frozenset[UUID] | None,
+    destination_branch_ids: set[UUID],
+    raw_items: Sequence[dict[str, Any]],
+) -> ImportCustomerMatchLookup:
+    normalized_phones: set[str] = set()
+    normalized_emails: set[str] = set()
+    for raw in raw_items:
+        match_raw = _import_match_raw_from_agenda_item(raw)
+        phone = normalize_phone(_text(match_raw.get("phone")))
+        if phone:
+            normalized_phones.add(phone)
+        email = normalize_email(_text(match_raw.get("email")))
+        if email:
+            normalized_emails.add(email)
+
+    customers = repository.customers_for_import_phones_and_emails(
+        workspace_id=workspace_id,
+        allowed_branch_ids=allowed_branch_ids,
+        normalized_phones=normalized_phones,
+        normalized_emails=normalized_emails,
+    )
+    branch_map = repository.customer_active_branch_ids(
+        workspace_id, [customer.id for customer in customers]
+    )
+    branch_ids_by_customer = {
+        customer_id: frozenset(branch_ids) for customer_id, branch_ids in branch_map.items()
+    }
+
+    by_phone: dict[str, list[Customer]] = defaultdict(list)
+    by_email: dict[str, list[Customer]] = defaultdict(list)
+    for customer in customers:
+        if customer.normalized_phone:
+            by_phone[customer.normalized_phone].append(customer)
+        if customer.normalized_email:
+            by_email[customer.normalized_email].append(customer)
+
+    return ImportCustomerMatchLookup(
+        destination_branch_ids=frozenset(destination_branch_ids),
+        customers_by_phone={key: tuple(value) for key, value in by_phone.items()},
+        customers_by_email={key: tuple(value) for key, value in by_email.items()},
+        branch_ids_by_customer=branch_ids_by_customer,
+    )
+
+
+def resolve_import_customer_matches_from_lookup(
+    lookup: ImportCustomerMatchLookup,
+    raw: dict[str, Any],
+) -> list[Customer]:
+    phone = normalize_phone(_text(raw.get("phone")))
+    if phone:
+        by_phone = _prefer_placeholder(
+            _customers_in_destination_from_lookup(lookup, lookup.customers_by_phone.get(phone, ())),
+            raw,
+        )
+        if by_phone:
+            return by_phone
+
+    email = normalize_email(_text(raw.get("email")))
+    if email:
+        by_email = _prefer_placeholder(
+            _customers_in_destination_from_lookup(lookup, lookup.customers_by_email.get(email, ())),
+            raw,
+        )
+        if by_email:
+            return by_email
+
+    return []
 
 
 _IMPORT_FIELD_LABELS: dict[str, str] = {

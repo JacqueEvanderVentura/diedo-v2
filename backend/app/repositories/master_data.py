@@ -306,6 +306,43 @@ class MasterDataRepository:
             seen.setdefault(customer.id, customer)
         return list(seen.values())
 
+    def customers_for_import_phones_and_emails(
+        self,
+        *,
+        workspace_id: UUID,
+        allowed_branch_ids: frozenset[UUID] | None,
+        normalized_phones: set[str],
+        normalized_emails: set[str],
+    ) -> list[Customer]:
+        filters = []
+        if normalized_phones:
+            filters.append(Customer.normalized_phone.in_(normalized_phones))
+        if normalized_emails:
+            filters.append(Customer.normalized_email.in_(normalized_emails))
+        if not filters:
+            return []
+        query = (
+            select(Customer)
+            .join(
+                CustomerBranchAssignment,
+                (CustomerBranchAssignment.workspace_id == Customer.workspace_id)
+                & (CustomerBranchAssignment.customer_id == Customer.id),
+            )
+            .where(
+                Customer.workspace_id == workspace_id,
+                Customer.status == "active",
+                CustomerBranchAssignment.status == "active",
+                or_(*filters),
+            )
+            .distinct()
+        )
+        if allowed_branch_ids is not None:
+            query = query.where(CustomerBranchAssignment.branch_id.in_(allowed_branch_ids))
+        seen: dict[UUID, Customer] = {}
+        for customer in self._session.scalars(query):
+            seen.setdefault(customer.id, customer)
+        return list(seen.values())
+
     def customer_active_branch_ids(
         self, workspace_id: UUID, customer_ids: Sequence[UUID]
     ) -> dict[UUID, set[UUID]]:
