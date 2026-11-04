@@ -313,12 +313,15 @@ class MasterDataRepository:
         allowed_branch_ids: frozenset[UUID] | None,
         normalized_phones: set[str],
         normalized_emails: set[str],
+        normalized_document_ids: set[str] | None = None,
     ) -> list[Customer]:
         filters = []
         if normalized_phones:
             filters.append(Customer.normalized_phone.in_(normalized_phones))
         if normalized_emails:
             filters.append(Customer.normalized_email.in_(normalized_emails))
+        if normalized_document_ids:
+            filters.append(Customer.normalized_document_id.in_(normalized_document_ids))
         if not filters:
             return []
         query = (

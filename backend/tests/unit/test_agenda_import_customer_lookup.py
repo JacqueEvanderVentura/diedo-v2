@@ -26,8 +26,9 @@ class _FakeMasterRepo:
         allowed_branch_ids,
         normalized_phones,
         normalized_emails,
+        normalized_document_ids=None,
     ):
-        del workspace_id, allowed_branch_ids
+        del workspace_id, allowed_branch_ids, normalized_document_ids
         self.phones = set(normalized_phones)
         self.emails = set(normalized_emails)
         return self._customers
@@ -91,6 +92,7 @@ def test_resolve_import_customer_match_prefers_placeholder() -> None:
         destination_branch_ids=frozenset({branch_id}),
         customers_by_phone={"8095550001": (placeholder, named)},
         customers_by_email={},
+        customers_by_document={},
         branch_ids_by_customer={
             placeholder.id: frozenset({branch_id}),
             named.id: frozenset({branch_id}),
@@ -98,3 +100,26 @@ def test_resolve_import_customer_match_prefers_placeholder() -> None:
     )
     matches = resolve_import_customer_matches_from_lookup(lookup, {"phone": "8095550001"})
     assert matches == [placeholder]
+
+
+def test_resolve_import_customer_match_finds_customer_in_other_branch() -> None:
+    branch_este = uuid4()
+    branch_norte = uuid4()
+    customer = Customer(
+        customer_type="person",
+        display_name="Cliente Este",
+        normalized_name="cliente este",
+        phone="8095550002",
+        normalized_phone="8095550002",
+        status="active",
+    )
+    customer.id = uuid4()
+    lookup = ImportCustomerMatchLookup(
+        destination_branch_ids=frozenset({branch_norte}),
+        customers_by_phone={"8095550002": (customer,)},
+        customers_by_email={},
+        customers_by_document={},
+        branch_ids_by_customer={customer.id: frozenset({branch_este})},
+    )
+    matches = resolve_import_customer_matches_from_lookup(lookup, {"phone": "8095550002"})
+    assert matches == [customer]

@@ -265,8 +265,8 @@ export default function ConfiguracionPage() {
       )}
 
       <footer className="border-t border-slate-100 pt-6 text-center text-xs text-slate-400">
-        <p className="font-semibold text-slate-500">Helios 360 v1.0.0</p>
-        <p className="mt-1">© 2024 Todos los derechos reservados</p>
+        <p className="font-semibold text-slate-500">Helios 360 v1.2.7</p>
+        <p className="mt-1">© 2027 Todos los derechos reservados</p>
       </footer>
     </div>
   )

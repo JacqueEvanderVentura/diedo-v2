@@ -46,8 +46,10 @@ from app.services.auth import AuthPrincipal
 from app.services.authorization import AuthorizationService, PermissionGrant
 from app.services.booking_tokens import issue_appointment_management_token
 from app.services.customer_import_merge import (
+    agenda_import_item_to_customer_raw,
     build_import_customer_match_lookup,
     normalize_name,
+    register_customer_in_import_lookup,
     resolve_import_customer_matches_from_lookup,
 )
 from app.services.email_notifications import deliver_email, enqueue_email
@@ -58,6 +60,7 @@ from app.services.errors import (
     ResourceNotFoundError,
 )
 from app.services.mailer import render_appointment_email
+from app.services.master_data import MasterDataService
 from app.services.pos import PosService
 
 _WEEKDAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -1503,6 +1506,86 @@ class AgendaService:
         )
         return appointment
 
+    def _sync_import_row_customer(
+        self,
+        *,
+        sync_customers: bool,
+        item: dict[str, Any],
+        customer_name: str,
+        customer_phone: str | None,
+        customer_lookup: Any,
+        customer_grant: PermissionGrant | None,
+        master_data: MasterDataService | None,
+        destination_branch_ids: set[UUID],
+        principal: AuthPrincipal,
+    ) -> tuple[str, UUID | None, bool, str, list[Customer], bool]:
+        """Return name, customer_id, linked, sync mode, matches, touched (for commit)."""
+        customer_email = item.get("customer_email")
+        match_raw: dict[str, Any] = {}
+        if customer_phone:
+            match_raw["phone"] = customer_phone
+        if customer_email:
+            match_raw["email"] = str(customer_email)
+        doc_type = item.get("document_type")
+        doc_id = item.get("document_id")
+        if doc_type and doc_id:
+            match_raw["document_type"] = str(doc_type)
+            match_raw["document_id"] = str(doc_id)
+
+        customer_import_raw = agenda_import_item_to_customer_raw(item)
+        customer_sync = "none"
+        customer_id: UUID | None = None
+        customer_linked = False
+        lookup_matches: list[Customer] = []
+        touched = False
+
+        if sync_customers:
+            assert customer_grant is not None and master_data is not None
+            lookup_matches = resolve_import_customer_matches_from_lookup(
+                customer_lookup,
+                match_raw,
+                match_document_first=True,
+            )
+            existing = lookup_matches[0] if lookup_matches else None
+            customer, customer_sync = master_data.upsert_customer_for_agenda_import(
+                principal=principal,
+                grant=customer_grant,
+                destination_branch_ids=destination_branch_ids,
+                raw=customer_import_raw,
+                existing=existing,
+            )
+            register_customer_in_import_lookup(
+                customer_lookup,
+                customer,
+                branch_ids=frozenset(destination_branch_ids),
+            )
+            customer_id = customer.id
+            customer_linked = True
+            touched = True
+            if not customer_name:
+                customer_name = (customer.display_name or "").strip()
+        else:
+            lookup_matches = resolve_import_customer_matches_from_lookup(customer_lookup, match_raw)
+            customer_id = lookup_matches[0].id if lookup_matches else None
+            customer_linked = customer_id is not None
+            if customer_linked and not customer_name and lookup_matches:
+                customer_name = (lookup_matches[0].display_name or "").strip()
+
+        if not customer_name:
+            customer_name = (
+                (customer_phone or "").strip()
+                or (str(customer_email).strip() if customer_email else "")
+                or "Cliente"
+            )
+        return (
+            customer_name,
+            customer_id,
+            customer_linked,
+            customer_sync,
+            lookup_matches,
+            touched,
+        )
+
     def import_appointments(
         self,
         *,
@@ -1510,6 +1593,7 @@ class AgendaService:
         grant: PermissionGrant,
         branch_id: UUID,
         items: list[dict[str, Any]],
+        sync_customers: bool = False,
     ) -> list[dict[str, Any]]:
         self._require_branch_access(grant, branch_id)
         workspace_id = grant.workspace_id
@@ -1518,6 +1602,14 @@ class AgendaService:
             raise ResourceNotFoundError("La sucursal no existe o no está activa.", "branchId")
         destination_branch_ids = {branch_id}
         master_repo = MasterDataRepository(self._session)
+        customer_grant: PermissionGrant | None = None
+        master_data: MasterDataService | None = None
+        if sync_customers:
+            customer_grant = AuthorizationService(self._session).require_permission(
+                principal,
+                "customer.manage",
+            )
+            master_data = MasterDataService(self._session)
 
         resources = [
             resource
@@ -1591,6 +1683,7 @@ class AgendaService:
 
         results: list[dict[str, Any]] = []
         created_in_batch = False
+        customers_synced_in_batch = False
         for raw in items:
             external_hint = raw.get("external_id") or raw.get("externalId")
             try:
@@ -1610,6 +1703,7 @@ class AgendaService:
                         "appointment_id": None,
                         "customer_id": None,
                         "customer_linked": False,
+                        "customer_sync": "none",
                         "status": "error",
                         "message": message,
                         "customer_name": raw.get("customer_name") or raw.get("customerName"),
@@ -1632,16 +1726,69 @@ class AgendaService:
             if external_id:
                 skipped_appointment = skip_by_external_id.get(str(external_id).strip())
                 if skipped_appointment is not None:
+                    skip_customer_sync = "none"
+                    skip_customer_id = skipped_appointment.customer_id
+                    skip_customer_linked = skip_customer_id is not None
+                    skip_customer_name = skipped_appointment.customer_name
+                    if sync_customers:
+                        try:
+                            (
+                                skip_customer_name,
+                                skip_customer_id,
+                                skip_customer_linked,
+                                skip_customer_sync,
+                                _,
+                                touched,
+                            ) = self._sync_import_row_customer(
+                                sync_customers=True,
+                                item=item,
+                                customer_name=customer_name,
+                                customer_phone=customer_phone,
+                                customer_lookup=customer_lookup,
+                                customer_grant=customer_grant,
+                                master_data=master_data,
+                                destination_branch_ids=destination_branch_ids,
+                                principal=principal,
+                            )
+                            if touched:
+                                customers_synced_in_batch = True
+                        except (ConflictError, InvalidOperationError) as exc:
+                            results.append(
+                                {
+                                    "external_id": external_id,
+                                    "appointment_id": skipped_appointment.id,
+                                    "customer_id": None,
+                                    "customer_linked": False,
+                                    "customer_sync": "none",
+                                    "status": "error",
+                                    "message": str(exc),
+                                    "customer_name": customer_name,
+                                    "phone": customer_phone,
+                                    "date": scheduled_date,
+                                    "time": time_label,
+                                    "service_name": service_name or None,
+                                }
+                            )
+                            continue
+                    if (
+                        sync_customers
+                        and skip_customer_id is not None
+                        and skipped_appointment.customer_id is None
+                    ):
+                        skipped_appointment.customer_id = skip_customer_id
+                        skip_customer_linked = True
+                        customers_synced_in_batch = True
                     results.append(
                         {
                             "external_id": external_id,
                             "appointment_id": skipped_appointment.id,
-                            "customer_id": skipped_appointment.customer_id,
-                            "customer_linked": skipped_appointment.customer_id is not None,
+                            "customer_id": skip_customer_id,
+                            "customer_linked": skip_customer_linked,
+                            "customer_sync": skip_customer_sync,
                             "status": "skipped",
                             "message": "Ya importado para este externalId.",
-                            "customer_name": skipped_appointment.customer_name,
-                            "phone": skipped_appointment.customer_phone,
+                            "customer_name": skip_customer_name,
+                            "phone": customer_phone or skipped_appointment.customer_phone,
                             "date": skipped_appointment.scheduled_date,
                             "time": skipped_appointment.scheduled_time.strftime("%H:%M"),
                             "service_name": skipped_appointment.service_name,
@@ -1673,23 +1820,45 @@ class AgendaService:
             if service_name:
                 service_id = service_by_name.get(normalize_name(service_name))
 
-            match_raw: dict[str, Any] = {}
-            if customer_phone:
-                match_raw["phone"] = customer_phone
-            customer_email = item.get("customer_email")
-            if customer_email:
-                match_raw["email"] = str(customer_email)
-            matches = resolve_import_customer_matches_from_lookup(customer_lookup, match_raw)
-            customer_id = matches[0].id if matches else None
-            customer_linked = customer_id is not None
-            if customer_linked and not customer_name:
-                customer_name = (matches[0].display_name or "").strip()
-            if not customer_name:
-                customer_name = (
-                    (customer_phone or "").strip()
-                    or (str(customer_email).strip() if customer_email else "")
-                    or "Cliente"
+            try:
+                (
+                    customer_name,
+                    customer_id,
+                    customer_linked,
+                    customer_sync,
+                    lookup_matches,
+                    touched,
+                ) = self._sync_import_row_customer(
+                    sync_customers=sync_customers,
+                    item=item,
+                    customer_name=customer_name,
+                    customer_phone=customer_phone,
+                    customer_lookup=customer_lookup,
+                    customer_grant=customer_grant,
+                    master_data=master_data,
+                    destination_branch_ids=destination_branch_ids,
+                    principal=principal,
                 )
+            except (ConflictError, InvalidOperationError) as exc:
+                results.append(
+                    {
+                        "external_id": external_id,
+                        "appointment_id": None,
+                        "customer_id": None,
+                        "customer_linked": False,
+                        "customer_sync": "none",
+                        "status": "error",
+                        "message": str(exc),
+                        "customer_name": customer_name,
+                        "phone": customer_phone,
+                        "date": scheduled_date,
+                        "time": time_label,
+                        "service_name": service_name or None,
+                    }
+                )
+                continue
+            if touched:
+                customers_synced_in_batch = True
             import_notes = self._compose_import_notes(
                 customer_name,
                 customer_phone,
@@ -1758,6 +1927,7 @@ class AgendaService:
                         "appointment_id": appointment.id,
                         "customer_id": appointment.customer_id,
                         "customer_linked": customer_linked,
+                        "customer_sync": customer_sync,
                         "status": "created",
                         "message": unlinked_message,
                         "customer_name": customer_name,
@@ -1774,8 +1944,9 @@ class AgendaService:
                     {
                         "external_id": external_id,
                         "appointment_id": None,
-                        "customer_id": None,
-                        "customer_linked": False,
+                        "customer_id": customer_id,
+                        "customer_linked": customer_linked,
+                        "customer_sync": customer_sync,
                         "status": "error",
                         "message": str(exc),
                         "customer_name": customer_name,
@@ -1791,8 +1962,9 @@ class AgendaService:
                     {
                         "external_id": external_id,
                         "appointment_id": None,
-                        "customer_id": None,
-                        "customer_linked": False,
+                        "customer_id": customer_id,
+                        "customer_linked": customer_linked,
+                        "customer_sync": customer_sync,
                         "status": "error",
                         "message": str(exc.orig) if exc.orig else str(exc),
                         "customer_name": customer_name,
@@ -1808,8 +1980,9 @@ class AgendaService:
                     {
                         "external_id": external_id,
                         "appointment_id": None,
-                        "customer_id": None,
-                        "customer_linked": False,
+                        "customer_id": customer_id,
+                        "customer_linked": customer_linked,
+                        "customer_sync": customer_sync,
                         "status": "error",
                         "message": str(exc),
                         "customer_name": customer_name,
@@ -1820,7 +1993,7 @@ class AgendaService:
                     }
                 )
 
-        if created_in_batch:
+        if created_in_batch or customers_synced_in_batch:
             self._session.commit()
         return results
 

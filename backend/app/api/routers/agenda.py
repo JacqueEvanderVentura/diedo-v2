@@ -520,6 +520,10 @@ async def import_appointments(
         raise_api_error(400, "Debes enviar al menos una fila.", "items")
     if len(items_raw) > 100:
         raise_api_error(400, "Maximo 100 filas por lote.", "items")
+    sync_raw = body.get("syncCustomers", body.get("sync_customers", False))
+    sync_customers = sync_raw is True or (
+        isinstance(sync_raw, str) and sync_raw.strip().lower() in {"true", "1", "yes", "on"}
+    )
     items: list[dict[str, Any]] = []
     for index, row in enumerate(items_raw):
         if not isinstance(row, dict):
@@ -530,6 +534,7 @@ async def import_appointments(
         grant=grant,
         branch_id=branch_id,
         items=items,
+        sync_customers=sync_customers,
     )
     return ImportAppointmentsResponse(
         items=[ImportAppointmentRowResult.model_validate(row) for row in rows]

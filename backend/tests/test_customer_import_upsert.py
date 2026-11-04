@@ -1,11 +1,13 @@
 from hashlib import sha256
-from uuid import uuid7
+from uuid import UUID, uuid7
 
 import pytest
 from app.core.security import hash_password
+from app.db.models import CustomerBranchAssignment
 from app.db.session import session_scope
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 _OWNER_EMAIL = "owner@erp.dev"
 _OWNER_PASSWORD = "phase-two-owner-password-not-a-secret"
@@ -221,3 +223,74 @@ def test_import_customer_updates_when_email_matches_even_if_phone_differs(
     assert first[0]["status"] == "created"
     assert second[0]["status"] == "updated"
     assert second[0]["customerId"] == first[0]["customerId"]
+
+
+@pytest.mark.integration
+def test_import_customer_assigns_existing_client_from_other_branch(
+    client: TestClient,
+) -> None:
+    headers, session = _bootstrap_and_login(client)
+    first_branch_id = session["visibleBranches"][0]["id"]
+    suffix = uuid7().hex[-8:]
+    phone = f"849{suffix[:7]}"
+    second_branch = client.post(
+        "/api/v1/branches",
+        headers=headers,
+        json={
+            "legalEntityAssignment": {
+                "type": "existing",
+                "legalEntityId": session["visibleBranches"][0]["legalEntityId"],
+            },
+            "code": f"N{suffix[:4]}",
+            "name": f"Sucursal Norte {suffix}",
+            "timezone": "America/Santo_Domingo",
+        },
+    )
+    assert second_branch.status_code == 201, second_branch.text
+    second_branch_id = second_branch.json()["id"]
+
+    created = _import_customers(
+        client,
+        headers,
+        first_branch_id,
+        [
+            {
+                "externalId": f"este-{suffix}",
+                "displayName": "Cliente multi sucursal",
+                "phone": phone,
+                "acquisitionSource": "otros",
+            }
+        ],
+    )
+    assert created[0]["status"] == "created"
+    customer_id = created[0]["customerId"]
+
+    assigned = _import_customers(
+        client,
+        headers,
+        second_branch_id,
+        [
+            {
+                "externalId": f"norte-{suffix}",
+                "displayName": "Cliente multi sucursal",
+                "phone": phone,
+                "acquisitionSource": "otros",
+            }
+        ],
+    )
+    assert assigned[0]["status"] == "updated"
+    assert assigned[0]["customerId"] == customer_id
+    assert "Sucursal asignada" in (assigned[0].get("message") or "")
+
+    with session_scope() as db:
+        branch_ids = {
+            str(row)
+            for row in db.scalars(
+                select(CustomerBranchAssignment.branch_id).where(
+                    CustomerBranchAssignment.customer_id == UUID(customer_id),
+                    CustomerBranchAssignment.status == "active",
+                )
+            )
+        }
+    assert str(first_branch_id) in branch_ids
+    assert str(second_branch_id) in branch_ids

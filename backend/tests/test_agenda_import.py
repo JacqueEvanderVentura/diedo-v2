@@ -35,6 +35,25 @@ def _hq_branch_id(session: dict[str, object]) -> str:
     return str(hq["id"])
 
 
+def _enable_branch_online_booking(
+    client: TestClient,
+    headers: dict[str, str],
+    branch_id: str,
+) -> None:
+    listed = client.get("/api/v1/branches", headers=headers)
+    assert listed.status_code == 200, listed.text
+    branch_row = next(row for row in listed.json() if row["id"] == branch_id)
+    enabled = client.patch(
+        f"/api/v1/branches/{branch_id}",
+        headers=headers,
+        json={
+            "onlineBookingSelectable": True,
+            "version": branch_row["version"],
+        },
+    )
+    assert enabled.status_code == 200, enabled.text
+
+
 def _import_customers(
     client: TestClient,
     headers: dict[str, str],
@@ -58,12 +77,16 @@ def _post_import_appointments(
     items: list[dict[str, object]],
     *,
     key_suffix: str | None = None,
+    sync_customers: bool = False,
 ):
     suffix = key_suffix or uuid7().hex[-8:]
+    body: dict[str, object] = {"branchId": branch_id, "items": items}
+    if sync_customers:
+        body["syncCustomers"] = True
     return client.post(
         "/api/v1/appointments/import",
         headers={**headers, "Idempotency-Key": sha256(suffix.encode()).hexdigest()},
-        json={"branchId": branch_id, "items": items},
+        json=body,
     )
 
 
@@ -525,3 +548,306 @@ def test_agenda_import_batch_of_many_rows_in_one_request(client: TestClient) -> 
             .where(Appointment.id.in_([UUID(row["appointmentId"]) for row in created]))
         )
     assert count == 100
+
+
+@pytest.mark.integration
+def test_agenda_import_sync_customers_creates_client_and_links(
+    client: TestClient,
+) -> None:
+    headers, session = _bootstrap_and_login(client)
+    branch_id = _hq_branch_id(session)
+    suffix = uuid7().hex[-8:]
+    phone = f"876{suffix[:7]}"
+    resource_name = f"Cabina sync create {suffix}"
+    _create_resource(client, headers, branch_id, resource_name)
+    scheduled = date.today() + timedelta(days=96_000 + uuid7().int % 3_000)
+
+    with session_scope() as db:
+        before_count = db.scalar(select(func.count()).select_from(Customer))
+
+    _, rows = _import_appointments_with_sync(
+        client,
+        headers,
+        branch_id,
+        [
+            {
+                "externalId": f"sync-new-{suffix}",
+                "date": scheduled.isoformat(),
+                "time": "09:15",
+                "customerName": "Cliente Nuevo Import",
+                "customerPhone": phone,
+                "resourceName": resource_name,
+            }
+        ],
+        key_suffix=f"sync-new-{suffix}",
+    )
+    assert rows[0]["status"] == "created"
+    assert rows[0]["customerLinked"] is True
+    assert rows[0]["customerSync"] == "created"
+    assert rows[0]["message"] is None
+
+    with session_scope() as db:
+        after_count = db.scalar(select(func.count()).select_from(Customer))
+        appointment = db.scalar(
+            select(Appointment).where(Appointment.id == UUID(rows[0]["appointmentId"]))
+        )
+    assert after_count == before_count + 1
+    assert appointment is not None
+    assert appointment.customer_id is not None
+
+
+@pytest.mark.integration
+def test_agenda_import_sync_customers_on_skipped_external_id_creates_client(
+    client: TestClient,
+) -> None:
+    """Re-importing the same externalId must still upsert CRM clients when sync is on."""
+    headers, session = _bootstrap_and_login(client)
+    branch_id = _hq_branch_id(session)
+    suffix = uuid7().hex[-8:]
+    phone = f"877{suffix[:7]}"
+    resource_name = f"Cabina sync skip {suffix}"
+    _create_resource(client, headers, branch_id, resource_name)
+    scheduled = date.today() + timedelta(days=97_000 + uuid7().int % 3_000)
+    external_id = f"sync-skip-{suffix}"
+    row = {
+        "externalId": external_id,
+        "date": scheduled.isoformat(),
+        "time": "10:30",
+        "customerName": "Cliente Solo En Segunda Import",
+        "customerPhone": phone,
+        "resourceName": resource_name,
+    }
+
+    _, first_rows = _import_appointments(
+        client,
+        headers,
+        branch_id,
+        [row],
+        key_suffix=f"first-{suffix}",
+    )
+    assert first_rows[0]["status"] == "created"
+    assert first_rows[0]["customerLinked"] is False
+
+    with session_scope() as db:
+        before_count = db.scalar(select(func.count()).select_from(Customer))
+
+    _, second_rows = _import_appointments_with_sync(
+        client,
+        headers,
+        branch_id,
+        [row],
+        key_suffix=f"second-{suffix}",
+    )
+    assert second_rows[0]["status"] == "skipped"
+    assert second_rows[0]["customerSync"] == "created"
+    assert second_rows[0]["customerLinked"] is True
+    assert second_rows[0]["customerId"] is not None
+
+    with session_scope() as db:
+        after_count = db.scalar(select(func.count()).select_from(Customer))
+        appointment = db.scalar(
+            select(Appointment).where(Appointment.id == UUID(first_rows[0]["appointmentId"]))
+        )
+    assert after_count == before_count + 1
+    assert appointment is not None
+    assert appointment.customer_id == UUID(second_rows[0]["customerId"])
+
+
+def _import_appointments_with_sync(
+    client: TestClient,
+    headers: dict[str, str],
+    branch_id: str,
+    items: list[dict[str, object]],
+    *,
+    key_suffix: str | None = None,
+) -> tuple[int, list[dict[str, object]]]:
+    response = _post_import_appointments(
+        client,
+        headers,
+        branch_id,
+        items,
+        key_suffix=key_suffix,
+        sync_customers=True,
+    )
+    assert response.status_code == 201, response.text
+    return response.status_code, response.json()["items"]
+
+
+@pytest.mark.integration
+def test_agenda_import_sync_customers_merges_existing_phone(
+    client: TestClient,
+) -> None:
+    headers, session = _bootstrap_and_login(client)
+    branch_id = _hq_branch_id(session)
+    suffix = uuid7().hex[-8:]
+    phone = f"878{suffix[:7]}"
+    customer_rows = _import_customers(
+        client,
+        headers,
+        branch_id,
+        [
+            {
+                "externalId": f"merge-{suffix}",
+                "displayName": "Cliente sin nombre",
+                "phone": phone,
+                "acquisitionSource": "otros",
+            }
+        ],
+    )
+    customer_id = customer_rows[0]["customerId"]
+    resource_name = f"Cabina merge {suffix}"
+    _create_resource(client, headers, branch_id, resource_name)
+    scheduled = date.today() + timedelta(days=97_000 + uuid7().int % 3_000)
+
+    with session_scope() as db:
+        before_count = db.scalar(select(func.count()).select_from(Customer))
+
+    _, rows = _import_appointments_with_sync(
+        client,
+        headers,
+        branch_id,
+        [
+            {
+                "externalId": f"merge-cita-{suffix}",
+                "date": scheduled.isoformat(),
+                "time": "10:45",
+                "customerName": "Nombre Actualizado CSV",
+                "customerPhone": phone,
+                "resourceName": resource_name,
+            }
+        ],
+        key_suffix=f"merge-cita-{suffix}",
+    )
+    assert rows[0]["status"] == "created"
+    assert rows[0]["customerId"] == customer_id
+    assert rows[0]["customerSync"] in {"updated", "linked"}
+
+    with session_scope() as db:
+        after_count = db.scalar(select(func.count()).select_from(Customer))
+        customer = db.scalar(select(Customer).where(Customer.id == UUID(customer_id)))
+    assert before_count == after_count
+    assert customer is not None
+    assert customer.display_name == "Nombre Actualizado CSV"
+
+
+@pytest.mark.integration
+def test_agenda_import_sync_customers_reuses_one_customer_per_batch(
+    client: TestClient,
+) -> None:
+    headers, session = _bootstrap_and_login(client)
+    branch_id = _hq_branch_id(session)
+    suffix = uuid7().hex[-8:]
+    phone = f"877{suffix[:7]}"
+    resource_name = f"Cabina batch reuse {suffix}"
+    _create_resource(client, headers, branch_id, resource_name)
+    scheduled = date.today() + timedelta(days=98_000 + uuid7().int % 3_000)
+
+    with session_scope() as db:
+        before_count = db.scalar(select(func.count()).select_from(Customer))
+
+    _, rows = _import_appointments_with_sync(
+        client,
+        headers,
+        branch_id,
+        [
+            {
+                "externalId": f"reuse-a-{suffix}",
+                "date": scheduled.isoformat(),
+                "time": "08:00",
+                "customerName": "Batch Cliente",
+                "customerPhone": phone,
+                "resourceName": resource_name,
+            },
+            {
+                "externalId": f"reuse-b-{suffix}",
+                "date": scheduled.isoformat(),
+                "time": "08:30",
+                "customerName": "Batch Cliente",
+                "customerPhone": phone,
+                "resourceName": resource_name,
+            },
+        ],
+        key_suffix=f"reuse-{suffix}",
+    )
+    assert all(row["status"] == "created" for row in rows)
+    assert rows[0]["customerId"] == rows[1]["customerId"]
+
+    with session_scope() as db:
+        after_count = db.scalar(select(func.count()).select_from(Customer))
+    assert after_count == before_count + 1
+
+
+@pytest.mark.integration
+def test_agenda_import_sync_customers_portal_lists_imported_cita(
+    client: TestClient,
+) -> None:
+    headers, session = _bootstrap_and_login(client)
+    branch_id = _hq_branch_id(session)
+    _enable_branch_online_booking(client, headers, branch_id)
+    suffix = uuid7().hex[-8:]
+    document_id = f"IMP{suffix}"
+    resource_name = f"Cabina portal {suffix}"
+    _create_resource(client, headers, branch_id, resource_name)
+    scheduled = date.today() + timedelta(days=99_000 + uuid7().int % 3_000)
+
+    _, rows = _import_appointments_with_sync(
+        client,
+        headers,
+        branch_id,
+        [
+            {
+                "externalId": f"portal-{suffix}",
+                "date": scheduled.isoformat(),
+                "time": "14:00",
+                "customerName": "Portal Import",
+                "customerPhone": f"872{suffix[:7]}",
+                "documentType": "pasaporte",
+                "documentId": document_id,
+                "resourceName": resource_name,
+            }
+        ],
+        key_suffix=f"portal-{suffix}",
+    )
+    assert rows[0]["status"] == "created"
+    appointment_id = rows[0]["appointmentId"]
+
+    portal = client.get(
+        f"/api/v1/public/portal/branches/{branch_id}/appointments",
+        params={"documentType": "pasaporte", "documentId": document_id},
+    )
+    assert portal.status_code == 200, portal.text
+    ids = {row["id"] for row in portal.json()["items"]}
+    assert appointment_id in ids
+
+
+@pytest.mark.integration
+def test_agenda_import_sync_customers_requires_customer_manage(
+    client: TestClient,
+) -> None:
+    from tests.test_agenda import _AGENDA_MANAGER_PASSWORD, _create_branch_agenda_manager
+
+    headers, session = _bootstrap_and_login(client)
+    branch_id = _hq_branch_id(session)
+    workspace_id = UUID(str(session["workspaceId"]))
+    manager_email = _create_branch_agenda_manager(workspace_id, UUID(branch_id))
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": manager_email, "password": _AGENDA_MANAGER_PASSWORD},
+    )
+    assert login.status_code == 200, login.text
+    manager_headers = {"Authorization": f"Bearer {login.json()['accessToken']}"}
+    response = _post_import_appointments(
+        client,
+        manager_headers,
+        branch_id,
+        [
+            {
+                "date": date.today().isoformat(),
+                "time": "08:00",
+                "customerName": "X",
+                "customerPhone": "8095559999",
+            }
+        ],
+        sync_customers=True,
+    )
+    assert response.status_code == 403

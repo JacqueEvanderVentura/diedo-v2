@@ -11,7 +11,6 @@ import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { AppointmentFormModal } from '../components/AppointmentFormModal'
 import { CompleteAppointmentModal } from '../components/CompleteAppointmentModal'
-import { formatCompletionSummary } from '../lib/completion'
 import { AppointmentShareModal } from '../components/AppointmentShareModal'
 import { DeleteAppointmentModal } from '../components/DeleteAppointmentModal'
 import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
@@ -21,17 +20,16 @@ import { buildBookingUrl } from '../lib/selfBooking'
 import { isProximoAppointment } from '../lib/appointments'
 import { ResponsiveList, ResponsiveTable, ResponsiveCards } from '@/components/ui/ResponsiveList'
 import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable'
-import { useSortedRows } from '@/hooks/useTableControls'
 import { DataSourceNotice } from '@/components/ui/DataSourceNotice'
-import { useAgendaPolling } from '../hooks/useAgendaPolling'
 import { useSessionStore } from '@/stores/sessionStore'
 import { getAppointmentReceivablePolicy } from '../lib/receivablePermissions'
 import { emailResultMessage } from '../lib/notification'
 import { DatePeriodFilter } from '@/components/ui/DatePeriodFilter'
+import { Pagination } from '@/modules/reportes/components/Pagination'
+import { GESTION_CITAS_PAGE_SIZE_OPTIONS } from '../lib/gestionCitasList'
+import { useGestionCitasList } from '../hooks/useGestionCitasList'
 import {
   defaultGestionCitasDateFilter,
-  gestionCitasAppointmentParams,
-  gestionCitasMatchesDate,
   GESTION_CITAS_DATE_PERIODS,
 } from '../lib/gestionCitasQuery'
 
@@ -164,12 +162,10 @@ function AppointmentMobileCard({ apt, branchName, staffName, onEdit, onDelete, o
 }
 
 export default function GestionCitasPage() {
-  const appointments = useAgendaStore((s) => s.appointments)
   const deleteAppointment = useAgendaStore((s) => s.deleteAppointment)
   const setAppointmentStatus = useAgendaStore((s) => s.setStatus)
   const completeAppointment = useAgendaStore((s) => s.completeAppointment)
   const dataState = useAgendaStore((s) => s.dataState)
-  const hydrateAppointments = useAgendaStore((s) => s.hydrateAppointments)
   const rrhhEmployees = useRrhhStore((s) => s.employees)
   const branches = useConfigStore((s) => s.branches)
   const canManage = useSessionStore((s) => s.hasPermission('appointment.manage'))
@@ -191,11 +187,31 @@ export default function GestionCitasPage() {
   const [completing, setCompleting] = useState(null)
   const [savingCompletion, setSavingCompletion] = useState(false)
 
-  const appointmentQuery = useMemo(() => ({
-    ...(branchId === 'all' ? {} : { branchId }),
-    ...gestionCitasAppointmentParams(dateFilter),
-  }), [branchId, dateFilter])
-  useAgendaPolling(appointmentQuery)
+  const listFilters = useMemo(() => ({
+    search,
+    dateFilter,
+    employeeId,
+    branchId,
+    status,
+  }), [search, dateFilter, employeeId, branchId, status])
+
+  const {
+    items: displayRows,
+    loading: listLoading,
+    error: listError,
+    refresh: refreshList,
+    sortKey,
+    sortDir,
+    toggleSort,
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    totalItems,
+    totalPages,
+    from,
+    to,
+  } = useGestionCitasList(listFilters)
 
   const staffName = (id) => resolveStaffName(id, rrhhEmployees)
 
@@ -209,35 +225,6 @@ export default function GestionCitasPage() {
   }, [rrhhEmployees, branchId])
 
   const branchMap = useMemo(() => Object.fromEntries(branches.map((b) => [b.id, b.name])), [branches])
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return appointments
-      .filter((a) => gestionCitasMatchesDate(a.date, dateFilter))
-      .filter((a) => employeeId === 'all' || a.employeeId === employeeId)
-      .filter((a) => branchId === 'all' || a.branchId === branchId)
-      .filter((a) => status === 'all' || a.status === status)
-      .filter((a) => {
-        if (!q) return true
-        return (
-          a.customerName.toLowerCase().includes(q) ||
-          (a.serviceName || '').toLowerCase().includes(q) ||
-          (a.customerPhone || '').includes(q)
-        )
-      })
-  }, [appointments, search, dateFilter, employeeId, branchId, status])
-
-  const { rows: displayRows, sortKey, sortDir, toggleSort } = useSortedRows(filtered, {
-    defaultSort: { key: 'date', dir: 'desc' },
-    accessors: {
-      customer: (a) => a.customerName || '',
-      date: (a) => a.date || '',
-      time: (a) => a.time || '',
-      employee: (a) => staffName(a.employeeId),
-      branch: (a) => branchMap[a.branchId] || '',
-      status: (a) => a.status || '',
-    },
-  })
 
   const openNew = () => {
     setEditing(null)
@@ -265,6 +252,7 @@ export default function GestionCitasPage() {
       await deleteAppointment(deleteTarget.id)
       setDeleteTarget(null)
       toast.success('Cita eliminada')
+      await refreshList()
     } catch (error) {
       toast.error(error.message || 'No se pudo eliminar la cita')
     } finally {
@@ -291,6 +279,7 @@ export default function GestionCitasPage() {
     try {
       const updated = await setAppointmentStatus(apt.id, nextStatus)
       toast.success(`Estado de la cita actualizado. ${emailResultMessage(updated.notification)}`)
+      await refreshList()
     } catch (error) {
       toast.error(error.message || 'No se pudo actualizar el estado')
     } finally {
@@ -305,6 +294,7 @@ export default function GestionCitasPage() {
       await completeAppointment(completing.id, payload)
       setCompleting(null)
       toast.success('Cita marcada como cumplida')
+      await refreshList()
     } catch (error) {
       toast.error(error.message || 'No se pudo marcar la cita como cumplida')
       throw error
@@ -316,13 +306,16 @@ export default function GestionCitasPage() {
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-6 sm:p-8" data-testid="gestion-citas-page">
       <DataSourceNotice
-        state={dataState}
-        onRetry={() => hydrateAppointments({ force: true, params: appointmentQuery })}
+        state={listError ? { ...dataState, status: 'error', error: listError } : dataState}
+        onRetry={() => refreshList()}
       />
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-heading text-2xl font-bold text-slate-900">Gestión de citas</h1>
-          <p className="mt-1 text-sm text-slate-500">{displayRows.length} cita{displayRows.length !== 1 ? 's' : ''} en el listado</p>
+          <p className="mt-1 text-sm text-slate-500">
+            {totalItems} cita{totalItems !== 1 ? 's' : ''} con los filtros actuales
+            {listLoading ? ' · actualizando…' : ''}
+          </p>
         </div>
         <Button onClick={openNew} disabled={!canManage} data-testid="gestion-new">
           <Plus className="h-4 w-4" /> Nueva cita
@@ -374,7 +367,9 @@ export default function GestionCitasPage() {
         />
       </div>
 
-      {displayRows.length === 0 ? (
+      {listLoading && displayRows.length === 0 ? (
+        <p className="py-14 text-center text-sm text-slate-500" role="status">Cargando citas…</p>
+      ) : displayRows.length === 0 ? (
         <EmptyState icon={CalendarDays} title="Sin citas" description="No hay citas con esos filtros." className="py-14" />
       ) : (
         <ResponsiveList minTableWidth={840} columnCount={7}>
@@ -386,8 +381,8 @@ export default function GestionCitasPage() {
                     <SortableTh column="customer" className="px-6 py-4">Cliente / Servicio</SortableTh>
                     <SortableTh column="date" className="px-6 py-4">Fecha</SortableTh>
                     <SortableTh column="time" className="px-6 py-4">Hora</SortableTh>
-                    <SortableTh column="employee" className="px-6 py-4">Empleado</SortableTh>
-                    <SortableTh column="branch" className="px-6 py-4">Sucursal</SortableTh>
+                    <SortableTh sortable={false} column="employee" className="px-6 py-4">Empleado</SortableTh>
+                    <SortableTh sortable={false} column="branch" className="px-6 py-4">Sucursal</SortableTh>
                     <SortableTh column="status" className="px-6 py-4">Estado</SortableTh>
                     <SortableTh sortable={false} align="right" className="px-6 py-4">Acciones</SortableTh>
                   </tr>
@@ -446,10 +441,28 @@ export default function GestionCitasPage() {
               />
             ))}
           </ResponsiveCards>
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={totalItems}
+            from={from}
+            to={to}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            pageSizeOptions={GESTION_CITAS_PAGE_SIZE_OPTIONS}
+            noun="citas"
+            testId="gestion-citas-pagination"
+          />
         </ResponsiveList>
       )}
 
-      <AppointmentFormModal open={modalOpen} onClose={() => setModalOpen(false)} appointment={editing} />
+      <AppointmentFormModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        appointment={editing}
+        onSaved={() => refreshList()}
+      />
       <AppointmentShareModal open={!!shareTarget} onClose={() => setShareTarget(null)} appointment={shareTarget} />
       <DeleteAppointmentModal
         appointment={deleteTarget}

@@ -5,10 +5,12 @@ import {
   formatImportApiError,
   getImportTemplateColumns,
   mapCsvRowToApi,
+  normalizeCsvHeaderKey,
   parseCsv,
   prepareActivityRows,
   prepareAgendaRows,
   prepareCustomerRows,
+  toPipelineImportItem,
   validateImportTemplateHeaders,
 } from '@/modules/configuracion/lib/csvImport'
 
@@ -19,15 +21,39 @@ describe('csvImport', () => {
     expect(rows[0].name).toBe('Juan, Sr.')
   })
 
+  it('maps pipeline stage and value to API fields', () => {
+    const item = toPipelineImportItem(mapCsvRowToApi({
+      name: 'Lead',
+      company: '',
+      stage: 'propuesta',
+      value: '1500',
+      isClient: 'false',
+    }))
+    expect(item.status).toBe('propuesta')
+    expect(item.stage).toBeUndefined()
+    expect(item.pipelineValue).toBe(1500)
+    expect(item.value).toBeUndefined()
+    expect(item.convert).toBe(false)
+    expect(item.isClient).toBeUndefined()
+  })
+
+  it('maps pipeline isClient to convert for API', () => {
+    const item = toPipelineImportItem(mapCsvRowToApi({
+      name: 'Lead',
+      isClient: 'true',
+    }))
+    expect(item.convert).toBe(true)
+  })
+
   it('maps pipeline flags and numbers', () => {
     const mapped = mapCsvRowToApi({
       externalId: '99',
-      convert: 'true',
+      isClient: 'true',
       value: '1200',
       stage: 'contactado',
     })
     expect(mapped.externalId).toBe('99')
-    expect(mapped.convert).toBe(true)
+    expect(mapped.isClient).toBe(true)
     expect(mapped.value).toBe(1200)
   })
 
@@ -37,7 +63,7 @@ describe('csvImport', () => {
       name: 'Lead',
       company: '',
       stage: 'contactado',
-      convert: 'false',
+      isClient: 'false',
       value: '0',
     })
     expect(mapped.company).toBe('')
@@ -193,5 +219,38 @@ describe('csvImport', () => {
     expect(invalidRows).toHaveLength(2)
     expect(invalidRows[0].message).toContain('Fecha')
     expect(invalidRows[1].message).toContain('Duración')
+  })
+
+  it('normalizes spaced document headers for agenda csv', () => {
+    expect(normalizeCsvHeaderKey('Document Type')).toBe('documentType')
+    expect(normalizeCsvHeaderKey('Document Id')).toBe('documentId')
+  })
+
+  it('accepts agenda csv with optional document columns', () => {
+    const headers = [
+      ...getImportTemplateColumns('agenda'),
+      'documentType',
+      'documentId',
+    ]
+    const result = validateImportTemplateHeaders('agenda', headers)
+    expect(result.ok).toBe(true)
+  })
+
+  it('forwards optional document columns on agenda rows', () => {
+    const { validRows, invalidRows } = prepareAgendaRows([
+      {
+        date: '2026-11-15',
+        time: '10:00',
+        customerName: 'Portal',
+        customerPhone: '8095550202',
+        documentType: 'pasaporte',
+        documentId: 'AB123456',
+      },
+    ])
+    expect(invalidRows).toHaveLength(0)
+    expect(validRows[0]).toMatchObject({
+      documentType: 'pasaporte',
+      documentId: 'AB123456',
+    })
   })
 })

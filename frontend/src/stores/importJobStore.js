@@ -5,25 +5,6 @@ import {
   computeTickerLimit,
 } from '@/modules/configuracion/lib/importProgressTicker'
 
-const DONE_DISMISS_MS = 8000
-
-let dismissTimer = null
-
-function clearDismissTimer() {
-  if (dismissTimer) {
-    clearTimeout(dismissTimer)
-    dismissTimer = null
-  }
-}
-
-function scheduleDismiss(get) {
-  clearDismissTimer()
-  dismissTimer = setTimeout(() => {
-    get().clearJob()
-    dismissTimer = null
-  }, DONE_DISMISS_MS)
-}
-
 const initialState = {
   status: 'idle',
   kind: null,
@@ -33,6 +14,7 @@ const initialState = {
   report: null,
   headline: null,
   errorMessage: null,
+  bannerDismissed: false,
 }
 
 export const IMPORT_KIND_LABELS = {
@@ -46,7 +28,6 @@ export const useImportJobStore = create((set, get) => ({
   ...initialState,
 
   startJob: (kind) => {
-    clearDismissTimer()
     set({
       status: 'running',
       kind,
@@ -56,6 +37,7 @@ export const useImportJobStore = create((set, get) => ({
       report: null,
       headline: null,
       errorMessage: null,
+      bannerDismissed: false,
     })
   },
 
@@ -76,16 +58,26 @@ export const useImportJobStore = create((set, get) => ({
   },
 
   finishJob: ({ report, headline }) => {
+    const { progress } = get()
+    const finalProgress = progress
+      ? { ...progress, processed: progress.total }
+      : {
+          processed: report?.processed ?? report?.totalInFile ?? 0,
+          total: report?.totalInFile ?? 0,
+          batchIndex: 1,
+          batchCount: 1,
+          tickerSample: [],
+        }
     set({
       status: 'done',
-      progress: null,
+      progress: finalProgress,
       tickerRows: [],
       agendaTickerCap: 0,
       report,
       headline,
       errorMessage: null,
+      bannerDismissed: false,
     })
-    scheduleDismiss(get)
   },
 
   failJob: (errorMessage) => {
@@ -95,17 +87,19 @@ export const useImportJobStore = create((set, get) => ({
       tickerRows: [],
       agendaTickerCap: 0,
       errorMessage: errorMessage || 'No se pudo importar el archivo.',
+      bannerDismissed: false,
     })
-    scheduleDismiss(get)
+  },
+
+  dismissBanner: () => {
+    set({ bannerDismissed: true })
   },
 
   cancelJob: () => {
-    clearDismissTimer()
     set({ ...initialState })
   },
 
   clearJob: () => {
-    clearDismissTimer()
     set({ ...initialState })
   },
 }))

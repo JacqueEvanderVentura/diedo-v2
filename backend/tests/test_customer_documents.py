@@ -27,3 +27,13 @@ def test_prepare_rnc_requires_nine_digits() -> None:
     assert normalized == "132908902"
     with pytest.raises(ValueError, match="9 dígitos"):
         prepare_customer_document_fields("rnc", "123")
+
+
+def test_normalize_otro_document() -> None:
+    assert normalize_document_id("otro", "ID-99/x") == "ID99X"
+
+
+def test_prepare_otro_accepts_alphanumeric() -> None:
+    doc_type, _display, normalized = prepare_customer_document_fields("otro", "ABC123")
+    assert doc_type == "otro"
+    assert normalized == "ABC123"

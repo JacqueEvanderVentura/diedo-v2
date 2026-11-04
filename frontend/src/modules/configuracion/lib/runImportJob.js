@@ -41,13 +41,14 @@ function normalizeResultRow(row, sourceRow = null) {
     phone,
     email,
     customerLinked: row.customerLinked ?? row.customer_linked ?? null,
+    customerSync: row.customerSync ?? row.customer_sync ?? null,
     date: row.date ?? null,
     time: row.time ?? null,
     serviceName: row.serviceName ?? row.service_name ?? null,
   }
 }
 
-function summarizeImportResults(rows, totalInFile) {
+function summarizeImportResults(rows, totalInFile, options = {}) {
   const summary = rows.reduce(
     (acc, row) => {
       acc[row.status] = (acc[row.status] || 0) + 1
@@ -59,18 +60,50 @@ function summarizeImportResults(rows, totalInFile) {
   const processed = rows.length
   const importedOk = summary.created || 0
   const updatedCount = summary.updated || 0
-  const headlineParts = [`${importedOk}/${totalInFile} importados al sistema`]
 
-  if (updatedCount > 0) {
-    headlineParts.push(`${updatedCount} de ${totalInFile} actualizados`)
+  let headline
+  if (options.kind === 'agenda' && options.agendaSummary) {
+    headline = buildAgendaImportHeadline(totalInFile, summary, options.agendaSummary)
+  } else {
+    const headlineParts = [`${importedOk}/${totalInFile} importados al sistema`]
+    if (updatedCount > 0) {
+      headlineParts.push(`${updatedCount} de ${totalInFile} actualizados`)
+    }
+    headline = headlineParts.join(', ')
   }
 
   return {
     summary,
     totalInFile,
     processed,
-    headline: headlineParts.join(', '),
+    headline,
   }
+}
+
+function buildAgendaImportHeadline(totalInFile, summary, agendaSummary) {
+  const parts = [`${summary.created}/${totalInFile} citas nuevas`]
+  if (summary.skipped > 0) {
+    parts.push(`${summary.skipped} citas ya importadas`)
+  }
+  if (summary.error > 0) {
+    parts.push(`${summary.error} con error`)
+  }
+  if (agendaSummary?.syncCustomers) {
+    const crmParts = []
+    if (agendaSummary.customersCreated > 0) {
+      crmParts.push(`${agendaSummary.customersCreated} clientes nuevos`)
+    }
+    if (agendaSummary.customersUpdated > 0) {
+      crmParts.push(`${agendaSummary.customersUpdated} clientes actualizados`)
+    }
+    if (agendaSummary.customersLinked > 0) {
+      crmParts.push(`${agendaSummary.customersLinked} clientes sin cambios`)
+    }
+    if (crmParts.length > 0) {
+      parts.push(`CRM: ${crmParts.join(', ')}`)
+    }
+  }
+  return parts.join(' · ')
 }
 
 async function importBatches({ rows, chunkSize, runBatch, onProgress }) {
@@ -137,7 +170,7 @@ function preparePipelineRows(parsedRows) {
   return { validRows, invalidRows }
 }
 
-export async function runImportJob({ kind, file, targetBranchId, branchName }) {
+export async function runImportJob({ kind, file, targetBranchId, branchName, syncCustomers = false }) {
   const store = useImportJobStore.getState()
   store.startJob(kind)
 
@@ -198,7 +231,7 @@ export async function runImportJob({ kind, file, targetBranchId, branchName }) {
         chunkSize: 100,
         onProgress: batchProgress,
         runBatch: (batch, index) => appointmentsApi.importAppointments(
-          { branchId: targetBranchId, items: batch },
+          { branchId: targetBranchId, items: batch, syncCustomers: Boolean(syncCustomers) },
           createCrmIdempotencyKey(`agenda-${file.name}-${index}`),
         ),
       })
@@ -216,16 +249,28 @@ export async function runImportJob({ kind, file, targetBranchId, branchName }) {
     }
 
     const allRows = [...preInvalid, ...items]
-    const stats = summarizeImportResults(allRows, parsed.length)
 
     let agendaSummary = null
     if (kind === 'agenda') {
+      const syncRows = syncCustomers
+        ? allRows.filter((row) => row.customerSync && row.customerSync !== 'none')
+        : []
       const createdRows = allRows.filter((row) => row.status === 'created')
       agendaSummary = {
-        linked: createdRows.filter((row) => row.customerLinked).length,
+        linked: allRows.filter((row) => row.status === 'created' && row.customerLinked).length
+          + allRows.filter((row) => row.status === 'skipped' && row.customerLinked).length,
         unlinked: createdRows.filter((row) => !row.customerLinked).length,
+        customersCreated: syncRows.filter((row) => row.customerSync === 'created').length,
+        customersUpdated: syncRows.filter((row) => row.customerSync === 'updated').length,
+        customersLinked: syncRows.filter((row) => row.customerSync === 'linked').length,
+        syncCustomers: Boolean(syncCustomers),
       }
     }
+
+    const stats = summarizeImportResults(allRows, parsed.length, {
+      kind,
+      agendaSummary,
+    })
 
     const report = {
       kind,

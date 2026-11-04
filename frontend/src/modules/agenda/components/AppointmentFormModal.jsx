@@ -83,7 +83,7 @@ const empty = (date, customerId, slot = {}) => ({
   reminderSent: false,
 })
 
-export function AppointmentFormModal({ open, onClose, appointment, defaultDate, defaultCustomerId, defaultSlot = EMPTY_SLOT, wide = true }) {
+export function AppointmentFormModal({ open, onClose, appointment, defaultDate, defaultCustomerId, defaultSlot = EMPTY_SLOT, wide = true, onSaved }) {
   const addAppointment = useAgendaStore((s) => s.addAppointment)
   const updateAppointment = useAgendaStore((s) => s.updateAppointment)
   const resources = useAgendaStore((s) => s.resources)
@@ -385,6 +385,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
         )
       }
       if (sharedWarning) toast.warning(sharedWarning)
+      await onSaved?.()
       onClose()
     } catch (error) {
       if (isAppointmentConflict(error)) {
