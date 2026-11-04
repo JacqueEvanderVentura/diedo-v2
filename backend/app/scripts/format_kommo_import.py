@@ -183,7 +183,7 @@ def format_kommo(source_dir: Path, output_dir: Path) -> None:
                     "value": budget,
                     "notes": notes,
                     "lostReason": lost_reason,
-                    "convert": "true" if convert else "false",
+                    "isClient": "true" if convert else "false",
                 }
             )
             if phone:

@@ -3,9 +3,9 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-CustomerDocumentType = Literal["cedula", "pasaporte", "rnc"]
+CustomerDocumentType = Literal["cedula", "pasaporte", "rnc", "otro"]
 
-_VALID_TYPES = frozenset({"cedula", "pasaporte", "rnc"})
+_VALID_TYPES = frozenset({"cedula", "pasaporte", "rnc", "otro"})
 
 
 def normalize_document_id(document_type: str | None, document_id: str | None) -> str | None:
@@ -14,7 +14,7 @@ def normalize_document_id(document_type: str | None, document_id: str | None) ->
     raw = document_id.strip()
     if not raw:
         return None
-    if document_type == "pasaporte":
+    if document_type in ("pasaporte", "otro"):
         normalized = re.sub(r"[^0-9A-Za-z]", "", raw).upper()
         return normalized or None
     digits = re.sub(r"\D", "", raw)
@@ -49,5 +49,7 @@ def prepare_customer_document_fields(
         raise ValueError("La cédula debe tener 11 dígitos.")
     if document_type == "rnc" and len(normalized) != 9:
         raise ValueError("El RNC debe contener exactamente 9 dígitos.")
+    if document_type == "otro" and len(normalized) < 3:
+        raise ValueError("El documento debe tener al menos 3 caracteres.")
     display = format_document_display(document_type, normalized) or normalized
     return document_type, display, normalized

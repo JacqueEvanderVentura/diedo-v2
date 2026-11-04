@@ -15,7 +15,7 @@ CustomerSortField = Literal["name", "status", "createdAt", "updatedAt"]
 AcquisitionSource = Literal[
     "whatsapp", "instagram", "referral", "otros", "pos_walk_in", "app", "ai"
 ]
-CustomerDocumentType = Literal["cedula", "pasaporte", "rnc"]
+CustomerDocumentType = Literal["cedula", "pasaporte", "rnc", "otro"]
 EmployeeDocumentType = Literal["cedula", "pasaporte"]
 EmployeeSortField = Literal["name", "employeeNumber", "status", "createdAt", "updatedAt"]
 AttachmentClassification = Literal[

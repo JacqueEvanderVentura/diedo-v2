@@ -1,5 +1,7 @@
 /** RFC4180-style CSV parser (quoted fields, commas and newlines inside quotes). */
 
+import { IMPORT_REQUIRED_HEADERS } from '@/modules/configuracion/lib/importExcelTemplates'
+
 function pushRecord(rows, headers, cells) {
   if (!headers?.length) return
   const hasValue = cells.some((value, index) => (index === 0 ? value.trim() !== '' : value !== ''))
@@ -12,14 +14,14 @@ function pushRecord(rows, headers, cells) {
 }
 
 export const IMPORT_CSV_TEMPLATES = {
-  pipeline: `externalId,name,company,email,phone,website,location,acquisitionSource,stage,value,notes,lostReason,convert
+  pipeline: `externalId,name,company,email,phone,website,location,acquisitionSource,stage,value,notes,lostReason,isClient
 sample-1,Juan Pérez,,juan@example.com,8095550001,,,whatsapp,contactado,0,,,false`,
   customers: `externalId,customerType,displayName,firstName,lastName,businessName,email,phone,acquisitionSource
 sample-c-1,person,Juan Pérez,Juan,Pérez,,juan@example.com,8095550001,otros`,
   activities: `externalId,leadExternalId,contactName,title,description,dueAt
 sample-a-1,sample-1,Juan Pérez,Llamada de seguimiento,Notas,2026-09-20T10:00:00.000Z`,
-  agenda: `externalId,date,time,duration,customerName,customerPhone,customerEmail,serviceName,resourceName,specialistName,price,notes
-sample-cita-1,2026-11-15,10:00,30,María Pérez,8095550101,maria@example.com,Limpieza Facial,Cabina 1,Dra. Soto,2500,`,
+  agenda: `externalId,date,time,duration,customerName,customerPhone,customerEmail,documentType,documentId,serviceName,resourceName,specialistName,price,notes
+sample-cita-1,2026-11-15,10:00,30,María Pérez,8095550101,maria@example.com,cedula,00112345678,Limpieza Facial,Cabina 1,Dra. Soto,2500,`,
 }
 
 export const IMPORT_TEMPLATE_FORMAT_ERROR =
@@ -28,6 +30,16 @@ export const IMPORT_TEMPLATE_FORMAT_ERROR =
 export function normalizeCsvHeaderKey(key) {
   const trimmed = (key ?? '').replace(/^\uFEFF/, '').trim()
   if (!trimmed) return ''
+  if (/\s/.test(trimmed)) {
+    return trimmed
+      .split(/\s+/)
+      .map((part, index) => {
+        const lower = part.toLowerCase()
+        if (index === 0) return lower
+        return lower.charAt(0).toUpperCase() + lower.slice(1)
+      })
+      .join('')
+  }
   if (trimmed.includes('_') || trimmed.includes('-')) {
     return trimmed
       .replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())
@@ -37,6 +49,9 @@ export function normalizeCsvHeaderKey(key) {
 }
 
 export function getImportTemplateColumns(kind) {
+  if (IMPORT_REQUIRED_HEADERS[kind]) {
+    return IMPORT_REQUIRED_HEADERS[kind]
+  }
   const template = IMPORT_CSV_TEMPLATES[kind]
   if (!template) return []
   return template.split('\n')[0].split(',').map((column) => column.trim()).filter(Boolean)
@@ -232,6 +247,27 @@ export function prepareAgendaRows(parsedRows) {
     const customerName = (mapped.customerName ?? row.customerName ?? '').trim()
     const customerPhone = (mapped.customerPhone ?? row.customerPhone ?? '').trim()
     const customerEmail = (mapped.customerEmail ?? row.customerEmail ?? '').trim()
+    const documentType = (mapped.documentType ?? row.documentType ?? mapped.customerDocumentType ?? row.customerDocumentType ?? '').trim()
+    const documentId = (mapped.documentId ?? row.documentId ?? mapped.customerDocumentId ?? row.customerDocumentId ?? '').trim()
+    const normalizedDocumentType = documentType.toLowerCase()
+    if (documentType && !['cedula', 'pasaporte', 'otro'].includes(normalizedDocumentType)) {
+      invalidRows.push({
+        externalId: mapped.externalId || null,
+        status: 'error',
+        message: 'Document Type: usa cedula, pasaporte u otro.',
+        rowNumber,
+      })
+      return
+    }
+    if ((documentType && !documentId) || (!documentType && documentId)) {
+      invalidRows.push({
+        externalId: mapped.externalId || null,
+        status: 'error',
+        message: 'Document Type y Document Id deben ir juntos o dejarse vacíos.',
+        rowNumber,
+      })
+      return
+    }
     if (!customerName && !customerPhone && !customerEmail) {
       invalidRows.push({
         externalId: mapped.externalId || null,
@@ -274,6 +310,7 @@ export function prepareAgendaRows(parsedRows) {
       customerName: customerName || undefined,
       customerPhone: customerPhone || undefined,
       customerEmail: customerEmail || undefined,
+      ...(documentType && documentId ? { documentType: normalizedDocumentType, documentId } : {}),
       serviceName: (mapped.serviceName ?? row.serviceName ?? '').trim(),
       ...(resourceName ? { resourceName } : {}),
       specialistName: (mapped.specialistName ?? row.specialistName ?? '').trim() || undefined,
@@ -357,6 +394,10 @@ const AGENDA_IMPORT_KEYS = new Set([
   'customerName',
   'customerPhone',
   'customerEmail',
+  'documentType',
+  'documentId',
+  'customerDocumentType',
+  'customerDocumentId',
   'serviceName',
   'resourceName',
   'specialistName',
@@ -379,7 +420,7 @@ const PIPELINE_IMPORT_KEYS = new Set([
   'value',
   'notes',
   'lostReason',
-  'convert',
+  'isClient',
 ])
 
 function pickImportKeys(row, allowedKeys) {
@@ -391,7 +432,21 @@ function pickImportKeys(row, allowedKeys) {
 }
 
 export function toPipelineImportItem(mapped) {
-  return pickImportKeys(mapped, PIPELINE_IMPORT_KEYS)
+  const picked = pickImportKeys(mapped, PIPELINE_IMPORT_KEYS)
+  if (picked.stage) {
+    picked.status = picked.stage
+    delete picked.stage
+  }
+  if (picked.value !== undefined) {
+    picked.pipelineValue = picked.value
+    delete picked.value
+  }
+  const clientFlag = picked.isClient ?? mapped.convert
+  if (clientFlag !== undefined) {
+    picked.convert = clientFlag === true || String(clientFlag).toLowerCase() === 'true'
+  }
+  delete picked.isClient
+  return picked
 }
 
 export function mapCsvRowToApi(row) {
@@ -412,8 +467,8 @@ export function mapCsvRowToApi(row) {
     if (apiKey === 'email' && value && !value.includes('@')) {
       return
     }
-    if (apiKey === 'convert') {
-      mapped.convert = value === 'true'
+    if (apiKey === 'isClient') {
+      mapped.isClient = value === true || String(value).toLowerCase() === 'true'
       return
     }
     if (apiKey === 'value') {

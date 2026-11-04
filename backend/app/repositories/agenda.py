@@ -387,6 +387,25 @@ class AgendaRepository:
         by_id = {record.appointment.id: record for record in self._records_from_rows(rows)}
         return tuple(by_id[item_id] for item_id in appointment_ids if item_id in by_id)
 
+    def active_appointments_by_idempotency_keys(
+        self, workspace_id: UUID, keys: Sequence[str]
+    ) -> dict[str, Appointment]:
+        if not keys:
+            return {}
+        rows = self._session.scalars(
+            select(Appointment).where(
+                Appointment.workspace_id == workspace_id,
+                Appointment.idempotency_key.in_(keys),
+                Appointment.record_status == "active",
+            )
+        ).all()
+        by_key: dict[str, Appointment] = {}
+        for appointment in rows:
+            key = appointment.idempotency_key
+            if key and key not in by_key:
+                by_key[key] = appointment
+        return by_key
+
     def records_for_idempotency_key(
         self, workspace_id: UUID, idempotency_key: str
     ) -> tuple[AppointmentRecord, ...]:

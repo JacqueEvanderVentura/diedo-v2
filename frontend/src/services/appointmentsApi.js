@@ -40,6 +40,25 @@ async function listAllAppointments(params = {}) {
   return [first, ...remaining].flatMap((page) => page.items || []).map(mapAppointmentFromApi)
 }
 
+/** Una página de citas (gestión / listados paginados). */
+export async function listAppointmentsPage(params = {}) {
+  const { page = 1, pageSize = 25, ...rest } = params
+  const requestParams = {
+    ...rest,
+    page,
+    pageSize,
+    status: rest.status ? appointmentStatusToApi(rest.status) : undefined,
+  }
+  const response = await apiClient.get('/api/v1/appointments', requestParams)
+  return {
+    items: (response.items || []).map(mapAppointmentFromApi),
+    page: response.page || page,
+    pageSize: response.pageSize || pageSize,
+    totalItems: Number(response.totalItems) || 0,
+    totalPages: Math.max(1, Number(response.totalPages) || 1),
+  }
+}
+
 export const appointmentsApi = {
   appointments: listAllAppointments,
   appointmentResources: async ({ branchId, forConfig = false } = {}) => {

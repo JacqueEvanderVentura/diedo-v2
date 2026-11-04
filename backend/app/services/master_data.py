@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.request_context import get_request_id
+from app.db.models.master_data import Customer
 from app.repositories.master_data import (
     AttachmentRecord,
     CustomerRecord,
@@ -31,6 +32,7 @@ from app.services.customer_documents import prepare_customer_document_fields
 from app.services.customer_import_merge import (
     build_customer_import_update_changes,
     customer_import_row_context,
+    find_agenda_sync_customer_match,
     find_import_customer_matches,
     format_customer_import_update_summary,
     meaningful_customer_import_changes,
@@ -195,15 +197,17 @@ class MasterDataService:
                     updated_id: UUID | None = None
                     summaries: list[str] = []
                     last_customer_id = existing_customers[0].id
+                    branches_added = False
                     for existing_customer in existing_customers:
                         update_changes = meaningful_customer_import_changes(
                             build_customer_import_update_changes(existing_customer, raw)
                         )
-                        self._repository.ensure_customer_branches(
+                        if self._repository.ensure_customer_branches(
                             grant.workspace_id,
                             existing_customer.id,
                             branch_ids,
-                        )
+                        ):
+                            branches_added = True
                         if not update_changes:
                             last_customer_id = existing_customer.id
                             continue
@@ -241,6 +245,16 @@ class MasterDataService:
                                 status="updated",
                                 message="; ".join(summaries)
                                 or "Sucursal asignada al cliente existente.",
+                                raw_row=raw,
+                            )
+                        )
+                    elif branches_added:
+                        results.append(
+                            result_row(
+                                external_id=external_id,
+                                customer_id=last_customer_id,
+                                status="updated",
+                                message="Sucursal asignada al cliente existente.",
                                 raw_row=raw,
                             )
                         )
@@ -307,6 +321,98 @@ class MasterDataService:
                     )
                 )
         return results
+
+    def upsert_customer_for_agenda_import(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        destination_branch_ids: set[UUID],
+        raw: dict[str, object],
+        existing: Customer | None = None,
+    ) -> tuple[Customer, str]:
+        self._validate_branches(grant, destination_branch_ids)
+        customer = existing
+        if customer is None:
+            customer = find_agenda_sync_customer_match(
+                self._repository,
+                workspace_id=grant.workspace_id,
+                allowed_branch_ids=grant.allowed_branch_ids,
+                raw=cast(dict[str, Any], raw),
+            )
+
+        if customer is not None:
+            branches_added = self._repository.ensure_customer_branches(
+                grant.workspace_id,
+                customer.id,
+                destination_branch_ids,
+            )
+            update_changes = meaningful_customer_import_changes(
+                build_customer_import_update_changes(customer, cast(dict[str, Any], raw))
+            )
+            if not update_changes:
+                self._session.refresh(customer)
+                if branches_added:
+                    return customer, "updated"
+                return customer, "linked"
+            prepared_update = self._prepare_customer_values(update_changes)
+            normalized_doc = cast_optional_str(prepared_update.get("normalized_document_id"))
+            if normalized_doc:
+                assert_document_available_in_workspace(
+                    self._session,
+                    workspace_id=grant.workspace_id,
+                    normalized_document_id=normalized_doc,
+                    exclude_customer_id=customer.id,
+                )
+            record = self._repository.update_customer(
+                customer=customer,
+                changes=prepared_update,
+                branch_ids=None,
+                actor_platform_user_id=principal.platform_user_id,
+                request_id=get_request_id(),
+            )
+            del record
+            self._session.refresh(customer)
+            return customer, "updated"
+
+        display_name = cast_optional_str(raw.get("display_name"))
+        if not display_name:
+            display_name = (
+                cast_optional_str(raw.get("phone"))
+                or cast_optional_str(raw.get("email"))
+                or "Cliente"
+            )
+        import_values: dict[str, object] = {
+            "customer_type": "person",
+            "display_name": display_name,
+            "email": raw.get("email"),
+            "phone": raw.get("phone"),
+            "acquisition_source": "otros",
+            "status": "active",
+        }
+        if raw.get("document_type") is not None or raw.get("document_id") is not None:
+            import_values["document_type"] = raw.get("document_type")
+            import_values["document_id"] = raw.get("document_id")
+        prepared = self._prepare_customer_values(import_values)
+        normalized_doc = cast_optional_str(prepared.get("normalized_document_id"))
+        if normalized_doc:
+            assert_document_available_in_workspace(
+                self._session,
+                workspace_id=grant.workspace_id,
+                normalized_document_id=normalized_doc,
+            )
+        record = self._repository.create_customer(
+            workspace_id=grant.workspace_id,
+            actor_platform_user_id=principal.platform_user_id,
+            values=prepared,
+            branch_ids=destination_branch_ids,
+            request_id=get_request_id(),
+        )
+        created = self._repository.get_customer(
+            grant.workspace_id, record.id, grant.allowed_branch_ids
+        )
+        assert created is not None
+        return created, "created"
 
     def create_customer(
         self,

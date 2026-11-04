@@ -382,6 +382,8 @@ class ImportAppointmentItem(ApiModel):
     customer_name: str | None = Field(default=None, max_length=200)
     customer_phone: str | None = Field(default=None, max_length=40)
     customer_email: EmailStr | None = None
+    document_type: str | None = Field(default=None, max_length=32)
+    document_id: str | None = Field(default=None, max_length=64)
     service_name: str = Field(default="", max_length=200)
     resource_name: str | None = Field(default=None, max_length=120)
     specialist_name: str | None = Field(default=None, max_length=200)
@@ -434,6 +436,7 @@ class ImportAppointmentRowResult(ApiModel):
     appointment_id: UUID | None = None
     customer_id: UUID | None = None
     customer_linked: bool = False
+    customer_sync: Literal["created", "updated", "linked", "none"] | None = "none"
     status: Literal["created", "skipped", "error"]
     message: str | None = None
     customer_name: str | None = None

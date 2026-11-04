@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import logging
 from calendar import monthrange
-from dataclasses import replace
+from collections import defaultdict
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from hashlib import sha256
@@ -44,7 +45,13 @@ from app.schemas.agenda import ImportAppointmentItem
 from app.services.auth import AuthPrincipal
 from app.services.authorization import AuthorizationService, PermissionGrant
 from app.services.booking_tokens import issue_appointment_management_token
-from app.services.customer_import_merge import find_import_customer_matches, normalize_name
+from app.services.customer_import_merge import (
+    agenda_import_item_to_customer_raw,
+    build_import_customer_match_lookup,
+    normalize_name,
+    register_customer_in_import_lookup,
+    resolve_import_customer_matches_from_lookup,
+)
 from app.services.email_notifications import deliver_email, enqueue_email
 from app.services.errors import (
     AuthorizationError,
@@ -53,6 +60,7 @@ from app.services.errors import (
     ResourceNotFoundError,
 )
 from app.services.mailer import render_appointment_email
+from app.services.master_data import MasterDataService
 from app.services.pos import PosService
 
 _WEEKDAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -85,6 +93,51 @@ def appointment_created_by_label(appointment: Appointment, platform_user_name: s
     if appointment.source == "self":
         return appointment.customer_name
     return platform_user_name
+
+
+@dataclass
+class _ImportBatchState:
+    repository: AgendaRepository
+    workspace_id: UUID
+    branch_id: UUID
+    locked_resource_ids: set[UUID]
+    resource_windows: dict[UUID, list[tuple[datetime, datetime]]]
+    employee_windows: dict[UUID, list[tuple[datetime, datetime]]]
+
+    @classmethod
+    def create(
+        cls,
+        repository: AgendaRepository,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID,
+    ) -> _ImportBatchState:
+        return cls(
+            repository=repository,
+            workspace_id=workspace_id,
+            branch_id=branch_id,
+            locked_resource_ids=set(),
+            resource_windows=defaultdict(list),
+            employee_windows=defaultdict(list),
+        )
+
+    def ensure_resource_locked(self, resource_id: UUID) -> None:
+        if resource_id in self.locked_resource_ids:
+            return
+        self.repository.lock_resource(self.workspace_id, self.branch_id, resource_id)
+        self.locked_resource_ids.add(resource_id)
+
+    def register_booking(
+        self,
+        *,
+        resource_id: UUID,
+        employee_id: UUID | None,
+        starts_at: datetime,
+        ends_at: datetime,
+    ) -> None:
+        self.resource_windows[resource_id].append((starts_at, ends_at))
+        if employee_id is not None:
+            self.employee_windows[employee_id].append((starts_at, ends_at))
 
 
 _FIELD_META = {
@@ -1184,6 +1237,70 @@ class AgendaService:
         except ConflictError:
             return False
 
+    def _import_batch_slot_fits(
+        self,
+        batch: _ImportBatchState,
+        *,
+        resource_id: UUID,
+        employee_id: UUID | None,
+        starts_at: datetime,
+        ends_at: datetime,
+    ) -> bool:
+        batch.ensure_resource_locked(resource_id)
+        if employee_id is not None:
+            conflict = batch.repository.conflicting_appointment(
+                workspace_id=batch.workspace_id,
+                branch_id=batch.branch_id,
+                resource_id=None,
+                employee_id=employee_id,
+                starts_at=starts_at,
+                ends_at=ends_at,
+            )
+            if conflict is not None:
+                return False
+            for window_start, window_end in batch.employee_windows.get(employee_id, []):
+                if window_start < ends_at and window_end > starts_at:
+                    return False
+
+        overlapping = batch.repository.overlapping_resource_appointments(
+            workspace_id=batch.workspace_id,
+            branch_id=batch.branch_id,
+            resource_id=resource_id,
+            starts_at=starts_at,
+            ends_at=ends_at,
+        )
+        windows = [(item.starts_at, item.ends_at) for item in overlapping]
+        windows.extend(batch.resource_windows.get(resource_id, []))
+        return peak_occupancy(starts_at, ends_at, windows) <= SHARED_RESOURCE_CAPACITY
+
+    def _import_slot_fits(
+        self,
+        *,
+        batch: _ImportBatchState | None,
+        workspace_id: UUID,
+        branch_id: UUID,
+        resource_id: UUID,
+        employee_id: UUID | None,
+        starts_at: datetime,
+        ends_at: datetime,
+    ) -> bool:
+        if batch is not None:
+            return self._import_batch_slot_fits(
+                batch,
+                resource_id=resource_id,
+                employee_id=employee_id,
+                starts_at=starts_at,
+                ends_at=ends_at,
+            )
+        return self._resource_fits_import_slot(
+            workspace_id=workspace_id,
+            branch_id=branch_id,
+            resource_id=resource_id,
+            employee_id=employee_id,
+            starts_at=starts_at,
+            ends_at=ends_at,
+        )
+
     def _resolve_import_resource(
         self,
         *,
@@ -1195,6 +1312,7 @@ class AgendaService:
         resource_by_code: dict[str, AppointmentResource],
         resource_by_name: dict[str, AppointmentResource],
         employee_id: UUID | None,
+        batch: _ImportBatchState | None = None,
     ) -> tuple[AppointmentResource, bool, datetime, datetime]:
         scheduled_date = cast(date, item["date"])
         scheduled_time = cast(time, item["time"])
@@ -1209,7 +1327,8 @@ class AgendaService:
             resource_key = normalize_name(raw_resource_name)
             matched = resource_by_code.get(resource_key) or resource_by_name.get(resource_key)
             if matched is not None:
-                if self._resource_fits_import_slot(
+                if self._import_slot_fits(
+                    batch=batch,
                     workspace_id=workspace_id,
                     branch_id=branch_id,
                     resource_id=matched.id,
@@ -1223,7 +1342,8 @@ class AgendaService:
         default_key = normalize_name(_IMPORT_DEFAULT_RESOURCE_CODE)
         preferred = resource_by_code.get(default_key)
         if preferred is not None:
-            if self._resource_fits_import_slot(
+            if self._import_slot_fits(
+                batch=batch,
                 workspace_id=workspace_id,
                 branch_id=branch_id,
                 resource_id=preferred.id,
@@ -1246,7 +1366,8 @@ class AgendaService:
 
         if len(active_resources) == 1:
             resource = active_resources[0]
-            if self._resource_fits_import_slot(
+            if self._import_slot_fits(
+                batch=batch,
                 workspace_id=workspace_id,
                 branch_id=branch_id,
                 resource_id=resource.id,
@@ -1258,7 +1379,8 @@ class AgendaService:
             return resource, True, starts_at, ends_at
 
         for resource in self._ordered_import_resources(active_resources):
-            if self._resource_fits_import_slot(
+            if self._import_slot_fits(
+                batch=batch,
                 workspace_id=workspace_id,
                 branch_id=branch_id,
                 resource_id=resource.id,
@@ -1271,6 +1393,199 @@ class AgendaService:
         fallback = self._ordered_import_resources(active_resources)[0]
         return fallback, True, starts_at, ends_at
 
+    def _prefetch_import_skip_appointments(
+        self,
+        workspace_id: UUID,
+        items: list[dict[str, Any]],
+    ) -> dict[str, Appointment]:
+        external_to_key: dict[str, str] = {}
+        for raw in items:
+            external_hint = raw.get("external_id") or raw.get("externalId")
+            if not external_hint:
+                continue
+            external_id = str(external_hint).strip()
+            if not external_id:
+                continue
+            external_to_key[external_id] = self._appointment_import_idempotency_key(external_id)
+        if not external_to_key:
+            return {}
+        by_key = self._repository.active_appointments_by_idempotency_keys(
+            workspace_id, list(external_to_key.values())
+        )
+        skipped: dict[str, Appointment] = {}
+        for external_id, key in external_to_key.items():
+            appointment = by_key.get(key)
+            if appointment is not None:
+                skipped[external_id] = appointment
+        return skipped
+
+    def _insert_imported_appointment(
+        self,
+        *,
+        principal: AuthPrincipal,
+        branch: Branch,
+        values: dict[str, Any],
+        idempotency_key: str,
+    ) -> Appointment:
+        self._validate_notes(values.get("notes"), max_length=_APPOINTMENT_NOTES_DB_MAX_LENGTH)
+        branch_id = cast(UUID, values["branch_id"])
+        resource_id = cast(UUID, values["resource_id"])
+        employee_id = cast(UUID | None, values.get("employee_id"))
+        customer_id = cast(UUID | None, values.get("customer_id"))
+        service_id = cast(UUID | None, values.get("service_id"))
+        fingerprint = self._fingerprint(values)
+        scheduled_date = cast(date, values["date"])
+        scheduled_time = cast(time, values["time"])
+        starts_at, ends_at = self._schedule_window(
+            scheduled_date=scheduled_date,
+            scheduled_time=scheduled_time,
+            duration_minutes=cast(int, values["duration"]),
+            timezone=branch.timezone,
+        )
+        status = cast(str, values["status"])
+        appointment = Appointment(
+            workspace_id=branch.workspace_id,
+            branch_id=branch_id,
+            resource_id=resource_id,
+            customer_id=customer_id,
+            employee_id=employee_id,
+            service_id=service_id,
+            scheduled_date=scheduled_date,
+            scheduled_time=scheduled_time,
+            timezone=branch.timezone,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            duration_minutes=cast(int, values["duration"]),
+            customer_name=cast(str, values["customer_name"]),
+            customer_phone=cast(str | None, values.get("customer_phone")),
+            service_name=cast(str, values["service_name"]),
+            price=cast(Decimal, values["price"]),
+            status=status,
+            notes=cast(str | None, values.get("notes")),
+            pending_payment=cast(bool, values["pending_payment"]),
+            pending_amount=cast(Decimal, values["pending_amount"]),
+            first_time=cast(bool, values["first_time"]),
+            free_trial=cast(bool, values["free_trial"]),
+            reminder_sent=False,
+            source=cast(str, values["source"]),
+            recurrence=cast(str, values["recurrence"]),
+            recurrence_group_id=None,
+            occurrence_index=0,
+            repeat_count=cast(int, values["repeat_count"]),
+            idempotency_key=idempotency_key,
+            request_fingerprint=fingerprint,
+            created_by_platform_user_id=principal.platform_user_id,
+            updated_by_platform_user_id=principal.platform_user_id,
+        )
+        self._repository.add_appointment(appointment)
+        self._session.flush()
+        changes = self._creation_changes(appointment)
+        self._repository.add_event(
+            workspace_id=branch.workspace_id,
+            appointment_id=appointment.id,
+            actor_platform_user_id=principal.platform_user_id,
+            actor_name=appointment_created_by_label(appointment, principal.display_name),
+            action="create",
+            changes=changes,
+            request_id=get_request_id(),
+        )
+        self._repository.add_audit(
+            workspace_id=branch.workspace_id,
+            actor_platform_user_id=principal.platform_user_id,
+            action="appointment.create",
+            appointment_id=appointment.id,
+            request_id=get_request_id(),
+            details={
+                "branchId": str(branch_id),
+                "resourceId": str(resource_id),
+                "employeeId": str(employee_id) if employee_id else None,
+                "startsAt": starts_at.isoformat(),
+                "endsAt": ends_at.isoformat(),
+                "recurrenceGroupId": None,
+            },
+        )
+        return appointment
+
+    def _sync_import_row_customer(
+        self,
+        *,
+        sync_customers: bool,
+        item: dict[str, Any],
+        customer_name: str,
+        customer_phone: str | None,
+        customer_lookup: Any,
+        customer_grant: PermissionGrant | None,
+        master_data: MasterDataService | None,
+        destination_branch_ids: set[UUID],
+        principal: AuthPrincipal,
+    ) -> tuple[str, UUID | None, bool, str, list[Customer], bool]:
+        """Return name, customer_id, linked, sync mode, matches, touched (for commit)."""
+        customer_email = item.get("customer_email")
+        match_raw: dict[str, Any] = {}
+        if customer_phone:
+            match_raw["phone"] = customer_phone
+        if customer_email:
+            match_raw["email"] = str(customer_email)
+        doc_type = item.get("document_type")
+        doc_id = item.get("document_id")
+        if doc_type and doc_id:
+            match_raw["document_type"] = str(doc_type)
+            match_raw["document_id"] = str(doc_id)
+
+        customer_import_raw = agenda_import_item_to_customer_raw(item)
+        customer_sync = "none"
+        customer_id: UUID | None = None
+        customer_linked = False
+        lookup_matches: list[Customer] = []
+        touched = False
+
+        if sync_customers:
+            assert customer_grant is not None and master_data is not None
+            lookup_matches = resolve_import_customer_matches_from_lookup(
+                customer_lookup,
+                match_raw,
+                match_document_first=True,
+            )
+            existing = lookup_matches[0] if lookup_matches else None
+            customer, customer_sync = master_data.upsert_customer_for_agenda_import(
+                principal=principal,
+                grant=customer_grant,
+                destination_branch_ids=destination_branch_ids,
+                raw=customer_import_raw,
+                existing=existing,
+            )
+            register_customer_in_import_lookup(
+                customer_lookup,
+                customer,
+                branch_ids=frozenset(destination_branch_ids),
+            )
+            customer_id = customer.id
+            customer_linked = True
+            touched = True
+            if not customer_name:
+                customer_name = (customer.display_name or "").strip()
+        else:
+            lookup_matches = resolve_import_customer_matches_from_lookup(customer_lookup, match_raw)
+            customer_id = lookup_matches[0].id if lookup_matches else None
+            customer_linked = customer_id is not None
+            if customer_linked and not customer_name and lookup_matches:
+                customer_name = (lookup_matches[0].display_name or "").strip()
+
+        if not customer_name:
+            customer_name = (
+                (customer_phone or "").strip()
+                or (str(customer_email).strip() if customer_email else "")
+                or "Cliente"
+            )
+        return (
+            customer_name,
+            customer_id,
+            customer_linked,
+            customer_sync,
+            lookup_matches,
+            touched,
+        )
+
     def import_appointments(
         self,
         *,
@@ -1278,6 +1593,7 @@ class AgendaService:
         grant: PermissionGrant,
         branch_id: UUID,
         items: list[dict[str, Any]],
+        sync_customers: bool = False,
     ) -> list[dict[str, Any]]:
         self._require_branch_access(grant, branch_id)
         workspace_id = grant.workspace_id
@@ -1286,6 +1602,14 @@ class AgendaService:
             raise ResourceNotFoundError("La sucursal no existe o no está activa.", "branchId")
         destination_branch_ids = {branch_id}
         master_repo = MasterDataRepository(self._session)
+        customer_grant: PermissionGrant | None = None
+        master_data: MasterDataService | None = None
+        if sync_customers:
+            customer_grant = AuthorizationService(self._session).require_permission(
+                principal,
+                "customer.manage",
+            )
+            master_data = MasterDataService(self._session)
 
         resources = [
             resource
@@ -1343,7 +1667,23 @@ class AgendaService:
         for row_service_id, service_name in service_rows:
             service_by_name.setdefault(normalize_name(service_name), row_service_id)
 
+        customer_lookup = build_import_customer_match_lookup(
+            master_repo,
+            workspace_id=workspace_id,
+            allowed_branch_ids=grant.allowed_branch_ids,
+            destination_branch_ids=destination_branch_ids,
+            raw_items=items,
+        )
+        skip_by_external_id = self._prefetch_import_skip_appointments(workspace_id, items)
+        batch = _ImportBatchState.create(
+            self._repository,
+            workspace_id=workspace_id,
+            branch_id=branch_id,
+        )
+
         results: list[dict[str, Any]] = []
+        created_in_batch = False
+        customers_synced_in_batch = False
         for raw in items:
             external_hint = raw.get("external_id") or raw.get("externalId")
             try:
@@ -1363,6 +1703,7 @@ class AgendaService:
                         "appointment_id": None,
                         "customer_id": None,
                         "customer_linked": False,
+                        "customer_sync": "none",
                         "status": "error",
                         "message": message,
                         "customer_name": raw.get("customer_name") or raw.get("customerName"),
@@ -1383,30 +1724,78 @@ class AgendaService:
             time_label = scheduled_time.strftime("%H:%M")
 
             if external_id:
-                idempotency_key = self._appointment_import_idempotency_key(str(external_id))
-                existing = self._repository.records_for_idempotency_key(
-                    workspace_id, idempotency_key
-                )
-                if existing and all(
-                    record.appointment.record_status == "active" for record in existing
-                ):
-                    first_record = existing[0].appointment
+                skipped_appointment = skip_by_external_id.get(str(external_id).strip())
+                if skipped_appointment is not None:
+                    skip_customer_sync = "none"
+                    skip_customer_id = skipped_appointment.customer_id
+                    skip_customer_linked = skip_customer_id is not None
+                    skip_customer_name = skipped_appointment.customer_name
+                    if sync_customers:
+                        try:
+                            (
+                                skip_customer_name,
+                                skip_customer_id,
+                                skip_customer_linked,
+                                skip_customer_sync,
+                                _,
+                                touched,
+                            ) = self._sync_import_row_customer(
+                                sync_customers=True,
+                                item=item,
+                                customer_name=customer_name,
+                                customer_phone=customer_phone,
+                                customer_lookup=customer_lookup,
+                                customer_grant=customer_grant,
+                                master_data=master_data,
+                                destination_branch_ids=destination_branch_ids,
+                                principal=principal,
+                            )
+                            if touched:
+                                customers_synced_in_batch = True
+                        except (ConflictError, InvalidOperationError) as exc:
+                            results.append(
+                                {
+                                    "external_id": external_id,
+                                    "appointment_id": skipped_appointment.id,
+                                    "customer_id": None,
+                                    "customer_linked": False,
+                                    "customer_sync": "none",
+                                    "status": "error",
+                                    "message": str(exc),
+                                    "customer_name": customer_name,
+                                    "phone": customer_phone,
+                                    "date": scheduled_date,
+                                    "time": time_label,
+                                    "service_name": service_name or None,
+                                }
+                            )
+                            continue
+                    if (
+                        sync_customers
+                        and skip_customer_id is not None
+                        and skipped_appointment.customer_id is None
+                    ):
+                        skipped_appointment.customer_id = skip_customer_id
+                        skip_customer_linked = True
+                        customers_synced_in_batch = True
                     results.append(
                         {
                             "external_id": external_id,
-                            "appointment_id": first_record.id,
-                            "customer_id": first_record.customer_id,
-                            "customer_linked": first_record.customer_id is not None,
+                            "appointment_id": skipped_appointment.id,
+                            "customer_id": skip_customer_id,
+                            "customer_linked": skip_customer_linked,
+                            "customer_sync": skip_customer_sync,
                             "status": "skipped",
                             "message": "Ya importado para este externalId.",
-                            "customer_name": first_record.customer_name,
-                            "phone": first_record.customer_phone,
-                            "date": first_record.scheduled_date,
-                            "time": first_record.scheduled_time.strftime("%H:%M"),
-                            "service_name": first_record.service_name,
+                            "customer_name": skip_customer_name,
+                            "phone": customer_phone or skipped_appointment.customer_phone,
+                            "date": skipped_appointment.scheduled_date,
+                            "time": skipped_appointment.scheduled_time.strftime("%H:%M"),
+                            "service_name": skipped_appointment.service_name,
                         }
                     )
                     continue
+                idempotency_key = self._appointment_import_idempotency_key(str(external_id))
             else:
                 idempotency_key = f"ag-imp-row-{uuid7()}"[:128]
 
@@ -1415,7 +1804,7 @@ class AgendaService:
             if specialist_name:
                 employee_id = employee_by_name.get(normalize_name(specialist_name))
 
-            matched_resource, import_stacked, _starts_at, _ends_at = self._resolve_import_resource(
+            matched_resource, import_stacked, starts_at, ends_at = self._resolve_import_resource(
                 item=item,
                 workspace_id=workspace_id,
                 branch_id=branch_id,
@@ -1424,35 +1813,52 @@ class AgendaService:
                 resource_by_code=resource_by_code,
                 resource_by_name=resource_by_name,
                 employee_id=employee_id,
+                batch=batch,
             )
 
             service_id: UUID | None = None
             if service_name:
                 service_id = service_by_name.get(normalize_name(service_name))
 
-            match_raw: dict[str, Any] = {}
-            if customer_phone:
-                match_raw["phone"] = customer_phone
-            customer_email = item.get("customer_email")
-            if customer_email:
-                match_raw["email"] = str(customer_email)
-            matches = find_import_customer_matches(
-                master_repo,
-                workspace_id=workspace_id,
-                allowed_branch_ids=grant.allowed_branch_ids,
-                destination_branch_ids=destination_branch_ids,
-                raw=match_raw,
-            )
-            customer_id = matches[0].id if matches else None
-            customer_linked = customer_id is not None
-            if customer_linked and not customer_name:
-                customer_name = (matches[0].display_name or "").strip()
-            if not customer_name:
-                customer_name = (
-                    (customer_phone or "").strip()
-                    or (str(customer_email).strip() if customer_email else "")
-                    or "Cliente"
+            try:
+                (
+                    customer_name,
+                    customer_id,
+                    customer_linked,
+                    customer_sync,
+                    lookup_matches,
+                    touched,
+                ) = self._sync_import_row_customer(
+                    sync_customers=sync_customers,
+                    item=item,
+                    customer_name=customer_name,
+                    customer_phone=customer_phone,
+                    customer_lookup=customer_lookup,
+                    customer_grant=customer_grant,
+                    master_data=master_data,
+                    destination_branch_ids=destination_branch_ids,
+                    principal=principal,
                 )
+            except (ConflictError, InvalidOperationError) as exc:
+                results.append(
+                    {
+                        "external_id": external_id,
+                        "appointment_id": None,
+                        "customer_id": None,
+                        "customer_linked": False,
+                        "customer_sync": "none",
+                        "status": "error",
+                        "message": str(exc),
+                        "customer_name": customer_name,
+                        "phone": customer_phone,
+                        "date": scheduled_date,
+                        "time": time_label,
+                        "service_name": service_name or None,
+                    }
+                )
+                continue
+            if touched:
+                customers_synced_in_batch = True
             import_notes = self._compose_import_notes(
                 customer_name,
                 customer_phone,
@@ -1497,24 +1903,31 @@ class AgendaService:
                 "repeat_count": 1,
             }
 
+            savepoint = self._session.begin_nested()
             try:
-                records = self.create_appointments(
+                appointment = self._insert_imported_appointment(
                     principal=principal,
-                    grant=grant,
+                    branch=branch,
                     values=values,
                     idempotency_key=idempotency_key,
-                    notify=False,
-                    allow_long_notes=True,
-                    resource_capacity=SHARED_RESOURCE_CAPACITY,
-                    skip_slot_check=import_stacked,
                 )
-                appointment = records[0].appointment
+                batch.register_booking(
+                    resource_id=matched_resource.id,
+                    employee_id=employee_id,
+                    starts_at=starts_at,
+                    ends_at=ends_at,
+                )
+                if external_id:
+                    skip_by_external_id[str(external_id).strip()] = appointment
+                savepoint.commit()
+                created_in_batch = True
                 results.append(
                     {
                         "external_id": external_id,
                         "appointment_id": appointment.id,
                         "customer_id": appointment.customer_id,
                         "customer_linked": customer_linked,
+                        "customer_sync": customer_sync,
                         "status": "created",
                         "message": unlinked_message,
                         "customer_name": customer_name,
@@ -1526,14 +1939,34 @@ class AgendaService:
                     }
                 )
             except (ConflictError, InvalidOperationError, ResourceNotFoundError) as exc:
+                savepoint.rollback()
                 results.append(
                     {
                         "external_id": external_id,
                         "appointment_id": None,
-                        "customer_id": None,
-                        "customer_linked": False,
+                        "customer_id": customer_id,
+                        "customer_linked": customer_linked,
+                        "customer_sync": customer_sync,
                         "status": "error",
                         "message": str(exc),
+                        "customer_name": customer_name,
+                        "phone": customer_phone,
+                        "date": scheduled_date,
+                        "time": time_label,
+                        "service_name": service_name or None,
+                    }
+                )
+            except IntegrityError as exc:
+                savepoint.rollback()
+                results.append(
+                    {
+                        "external_id": external_id,
+                        "appointment_id": None,
+                        "customer_id": customer_id,
+                        "customer_linked": customer_linked,
+                        "customer_sync": customer_sync,
+                        "status": "error",
+                        "message": str(exc.orig) if exc.orig else str(exc),
                         "customer_name": customer_name,
                         "phone": customer_phone,
                         "date": scheduled_date,
@@ -1542,13 +1975,14 @@ class AgendaService:
                     }
                 )
             except Exception as exc:  # noqa: BLE001 - per-row import report
-                self._session.rollback()
+                savepoint.rollback()
                 results.append(
                     {
                         "external_id": external_id,
                         "appointment_id": None,
-                        "customer_id": None,
-                        "customer_linked": False,
+                        "customer_id": customer_id,
+                        "customer_linked": customer_linked,
+                        "customer_sync": customer_sync,
                         "status": "error",
                         "message": str(exc),
                         "customer_name": customer_name,
@@ -1558,6 +1992,9 @@ class AgendaService:
                         "service_name": service_name or None,
                     }
                 )
+
+        if created_in_batch or customers_synced_in_batch:
+            self._session.commit()
         return results
 
     def _validate_references(

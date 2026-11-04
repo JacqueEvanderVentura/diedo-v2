@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from collections import defaultdict
+from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
 from app.db.models.master_data import Customer
 from app.repositories.master_data import MasterDataRepository
+from app.services.customer_documents import normalize_document_id
 
 
 def normalize_name(value: str) -> str:
@@ -168,6 +172,31 @@ def _customers_in_destination(
     ]
 
 
+def _prefer_import_match_candidates(
+    customers: Sequence[Customer],
+    raw: dict[str, Any],
+    *,
+    destination_branch_ids: set[UUID],
+    branch_ids_by_customer: dict[UUID, frozenset[UUID]] | None = None,
+) -> list[Customer]:
+    """Pick best workspace customer match; destination branch is a tie-breaker only."""
+    listed = [customer for customer in customers if customer is not None]
+    if not listed:
+        return []
+    preferred = _prefer_placeholder(listed, raw)
+    if len(preferred) == 1:
+        return preferred
+    if branch_ids_by_customer and destination_branch_ids:
+        in_destination = [
+            customer
+            for customer in preferred
+            if branch_ids_by_customer.get(customer.id, frozenset()) & destination_branch_ids
+        ]
+        if len(in_destination) == 1:
+            return in_destination
+    return [preferred[0]]
+
+
 def _prefer_placeholder(customers: list[Customer], raw: dict[str, Any]) -> list[Customer]:
     placeholders = [
         customer for customer in customers if customer_has_placeholder_name(customer, raw)
@@ -183,57 +212,51 @@ def find_import_customer_matches(
     destination_branch_ids: set[UUID],
     raw: dict[str, Any],
 ) -> list[Customer]:
+    del destination_branch_ids  # matching is workspace-wide; branch assignment happens on import
     customer_id = parse_import_customer_id(raw)
     if customer_id is not None:
         existing = repository.get_customer(workspace_id, customer_id, allowed_branch_ids)
-        by_id = _customers_in_destination(
-            repository,
-            workspace_id=workspace_id,
-            destination_branch_ids=destination_branch_ids,
-            customers=[existing] if existing is not None else [],
-        )
-        if by_id:
-            return by_id
+        if existing is not None:
+            return [existing]
+
+    doc_type = _text(raw.get("document_type"))
+    doc_id = _text(raw.get("document_id"))
+    if doc_type and doc_id:
+        normalized_doc = normalize_document_id(doc_type, doc_id)
+        if normalized_doc:
+            by_document = repository.customers_matching_import_keys(
+                workspace_id=workspace_id,
+                allowed_branch_ids=allowed_branch_ids,
+                normalized_phone=None,
+                normalized_email=None,
+                normalized_document_id=normalized_doc,
+            )
+            if by_document:
+                return _prefer_placeholder(by_document, raw)
 
     phone = normalize_phone(_text(raw.get("phone")))
     if phone:
-        by_phone = _prefer_placeholder(
-            _customers_in_destination(
-                repository,
-                workspace_id=workspace_id,
-                destination_branch_ids=destination_branch_ids,
-                customers=repository.customers_matching_import_keys(
-                    workspace_id=workspace_id,
-                    allowed_branch_ids=allowed_branch_ids,
-                    normalized_phone=phone,
-                    normalized_email=None,
-                    normalized_document_id=None,
-                ),
-            ),
-            raw,
+        by_phone = repository.customers_matching_import_keys(
+            workspace_id=workspace_id,
+            allowed_branch_ids=allowed_branch_ids,
+            normalized_phone=phone,
+            normalized_email=None,
+            normalized_document_id=None,
         )
         if by_phone:
-            return by_phone
+            return _prefer_placeholder(by_phone, raw)
 
     email = normalize_email(_text(raw.get("email")))
     if email:
-        by_email = _prefer_placeholder(
-            _customers_in_destination(
-                repository,
-                workspace_id=workspace_id,
-                destination_branch_ids=destination_branch_ids,
-                customers=repository.customers_matching_import_keys(
-                    workspace_id=workspace_id,
-                    allowed_branch_ids=allowed_branch_ids,
-                    normalized_phone=None,
-                    normalized_email=email,
-                    normalized_document_id=None,
-                ),
-            ),
-            raw,
+        by_email = repository.customers_matching_import_keys(
+            workspace_id=workspace_id,
+            allowed_branch_ids=allowed_branch_ids,
+            normalized_phone=None,
+            normalized_email=email,
+            normalized_document_id=None,
         )
         if by_email:
-            return by_email
+            return _prefer_placeholder(by_email, raw)
 
     return []
 
@@ -254,6 +277,257 @@ def find_import_customer_match(
         raw=raw,
     )
     return matches[0] if matches else None
+
+
+@dataclass
+class ImportCustomerMatchLookup:
+    destination_branch_ids: frozenset[UUID]
+    customers_by_phone: dict[str, tuple[Customer, ...]]
+    customers_by_email: dict[str, tuple[Customer, ...]]
+    customers_by_document: dict[str, tuple[Customer, ...]]
+    branch_ids_by_customer: dict[UUID, frozenset[UUID]]
+
+
+def _customers_in_destination_from_lookup(
+    lookup: ImportCustomerMatchLookup,
+    customers: Sequence[Customer],
+) -> list[Customer]:
+    if not customers:
+        return []
+    return [
+        customer
+        for customer in customers
+        if lookup.branch_ids_by_customer.get(customer.id, frozenset())
+        & lookup.destination_branch_ids
+    ]
+
+
+def _import_match_raw_from_agenda_item(raw: dict[str, Any]) -> dict[str, Any]:
+    match_raw: dict[str, Any] = {}
+    phone = _text(raw.get("phone") or raw.get("customer_phone") or raw.get("customerPhone"))
+    if phone:
+        match_raw["phone"] = phone
+    email = _text(raw.get("email") or raw.get("customer_email") or raw.get("customerEmail"))
+    if email:
+        match_raw["email"] = email
+    doc_type = _text(
+        raw.get("document_type")
+        or raw.get("documentType")
+        or raw.get("customer_document_type")
+        or raw.get("customerDocumentType")
+    )
+    doc_id = _text(
+        raw.get("document_id")
+        or raw.get("documentId")
+        or raw.get("customer_document_id")
+        or raw.get("customerDocumentId")
+    )
+    if doc_type and doc_id:
+        match_raw["document_type"] = doc_type
+        match_raw["document_id"] = doc_id
+    return match_raw
+
+
+def agenda_import_item_to_customer_raw(item: dict[str, Any]) -> dict[str, Any]:
+    raw: dict[str, Any] = {}
+    name = _text(item.get("customer_name") or item.get("customerName"))
+    if name:
+        raw["display_name"] = name
+    phone = _text(item.get("customer_phone") or item.get("customerPhone"))
+    if phone:
+        raw["phone"] = phone
+    email = _text(item.get("customer_email") or item.get("customerEmail"))
+    if email:
+        raw["email"] = email
+    doc_type = _text(item.get("document_type") or item.get("documentType"))
+    doc_id = _text(item.get("document_id") or item.get("documentId"))
+    if doc_type and doc_id:
+        raw["document_type"] = doc_type
+        raw["document_id"] = doc_id
+    return raw
+
+
+def build_import_customer_match_lookup(
+    repository: MasterDataRepository,
+    *,
+    workspace_id: UUID,
+    allowed_branch_ids: frozenset[UUID] | None,
+    destination_branch_ids: set[UUID],
+    raw_items: Sequence[dict[str, Any]],
+) -> ImportCustomerMatchLookup:
+    normalized_phones: set[str] = set()
+    normalized_emails: set[str] = set()
+    normalized_document_ids: set[str] = set()
+    for raw in raw_items:
+        match_raw = _import_match_raw_from_agenda_item(raw)
+        phone = normalize_phone(_text(match_raw.get("phone")))
+        if phone:
+            normalized_phones.add(phone)
+        email = normalize_email(_text(match_raw.get("email")))
+        if email:
+            normalized_emails.add(email)
+        doc_type = _text(match_raw.get("document_type"))
+        doc_id = _text(match_raw.get("document_id"))
+        if doc_type and doc_id:
+            normalized_doc = normalize_document_id(doc_type, doc_id)
+            if normalized_doc:
+                normalized_document_ids.add(normalized_doc)
+
+    customers = repository.customers_for_import_phones_and_emails(
+        workspace_id=workspace_id,
+        allowed_branch_ids=allowed_branch_ids,
+        normalized_phones=normalized_phones,
+        normalized_emails=normalized_emails,
+        normalized_document_ids=normalized_document_ids,
+    )
+    branch_map = repository.customer_active_branch_ids(
+        workspace_id, [customer.id for customer in customers]
+    )
+    branch_ids_by_customer = {
+        customer_id: frozenset(branch_ids) for customer_id, branch_ids in branch_map.items()
+    }
+
+    by_phone: dict[str, list[Customer]] = defaultdict(list)
+    by_email: dict[str, list[Customer]] = defaultdict(list)
+    by_document: dict[str, list[Customer]] = defaultdict(list)
+    for customer in customers:
+        if customer.normalized_phone:
+            by_phone[customer.normalized_phone].append(customer)
+        if customer.normalized_email:
+            by_email[customer.normalized_email].append(customer)
+        if customer.normalized_document_id:
+            by_document[customer.normalized_document_id].append(customer)
+
+    return ImportCustomerMatchLookup(
+        destination_branch_ids=frozenset(destination_branch_ids),
+        customers_by_phone={key: tuple(value) for key, value in by_phone.items()},
+        customers_by_email={key: tuple(value) for key, value in by_email.items()},
+        customers_by_document={key: tuple(value) for key, value in by_document.items()},
+        branch_ids_by_customer=branch_ids_by_customer,
+    )
+
+
+def resolve_import_customer_matches_from_lookup(
+    lookup: ImportCustomerMatchLookup,
+    raw: dict[str, Any],
+    *,
+    match_document_first: bool = False,
+) -> list[Customer]:
+    destination_branch_ids = set(lookup.destination_branch_ids)
+    if match_document_first:
+        doc_type = _text(raw.get("document_type"))
+        doc_id = _text(raw.get("document_id"))
+        if doc_type and doc_id:
+            normalized_doc = normalize_document_id(doc_type, doc_id)
+            if normalized_doc:
+                by_document = _prefer_import_match_candidates(
+                    lookup.customers_by_document.get(normalized_doc, ()),
+                    raw,
+                    destination_branch_ids=destination_branch_ids,
+                    branch_ids_by_customer=lookup.branch_ids_by_customer,
+                )
+                if by_document:
+                    return by_document
+
+    phone = normalize_phone(_text(raw.get("phone")))
+    if phone:
+        by_phone = _prefer_import_match_candidates(
+            lookup.customers_by_phone.get(phone, ()),
+            raw,
+            destination_branch_ids=destination_branch_ids,
+            branch_ids_by_customer=lookup.branch_ids_by_customer,
+        )
+        if by_phone:
+            return by_phone
+
+    email = normalize_email(_text(raw.get("email")))
+    if email:
+        by_email = _prefer_import_match_candidates(
+            lookup.customers_by_email.get(email, ()),
+            raw,
+            destination_branch_ids=destination_branch_ids,
+            branch_ids_by_customer=lookup.branch_ids_by_customer,
+        )
+        if by_email:
+            return by_email
+
+    return []
+
+
+def register_customer_in_import_lookup(
+    lookup: ImportCustomerMatchLookup,
+    customer: Customer,
+    *,
+    branch_ids: frozenset[UUID] | None = None,
+) -> None:
+    existing_branches = lookup.branch_ids_by_customer.get(customer.id, frozenset())
+    if branch_ids:
+        lookup.branch_ids_by_customer[customer.id] = existing_branches | branch_ids
+    elif customer.id not in lookup.branch_ids_by_customer:
+        lookup.branch_ids_by_customer[customer.id] = existing_branches
+
+    def _append(key: str, bucket: dict[str, tuple[Customer, ...]]) -> None:
+        current = list(bucket.get(key, ()))
+        if customer.id in {row.id for row in current}:
+            return
+        current.append(customer)
+        bucket[key] = tuple(current)
+
+    if customer.normalized_phone:
+        _append(customer.normalized_phone, lookup.customers_by_phone)
+    if customer.normalized_email:
+        _append(customer.normalized_email, lookup.customers_by_email)
+    if customer.normalized_document_id:
+        _append(customer.normalized_document_id, lookup.customers_by_document)
+
+
+def find_agenda_sync_customer_match(
+    repository: MasterDataRepository,
+    *,
+    workspace_id: UUID,
+    allowed_branch_ids: frozenset[UUID] | None,
+    raw: dict[str, Any],
+) -> Customer | None:
+    doc_type = _text(raw.get("document_type"))
+    doc_id = _text(raw.get("document_id"))
+    if doc_type and doc_id:
+        normalized_doc = normalize_document_id(doc_type, doc_id)
+        if normalized_doc:
+            by_document = repository.customer_by_document(workspace_id, normalized_doc)
+            if by_document is not None and by_document.status == "active":
+                return by_document
+
+    phone = normalize_phone(_text(raw.get("phone")))
+    if phone:
+        by_phone = _prefer_placeholder(
+            repository.customers_matching_import_keys(
+                workspace_id=workspace_id,
+                allowed_branch_ids=allowed_branch_ids,
+                normalized_phone=phone,
+                normalized_email=None,
+                normalized_document_id=None,
+            ),
+            raw,
+        )
+        if by_phone:
+            return by_phone[0]
+
+    email = normalize_email(_text(raw.get("email")))
+    if email:
+        by_email = _prefer_placeholder(
+            repository.customers_matching_import_keys(
+                workspace_id=workspace_id,
+                allowed_branch_ids=allowed_branch_ids,
+                normalized_phone=None,
+                normalized_email=email,
+                normalized_document_id=None,
+            ),
+            raw,
+        )
+        if by_email:
+            return by_email[0]
+
+    return None
 
 
 _IMPORT_FIELD_LABELS: dict[str, str] = {
