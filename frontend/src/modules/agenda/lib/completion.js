@@ -30,8 +30,9 @@ export function formatCompletionSummary(appointment) {
   return time ? `Cumplida a las ${time}` : 'Cumplida'
 }
 
-export function buildCompletionPayload({ punctuality, delayResponsibility, completionNote }) {
+export function buildCompletionPayload({ punctuality, delayResponsibility, completionNote, employeeId }) {
   const completedAt = new Date().toISOString()
+  const specialist = employeeId ? { employeeId } : {}
   if (punctuality === 'delayed') {
     return {
       status: 'cumplida',
@@ -40,6 +41,7 @@ export function buildCompletionPayload({ punctuality, delayResponsibility, compl
       completionPunctuality: 'delayed',
       delayResponsibility,
       completionNote: completionNote?.trim() || null,
+      ...specialist,
     }
   }
   return {
@@ -49,5 +51,6 @@ export function buildCompletionPayload({ punctuality, delayResponsibility, compl
     completionPunctuality: 'on_time',
     delayResponsibility: null,
     completionNote: null,
+    ...specialist,
   }
 }

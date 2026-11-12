@@ -23,6 +23,7 @@ import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable
 import { DataSourceNotice } from '@/components/ui/DataSourceNotice'
 import { useSessionStore } from '@/stores/sessionStore'
 import { getAppointmentReceivablePolicy } from '../lib/receivablePermissions'
+import { formatCompletionSummary } from '../lib/completion'
 import { emailResultMessage } from '../lib/notification'
 import { DatePeriodFilter } from '@/components/ui/DatePeriodFilter'
 import { Pagination } from '@/modules/reportes/components/Pagination'
@@ -36,6 +37,7 @@ import {
 function AppointmentStatusControl({ apt, canManage, changing, onChange, online, canManageReceivables }) {
   const currentStatus = statusMeta(apt.status)
   const proximo = isProximoAppointment(apt)
+  const completionSummary = formatCompletionSummary(apt)
   const receivablePolicy = getAppointmentReceivablePolicy({ appointment: apt, online, canManageReceivables })
   const options = APPOINTMENT_STATUSES.map((status) => ({
     value: status.id,
@@ -44,23 +46,28 @@ function AppointmentStatusControl({ apt, canManage, changing, onChange, online, 
   }))
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {canManage ? (
-        <Select
-          value={apt.status}
-          onChange={(nextStatus) => nextStatus !== apt.status && onChange(apt, nextStatus)}
-          options={options}
-          size="sm"
-          variant="muted"
-          disabled={changing}
-          className="w-36"
-          menuMinWidth={160}
-          data-testid={`gestion-status-${apt.id}`}
-        />
-      ) : (
-        <Badge tone={currentStatus.tone}>{currentStatus.name}</Badge>
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-2">
+        {canManage ? (
+          <Select
+            value={apt.status}
+            onChange={(nextStatus) => nextStatus !== apt.status && onChange(apt, nextStatus)}
+            options={options}
+            size="sm"
+            variant="muted"
+            disabled={changing}
+            className="w-36"
+            menuMinWidth={160}
+            data-testid={`gestion-status-${apt.id}`}
+          />
+        ) : (
+          <Badge tone={currentStatus.tone}>{currentStatus.name}</Badge>
+        )}
+        {proximo && <Badge tone="warning">Próximo</Badge>}
+      </div>
+      {completionSummary && (
+        <p className="text-[11px] font-medium text-emerald-700">{completionSummary}</p>
       )}
-      {proximo && <Badge tone="warning">Próximo</Badge>}
     </div>
   )
 }

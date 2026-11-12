@@ -11,6 +11,7 @@ import {
   calendarRowSpan,
   CALENDAR_ROW_PX,
   UNASSIGNED_RESOURCE_ID,
+  bookableSlotLaneCount,
   slotLaneCount,
 } from '@/modules/agenda/lib/dayViewSlots'
 
@@ -183,5 +184,13 @@ describe('dayViewSlots', () => {
     expect(slotLaneCount([{ id: 'b' }], laneCountById)).toBe(1)
     expect(slotLaneCount([{ id: 'a' }, { id: 'b' }], laneCountById)).toBe(2)
     expect(slotLaneCount([{ id: 'unknown' }], laneCountById)).toBe(1)
+  })
+
+  it('adds a clickable lane while the cabin still has confirmed capacity', () => {
+    expect(bookableSlotLaneCount({ paintedLaneCount: 1, confirmedOccupancy: 0 })).toBe(1)
+    expect(bookableSlotLaneCount({ paintedLaneCount: 1, confirmedOccupancy: 1 })).toBe(2)
+    expect(bookableSlotLaneCount({ paintedLaneCount: 2, confirmedOccupancy: 1 })).toBe(3)
+    expect(bookableSlotLaneCount({ paintedLaneCount: 2, confirmedOccupancy: 2 })).toBe(2)
+    expect(bookableSlotLaneCount({ paintedLaneCount: 1, confirmedOccupancy: 1, canBook: false })).toBe(1)
   })
 })

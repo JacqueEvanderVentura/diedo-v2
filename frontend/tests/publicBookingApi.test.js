@@ -20,3 +20,21 @@ it('omits employeeId from slot queries when cualquiera disponible is selected', 
   const url = new URL(fetch.mock.calls[0][0], 'http://localhost')
   expect(Object.fromEntries(url.searchParams)).toEqual({ date: '2027-02-15', serviceId: 'service' })
 })
+
+it('includes the customer document when asking for public slots', async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ slots: [] }), { status: 200 }))
+  vi.stubGlobal('fetch', fetch)
+  await publicBookingApi.listSlots('branch', {
+    date: '2027-02-15',
+    serviceId: 'service',
+    documentType: 'pasaporte',
+    documentId: 'TESTABC',
+  })
+  const url = new URL(fetch.mock.calls[0][0], 'http://localhost')
+  expect(Object.fromEntries(url.searchParams)).toEqual({
+    date: '2027-02-15',
+    serviceId: 'service',
+    documentType: 'pasaporte',
+    documentId: 'TESTABC',
+  })
+})

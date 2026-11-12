@@ -26,7 +26,9 @@ from app.db.base import Base
 from app.db.models.mixins import TimestampMixin, UuidPrimaryKeyMixin, VersionMixin
 
 ACTIVE_APPOINTMENT_STATUSES = ("confirmed",)
-# Internal agenda may double-book a cabin; public booking and "any available" stay exclusive.
+# Cabins accept two simultaneous confirmed appointments. A specialist still occupies
+# one confirmed slot. Public booking uses the same cabin capacity; the same customer
+# cannot hold two overlapping confirmed appointments.
 SHARED_RESOURCE_CAPACITY = 2
 DEFAULT_APPOINTMENT_RESOURCES = (
     ("cab1", "Cabina 1"),

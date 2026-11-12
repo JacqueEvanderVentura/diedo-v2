@@ -1,23 +1,41 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
 import { cn } from '@/lib/utils'
+import { useBranchStaff } from '@/modules/rrhh/lib/staff'
 import { buildCompletionPayload } from '../lib/completion'
 
 export function CompleteAppointmentModal({ open, appointment, onClose, onConfirm, saving = false }) {
   const [step, setStep] = useState('timing')
   const [delayResponsibility, setDelayResponsibility] = useState('center')
   const [completionNote, setCompletionNote] = useState('')
+  const [employeeId, setEmployeeId] = useState('')
   const [err, setErr] = useState('')
+  const staff = useBranchStaff(appointment?.branchId)
+  const staffOptions = useMemo(
+    () => staff.map((member) => ({ value: member.id, label: member.name })),
+    [staff],
+  )
 
   const reset = () => {
     setStep('timing')
     setDelayResponsibility('center')
     setCompletionNote('')
+    setEmployeeId(appointment?.employeeId || '')
     setErr('')
   }
+
+  useEffect(() => {
+    if (!open) return
+    setStep('timing')
+    setDelayResponsibility('center')
+    setCompletionNote('')
+    setEmployeeId(appointment?.employeeId || '')
+    setErr('')
+  }, [open, appointment?.id, appointment?.employeeId])
 
   const close = () => {
     if (saving) return
@@ -27,6 +45,10 @@ export function CompleteAppointmentModal({ open, appointment, onClose, onConfirm
 
   const confirm = async (punctuality) => {
     if (saving) return
+    if (!employeeId) {
+      setErr('Selecciona el especialista que atendió la cita.')
+      return
+    }
     if (punctuality === 'delayed' && !delayResponsibility) {
       setErr('Indica quién causó el retraso.')
       return
@@ -37,6 +59,7 @@ export function CompleteAppointmentModal({ open, appointment, onClose, onConfirm
         punctuality,
         delayResponsibility,
         completionNote,
+        employeeId,
       }))
       reset()
     } catch (error) {
@@ -59,6 +82,17 @@ export function CompleteAppointmentModal({ open, appointment, onClose, onConfirm
             '¿La cita se atendió a tiempo?'
           )}
         </p>
+
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-600">Especialista</label>
+          <Select
+            value={employeeId}
+            onChange={setEmployeeId}
+            options={staffOptions}
+            placeholder="Seleccionar especialista"
+            data-testid="complete-appointment-employee"
+          />
+        </div>
 
         {step === 'timing' ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

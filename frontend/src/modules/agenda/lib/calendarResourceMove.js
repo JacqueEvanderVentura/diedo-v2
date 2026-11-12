@@ -2,7 +2,7 @@ import { canBookResource, canEditResource } from '@/modules/configuracion/lib/ag
 import { normalizeAppointmentStatus } from '@/modules/agenda/lib/completion'
 import { normalizeAppointmentTime, timeRangesOverlap } from '@/modules/agenda/lib/selfBooking'
 
-/** Mirrors backend `SHARED_RESOURCE_CAPACITY`: the internal agenda allows two people per cabin. */
+/** Mirrors backend `SHARED_RESOURCE_CAPACITY`: a cabin holds two simultaneous appointments. */
 export const SHARED_RESOURCE_CAPACITY = 2
 
 export function appointmentBlocksConfirmedSlot(appointment) {

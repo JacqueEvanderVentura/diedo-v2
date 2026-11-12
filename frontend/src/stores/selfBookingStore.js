@@ -155,9 +155,13 @@ export const useSelfBookingStore = create(
         }
       },
 
-      fetchRemoteSlots: async ({ branchId, date, employeeId, serviceId }) => {
+      fetchRemoteSlots: async ({ branchId, date, employeeId, serviceId, documentType, documentId }) => {
         const params = { date, serviceId }
         if (employeeId) params.employeeId = employeeId
+        if (documentType && documentId) {
+          params.documentType = documentType
+          params.documentId = documentId
+        }
         const result = await publicBookingApi.listSlots(branchId, params)
         return result.slots || []
       },

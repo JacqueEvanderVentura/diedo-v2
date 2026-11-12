@@ -8,6 +8,7 @@ from app.api.deps import DatabaseSession
 from app.api.routers.backoffice import BackofficeAccess
 from app.core.errors import raise_api_error
 from app.schemas.common import ErrorResponse
+from app.schemas.master_data import CustomerDocumentType
 from app.schemas.public_booking import (
     ManagedAppointmentResponse,
     PublicAppointmentsListResponse,
@@ -147,12 +148,18 @@ def list_slots(
     scheduled_date: Annotated[date, Query(alias="date")],
     service_id: Annotated[UUID, Query(alias="serviceId")],
     employee_id: Annotated[UUID | None, Query(alias="employeeId")] = None,
+    document_type: Annotated[CustomerDocumentType | None, Query(alias="documentType")] = None,
+    document_id: Annotated[
+        str | None, Query(alias="documentId", min_length=3, max_length=64)
+    ] = None,
 ) -> PublicSlotsResponse:
     slots, duration_minutes = PublicBookingService(database).list_slots(
         branch_id,
         scheduled_date=scheduled_date,
         employee_id=employee_id,
         service_id=service_id,
+        document_type=document_type,
+        document_id=document_id,
     )
     return PublicSlotsResponse(
         date=scheduled_date,
