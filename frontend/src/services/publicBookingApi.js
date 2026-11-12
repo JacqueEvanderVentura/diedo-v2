@@ -18,6 +18,8 @@ export const publicBookingApi = {
   listSlots: (branchId, params) => {
     const query = { ...params }
     if (!query.employeeId) delete query.employeeId
+    if (!query.documentId) delete query.documentId
+    if (!query.documentType) delete query.documentType
     return publicGet(`${base(branchId)}/slots`, { params: query })
   },
   book: (branchId, payload, idempotencyKey) =>

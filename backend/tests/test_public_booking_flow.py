@@ -124,6 +124,29 @@ def booking_setup(client, monkeypatch):
     return headers, me, branch, employee.json()["id"], service.json()["id"]
 
 
+def _create_online_specialist(client, headers, branch_id):
+    suffix = uuid7().hex[-10:]
+    employee = client.post(
+        "/api/v1/employees",
+        headers=headers,
+        json={
+            "employeeNumber": f"BOOK-{suffix}",
+            "firstName": "Otro",
+            "lastName": suffix,
+            "position": "Especialista",
+            "hireDate": date.today().isoformat(),
+            "branchIds": [branch_id],
+            "onlineBookingSelectable": True,
+            "schedule": {
+                day: [{"start": "09:00", "end": "12:00"}, {"start": "13:00", "end": "17:00"}]
+                for day in ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+            },
+        },
+    )
+    assert employee.status_code == 201, employee.text
+    return employee.json()["id"]
+
+
 def payload_for(employee, service):
     suffix = uuid7().hex[:10]
     return {
@@ -198,6 +221,7 @@ def test_resources_other_branches_and_past_slots(client, booking_setup):
         assert result.status_code == 201, result.text
 
     occupy(branch, first, "10:00")
+    occupy(branch, first, "10:00")
     booking = client.post(
         f"{base}/appointments", json=body, headers={"Idempotency-Key": str(uuid7())}
     )
@@ -223,6 +247,7 @@ def test_resources_other_branches_and_past_slots(client, booking_setup):
         )
         session.commit()
     for resource in resources:
+        occupy(branch, resource["id"], "13:00")
         occupy(branch, resource["id"], "13:00")
     other = me["visibleBranches"][1]["id"]
     other_resources = client.get(
@@ -435,7 +460,11 @@ def test_public_booking_any_available_specialist(client, booking_setup):
     with get_session_factory()() as session:
         stored = [session.get(Appointment, UUID(item)) for item in booked_ids]
     assert all(item.employee_id is None and item.resource_id is not None for item in stored)
-    assert len({item.resource_id for item in stored}) == len(stored)
+    occupancy = {}
+    for item in stored:
+        occupancy[item.resource_id] = occupancy.get(item.resource_id, 0) + 1
+    assert occupancy
+    assert max(occupancy.values()) <= 2
     calendar = client.get(
         "/api/v1/appointments",
         headers=headers,
@@ -636,19 +665,20 @@ def test_cabin_blocked_for_online_booking_is_never_offered(client, booking_setup
     with get_session_factory()() as session:
         stored = session.get(Appointment, UUID(booked.json()["appointment"]["id"]))
         assert str(stored.resource_id) == open_resource["id"]
-    occupied = client.post(
-        "/api/v1/appointments",
-        headers={**headers, "Idempotency-Key": str(uuid7())},
-        json={
-            "branchId": branch,
-            "resourceId": open_resource["id"],
-            "date": body["date"],
-            "time": "13:00",
-            "duration": 60,
-            "customerName": "Ocupa la única cabina online",
-        },
-    )
-    assert occupied.status_code == 201, occupied.text
+    for index in range(2):
+        occupied = client.post(
+            "/api/v1/appointments",
+            headers={**headers, "Idempotency-Key": str(uuid7())},
+            json={
+                "branchId": branch,
+                "resourceId": open_resource["id"],
+                "date": body["date"],
+                "time": "13:00",
+                "duration": 60,
+                "customerName": f"Ocupa la única cabina online {index}",
+            },
+        )
+        assert occupied.status_code == 201, occupied.text
     slots = client.get(f"{base}/slots", params=_slot_params(body, employee, service)).json()
     assert "13:00" not in slots["slots"]
     assert "14:00" in slots["slots"]
@@ -1271,3 +1301,86 @@ def test_public_portal_register_and_empty_history(client, booking_setup):
     )
     assert appointments.status_code == 200
     assert appointments.json()["items"] == []
+
+
+@pytest.mark.integration
+def test_public_booking_shares_cabin_capacity_across_customers(client, booking_setup):
+    headers, _, branch, employee, service = booking_setup
+    other_employee = _create_online_specialist(client, headers, branch)
+    _set_service_duration(client, headers, service, 30)
+    base = f"/api/v1/public/booking/branches/{branch}"
+    first_body = payload_for(employee, service)
+    first = client.post(
+        f"{base}/appointments",
+        json={**first_body, "time": "10:00"},
+        headers={"Idempotency-Key": str(uuid7())},
+    )
+    assert first.status_code == 201, first.text
+    second = client.post(
+        f"{base}/appointments",
+        json={
+            **payload_for(other_employee, service),
+            "date": first_body["date"],
+            "time": "10:00",
+        },
+        headers={"Idempotency-Key": str(uuid7())},
+    )
+    assert second.status_code == 201, second.text
+    with get_session_factory()() as session:
+        first_row = session.get(Appointment, UUID(first.json()["appointment"]["id"]))
+        second_row = session.get(Appointment, UUID(second.json()["appointment"]["id"]))
+        assert first_row.resource_id == second_row.resource_id
+        assert first_row.employee_id != second_row.employee_id
+
+
+@pytest.mark.integration
+def test_public_booking_rejects_same_customer_overlapping_slot(client, booking_setup):
+    headers, _, branch, employee, service = booking_setup
+    other_employee = _create_online_specialist(client, headers, branch)
+    _set_service_duration(client, headers, service, 30)
+    base = f"/api/v1/public/booking/branches/{branch}"
+    body = payload_for(employee, service)
+    first = client.post(
+        f"{base}/appointments",
+        json={**body, "time": "10:00"},
+        headers={"Idempotency-Key": str(uuid7())},
+    )
+    assert first.status_code == 201, first.text
+    duplicate = client.post(
+        f"{base}/appointments",
+        json={
+            **body,
+            "employeeId": other_employee,
+            "time": "10:00",
+        },
+        headers={"Idempotency-Key": str(uuid7())},
+    )
+    assert duplicate.status_code == 409, duplicate.text
+    assert duplicate.json()["parameter"] == "time"
+    assert "Ya tienes una cita en ese horario" in duplicate.json()["message"]
+    hidden = client.get(
+        f"{base}/slots",
+        params={
+            **_slot_params(body, other_employee, service),
+            "documentType": body["documentType"],
+            "documentId": body["documentId"],
+        },
+    )
+    assert hidden.status_code == 200, hidden.text
+    assert "10:00" not in hidden.json()["slots"]
+    later = client.post(
+        f"{base}/appointments",
+        json={**body, "employeeId": other_employee, "time": "11:00"},
+        headers={"Idempotency-Key": str(uuid7())},
+    )
+    assert later.status_code == 201, later.text
+    moved = client.post(
+        f"{base}/appointments/{later.json()['appointment']['id']}/reschedule",
+        json={
+            "managementToken": later.json()["appointment"]["managementToken"],
+            "date": body["date"],
+            "time": "10:00",
+        },
+    )
+    assert moved.status_code == 409, moved.text
+    assert "Ya tienes una cita en ese horario" in moved.json()["message"]

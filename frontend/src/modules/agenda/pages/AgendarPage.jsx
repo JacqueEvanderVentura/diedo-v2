@@ -278,12 +278,14 @@ export default function AgendarPage() {
       date: form.date,
       employeeId: form.employeeId,
       serviceId: form.serviceId,
+      documentType: form.docType,
+      documentId: normalizeDocumentId(form.documentId, form.docType),
     })
       .then((slots) => { if (active) setRemoteSlots(slots) })
       .catch((error) => { if (active) setSlotError(error.message || 'No se pudieron consultar los horarios.') })
       .finally(() => { if (active) setSlotLoading(false) })
     return () => { active = false }
-  }, [branch?.id, fetchRemoteSlots, form.date, form.employeeId, form.serviceId, isDemo, slotRevision])
+  }, [branch?.id, fetchRemoteSlots, form.date, form.docType, form.documentId, form.employeeId, form.serviceId, isDemo, slotRevision])
 
   const set = (k, v) => {
     const changesAvailability = ['serviceId', 'employeeId', 'date'].includes(k)
