@@ -66,19 +66,78 @@ export function sharedResourceWarning({ resourceName, occupant }) {
   return `Ya hay una persona en ${resourceName || 'la cabina'} (${occupant.customerName}) a las ${normalizeAppointmentTime(occupant.time)}. Tomas el riesgo de doble acumulación.`
 }
 
+export function employeeSlotOccupants({
+  appointments = [],
+  employeeId,
+  date,
+  time,
+  duration,
+  excludeId = null,
+}) {
+  if (!employeeId || !date || !time) return []
+  return appointments.filter((other) => (
+    other.id !== excludeId
+    && other.employeeId === employeeId
+    && other.date === date
+    && appointmentBlocksConfirmedSlot(other)
+    && timeRangesOverlap(time, duration, other.time, other.duration)
+  ))
+}
+
+export function employeePeakOccupancy(args) {
+  const occupants = employeeSlotOccupants(args)
+  const start = toMinutes(args.time)
+  const end = start + durationMinutes(args.duration)
+  const windows = occupants.map((other) => {
+    const otherStart = toMinutes(other.time)
+    return [otherStart, otherStart + durationMinutes(other.duration)]
+  })
+  const checkpoints = [start, ...windows.map(([otherStart]) => otherStart).filter((s) => s > start && s < end)]
+  const busiest = Math.max(
+    0,
+    ...checkpoints.map((point) => windows.filter(([s, e]) => s <= point && point < e).length),
+  )
+  return 1 + busiest
+}
+
+export function findEmployeeSharing(args) {
+  return employeeSlotOccupants(args)[0] || null
+}
+
+export function employeeCapacityMessage(employeeName) {
+  return `${employeeName || 'El especialista'} ya tiene ${SHARED_RESOURCE_CAPACITY} personas en ese horario.`
+}
+
+export function sharedEmployeeConfirmMessage({ employeeName }) {
+  return `${employeeName || 'El especialista'} ya tiene una cita para este bloque. ¿Desea proceder igualmente?`
+}
+
+/** @deprecated Prefer employeePeakOccupancy for staff double-booking. */
 export function findEmployeeSlotConflict({
   appointments = [],
   appointment,
   time,
 }) {
   if (!appointment?.employeeId || !time) return null
-  return appointments.find((other) => (
-    other.id !== appointment.id
-    && other.employeeId === appointment.employeeId
-    && other.date === appointment.date
-    && appointmentBlocksConfirmedSlot(other)
-    && timeRangesOverlap(time, appointment.duration, other.time, other.duration)
-  )) || null
+  const peak = employeePeakOccupancy({
+    appointments,
+    employeeId: appointment.employeeId,
+    date: appointment.date,
+    time,
+    duration: appointment.duration,
+    excludeId: appointment.id,
+  })
+  if (peak > SHARED_RESOURCE_CAPACITY) {
+    return findEmployeeSharing({
+      appointments,
+      employeeId: appointment.employeeId,
+      date: appointment.date,
+      time,
+      duration: appointment.duration,
+      excludeId: appointment.id,
+    })
+  }
+  return null
 }
 
 export function explainAppointmentResourceMove({
@@ -125,13 +184,18 @@ export function explainAppointmentResourceMove({
     return `No se puede mover: ${targetResource.name} ya tiene ${SHARED_RESOURCE_CAPACITY} personas a las ${normalizeAppointmentTime(time)}.`
   }
 
-  const employeeConflict = findEmployeeSlotConflict({
-    appointments,
-    appointment,
-    time,
-  })
-  if (employeeConflict) {
-    return `No se puede mover: el empleado ya atiende a ${employeeConflict.customerName} a las ${employeeConflict.time}.`
+  if (appointment.employeeId) {
+    const employeePeak = employeePeakOccupancy({
+      appointments,
+      employeeId: appointment.employeeId,
+      date: appointment.date,
+      time,
+      duration: appointment.duration,
+      excludeId: appointment.id,
+    })
+    if (employeePeak > SHARED_RESOURCE_CAPACITY) {
+      return `No se puede mover: el especialista ya atiende a ${SHARED_RESOURCE_CAPACITY} personas a las ${normalizeAppointmentTime(time)}.`
+    }
   }
 
   return null

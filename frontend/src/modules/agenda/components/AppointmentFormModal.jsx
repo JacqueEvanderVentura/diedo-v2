@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import { Save, X } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -45,9 +46,13 @@ import { buildCompletionPayload } from '../lib/completion'
 import {
   SHARED_RESOURCE_CAPACITY,
   appointmentBlocksConfirmedSlot,
+  employeeCapacityMessage,
+  employeePeakOccupancy,
+  findEmployeeSharing,
   findResourceSharing,
   resourceCapacityMessage,
   resourcePeakOccupancy,
+  sharedEmployeeConfirmMessage,
   sharedResourceWarning,
 } from '../lib/calendarResourceMove'
 import { fetchLastVisitBookingDefaults } from '../lib/customerBookingDefaults'
@@ -102,6 +107,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
   const [form, setForm] = useState(empty())
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
+  const [employeeConfirmOpen, setEmployeeConfirmOpen] = useState(false)
   const appointments = useAvailabilityAppointments(form.date, form.employeeId, form.branchId)
   const editing = !!appointment
   const notesLength = Array.from(form.notes || '').length
@@ -315,61 +321,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     }
   }
 
-  const submit = async () => {
-    if (saving) return
-    if (!form.branchId) return setErr('Selecciona una sucursal.')
-    if (!editing && !resourcesLoading && branchResources.length === 0) {
-      return setErr('La sucursal seleccionada no tiene cabinas o recursos activos.')
-    }
-    if (!editing && form.employeeId && !form.cabinaId) return setErr('Selecciona una cabina o recurso.')
-    if (!selectedService) return setErr('Selecciona un servicio disponible en esa sucursal.')
-    if (!form.date) return setErr('Selecciona una fecha.')
-    if (!form.time) return setErr('Selecciona una hora.')
-    if (notesTooLong && notesChanged) {
-      return setErr(`Las notas admiten un máximo de ${APPOINTMENT_NOTES_MAX_LENGTH} caracteres.`)
-    }
-    const scheduleChanged = appointmentScheduleChanged(appointment, form)
-    if (
-      scheduleChanged &&
-      selectedEmployee &&
-      !fitsInSchedule({
-        employee: selectedEmployee,
-        date: form.date,
-        time: form.time,
-        duration: form.duration,
-      })
-    ) {
-      return setErr('La hora seleccionada está fuera del horario del empleado.')
-    }
-    if (scheduleChanged && !availableSlots.includes(form.time)) {
-      return setErr(
-        form.employeeId
-          ? 'Ese horario ya no está disponible para el empleado.'
-          : 'Ese horario ya no está disponible para ningún empleado.'
-      )
-    }
-    let payload = buildPayload()
-    if (payload.status === 'cumplida' && !payload.completionPunctuality) {
-      payload = { ...payload, ...buildCompletionPayload({ punctuality: 'on_time' }) }
-    }
-    const occupancyQuery = payload.cabinaId && appointmentBlocksConfirmedSlot(payload)
-      ? {
-        appointments,
-        resourceId: payload.cabinaId,
-        date: payload.date,
-        time: payload.time,
-        duration: payload.duration,
-        excludeId: appointment?.id ?? null,
-      }
-      : null
-    const cabinaName = branchResources.find((resource) => resource.id === payload.cabinaId)?.name
-    if (occupancyQuery && resourcePeakOccupancy(occupancyQuery) > SHARED_RESOURCE_CAPACITY) {
-      return setErr(resourceCapacityMessage(cabinaName))
-    }
-    const sharedWith = occupancyQuery ? findResourceSharing(occupancyQuery) : null
-    const sharedWarning = sharedWith
-      ? sharedResourceWarning({ resourceName: cabinaName, occupant: sharedWith })
-      : ''
+  const performSave = async (payload, sharedWarning) => {
     setSaving(true)
     setErr('')
     try {
@@ -396,6 +348,126 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     } finally {
       setSaving(false)
     }
+  }
+
+  const submit = async () => {
+    if (saving) return
+    if (!form.branchId) return setErr('Selecciona una sucursal.')
+    if (!editing && !resourcesLoading && branchResources.length === 0) {
+      return setErr('La sucursal seleccionada no tiene cabinas o recursos activos.')
+    }
+    if (!editing && form.employeeId && !form.cabinaId) return setErr('Selecciona una cabina o recurso.')
+    if (!selectedService) return setErr('Selecciona un servicio disponible en esa sucursal.')
+    if (!form.date) return setErr('Selecciona una fecha.')
+    if (!form.time) return setErr('Selecciona una hora.')
+    if (notesTooLong && notesChanged) {
+      return setErr(`Las notas admiten un máximo de ${APPOINTMENT_NOTES_MAX_LENGTH} caracteres.`)
+    }
+    const scheduleChanged = appointmentScheduleChanged(appointment, form)
+    if (
+      scheduleChanged &&
+      selectedEmployee &&
+      !fitsInSchedule({
+        employee: selectedEmployee,
+        date: form.date,
+        time: form.time,
+        duration: form.duration,
+      })
+    ) {
+      return setErr('La hora seleccionada está fuera del horario del empleado.')
+    }
+    const slotBookable = form.employeeId
+      ? isSlotAvailable({
+        date: form.date,
+        employeeId: form.employeeId,
+        duration: form.duration,
+        time: form.time,
+        appointments,
+        employee: selectedEmployee,
+        vacationRequests,
+        excludeAppointmentId: appointment?.id,
+        slotCapacity: SHARED_RESOURCE_CAPACITY,
+      })
+      : availableSlots.includes(form.time)
+    if (scheduleChanged && !slotBookable) {
+      return setErr(
+        form.employeeId
+          ? 'Ese horario ya no está disponible para el empleado.'
+          : 'Ese horario ya no está disponible para ningún empleado.'
+      )
+    }
+    let payload = buildPayload()
+    if (payload.status === 'cumplida' && !payload.completionPunctuality) {
+      payload = { ...payload, ...buildCompletionPayload({ punctuality: 'on_time' }) }
+    }
+    const occupancyQuery = payload.cabinaId && appointmentBlocksConfirmedSlot(payload)
+      ? {
+        appointments,
+        resourceId: payload.cabinaId,
+        date: payload.date,
+        time: payload.time,
+        duration: payload.duration,
+        excludeId: appointment?.id ?? null,
+      }
+      : null
+    const cabinaName = branchResources.find((resource) => resource.id === payload.cabinaId)?.name
+    if (occupancyQuery && resourcePeakOccupancy(occupancyQuery) > SHARED_RESOURCE_CAPACITY) {
+      return setErr(resourceCapacityMessage(cabinaName))
+    }
+    const employeeName = selectedEmployee?.name || branchStaff.find((m) => m.id === payload.employeeId)?.name
+    if (payload.employeeId && appointmentBlocksConfirmedSlot(payload)) {
+      const employeePeak = employeePeakOccupancy({
+        appointments,
+        employeeId: payload.employeeId,
+        date: payload.date,
+        time: payload.time,
+        duration: payload.duration,
+        excludeId: appointment?.id ?? null,
+      })
+      if (employeePeak > SHARED_RESOURCE_CAPACITY) {
+        return setErr(employeeCapacityMessage(employeeName))
+      }
+      if (employeePeak > 1 && findEmployeeSharing({
+        appointments,
+        employeeId: payload.employeeId,
+        date: payload.date,
+        time: payload.time,
+        duration: payload.duration,
+        excludeId: appointment?.id ?? null,
+      })) {
+        setEmployeeConfirmOpen(true)
+        return
+      }
+    }
+    const sharedWith = occupancyQuery ? findResourceSharing(occupancyQuery) : null
+    const sharedWarning = sharedWith
+      ? sharedResourceWarning({ resourceName: cabinaName, occupant: sharedWith })
+      : ''
+    await performSave(payload, sharedWarning)
+  }
+
+  const confirmEmployeeDoubleBook = async () => {
+    setEmployeeConfirmOpen(false)
+    let payload = buildPayload()
+    if (payload.status === 'cumplida' && !payload.completionPunctuality) {
+      payload = { ...payload, ...buildCompletionPayload({ punctuality: 'on_time' }) }
+    }
+    const occupancyQuery = payload.cabinaId && appointmentBlocksConfirmedSlot(payload)
+      ? {
+        appointments,
+        resourceId: payload.cabinaId,
+        date: payload.date,
+        time: payload.time,
+        duration: payload.duration,
+        excludeId: appointment?.id ?? null,
+      }
+      : null
+    const cabinaName = branchResources.find((resource) => resource.id === payload.cabinaId)?.name
+    const sharedWith = occupancyQuery ? findResourceSharing(occupancyQuery) : null
+    const sharedWarning = sharedWith
+      ? sharedResourceWarning({ resourceName: cabinaName, occupant: sharedWith })
+      : ''
+    await performSave(payload, sharedWarning)
   }
 
   const previewAppointment = useMemo(
@@ -713,6 +785,17 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
           </Button>
         </div>
       </div>
+      <ConfirmDialog
+        open={employeeConfirmOpen}
+        onClose={() => setEmployeeConfirmOpen(false)}
+        onConfirm={confirmEmployeeDoubleBook}
+        title="Confirmar doble cita"
+        description={sharedEmployeeConfirmMessage({ employeeName: selectedEmployee?.name })}
+        confirmLabel="Proceder igualmente"
+        tone="primary"
+        busy={saving}
+        testId="appointment-employee-double-book"
+      />
     </Modal>
   )
 }

@@ -166,9 +166,13 @@ async def application_exception_handler(
             headers = {"Retry-After": str(exc.retry_after_seconds)}
     elif isinstance(exc, ServiceUnavailableError):
         status_code = 503
+    content: dict[str, object] = {"message": exc.message, "parameter": exc.parameter}
+    details = getattr(exc, "details", None)
+    if isinstance(details, dict) and details:
+        content["details"] = details
     return JSONResponse(
         status_code=status_code,
-        content={"message": exc.message, "parameter": exc.parameter},
+        content=content,
         headers=headers,
     )
 

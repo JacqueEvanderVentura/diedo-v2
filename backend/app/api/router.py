@@ -25,6 +25,7 @@ from app.api.routers import (
     master_data,
     meta_webhooks,
     permissions,
+    portal_tasks,
     pos,
     public_booking,
     public_portal,
@@ -46,6 +47,8 @@ api_router.include_router(administration.router)
 api_router.include_router(agenda.router)
 api_router.include_router(public_booking.router)
 api_router.include_router(public_portal.router)
+api_router.include_router(portal_tasks.router)
+api_router.include_router(portal_tasks.customers_router)
 api_router.include_router(catalog.router)
 api_router.include_router(crm.router)
 api_router.include_router(chat.router)

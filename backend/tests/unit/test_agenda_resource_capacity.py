@@ -38,21 +38,25 @@ def _ensure(service: AgendaService, **overrides: object) -> None:
     service._ensure_slot_available(**values)  # type: ignore[arg-type]
 
 
-def test_exclusive_capacity_rejects_any_overlap_after_locking_the_cabin() -> None:
+def test_exclusive_capacity_rejects_any_overlap_on_resource() -> None:
     repository = MagicMock()
-    repository.conflicting_appointment.return_value = _appointment(0, 30)
+    employee = MagicMock()
+    employee.first_name = "Ana"
+    employee.last_name = "Pérez"
+    repository.lock_employee.return_value = employee
+    repository.overlapping_resource_appointments.return_value = (_appointment(0, 30),)
     with pytest.raises(ConflictError) as raised:
-        _ensure(_service(repository), resource_capacity=1)
+        _ensure(_service(repository), resource_capacity=1, employee_id=uuid7())
     assert raised.value.parameter == "time"
     repository.lock_resource.assert_called_once()
-    repository.overlapping_resource_appointments.assert_not_called()
 
 
 def test_exclusive_capacity_allows_free_cabin() -> None:
     repository = MagicMock()
-    repository.conflicting_appointment.return_value = None
-    _ensure(_service(repository), resource_capacity=1)
-    repository.conflicting_appointment.assert_called_once()
+    repository.lock_employee.return_value = MagicMock(first_name="Ana", last_name="Pérez")
+    repository.overlapping_employee_appointments.return_value = ()
+    repository.overlapping_resource_appointments.return_value = ()
+    _ensure(_service(repository), resource_capacity=1, employee_id=uuid7())
 
 
 def test_cabinless_booking_skips_lock_and_uses_exclusive_check() -> None:
@@ -63,19 +67,31 @@ def test_cabinless_booking_skips_lock_and_uses_exclusive_check() -> None:
     repository.overlapping_resource_appointments.assert_not_called()
 
 
-def test_shared_capacity_still_blocks_a_busy_employee() -> None:
+def test_shared_capacity_allows_second_person_for_employee() -> None:
     repository = MagicMock()
-    repository.conflicting_appointment.return_value = _appointment(0, 60)
+    repository.lock_employee.return_value = MagicMock(first_name="Ana", last_name="Pérez")
+    repository.overlapping_employee_appointments.return_value = (_appointment(0, 60),)
+    repository.overlapping_resource_appointments.return_value = ()
+    _ensure(_service(repository), employee_id=uuid7())
+
+
+def test_shared_capacity_blocks_third_person_for_employee() -> None:
+    repository = MagicMock()
+    repository.lock_employee.return_value = MagicMock(first_name="Ana", last_name="Pérez")
+    repository.overlapping_employee_appointments.return_value = (
+        _appointment(0, 60),
+        _appointment(0, 60),
+    )
     with pytest.raises(ConflictError) as raised:
         _ensure(_service(repository), employee_id=uuid7())
-    assert raised.value.parameter == "time"
-    assert repository.conflicting_appointment.call_args.kwargs["resource_id"] is None
-    repository.overlapping_resource_appointments.assert_not_called()
+    assert raised.value.parameter == "employeeId"
+    assert "Ana Pérez ya tiene 2 personas" in str(raised.value)
 
 
-def test_shared_capacity_allows_second_person() -> None:
+def test_shared_capacity_allows_second_person_on_cabin() -> None:
     repository = MagicMock()
-    repository.conflicting_appointment.return_value = None
+    repository.lock_employee.return_value = MagicMock(first_name="Ana", last_name="Pérez")
+    repository.overlapping_employee_appointments.return_value = ()
     repository.overlapping_resource_appointments.return_value = (_appointment(0, 60),)
     _ensure(_service(repository), employee_id=uuid7())
 
@@ -83,6 +99,7 @@ def test_shared_capacity_allows_second_person() -> None:
 def test_shared_capacity_rejects_third_person_with_cabin_name() -> None:
     repository = MagicMock()
     repository.lock_resource.return_value.name = "Cabina 1"
+    repository.overlapping_employee_appointments.return_value = ()
     repository.overlapping_resource_appointments.return_value = (
         _appointment(0, 60),
         _appointment(15, 30),
@@ -96,6 +113,7 @@ def test_shared_capacity_rejects_third_person_with_cabin_name() -> None:
 def test_shared_capacity_falls_back_to_generic_cabin_name() -> None:
     repository = MagicMock()
     repository.lock_resource.return_value = None
+    repository.overlapping_employee_appointments.return_value = ()
     repository.overlapping_resource_appointments.return_value = (
         _appointment(0, 60),
         _appointment(0, 60),

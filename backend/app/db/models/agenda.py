@@ -19,16 +19,15 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, TSTZRANGE, ExcludeConstraint, Range
+from sqlalchemy.dialects.postgresql import JSONB, TSTZRANGE, Range
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 from app.db.models.mixins import TimestampMixin, UuidPrimaryKeyMixin, VersionMixin
 
 ACTIVE_APPOINTMENT_STATUSES = ("confirmed",)
-# Cabins accept two simultaneous confirmed appointments. A specialist still occupies
-# one confirmed slot. Public booking uses the same cabin capacity; the same customer
-# cannot hold two overlapping confirmed appointments.
+# Staff bookings may place up to two simultaneous confirmed appointments per cabin
+# and per specialist. Public booking and "cualquiera disponible" stay exclusive (1).
 SHARED_RESOURCE_CAPACITY = 2
 DEFAULT_APPOINTMENT_RESOURCES = (
     ("cab1", "Cabina 1"),
@@ -258,16 +257,6 @@ class Appointment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             name="occurrence_index_range",
         ),
         CheckConstraint("char_length(idempotency_key) >= 8", name="idempotency_key_length"),
-        ExcludeConstraint(
-            ("workspace_id", "="),
-            ("employee_id", "="),
-            ("scheduled_period", "&&"),
-            where=text(
-                "employee_id IS NOT NULL AND record_status = 'active' AND status = 'confirmed'"
-            ),
-            using="gist",
-            name="excl_appointments_employee_period",
-        ),
         Index(
             "ix_appointments_workspace_branch_date",
             "workspace_id",

@@ -1,5 +1,6 @@
 import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { portalTasksApi } from '@/services/portalTasksApi'
 import { Link } from 'react-router-dom'
 import {
   Phone,
@@ -117,6 +118,28 @@ export function CustomerDetailPanel({
     .filter(Boolean)
 
   const receivables = usePosStore((s) => s.receivables)
+  const [customerPortalTasks, setCustomerPortalTasks] = useState([])
+  const [portalTasksLoading, setPortalTasksLoading] = useState(false)
+
+  useEffect(() => {
+    if (!customer?.id) {
+      setCustomerPortalTasks([])
+      return
+    }
+    let active = true
+    setPortalTasksLoading(true)
+    portalTasksApi.customerTasks(customer.id)
+      .then((data) => {
+        if (active) setCustomerPortalTasks(data.items || [])
+      })
+      .catch(() => {
+        if (active) setCustomerPortalTasks([])
+      })
+      .finally(() => {
+        if (active) setPortalTasksLoading(false)
+      })
+    return () => { active = false }
+  }, [customer?.id])
   const purchases = useMemo(
     () => (customer ? mergeSalesForCustomer(posSales, crmSales, customer.id) : []),
     [posSales, crmSales, customer],
@@ -329,6 +352,37 @@ export function CustomerDetailPanel({
                       <p className="font-medium text-slate-800">{task.title}</p>
                       <p className="text-xs text-slate-500">{fmtDateTime(task.dueAt || task.createdAt)}</p>
                     </DetailRowButton>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+
+          <Section title="Tareas del portal">
+            {portalTasksLoading ? (
+              <p className="py-2 text-sm text-slate-400">Cargando…</p>
+            ) : customerPortalTasks.length === 0 ? (
+              <p className="py-2 text-sm text-slate-400">Sin tareas del portal configuradas.</p>
+            ) : (
+              <ul className="space-y-3" data-testid="customer-detail-portal-tasks">
+                {customerPortalTasks.map((task) => (
+                  <li
+                    key={task.templateId}
+                    className="rounded-xl border border-slate-100 p-3 text-sm"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium text-slate-800">{task.title}</p>
+                      <Badge tone={task.acceptedAt ? 'success' : 'warning'}>
+                        {task.acceptedAt ? 'Aceptada' : 'Pendiente'}
+                      </Badge>
+                    </div>
+                    {task.acceptedAt ? (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Aceptada el {fmtDateTime(task.acceptedAt)}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-xs text-slate-500">Aún no aceptada en el portal.</p>
+                    )}
                   </li>
                 ))}
               </ul>

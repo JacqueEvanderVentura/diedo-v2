@@ -2260,52 +2260,68 @@ class AgendaService:
         resource_capacity: int,
         exclude_appointment_id: UUID | None = None,
     ) -> None:
-        # The cabin has no exclusion constraint anymore; this row lock serializes its bookings.
+        # Row locks serialize specialist and cabin bookings; capacity is enforced in application.
         resource = (
             self._repository.lock_resource(workspace_id, branch_id, resource_id)
             if resource_id is not None
             else None
         )
-        if resource_capacity <= 1 or resource_id is None:
-            conflict = self._repository.conflicting_appointment(
+        employee = (
+            self._repository.lock_employee(workspace_id, employee_id)
+            if employee_id is not None
+            else None
+        )
+        if employee_id is not None:
+            overlapping_employee = self._repository.overlapping_employee_appointments(
                 workspace_id=workspace_id,
-                branch_id=branch_id,
-                resource_id=resource_id,
                 employee_id=employee_id,
                 starts_at=starts_at,
                 ends_at=ends_at,
                 exclude_appointment_id=exclude_appointment_id,
             )
-            if conflict is not None:
-                raise self._slot_conflict()
-            return
-        if employee_id is not None:
+            employee_windows = [(item.starts_at, item.ends_at) for item in overlapping_employee]
+            if peak_occupancy(starts_at, ends_at, employee_windows) > resource_capacity:
+                if resource_capacity <= 1:
+                    raise self._slot_conflict()
+                display = (
+                    f"{employee.first_name} {employee.last_name}".strip()
+                    if employee is not None
+                    else "El especialista"
+                )
+                raise ConflictError(
+                    f"{display} ya tiene {resource_capacity} personas en ese horario.",
+                    "employeeId",
+                )
+        if resource_id is not None:
+            overlapping_resource = self._repository.overlapping_resource_appointments(
+                workspace_id=workspace_id,
+                branch_id=branch_id,
+                resource_id=resource_id,
+                starts_at=starts_at,
+                ends_at=ends_at,
+                exclude_appointment_id=exclude_appointment_id,
+            )
+            resource_windows = [(item.starts_at, item.ends_at) for item in overlapping_resource]
+            if peak_occupancy(starts_at, ends_at, resource_windows) > resource_capacity:
+                if resource_capacity <= 1:
+                    raise self._slot_conflict()
+                name = resource.name if resource is not None else "La cabina"
+                raise ConflictError(
+                    f"{name} ya tiene {resource_capacity} personas en ese horario.",
+                    "cabinaId",
+                )
+        if resource_id is None and employee_id is None:
             conflict = self._repository.conflicting_appointment(
                 workspace_id=workspace_id,
                 branch_id=branch_id,
                 resource_id=None,
-                employee_id=employee_id,
+                employee_id=None,
                 starts_at=starts_at,
                 ends_at=ends_at,
                 exclude_appointment_id=exclude_appointment_id,
             )
             if conflict is not None:
                 raise self._slot_conflict()
-        overlapping = self._repository.overlapping_resource_appointments(
-            workspace_id=workspace_id,
-            branch_id=branch_id,
-            resource_id=resource_id,
-            starts_at=starts_at,
-            ends_at=ends_at,
-            exclude_appointment_id=exclude_appointment_id,
-        )
-        windows = [(item.starts_at, item.ends_at) for item in overlapping]
-        if peak_occupancy(starts_at, ends_at, windows) > resource_capacity:
-            name = resource.name if resource is not None else "La cabina"
-            raise ConflictError(
-                f"{name} ya tiene {resource_capacity} personas en ese horario.",
-                "cabinaId",
-            )
 
     @staticmethod
     def _slot_conflict() -> ConflictError:

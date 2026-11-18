@@ -18,6 +18,7 @@ import {
   Receipt,
   HelpCircle,
   CalendarDays,
+  ClipboardList,
 } from 'lucide-react'
 
 export const SETTINGS_SECTIONS = [
@@ -41,6 +42,18 @@ export const SETTINGS_SECTIONS = [
           { id: 'address', title: 'Dirección fiscal' },
           { id: 'email', title: 'Correo' },
           { id: 'footer', title: 'Nota al pie' },
+        ],
+      },
+      {
+        id: 'portal-tasks',
+        title: 'Tareas del portal',
+        subtitle: 'Consentimiento informado y documentos para clientes',
+        icon: ClipboardList,
+        kind: 'embed',
+        embed: 'portal-tasks',
+        blocks: [
+          { id: 'templates', title: 'Plantillas' },
+          { id: 'consent', title: 'Consentimiento informado' },
         ],
       },
       {

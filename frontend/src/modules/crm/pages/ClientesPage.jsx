@@ -1,7 +1,7 @@
 import { toast } from 'sonner'
 import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, Users, Phone, Mail, Building2, Pencil, Trash2, CheckSquare, Square } from 'lucide-react'
+import { Plus, Search, Users, Phone, Mail, Building2, Pencil, Trash2, CheckSquare, Square, Copy } from 'lucide-react'
 import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
 import { usePosStore } from '@/stores/posStore'
 import { useCrmStore } from '@/stores/crmStore'
@@ -21,6 +21,7 @@ import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
 import { CRM_BRANCH_FILTER_CLASS, getRowBranchIds, matchesBranches } from '@/lib/branches'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { CustomerFormModal } from '../components/CustomerFormModal'
+import { DuplicateCustomersModal } from '../components/DuplicateCustomersModal'
 import { CustomerDetailModal } from '../components/CustomerDetailModal'
 import { QuoteFormModal } from '../components/QuoteFormModal'
 import { ActivityFormModal } from '../components/ActivityFormModal'
@@ -118,6 +119,7 @@ export default function ClientesPage() {
   const [selectedIds, setSelectedIds] = useState(() => new Set())
   const [deleting, setDeleting] = useState(false)
   const [confirm, setConfirm] = useState(null)
+  const [duplicatesOpen, setDuplicatesOpen] = useState(false)
 
   const requestedCustomerId = searchParams.get('customerId') || ''
   const [offlinePage, setOfflinePage] = useState(1)
@@ -321,6 +323,16 @@ export default function ClientesPage() {
               className="w-full rounded-xl border-0 bg-white py-3 pl-10 pr-4 text-sm text-slate-700 ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600"
             />
           </div>
+          {can.customer && online && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setDuplicatesOpen(true)}
+              data-testid="clientes-duplicates-btn"
+            >
+              <Copy className="h-4 w-4" /> Duplicados
+            </Button>
+          )}
           <Button onClick={openNew} data-testid="clientes-new-btn">
             <Plus className="h-4 w-4" /> Nuevo cliente
           </Button>
@@ -598,6 +610,17 @@ export default function ClientesPage() {
         </Card>
       ) : null}
 
+      <DuplicateCustomersModal
+        open={duplicatesOpen}
+        onClose={() => setDuplicatesOpen(false)}
+        onMerged={() => fetchCustomersPage({
+          page: 1,
+          search: query.trim(),
+          typeFilter,
+          statusFilter,
+          branchIds,
+        }).catch(() => {})}
+      />
       <CustomerFormModal open={formOpen} onClose={() => setFormOpen(false)} customer={editing} />
       <CustomerDetailModal
         open={!!detail}

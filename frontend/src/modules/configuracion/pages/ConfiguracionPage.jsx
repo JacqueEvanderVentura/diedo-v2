@@ -17,6 +17,7 @@ import PerfilWorkspacePanel from '../components/PerfilWorkspacePanel'
 import AgendaCabinasPanel from '../components/AgendaCabinasPanel'
 import ChatChannelsPanel from '../components/ChatChannelsPanel'
 import WorkspaceDataResetPanel from '../components/WorkspaceDataResetPanel'
+import PortalTasksPanel from '../components/PortalTasksPanel'
 import { SETTINGS_ITEMS, SETTINGS_SECTIONS } from '../lib/settingsHub'
 import { useSessionStore } from '@/stores/sessionStore'
 import { isWorkspaceAdmin } from '@/services/adapters/iam'
@@ -55,6 +56,7 @@ const EMBED_MAP = {
   'agenda-cabinas': AgendaCabinasPanel,
   'chat-canales': ChatChannelsPanel,
   'data-reset': WorkspaceDataResetPanel,
+  'portal-tasks': PortalTasksPanel,
 }
 
 function EmbedPanel({ embedKey, visibleBlockIds }) {

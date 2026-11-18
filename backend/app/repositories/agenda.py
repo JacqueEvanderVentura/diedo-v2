@@ -618,6 +618,37 @@ class AgendaRepository:
             .with_for_update()
         )
 
+    def lock_employee(self, workspace_id: UUID, employee_id: UUID) -> Employee | None:
+        return self._session.scalar(
+            select(Employee)
+            .where(
+                Employee.workspace_id == workspace_id,
+                Employee.id == employee_id,
+            )
+            .with_for_update()
+        )
+
+    def overlapping_employee_appointments(
+        self,
+        *,
+        workspace_id: UUID,
+        employee_id: UUID,
+        starts_at: datetime,
+        ends_at: datetime,
+        exclude_appointment_id: UUID | None = None,
+    ) -> tuple[Appointment, ...]:
+        statement = select(Appointment).where(
+            Appointment.workspace_id == workspace_id,
+            Appointment.employee_id == employee_id,
+            Appointment.record_status == "active",
+            Appointment.status.in_(ACTIVE_APPOINTMENT_STATUSES),
+            Appointment.starts_at < ends_at,
+            Appointment.ends_at > starts_at,
+        )
+        if exclude_appointment_id is not None:
+            statement = statement.where(Appointment.id != exclude_appointment_id)
+        return tuple(self._session.scalars(statement.order_by(Appointment.starts_at)))
+
     def overlapping_resource_appointments(
         self,
         *,

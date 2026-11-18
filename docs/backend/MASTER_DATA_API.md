@@ -26,6 +26,9 @@ tenant scope, and pagination follow that contract.
 | `POST` | `/api/v1/customers` | `customer.manage` | Create and assign to visible branches |
 | `POST` | `/api/v1/customers/import` | `customer.manage` | Import up to 100 customers per request |
 | `POST` | `/api/v1/customers/batch-delete` | `customer.manage` | Archive up to 100 customers per request |
+| `GET` | `/api/v1/customers/duplicates` | `customer.read` | Groups sharing document, phone, or email |
+| `POST` | `/api/v1/customers/merge` | `customer.manage` | Merge selected customers into `keepCustomerId` |
+| `POST` | `/api/v1/customers/merge-auto` | `customer.manage` | Auto-merge groups in order document → phone → email |
 | `GET` | `/api/v1/customers/{customerId}` | `customer.read` | Scoped detail |
 | `PATCH` | `/api/v1/customers/{customerId}` | `customer.manage` | Versioned update or archive |
 | `GET` | `/api/v1/customers/{customerId}/timeline` | `customer.read` | Stable projection contract for later domain events |
@@ -33,6 +36,13 @@ tenant scope, and pagination follow that contract.
 List filters are `search`, `name`, `phone`, `email`, `type`, `status`, `branchId`, `page`,
 `pageSize`, `sortBy`, and `sortDirection`. The default excludes archived customers. `search`
 matches normalized name, phone, and email.
+
+Duplicate groups come from `GET /duplicates`: shared `normalized_document_id`, then
+`normalized_phone`, then `normalized_email`, among non-archived customers in scope.
+`POST /merge` reassigns appointments, sales, quotes, receivables, CRM activities,
+attachments, carwash visits, and converted leads onto `keepCustomerId`, copies missing
+identity fields, then archives the rest. `POST /merge-auto` walks those groups in the same
+order and keeps the record that already has cédula, otherwise phone, otherwise email.
 
 Customer types are `person` and `business`; statuses are `active`, `inactive`, and `archived`.
 Every customer must be assigned to at least one branch. A branch-scoped actor cannot read or

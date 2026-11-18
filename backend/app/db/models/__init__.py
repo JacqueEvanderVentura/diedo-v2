@@ -97,6 +97,7 @@ from app.db.models.master_data import (
     EmployeeSchedule,
     EmployeeSupervisor,
 )
+from app.db.models.portal_tasks import PortalTaskCompletion, PortalTaskTemplate
 from app.db.models.pos import CashMovement, CashMovementLine, CashRegister
 from app.db.models.purchasing import (
     PurchaseRequest,
@@ -202,6 +203,8 @@ __all__ = [
     "Permission",
     "PaymentMethod",
     "PaymentProof",
+    "PortalTaskCompletion",
+    "PortalTaskTemplate",
     "PlatformUser",
     "PurchaseRequest",
     "PurchaseRequestItem",

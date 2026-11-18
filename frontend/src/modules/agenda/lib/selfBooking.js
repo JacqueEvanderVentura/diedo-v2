@@ -1,4 +1,9 @@
 import { timeSlots, endTime } from '@/modules/agenda/lib/calendar'
+import {
+  SHARED_RESOURCE_CAPACITY,
+  employeePeakOccupancy,
+  resourcePeakOccupancy,
+} from '@/modules/agenda/lib/calendarResourceMove'
 import { normalizeAppointmentStatus } from '@/modules/agenda/lib/completion'
 import {
   getEmployeeSlotsForDate,
@@ -62,26 +67,29 @@ export function getResourceAppointmentsOnDate(
   })
 }
 
+export const PUBLIC_BOOKING_SLOT_CAPACITY = 1
+
 export function getResourceOnlySlots({
   date,
   duration = 30,
   appointments = [],
   resources = [],
   excludeAppointmentId = null,
+  slotCapacity = SHARED_RESOURCE_CAPACITY,
 }) {
   if (!date || !resources.length) return []
   const candidates = timeSlots(8, 20, 30)
   return candidates.filter((slot) =>
-    resources.some((resource) => {
-      const busy = getResourceAppointmentsOnDate(appointments, {
+    resources.some((resource) => (
+      resourcePeakOccupancy({
+        appointments,
         resourceId: resource.id,
         date,
-        excludeAppointmentId,
-      })
-      return !busy.some((appointment) =>
-        timeRangesOverlap(slot, duration, appointment.time, appointment.duration),
-      )
-    }),
+        time: slot,
+        duration,
+        excludeId: excludeAppointmentId,
+      }) <= slotCapacity
+    )),
   )
 }
 
@@ -154,6 +162,7 @@ export function getAvailableSlotsForAny({
   resources = [],
   vacationRequests = [],
   excludeAppointmentId = null,
+  slotCapacity = SHARED_RESOURCE_CAPACITY,
 }) {
   if (!date || !employees.length) return []
   const merged = new Set()
@@ -167,6 +176,7 @@ export function getAvailableSlotsForAny({
       employee,
       vacationRequests,
       excludeAppointmentId,
+      slotCapacity,
     })) {
       merged.add(slot)
     }
@@ -180,6 +190,7 @@ export function getAvailableSlotsForAny({
       appointments,
       resources,
       excludeAppointmentId,
+      slotCapacity,
     }),
   )
   return specialistSlots.filter((slot) => resourceSlots.has(slot))
@@ -193,6 +204,7 @@ export function getAvailableSlots({
   employee = null,
   vacationRequests = [],
   excludeAppointmentId = null,
+  slotCapacity = SHARED_RESOURCE_CAPACITY,
 }) {
   if (!date || !employeeId) return []
 
@@ -202,22 +214,18 @@ export function getAvailableSlots({
     ? getEmployeeSlotsForDate({ employee, date, duration })
     : timeSlots(8, 20, 30)
 
-  const busy = getEmployeeAppointmentsOnDate(appointments, {
-    employeeId,
-    date,
-    excludeAppointmentId,
-  })
-
   return candidates.filter((slot) => {
     const slotTime = normalizeAppointmentTime(slot)
     if (!slotTime) return false
     if (!fitsInSchedule({ employee, date, time: slotTime, duration })) return false
-    return !busy.some((appointment) => timeRangesOverlap(
-      slotTime,
+    return employeePeakOccupancy({
+      appointments,
+      employeeId,
+      date,
+      time: slotTime,
       duration,
-      appointment.time,
-      appointment.duration
-    ))
+      excludeId: excludeAppointmentId,
+    }) <= slotCapacity
   })
 }
 

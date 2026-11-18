@@ -1304,10 +1304,21 @@ def test_public_portal_register_and_empty_history(client, booking_setup):
 
 
 @pytest.mark.integration
-def test_public_booking_shares_cabin_capacity_across_customers(client, booking_setup):
+def test_public_booking_rejects_second_customer_in_occupied_cabin_slot(client, booking_setup):
     headers, _, branch, employee, service = booking_setup
     other_employee = _create_online_specialist(client, headers, branch)
     _set_service_duration(client, headers, service, 30)
+    resources = client.get(
+        "/api/v1/appointment-resources", headers=headers, params={"branchId": branch}
+    ).json()["items"]
+    for resource in resources[1:]:
+        blocked = client.patch(
+            f"/api/v1/appointment-resources/{resource['id']}",
+            headers=headers,
+            params={"branchId": branch},
+            json={"version": resource["version"], "onlineBookingEnabled": False},
+        )
+        assert blocked.status_code == 200, blocked.text
     base = f"/api/v1/public/booking/branches/{branch}"
     first_body = payload_for(employee, service)
     first = client.post(
@@ -1325,12 +1336,7 @@ def test_public_booking_shares_cabin_capacity_across_customers(client, booking_s
         },
         headers={"Idempotency-Key": str(uuid7())},
     )
-    assert second.status_code == 201, second.text
-    with get_session_factory()() as session:
-        first_row = session.get(Appointment, UUID(first.json()["appointment"]["id"]))
-        second_row = session.get(Appointment, UUID(second.json()["appointment"]["id"]))
-        assert first_row.resource_id == second_row.resource_id
-        assert first_row.employee_id != second_row.employee_id
+    assert second.status_code == 409, second.text
 
 
 @pytest.mark.integration
@@ -1370,7 +1376,12 @@ def test_public_booking_rejects_same_customer_overlapping_slot(client, booking_s
     assert "10:00" not in hidden.json()["slots"]
     later = client.post(
         f"{base}/appointments",
-        json={**body, "employeeId": other_employee, "time": "11:00"},
+        json={
+            **body,
+            "employeeId": other_employee,
+            "time": "11:00",
+            "pendingAppointmentAction": "keep",
+        },
         headers={"Idempotency-Key": str(uuid7())},
     )
     assert later.status_code == 201, later.text

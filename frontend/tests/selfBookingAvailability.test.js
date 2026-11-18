@@ -32,7 +32,7 @@ describe('selfBooking availability', () => {
     expect(timeRangesOverlap('14:00', 30, '15:00', 60)).toBe(false)
   })
 
-  it('hides slots that collide with Pepe calendar on Tuesday', () => {
+  it('keeps a second staff slot when one confirmed booking overlaps', () => {
     const appointments = [
       { id: 'a1', date: TUESDAY, time: '10:00', duration: 60, employeeId: PEPE, status: 'confirmada' },
       { id: 'a2', date: TUESDAY, time: '15:00', duration: 60, employeeId: PEPE, status: 'confirmada' },
@@ -48,13 +48,31 @@ describe('selfBooking availability', () => {
       vacationRequests: [],
     })
 
-    expect(slots).not.toContain('10:00')
-    expect(slots).not.toContain('10:30')
-    expect(slots).not.toContain('15:00')
-    expect(slots).not.toContain('15:30')
+    expect(slots).toContain('10:00')
+    expect(slots).toContain('10:30')
+    expect(slots).toContain('15:00')
+    expect(slots).toContain('15:30')
     expect(slots).toContain('11:00')
     expect(slots).toContain('14:30')
     expect(slots).toContain('16:00')
+  })
+
+  it('hides public slots after the first confirmed booking overlaps', () => {
+    const appointments = [
+      { id: 'a1', date: TUESDAY, time: '10:00', duration: 60, employeeId: PEPE, status: 'confirmada' },
+    ]
+    const slots = getAvailableSlots({
+      date: TUESDAY,
+      employeeId: PEPE,
+      duration: 30,
+      appointments,
+      employee: null,
+      vacationRequests: [],
+      slotCapacity: 1,
+    })
+    expect(slots).not.toContain('10:00')
+    expect(slots).not.toContain('10:30')
+    expect(slots).toContain('11:00')
   })
 
   it('ignores cancelled appointments', () => {
@@ -85,7 +103,17 @@ describe('selfBooking availability', () => {
       appointments,
       employee: null,
       vacationRequests: [],
+      slotCapacity: 1,
     })).toBe(false)
+    expect(isSlotAvailable({
+      date: TUESDAY,
+      employeeId: PEPE,
+      duration: 30,
+      time: '15:30',
+      appointments,
+      employee: null,
+      vacationRequests: [],
+    })).toBe(true)
     expect(isSlotAvailable({
       date: TUESDAY,
       employeeId: PEPE,
@@ -142,12 +170,35 @@ describe('selfBooking availability', () => {
       resources: [{ id: 'cab-1' }],
       vacationRequests: [],
     })
-    expect(slots).not.toContain('09:00')
+    expect(slots).toContain('09:00')
+    expect(getAvailableSlotsForAny({
+      date: monday,
+      duration: 30,
+      appointments,
+      employees: [employeeA],
+      resources: [{ id: 'cab-1' }],
+      vacationRequests: [],
+      slotCapacity: 1,
+    })).not.toContain('09:00')
     expect(getResourceOnlySlots({
       date: monday,
       duration: 30,
       appointments,
       resources: [{ id: 'cab-1' }],
     })).toContain('10:00')
+    expect(getResourceOnlySlots({
+      date: monday,
+      duration: 30,
+      appointments,
+      resources: [{ id: 'cab-1' }],
+      slotCapacity: 1,
+    })).not.toContain('09:00')
+    expect(getResourceOnlySlots({
+      date: monday,
+      duration: 30,
+      appointments,
+      resources: [{ id: 'cab-1' }],
+      slotCapacity: 1,
+    })).not.toContain('09:30')
   })
 })

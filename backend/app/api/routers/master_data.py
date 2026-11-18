@@ -27,6 +27,7 @@ from app.schemas.common import ErrorResponse
 from app.schemas.master_data import (
     AttachmentClassification,
     AttachmentResponse,
+    AutoMergeCustomersResponse,
     BranchReference,
     CreateCustomerRequest,
     CreateEmployeeRequest,
@@ -37,6 +38,9 @@ from app.schemas.master_data import (
     DeleteCustomerResultItem,
     DeleteCustomersRequest,
     DeleteCustomersResponse,
+    DuplicateCustomerGroupResponse,
+    DuplicateCustomersResponse,
+    DuplicateCustomerSummary,
     EmployeeResponse,
     EmployeeScheduleResponse,
     EmployeeSortField,
@@ -44,6 +48,8 @@ from app.schemas.master_data import (
     ImportCustomersRequest,
     ImportCustomersResponse,
     MasterDataStatus,
+    MergeCustomersRequest,
+    MergeCustomersResult,
     PaginatedCustomersResponse,
     PaginatedEmployeesResponse,
     PutEmployeeScheduleRequest,
@@ -242,6 +248,95 @@ def import_customers(
     )
     return ImportCustomersResponse(
         items=[ImportCustomerRowResult.model_validate(row) for row in rows]
+    )
+
+
+@customers_router.get(
+    "/duplicates",
+    summary="Listar grupos de clientes duplicados por cédula, teléfono o correo",
+    responses=_SECURITY_RESPONSES,
+)
+def list_duplicate_customers(
+    database: DatabaseSession,
+    grant: CustomerReadGrant,
+) -> DuplicateCustomersResponse:
+    groups = MasterDataService(database).list_duplicate_customers(grant)
+    return DuplicateCustomersResponse(
+        groups=[
+            DuplicateCustomerGroupResponse(
+                match_type=group.match_type,
+                match_value=group.match_value,
+                customers=[
+                    DuplicateCustomerSummary(
+                        id=customer.id,
+                        display_name=customer.display_name,
+                        email=customer.email,
+                        phone=customer.phone,
+                        document_type=customer.document_type,  # type: ignore[arg-type]
+                        document_id=customer.document_id,
+                        status=customer.status,  # type: ignore[arg-type]
+                        version=customer.version,
+                        created_at=customer.created_at,
+                    )
+                    for customer in group.customers
+                ],
+            )
+            for group in groups
+        ],
+        total_groups=len(groups),
+    )
+
+
+@customers_router.post(
+    "/merge",
+    summary="Combinar clientes duplicados conservando uno",
+    responses=_WRITE_RESPONSES,
+)
+def merge_customers(
+    payload: MergeCustomersRequest,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: CustomerManageGrant,
+) -> MergeCustomersResult:
+    result = MasterDataService(database).merge_customers(
+        principal=principal,
+        grant=grant,
+        customer_ids=payload.customer_ids,
+        keep_customer_id=payload.keep_customer_id,
+    )
+    return MergeCustomersResult(
+        kept_customer_id=result["kept_customer_id"],
+        archived_customer_ids=result["archived_customer_ids"],
+        customer=_customer_response(result["customer"]),
+    )
+
+
+@customers_router.post(
+    "/merge-auto",
+    summary="Combinar duplicados automáticamente (cédula, luego teléfono, luego correo)",
+    responses=_WRITE_RESPONSES,
+)
+def auto_merge_duplicate_customers(
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+    grant: CustomerManageGrant,
+) -> AutoMergeCustomersResponse:
+    items = MasterDataService(database).auto_merge_duplicate_customers(
+        principal=principal,
+        grant=grant,
+    )
+    archived = sum(len(item["archived_customer_ids"]) for item in items)
+    return AutoMergeCustomersResponse(
+        merged_groups=len(items),
+        archived_customers=archived,
+        items=[
+            MergeCustomersResult(
+                kept_customer_id=item["kept_customer_id"],
+                archived_customer_ids=item["archived_customer_ids"],
+                customer=_customer_response(item["customer"]),
+            )
+            for item in items
+        ],
     )
 
 

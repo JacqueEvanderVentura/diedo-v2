@@ -24,10 +24,11 @@ from app.db.models import (
     Workspace,
     WorkspaceMembership,
 )
-from app.db.models.agenda import ACTIVE_APPOINTMENT_STATUSES, SHARED_RESOURCE_CAPACITY
+from app.db.models.agenda import ACTIVE_APPOINTMENT_STATUSES
 from app.db.models.email_notifications import EmailNotification
 from app.repositories.agenda import AgendaRepository
 from app.repositories.master_data import MasterDataRepository
+from app.schemas.public_booking import PublicPendingAppointmentSummary
 from app.services.agenda import AgendaService, peak_occupancy
 from app.services.appointment_reminders import AppointmentReminderService
 from app.services.auth import AuthPrincipal
@@ -52,6 +53,15 @@ from app.services.email_notifications import deliver_email, enqueue_email, notif
 from app.services.errors import ConflictError, InvalidOperationError, ResourceNotFoundError
 from app.services.mailer import render_appointment_email
 from app.services.master_data import normalize_name
+
+PUBLIC_BOOKING_SLOT_CAPACITY = 1
+
+
+def _pending_appointment_conflict_details(pending: dict[str, Any]) -> dict[str, Any]:
+    summary = PublicPendingAppointmentSummary.model_validate(pending)
+    return {
+        "pendingAppointment": summary.model_dump(by_alias=True, mode="json"),
+    }
 
 
 class PublicBookingService:
@@ -150,9 +160,11 @@ class PublicBookingService:
                 "observaciones": None,
                 "last_service_id": None,
                 "last_employee_id": None,
+                "pending_appointment": None,
             }
         extras = self._profile_extras(customer.id)
         last_visit = self._last_visit_ids(branch.workspace_id, customer.id)
+        pending = self._pending_branch_appointment(branch.workspace_id, branch.id, customer.id)
         return {
             "customer_id": customer.id,
             "is_new": False,
@@ -163,6 +175,7 @@ class PublicBookingService:
             "phone": customer.phone,
             **extras,
             **last_visit,
+            "pending_appointment": pending,
         }
 
     def list_slots(
@@ -233,7 +246,7 @@ class PublicBookingService:
                 for appointment in overlapping
                 if appointment.resource_id == resource.id
             ]
-            if peak_occupancy(starts_at, ends_at, windows) <= SHARED_RESOURCE_CAPACITY:
+            if peak_occupancy(starts_at, ends_at, windows) <= PUBLIC_BOOKING_SLOT_CAPACITY:
                 free.append(resource.id)
         return free
 
@@ -251,6 +264,58 @@ class PublicBookingService:
             return None
         customer = self._master_data.customer_by_document(workspace_id, normalized)
         return None if customer is None else customer.id
+
+    def _pending_branch_appointment(
+        self, workspace_id: UUID, branch_id: UUID, customer_id: UUID
+    ) -> dict[str, Any] | None:
+        now = utc_now()
+        row = self._session.scalars(
+            select(Appointment)
+            .where(
+                Appointment.workspace_id == workspace_id,
+                Appointment.branch_id == branch_id,
+                Appointment.customer_id == customer_id,
+                Appointment.record_status == "active",
+                Appointment.status.in_(ACTIVE_APPOINTMENT_STATUSES),
+                Appointment.starts_at > now,
+            )
+            .order_by(Appointment.starts_at)
+            .limit(1)
+        ).first()
+        if row is None:
+            return None
+        return {
+            "id": row.id,
+            "service_name": row.service_name,
+            "date": row.scheduled_date,
+            "time": row.scheduled_time.strftime("%H:%M"),
+        }
+
+    def _cancel_customer_pending(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        appointment_id: UUID,
+    ) -> None:
+        appointment = self._agenda.get_appointment(
+            workspace_id=grant.workspace_id,
+            appointment_id=appointment_id,
+            allowed_branch_ids=None,
+            lock=True,
+        )
+        if appointment is None:
+            raise ResourceNotFoundError("La cita pendiente ya no existe.", "pendingAppointment")
+        AgendaService(self._session).update_appointment(
+            principal=principal,
+            grant=grant,
+            appointment_id=appointment_id,
+            expected_version=appointment.version,
+            changes={"status": "cancelled"},
+            commit=False,
+            enforce_resource_acl=False,
+            resource_capacity=PUBLIC_BOOKING_SLOT_CAPACITY,
+        )
 
     def _customer_overlapping_appointment(
         self,
@@ -659,6 +724,21 @@ class PublicBookingService:
             starts_at=slot_start,
             ends_at=slot_start + timedelta(minutes=duration),
         )
+        pending = self._pending_branch_appointment(branch.workspace_id, branch.id, customer.id)
+        pending_action = payload.get("pending_appointment_action")
+        if pending is not None:
+            if pending_action not in {"keep", "replace"}:
+                raise ConflictError(
+                    "Ya tienes una cita pendiente en esta sucursal.",
+                    "pendingAppointment",
+                    details=_pending_appointment_conflict_details(pending),
+                )
+            if pending_action == "replace":
+                self._cancel_customer_pending(
+                    principal=principal,
+                    grant=grant,
+                    appointment_id=cast(UUID, pending["id"]),
+                )
         values = {
             "branch_id": branch.id,
             "resource_id": resource_id,
@@ -689,7 +769,7 @@ class PublicBookingService:
             idempotency_key=key,
             commit=False,
             enforce_resource_acl=False,
-            resource_capacity=SHARED_RESOURCE_CAPACITY,
+            resource_capacity=PUBLIC_BOOKING_SLOT_CAPACITY,
         )
         record = records[0]
         appointment = record.appointment
@@ -987,7 +1067,7 @@ class PublicBookingService:
             changes=changes,
             commit=False,
             enforce_resource_acl=False,
-            resource_capacity=SHARED_RESOURCE_CAPACITY,
+            resource_capacity=PUBLIC_BOOKING_SLOT_CAPACITY,
         )
         notification = self._enqueue_appointment(
             record.appointment, branch, workspace, "appointment.rescheduled"

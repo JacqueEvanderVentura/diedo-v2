@@ -55,6 +55,9 @@ vi.mock('@/stores/customersStore', () => ({
     setCustomersPage: vi.fn(() => Promise.resolve()),
     setCustomersPageSize: vi.fn(() => Promise.resolve()),
     deleteCustomers: vi.fn(),
+    fetchDuplicateCustomers: vi.fn(() => Promise.resolve({ groups: [] })),
+    mergeDuplicateCustomers: vi.fn(),
+    autoMergeDuplicateCustomers: vi.fn(),
   }),
 }))
 
@@ -107,5 +110,11 @@ describe('SimplifiedCustomersPanel', () => {
     renderPanel()
     fireEvent.click(screen.getByTestId('crm-simplified-customers-empty-new'))
     expect(screen.getByTestId('customer-form-open')).toBeTruthy()
+  })
+
+  it('abre duplicados desde el directorio simplificado', () => {
+    renderPanel()
+    fireEvent.click(screen.getByTestId('crm-simplified-customers-duplicates-btn'))
+    expect(screen.getByTestId('clientes-duplicates-modal')).toBeTruthy()
   })
 })

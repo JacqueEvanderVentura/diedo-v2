@@ -28,7 +28,7 @@ def _occupant(resource_id, start=_START, minutes=30) -> MagicMock:
     return appointment
 
 
-def test_public_cabin_keeps_a_second_seat() -> None:
+def test_public_cabin_hides_slot_after_first_occupant() -> None:
     resource = _resource()
     free = _service()._free_resource_ids(
         [resource],
@@ -36,7 +36,7 @@ def test_public_cabin_keeps_a_second_seat() -> None:
         _START,
         _END,
     )
-    assert free == [resource.id]
+    assert free == []
 
 
 def test_public_cabin_closes_after_two_people() -> None:

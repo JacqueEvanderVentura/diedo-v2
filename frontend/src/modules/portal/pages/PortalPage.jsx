@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   CalendarClock,
+  ClipboardList,
   CreditCard,
   Eye,
   FileText,
@@ -15,7 +16,7 @@ import { publicPortalApi } from '@/services/publicPortalApi'
 import { publicBookingApi } from '@/services/publicBookingApi'
 import { useSessionStore } from '@/stores/sessionStore'
 import { formatDOP } from '@/lib/format'
-import { fmtDate } from '@/modules/crm/lib/crm'
+import { fmtDate, fmtDateTime } from '@/modules/crm/lib/crm'
 import { formatTime12h } from '@/modules/agenda/lib/calendar'
 import { managementUrl } from '@/modules/agenda/lib/notification'
 import { PublicShell } from '../components/PublicShell'
@@ -42,6 +43,7 @@ const STAT_TONES = {
 
 const TABS = [
   { id: 'citas', label: 'Citas', icon: CalendarClock },
+  { id: 'tareas', label: 'Tareas', icon: ClipboardList },
   { id: 'facturas', label: 'Facturas', icon: FileText },
   { id: 'pagos', label: 'Pagos', icon: Wallet },
 ]
@@ -57,6 +59,12 @@ export default function PortalPage() {
   const [appointments, setAppointments] = useState([])
   const [invoices, setInvoices] = useState([])
   const [receivables, setReceivables] = useState([])
+  const [portalTasks, setPortalTasks] = useState([])
+  const [taskSavingId, setTaskSavingId] = useState(null)
+  const [taskChecks, setTaskChecks] = useState({})
+  const [taskPreview, setTaskPreview] = useState(null)
+  const [taskPreviewLoading, setTaskPreviewLoading] = useState(false)
+  const [taskPreviewError, setTaskPreviewError] = useState('')
   const [loading, setLoading] = useState(true)
   const [branchName, setBranchName] = useState('')
   const [cancellingId, setCancellingId] = useState(null)
@@ -81,14 +89,16 @@ export default function PortalPage() {
       publicPortalApi.listAppointments(branchId, session),
       publicPortalApi.listInvoices(branchId, session),
       publicPortalApi.listReceivables(branchId, session),
+      publicPortalApi.listTasks(branchId, session),
     ])
-      .then(([context, me, apts, invs, cxc]) => {
+      .then(([context, me, apts, invs, cxc, tasks]) => {
         if (!active) return
         setBranchName(context?.branch?.branchName || '')
         setProfile(me)
         setAppointments(apts.items || [])
         setInvoices(invs.items || [])
         setReceivables(cxc.items || [])
+        setPortalTasks(tasks.items || [])
       })
       .catch(() => {
         if (active) toast.error('No se pudo cargar tu portal. Intenta iniciar sesión de nuevo.')
@@ -182,11 +192,58 @@ export default function PortalPage() {
     }
   }
 
+  const pendingTaskCount = useMemo(
+    () => portalTasks.filter((task) => !task.acceptedAt).length,
+    [portalTasks],
+  )
+
   const empty = useMemo(() => ({
     citas: branchAppointments.length === 0,
+    tareas: portalTasks.length === 0,
     facturas: invoices.length === 0,
     pagos: receivables.length === 0,
-  }), [branchAppointments, invoices, receivables])
+  }), [branchAppointments, portalTasks, invoices, receivables])
+
+  const closeTaskPreview = () => {
+    if (taskPreview?.blobUrl) URL.revokeObjectURL(taskPreview.blobUrl)
+    setTaskPreview(null)
+    setTaskPreviewError('')
+    setTaskPreviewLoading(false)
+  }
+
+  const openTaskPreview = async (task) => {
+    if (!session?.documentId) return
+    setTaskPreview({ title: task.title, blobUrl: null })
+    setTaskPreviewLoading(true)
+    setTaskPreviewError('')
+    try {
+      const blob = await publicPortalApi.fetchTaskPdf(branchId, task.id, session)
+      const blobUrl = URL.createObjectURL(blob)
+      setTaskPreview({ title: task.title, blobUrl })
+    } catch (error) {
+      const message = error?.message || 'No se pudo cargar el documento.'
+      setTaskPreviewError(message)
+      toast.error(message)
+    } finally {
+      setTaskPreviewLoading(false)
+    }
+  }
+
+  const saveTaskAcceptance = async (task) => {
+    if (task.acceptedAt || !taskChecks[task.id]) return
+    setTaskSavingId(task.id)
+    try {
+      const result = await publicPortalApi.acceptTask(branchId, task.id, session)
+      setPortalTasks((items) => items.map((item) => (
+        item.id === task.id ? { ...item, acceptedAt: result.acceptedAt } : item
+      )))
+      toast.success('Aceptación guardada.')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo guardar.')
+    } finally {
+      setTaskSavingId(null)
+    }
+  }
 
   return (
     <PublicShell
@@ -221,7 +278,14 @@ export default function PortalPage() {
               )}
             >
               <item.icon className="h-3.5 w-3.5" />
-              {item.label}
+              <span className="inline-flex items-center gap-1">
+                {item.label}
+                {item.id === 'tareas' && pendingTaskCount > 0 ? (
+                  <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                    {pendingTaskCount}
+                  </span>
+                ) : null}
+              </span>
             </button>
           ))}
         </nav>
@@ -305,6 +369,73 @@ export default function PortalPage() {
                 </ul>
               </Section>
             )}
+            {tab === 'tareas' && (
+              <Section empty={empty.tareas} emptyLabel="No hay tareas pendientes por ahora.">
+                <ul className="space-y-3" data-testid="portal-tasks">
+                  {portalTasks.map((task) => {
+                    const accepted = Boolean(task.acceptedAt)
+                    const checked = accepted || Boolean(taskChecks[task.id])
+                    return (
+                      <li key={task.id} className="rounded-xl border border-slate-100 bg-white p-4 text-sm">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="font-semibold text-slate-900">{task.title}</p>
+                          <Badge tone={accepted ? 'success' : 'warning'}>
+                            {accepted ? 'Completada' : 'Pendiente'}
+                          </Badge>
+                        </div>
+                        {task.hasPdf ? (
+                          <button
+                            type="button"
+                            onClick={() => openTaskPreview(task)}
+                            className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
+                            data-testid={`portal-task-pdf-${task.id}`}
+                          >
+                            <Eye className="h-3.5 w-3.5" /> Ver documento
+                          </button>
+                        ) : null}
+                        <label className={cn(
+                          'mt-3 flex items-start gap-2 rounded-lg border border-slate-100 p-3',
+                          accepted && 'bg-emerald-50/60',
+                        )}
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-0.5"
+                            checked={checked}
+                            disabled={accepted}
+                            onChange={(event) => {
+                              if (accepted) return
+                              setTaskChecks((state) => ({
+                                ...state,
+                                [task.id]: event.target.checked,
+                              }))
+                            }}
+                            data-testid={`portal-task-check-${task.id}`}
+                          />
+                          <span className="text-slate-700">{task.checkboxLabel}</span>
+                        </label>
+                        {accepted ? (
+                          <p className="mt-2 text-xs text-emerald-700">
+                            Aceptado el {fmtDateTime(task.acceptedAt)}
+                          </p>
+                        ) : (
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="mt-3 w-full"
+                            disabled={!checked || taskSavingId === task.id}
+                            onClick={() => saveTaskAcceptance(task)}
+                            data-testid={`portal-task-save-${task.id}`}
+                          >
+                            {taskSavingId === task.id ? 'Guardando…' : 'Guardar aceptación'}
+                          </Button>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </Section>
+            )}
             {tab === 'facturas' && (
               <Section empty={empty.facturas} emptyLabel="No hay facturas disponibles.">
                 <ul className="space-y-2">
@@ -362,6 +493,14 @@ export default function PortalPage() {
         pdfUrl={invoicePreview?.blobUrl}
         loading={invoicePreviewLoading}
         error={invoicePreviewError}
+      />
+      <PortalInvoicePreviewModal
+        open={taskPreview !== null}
+        onClose={closeTaskPreview}
+        saleNumber={taskPreview?.title}
+        pdfUrl={taskPreview?.blobUrl}
+        loading={taskPreviewLoading}
+        error={taskPreviewError}
       />
       <PortalCancelAppointmentModal
         open={cancelTarget !== null}
