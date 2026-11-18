@@ -1,0 +1,43 @@
+{
+  "customers_csv": "C:\\Users\\Evand\\Desktop\\Programming\\techies\\diedo-v2\\cheko-massive-import\\out\\customers-from-agenda.csv",
+  "customers_rows": 3722,
+  "customers_by_branch_csv": {
+    "charm-dn": "C:\\Users\\Evand\\Desktop\\Programming\\techies\\diedo-v2\\cheko-massive-import\\out\\customers-charm-dn.csv",
+    "charm-sde": "C:\\Users\\Evand\\Desktop\\Programming\\techies\\diedo-v2\\cheko-massive-import\\out\\customers-charm-sde.csv",
+    "charm-stgo": "C:\\Users\\Evand\\Desktop\\Programming\\techies\\diedo-v2\\cheko-massive-import\\out\\customers-charm-stgo.csv"
+  },
+  "customers_by_branch_rows": {
+    "charm-dn": 2341,
+    "charm-sde": 202,
+    "charm-stgo": 1230
+  },
+  "agenda_csv": {
+    "charm-dn": "C:\\Users\\Evand\\Desktop\\Programming\\techies\\diedo-v2\\cheko-massive-import\\out\\agenda-charm-dn.csv",
+    "charm-sde": "C:\\Users\\Evand\\Desktop\\Programming\\techies\\diedo-v2\\cheko-massive-import\\out\\agenda-charm-sde.csv",
+    "charm-stgo": "C:\\Users\\Evand\\Desktop\\Programming\\techies\\diedo-v2\\cheko-massive-import\\out\\agenda-charm-stgo.csv"
+  },
+  "agenda_rows": {
+    "charm-dn": 3099,
+    "charm-sde": 826,
+    "charm-stgo": 1755
+  },
+  "extra_agenda_csv": {
+    "sde-update": "C:\\Users\\Evand\\Desktop\\Programming\\techies\\diedo-v2\\cheko-massive-import\\out\\agenda-sde-update.csv"
+  },
+  "extra_agenda_rows": {
+    "sde-update": 612
+  },
+  "extra_customers_csv": {
+    "sde-update": "C:\\Users\\Evand\\Desktop\\Programming\\techies\\diedo-v2\\cheko-massive-import\\out\\customers-sde-update.csv"
+  },
+  "extra_customers_rows": {
+    "sde-update": 474
+  },
+  "import_notes": [
+    "Clientes (UI): customers-charm-dn/sde/stgo.csv — una sucursal por archivo.",
+    "customers-from-agenda.csv es referencia combinada; no importar una sola vez a DN.",
+    "Citas: agenda-charm-*.csv — misma sucursal que el CSV de clientes; agenda-charm-sde.csv incluye también el batch sde-update.",
+    "syncCustomers: desactivado — importar clientes antes de citas.",
+    "Batches extra (p. ej. sde-update): customers-{label}.csv luego agenda-{label}.csv en Charm SDE."
+  ]
+}

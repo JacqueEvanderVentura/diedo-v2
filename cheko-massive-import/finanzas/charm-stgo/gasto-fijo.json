@@ -1,0 +1,62 @@
+[
+    {
+        "id": "0869811f-8184-5c46-b1d3-d123a0aa3ac1",
+        "nombre": "Local Charm STGO",
+        "monto": 64000.00,
+        "categoria_id": "f6d32c47-13b9-5b2a-915d-3d99bd649fca",
+        "categoria_nombre": "Pago local",
+        "sucursal_id": "63278b45-21ee-50ff-8a2f-2dc6e6787747",
+        "active": true,
+        "dia_pago": 5
+    },
+    {
+        "id": "e73b3367-ba51-5fc0-a474-c7517c894233",
+        "nombre": "Nomina Charm STGO 1ra 15na ",
+        "monto": 52000.00,
+        "categoria_id": "663540e4-a236-5afe-a16d-184041a38274",
+        "categoria_nombre": "Salario de Empleados",
+        "sucursal_id": "63278b45-21ee-50ff-8a2f-2dc6e6787747",
+        "active": true,
+        "dia_pago": 15
+    },
+    {
+        "id": "08278c6f-f800-5cf7-ac40-945422078546",
+        "nombre": "Mantenimiento y luz local STGO",
+        "monto": 33507.14,
+        "categoria_id": "42334c54-f68e-59ec-82c6-2e7191f12b4d",
+        "categoria_nombre": "Mantenimiento y luz",
+        "sucursal_id": "63278b45-21ee-50ff-8a2f-2dc6e6787747",
+        "active": true,
+        "dia_pago": 21
+    },
+    {
+        "id": "eb4c577b-877a-5905-9cb1-b2b08c472970",
+        "nombre": "Retención 18% local Stgo ",
+        "monto": 11520.00,
+        "categoria_id": "f6d32c47-13b9-5b2a-915d-3d99bd649fca",
+        "categoria_nombre": "Pago local",
+        "sucursal_id": "63278b45-21ee-50ff-8a2f-2dc6e6787747",
+        "active": true,
+        "dia_pago": 30
+    },
+    {
+        "id": "d58e54a7-e31d-59fe-94e0-bcb329d21933",
+        "nombre": "Luis técnico ",
+        "monto": 17500.00,
+        "categoria_id": "663540e4-a236-5afe-a16d-184041a38274",
+        "categoria_nombre": "Salario de Empleados",
+        "sucursal_id": "63278b45-21ee-50ff-8a2f-2dc6e6787747",
+        "active": true,
+        "dia_pago": 30
+    },
+    {
+        "id": "0433b47c-2d88-5452-88b0-e546d76ec434",
+        "nombre": "Nomina Charm STGO 2da 15na ",
+        "monto": 52000.00,
+        "categoria_id": "663540e4-a236-5afe-a16d-184041a38274",
+        "categoria_nombre": "Salario de Empleados",
+        "sucursal_id": "63278b45-21ee-50ff-8a2f-2dc6e6787747",
+        "active": true,
+        "dia_pago": 30
+    }
+]

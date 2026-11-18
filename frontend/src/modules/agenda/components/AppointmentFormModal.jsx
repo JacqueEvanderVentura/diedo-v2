@@ -53,6 +53,7 @@ import {
   resourceCapacityMessage,
   resourcePeakOccupancy,
   sharedEmployeeConfirmMessage,
+  sharedEmployeeOutsideScheduleConfirmMessage,
   sharedResourceWarning,
 } from '../lib/calendarResourceMove'
 import { fetchLastVisitBookingDefaults } from '../lib/customerBookingDefaults'
@@ -108,6 +109,8 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
   const [employeeConfirmOpen, setEmployeeConfirmOpen] = useState(false)
+  const [employeeScheduleConfirmOpen, setEmployeeScheduleConfirmOpen] = useState(false)
+  const [scheduleOverride, setScheduleOverride] = useState(false)
   const appointments = useAvailabilityAppointments(form.date, form.employeeId, form.branchId)
   const editing = !!appointment
   const notesLength = Array.from(form.notes || '').length
@@ -129,6 +132,8 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
         : empty(defaultDate, defaultCustomerId, { ...defaultSlot, branchId }))
       setErr('')
       setSaving(false)
+      setEmployeeScheduleConfirmOpen(false)
+      setScheduleOverride(false)
     }
   }, [open, appointment, defaultDate, defaultCustomerId, defaultSlot, branches])
 
@@ -350,8 +355,9 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     }
   }
 
-  const submit = async () => {
+  const submit = async ({ allowOutsideEmployeeSchedule = false } = {}) => {
     if (saving) return
+    const allowScheduleOverride = allowOutsideEmployeeSchedule || scheduleOverride
     if (!form.branchId) return setErr('Selecciona una sucursal.')
     if (!editing && !resourcesLoading && branchResources.length === 0) {
       return setErr('La sucursal seleccionada no tiene cabinas o recursos activos.')
@@ -364,17 +370,17 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
       return setErr(`Las notas admiten un máximo de ${APPOINTMENT_NOTES_MAX_LENGTH} caracteres.`)
     }
     const scheduleChanged = appointmentScheduleChanged(appointment, form)
-    if (
-      scheduleChanged &&
-      selectedEmployee &&
-      !fitsInSchedule({
+    const outsideEmployeeSchedule = scheduleChanged
+      && selectedEmployee
+      && !fitsInSchedule({
         employee: selectedEmployee,
         date: form.date,
         time: form.time,
         duration: form.duration,
       })
-    ) {
-      return setErr('La hora seleccionada está fuera del horario del empleado.')
+    if (outsideEmployeeSchedule && !allowScheduleOverride) {
+      setEmployeeScheduleConfirmOpen(true)
+      return
     }
     const slotBookable = form.employeeId
       ? isSlotAvailable({
@@ -387,6 +393,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
         vacationRequests,
         excludeAppointmentId: appointment?.id,
         slotCapacity: SHARED_RESOURCE_CAPACITY,
+        ignoreEmployeeSchedule: allowScheduleOverride,
       })
       : availableSlots.includes(form.time)
     if (scheduleChanged && !slotBookable) {
@@ -397,6 +404,9 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
       )
     }
     let payload = buildPayload()
+    if (allowScheduleOverride) {
+      payload = { ...payload, allowOutsideEmployeeSchedule: true }
+    }
     if (payload.status === 'cumplida' && !payload.completionPunctuality) {
       payload = { ...payload, ...buildCompletionPayload({ punctuality: 'on_time' }) }
     }
@@ -446,9 +456,18 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     await performSave(payload, sharedWarning)
   }
 
+  const confirmEmployeeScheduleOutside = async () => {
+    setEmployeeScheduleConfirmOpen(false)
+    setScheduleOverride(true)
+    await submit({ allowOutsideEmployeeSchedule: true })
+  }
+
   const confirmEmployeeDoubleBook = async () => {
     setEmployeeConfirmOpen(false)
     let payload = buildPayload()
+    if (scheduleOverride) {
+      payload = { ...payload, allowOutsideEmployeeSchedule: true }
+    }
     if (payload.status === 'cumplida' && !payload.completionPunctuality) {
       payload = { ...payload, ...buildCompletionPayload({ punctuality: 'on_time' }) }
     }
@@ -785,6 +804,17 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
           </Button>
         </div>
       </div>
+      <ConfirmDialog
+        open={employeeScheduleConfirmOpen}
+        onClose={() => setEmployeeScheduleConfirmOpen(false)}
+        onConfirm={confirmEmployeeScheduleOutside}
+        title="Horario fuera de jornada"
+        description={sharedEmployeeOutsideScheduleConfirmMessage({ employeeName: selectedEmployee?.name })}
+        confirmLabel="Sí, continuar"
+        tone="primary"
+        busy={saving}
+        testId="appointment-employee-schedule-override"
+      />
       <ConfirmDialog
         open={employeeConfirmOpen}
         onClose={() => setEmployeeConfirmOpen(false)}

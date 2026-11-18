@@ -205,6 +205,7 @@ export function getAvailableSlots({
   vacationRequests = [],
   excludeAppointmentId = null,
   slotCapacity = SHARED_RESOURCE_CAPACITY,
+  ignoreEmployeeSchedule = false,
 }) {
   if (!date || !employeeId) return []
 
@@ -217,7 +218,7 @@ export function getAvailableSlots({
   return candidates.filter((slot) => {
     const slotTime = normalizeAppointmentTime(slot)
     if (!slotTime) return false
-    if (!fitsInSchedule({ employee, date, time: slotTime, duration })) return false
+    if (!ignoreEmployeeSchedule && !fitsInSchedule({ employee, date, time: slotTime, duration })) return false
     return employeePeakOccupancy({
       appointments,
       employeeId,
@@ -230,10 +231,10 @@ export function getAvailableSlots({
 }
 
 export function isSlotAvailable(options) {
-  const { time } = options
+  const { time, ignoreEmployeeSchedule = false } = options
   if (!time) return false
   const normalized = normalizeAppointmentTime(time)
-  return getAvailableSlots(options).includes(normalized)
+  return getAvailableSlots({ ...options, ignoreEmployeeSchedule }).includes(normalized)
 }
 
 /** Transactional email copy (cita confirmada, gestión cancelar/reagendar) — not used for sharing booking links. */

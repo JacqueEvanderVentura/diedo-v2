@@ -550,6 +550,7 @@ class AgendaService:
                 )
             return existing
 
+        allow_outside_employee_schedule = bool(values.pop("allow_outside_employee_schedule", False))
         any_available = cast(bool, values.get("any_available", False))
         resource_id = cast(UUID | None, values.get("resource_id"))
         employee_id = cast(UUID | None, values.get("employee_id"))
@@ -624,7 +625,7 @@ class AgendaService:
                         resource_id=occurrence_resource_id,
                         platform_user_id=principal.platform_user_id,
                     )
-                else:
+                elif not allow_outside_employee_schedule:
                     self._validate_employee_availability(
                         workspace_id=grant.workspace_id,
                         employee_id=occurrence_employee_id,
@@ -792,6 +793,9 @@ class AgendaService:
         if "notes" in changes:
             self._validate_notes(changes["notes"], existing=appointment.notes)
 
+        allow_outside_employee_schedule = bool(
+            changes.pop("allow_outside_employee_schedule", False)
+        )
         any_available = changes.pop("any_available", None)
         if any_available is True and changes.get("employee_id") is not None:
             raise InvalidOperationError(
@@ -867,13 +871,14 @@ class AgendaService:
             changes=changes,
         )
         if status in ACTIVE_APPOINTMENT_STATUSES:
-            self._validate_employee_availability(
-                workspace_id=grant.workspace_id,
-                employee_id=employee_id,
-                scheduled_date=scheduled_date,
-                starts_at=starts_at,
-                ends_at=ends_at,
-            )
+            if not allow_outside_employee_schedule:
+                self._validate_employee_availability(
+                    workspace_id=grant.workspace_id,
+                    employee_id=employee_id,
+                    scheduled_date=scheduled_date,
+                    starts_at=starts_at,
+                    ends_at=ends_at,
+                )
             self._ensure_slot_available(
                 workspace_id=grant.workspace_id,
                 branch_id=branch_id,

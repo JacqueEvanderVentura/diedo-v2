@@ -102,4 +102,20 @@ describe('fase 3 de Agenda', () => {
     expect(screen.getByTestId('calendar-time-heading').className).toContain('sticky')
     expect(screen.getByTestId('calendar-time-08:00').className).toContain('sticky')
   })
+
+  it('no reserva un carril vacío cuando solo hay una cita en la cabina', () => {
+    render(
+      <DayView
+        dateKey="2026-09-22"
+        appointments={[appointment]}
+        resources={[{ id: 'resource-1', name: 'Cabina 1', access: 'use' }]}
+        startHour={8}
+        endHour={9}
+      />,
+    )
+
+    const slot = screen.getByTestId('calendar-slot-resource-1-08:00')
+    expect(slot.querySelector('[data-testid^="calendar-apt-"]')).toBeTruthy()
+    expect(slot.querySelector('button[aria-label*="Agendar 08:00"]')).toBeNull()
+  })
 })

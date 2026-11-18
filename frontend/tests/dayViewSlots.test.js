@@ -186,10 +186,10 @@ describe('dayViewSlots', () => {
     expect(slotLaneCount([{ id: 'unknown' }], laneCountById)).toBe(1)
   })
 
-  it('adds a clickable lane while the cabin still has confirmed capacity', () => {
+  it('uses only painted lanes without reserving an empty bookable column', () => {
     expect(bookableSlotLaneCount({ paintedLaneCount: 1, confirmedOccupancy: 0 })).toBe(1)
-    expect(bookableSlotLaneCount({ paintedLaneCount: 1, confirmedOccupancy: 1 })).toBe(2)
-    expect(bookableSlotLaneCount({ paintedLaneCount: 2, confirmedOccupancy: 1 })).toBe(3)
+    expect(bookableSlotLaneCount({ paintedLaneCount: 1, confirmedOccupancy: 1 })).toBe(1)
+    expect(bookableSlotLaneCount({ paintedLaneCount: 2, confirmedOccupancy: 1 })).toBe(2)
     expect(bookableSlotLaneCount({ paintedLaneCount: 2, confirmedOccupancy: 2 })).toBe(2)
     expect(bookableSlotLaneCount({ paintedLaneCount: 1, confirmedOccupancy: 1, canBook: false })).toBe(1)
   })

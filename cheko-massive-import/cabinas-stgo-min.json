@@ -1,0 +1,26 @@
+[
+  {
+    "id": "2cdf7eac-e66b-5ed4-9af6-8f1c70f49d12",
+    "sucursal_id": "63278b45-21ee-50ff-8a2f-2dc6e6787747",
+    "nombre": "Cabina 1",
+    "orden": 1
+  },
+  {
+    "id": "e41d6245-f75c-5b81-b972-403791e3f443",
+    "sucursal_id": "63278b45-21ee-50ff-8a2f-2dc6e6787747",
+    "nombre": "Cabina 2",
+    "orden": 2
+  },
+  {
+    "id": "828c24d3-c567-5046-a0a6-ec77368dd15d",
+    "sucursal_id": "63278b45-21ee-50ff-8a2f-2dc6e6787747",
+    "nombre": "Cabina 3",
+    "orden": 3
+  },
+  {
+    "id": "c33fb33d-053c-5562-85b0-a2996e70d49e",
+    "sucursal_id": "63278b45-21ee-50ff-8a2f-2dc6e6787747",
+    "nombre": "Cabina 4",
+    "orden": 4
+  }
+]
