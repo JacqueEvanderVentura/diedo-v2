@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Phone, Plus, Search, CheckSquare, Square } from 'lucide-react'
+import { Phone, Plus, Search, CheckSquare, Square, Copy } from 'lucide-react'
 import { useCustomersStore } from '@/stores/customersStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
@@ -17,6 +17,7 @@ import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
 import { BulkSelectionBar } from '@/components/ui/BulkSelectionBar'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { CustomerFormModal } from '@/modules/crm/components/CustomerFormModal'
+import { DuplicateCustomersModal } from '@/modules/crm/components/DuplicateCustomersModal'
 import { CustomerDetailPanel } from '@/modules/crm/components/CustomerDetailModal'
 import { QuoteFormModal } from '@/modules/crm/components/QuoteFormModal'
 import { ActivityFormModal } from '@/modules/crm/components/ActivityFormModal'
@@ -59,6 +60,7 @@ export function SimplifiedCustomersPanel() {
   const [managingQuote, setManagingQuote] = useState(null)
   const [editingTask, setEditingTask] = useState(null)
   const [viewingAppointment, setViewingAppointment] = useState(null)
+  const [duplicatesOpen, setDuplicatesOpen] = useState(false)
 
   const quoteDocumentCtx = useMemo(
     () => ({ branches, settings, paymentMethods, customers }),
@@ -174,6 +176,17 @@ export function SimplifiedCustomersPanel() {
           />
         </div>
         <BranchMultiSelect branches={branches} branchIds={branchIds} onChange={setBranchIds} className="w-full sm:max-w-xs" />
+        {can.customer && online && (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setDuplicatesOpen(true)}
+            data-testid="crm-simplified-customers-duplicates-btn"
+            className="shrink-0"
+          >
+            <Copy className="h-4 w-4" /> Duplicados
+          </Button>
+        )}
         <Button type="button" onClick={openNew} data-testid="crm-simplified-customers-new-btn" className="shrink-0">
           <Plus className="h-4 w-4" /> Nuevo cliente
         </Button>
@@ -318,6 +331,11 @@ export function SimplifiedCustomersPanel() {
         </Card>
       )}
 
+      <DuplicateCustomersModal
+        open={duplicatesOpen}
+        onClose={() => setDuplicatesOpen(false)}
+        onMerged={() => fetchCustomersPage({ page: 1, search: query.trim(), branchIds }).catch(() => {})}
+      />
       <CustomerFormModal
         open={formOpen}
         onClose={() => setFormOpen(false)}

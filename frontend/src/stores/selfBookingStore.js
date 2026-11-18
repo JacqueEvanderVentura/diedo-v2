@@ -81,7 +81,16 @@ export const useSelfBookingStore = create(
           profiles: s.profiles.map((p) => (p.id === profileId ? { ...p, customerId } : p)),
         })),
 
-      bookAppointment: async ({ profile, branchId, service, date, time, employeeId, idempotencyKey }) => {
+      bookAppointment: async ({
+        profile,
+        branchId,
+        service,
+        date,
+        time,
+        employeeId,
+        idempotencyKey,
+        pendingAppointmentAction = null,
+      }) => {
         const payload = {
           customerId: profile.customerId || null,
           documentType: profile.docType || 'cedula',
@@ -97,6 +106,7 @@ export const useSelfBookingStore = create(
           time,
         }
         if (employeeId) payload.employeeId = employeeId
+        if (pendingAppointmentAction) payload.pendingAppointmentAction = pendingAppointmentAction
         const response = await publicBookingApi.book(branchId, payload, idempotencyKey)
         return response.appointment
       },
@@ -152,12 +162,17 @@ export const useSelfBookingStore = create(
           customerId: result.customerId,
           lastServiceId: result.lastServiceId || '',
           lastEmployeeId: result.lastEmployeeId || '',
+          pendingAppointment: result.pendingAppointment || null,
         }
       },
 
-      fetchRemoteSlots: async ({ branchId, date, employeeId, serviceId }) => {
+      fetchRemoteSlots: async ({ branchId, date, employeeId, serviceId, documentType, documentId }) => {
         const params = { date, serviceId }
         if (employeeId) params.employeeId = employeeId
+        if (documentType && documentId) {
+          params.documentType = documentType
+          params.documentId = documentId
+        }
         const result = await publicBookingApi.listSlots(branchId, params)
         return result.slots || []
       },

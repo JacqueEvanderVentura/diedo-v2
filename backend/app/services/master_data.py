@@ -29,6 +29,13 @@ from app.services.attachment_storage import (
 from app.services.auth import AuthPrincipal
 from app.services.authorization import AuthorizationService, PermissionGrant
 from app.services.customer_documents import prepare_customer_document_fields
+from app.services.customer_duplicates import (
+    MATCH_PRIORITY,
+    DuplicateCustomerGroup,
+    group_duplicate_customers,
+    pick_survivor,
+    profile_field_updates,
+)
 from app.services.customer_import_merge import (
     build_customer_import_update_changes,
     customer_import_row_context,
@@ -564,6 +571,128 @@ class MasterDataService:
                         "message": "No se pudo eliminar el cliente.",
                     }
                 )
+        return results
+
+    def list_duplicate_customers(self, grant: PermissionGrant) -> list[DuplicateCustomerGroup]:
+        customers = self._repository.list_customers_for_duplicate_scan(
+            workspace_id=grant.workspace_id,
+            allowed_branch_ids=grant.allowed_branch_ids,
+        )
+        return group_duplicate_customers(customers)
+
+    def merge_customers(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+        customer_ids: list[UUID],
+        keep_customer_id: UUID | None,
+    ) -> dict[str, Any]:
+        unique_ids = list(dict.fromkeys(customer_ids))
+        if len(unique_ids) < 2:
+            raise InvalidOperationError(
+                "Selecciona al menos dos clientes distintos para combinar.",
+                "customerIds",
+            )
+        records = self._repository.get_customers_by_ids(
+            grant.workspace_id, unique_ids, grant.allowed_branch_ids
+        )
+        found_ids = {customer.id for customer in records}
+        missing = [customer_id for customer_id in unique_ids if customer_id not in found_ids]
+        if missing:
+            raise ResourceNotFoundError("El cliente no existe o no tienes acceso.", "customerIds")
+        active = [customer for customer in records if customer.status != "archived"]
+        if len(active) < 2:
+            raise InvalidOperationError(
+                "Los clientes ya están archivados o no se pueden combinar.",
+                "customerIds",
+            )
+        if keep_customer_id is not None and keep_customer_id not in {row.id for row in active}:
+            raise InvalidOperationError(
+                "El cliente a conservar no está en el grupo o está archivado.",
+                "keepCustomerId",
+            )
+        keeper = pick_survivor(active, keep_customer_id)
+        sources = [customer for customer in active if customer.id != keeper.id]
+        source_ids = [customer.id for customer in sources]
+        source_branches = self._repository.customer_active_branch_ids(
+            grant.workspace_id, source_ids
+        )
+        union_branches: set[UUID] = set()
+        for branch_ids in source_branches.values():
+            union_branches.update(branch_ids)
+        if union_branches:
+            self._repository.ensure_customer_branches(grant.workspace_id, keeper.id, union_branches)
+        request_id = get_request_id()
+        self._repository.reassign_customer_references(
+            workspace_id=grant.workspace_id,
+            from_customer_ids=source_ids,
+            to_customer_id=keeper.id,
+        )
+        self._repository.merge_customer_crm_profiles(
+            workspace_id=grant.workspace_id,
+            keeper_id=keeper.id,
+            source_ids=source_ids,
+            actor_platform_user_id=principal.platform_user_id,
+        )
+        for source in sources:
+            self._repository.update_customer(
+                customer=source,
+                changes={"status": "archived"},
+                branch_ids=None,
+                actor_platform_user_id=principal.platform_user_id,
+                request_id=request_id,
+            )
+        field_changes = profile_field_updates(keeper, sources)
+        prepared = self._prepare_customer_values(field_changes) if field_changes else {}
+        try:
+            record = self._repository.update_customer(
+                customer=keeper,
+                changes=prepared,
+                branch_ids=None,
+                actor_platform_user_id=principal.platform_user_id,
+                request_id=request_id,
+            )
+            self._session.commit()
+            return {
+                "kept_customer_id": keeper.id,
+                "archived_customer_ids": source_ids,
+                "customer": record,
+            }
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise ConflictError(
+                "No se pudieron combinar los clientes por un conflicto de datos.",
+                "customerIds",
+            ) from exc
+
+    def auto_merge_duplicate_customers(
+        self,
+        *,
+        principal: AuthPrincipal,
+        grant: PermissionGrant,
+    ) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        archived: set[UUID] = set()
+        for match_type in MATCH_PRIORITY:
+            for group in self.list_duplicate_customers(grant):
+                if group.match_type != match_type:
+                    continue
+                remaining = [
+                    customer
+                    for customer in group.customers
+                    if customer.id not in archived and customer.status != "archived"
+                ]
+                if len(remaining) < 2:
+                    continue
+                merged = self.merge_customers(
+                    principal=principal,
+                    grant=grant,
+                    customer_ids=[customer.id for customer in remaining],
+                    keep_customer_id=pick_survivor(remaining).id,
+                )
+                archived.update(merged["archived_customer_ids"])
+                results.append(merged)
         return results
 
     def customer_timeline(

@@ -2,8 +2,10 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { Clock, Plus, Search, ChevronLeft, ChevronRight, Link2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAgendaStore, todayKey } from '@/stores/agendaStore'
+import { useRrhhStore } from '@/stores/rrhhStore'
 import { useActiveBranchScope } from '@/hooks/useActiveBranchScope'
 import { Button } from '@/components/ui/Button'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Select } from '@/components/ui/Select'
 import { AppointmentFormModal } from '../components/AppointmentFormModal'
 import { ImportStackedAppointmentsModal } from '../components/ImportStackedAppointmentsModal'
@@ -37,7 +39,9 @@ import { boundsForDate } from '../lib/branchOpeningHours'
 import {
   appointmentBlocksConfirmedSlot,
   explainAppointmentResourceMove,
+  findEmployeeSharing,
   findResourceSharing,
+  sharedEmployeeConfirmMessage,
   sharedResourceWarning,
 } from '../lib/calendarResourceMove'
 import { normalizeAppointmentStatus } from '../lib/completion'
@@ -69,6 +73,8 @@ export default function CalendarioPage() {
   const [editing, setEditing] = useState(null)
   const [defaults, setDefaults] = useState({})
   const [importStackModal, setImportStackModal] = useState([])
+  const [employeeMoveConfirm, setEmployeeMoveConfirm] = useState(null)
+  const employees = useRrhhStore((s) => s.employees)
 
   const appointmentQuery = useMemo(() => {
     if (!branchId) return {}
@@ -172,25 +178,7 @@ export default function CalendarioPage() {
     setModalOpen(true)
   }
 
-  const handleResourceMove = useCallback(async ({ appointment, resourceId, time }) => {
-    const targetResource = branchResources.find((resource) => resource.id === resourceId) || null
-    const nextTime = time || appointment.time
-    if (targetResource && targetResource.id === appointment.cabinaId && nextTime === appointment.time) {
-      return
-    }
-    const sourceResource = branchResources.find((resource) => resource.id === appointment.cabinaId) || null
-    const blocked = explainAppointmentResourceMove({
-      appointment,
-      targetResource,
-      sourceResource,
-      targetTime: nextTime,
-      appointments,
-      canManage,
-    })
-    if (blocked) {
-      toast.error(blocked)
-      return
-    }
+  const executeResourceMove = useCallback(async ({ appointment, targetResource, nextTime }) => {
     const sharedWith = appointmentBlocksConfirmedSlot(appointment)
       ? findResourceSharing({
         appointments,
@@ -224,7 +212,44 @@ export default function CalendarioPage() {
       }
       toast.error(error.message || 'No se pudo mover la cita.')
     }
-  }, [appointments, branchResources, canManage, updateAppointment])
+  }, [appointments, updateAppointment])
+
+  const handleResourceMove = useCallback(async ({ appointment, resourceId, time }) => {
+    const targetResource = branchResources.find((resource) => resource.id === resourceId) || null
+    const nextTime = time || appointment.time
+    if (targetResource && targetResource.id === appointment.cabinaId && nextTime === appointment.time) {
+      return
+    }
+    const sourceResource = branchResources.find((resource) => resource.id === appointment.cabinaId) || null
+    const blocked = explainAppointmentResourceMove({
+      appointment,
+      targetResource,
+      sourceResource,
+      targetTime: nextTime,
+      appointments,
+      canManage,
+    })
+    if (blocked) {
+      toast.error(blocked)
+      return
+    }
+    const employeeSharing = appointment.employeeId && appointmentBlocksConfirmedSlot(appointment)
+      ? findEmployeeSharing({
+        appointments,
+        employeeId: appointment.employeeId,
+        date: appointment.date,
+        time: nextTime,
+        duration: appointment.duration,
+        excludeId: appointment.id,
+      })
+      : null
+    if (employeeSharing) {
+      const employeeName = employees.find((item) => item.id === appointment.employeeId)?.name
+      setEmployeeMoveConfirm({ appointment, targetResource, nextTime, employeeName })
+      return
+    }
+    await executeResourceMove({ appointment, targetResource, nextTime })
+  }, [appointments, branchResources, canManage, employees, executeResourceMove])
 
   const scheduleFromDay = (key) => {
     setCursor(key)
@@ -407,6 +432,22 @@ export default function CalendarioPage() {
         open={importStackModal.length > 0}
         onClose={() => setImportStackModal([])}
         appointments={importStackModal}
+      />
+
+      <ConfirmDialog
+        open={Boolean(employeeMoveConfirm)}
+        onClose={() => setEmployeeMoveConfirm(null)}
+        onConfirm={async () => {
+          const pending = employeeMoveConfirm
+          setEmployeeMoveConfirm(null)
+          if (!pending) return
+          await executeResourceMove(pending)
+        }}
+        title="Confirmar doble cita"
+        description={sharedEmployeeConfirmMessage({ employeeName: employeeMoveConfirm?.employeeName })}
+        confirmLabel="Proceder igualmente"
+        tone="primary"
+        testId="calendar-employee-double-book"
       />
     </div>
   )

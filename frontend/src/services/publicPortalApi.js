@@ -58,4 +58,16 @@ export const publicPortalApi = {
       auth: false,
     }),
   ),
+  listTasks: (branchId, session) => publicGet(`${base(branchId)}/tasks`, docParams(session)),
+  fetchTaskPdf: async (branchId, templateId, session) => readPdfBlob(
+    await apiClient.blob(`${base(branchId)}/tasks/${templateId}/pdf`, {
+      params: docParams(session),
+      auth: false,
+    }),
+  ),
+  acceptTask: (branchId, templateId, session) => apiClient.post(
+    `${base(branchId)}/tasks/${templateId}/accept`,
+    { accepted: true },
+    { auth: false, params: docParams(session) },
+  ),
 }

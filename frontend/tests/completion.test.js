@@ -28,6 +28,12 @@ describe('appointment completion', () => {
       delayResponsibility: 'customer',
       completionNote: 'Llegó tarde',
     })
+    expect(buildCompletionPayload({
+      punctuality: 'on_time',
+      employeeId: 'emp-1',
+    })).toMatchObject({
+      employeeId: 'emp-1',
+    })
   })
 
   it('formats completion summaries for UI', () => {

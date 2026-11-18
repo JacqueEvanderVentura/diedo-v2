@@ -400,6 +400,49 @@ export const useCustomersStore = create((set, get) => ({
 
   },
 
+  fetchDuplicateCustomers: async () => {
+    if (useSessionStore.getState().status !== 'online') {
+      throw new Error('La API no está disponible.')
+    }
+    return masterDataApi.duplicateCustomers()
+  },
+
+  mergeDuplicateCustomers: async ({ customerIds, keepCustomerId }) => {
+    if (useSessionStore.getState().status !== 'online') {
+      throw new Error('La API no está disponible.')
+    }
+    const response = await masterDataApi.mergeCustomers({ customerIds, keepCustomerId })
+    const archived = new Set(response.archivedCustomerIds || [])
+    const kept = response.customer ? mapCustomerFromApi(response.customer) : null
+    set((state) => ({
+      customers: state.customers
+        .filter((customer) => !archived.has(customer.id))
+        .map((customer) => (kept && customer.id === kept.id ? kept : customer)),
+    }))
+    return response
+  },
+
+  autoMergeDuplicateCustomers: async () => {
+    if (useSessionStore.getState().status !== 'online') {
+      throw new Error('La API no está disponible.')
+    }
+    const response = await masterDataApi.autoMergeCustomers()
+    const archived = new Set(
+      (response.items || []).flatMap((item) => item.archivedCustomerIds || []),
+    )
+    const keptById = new Map(
+      (response.items || [])
+        .filter((item) => item.customer)
+        .map((item) => [item.customer.id, mapCustomerFromApi(item.customer)]),
+    )
+    set((state) => ({
+      customers: state.customers
+        .filter((customer) => !archived.has(customer.id))
+        .map((customer) => keptById.get(customer.id) || customer),
+    }))
+    return response
+  },
+
 
 
   updateCustomer: async (id, data) => {

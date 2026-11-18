@@ -9,6 +9,7 @@ import {
   assignAppointmentLanes,
   appointmentStartsAtSlot,
   appointmentsOverlappingSlot,
+  bookableSlotLaneCount,
   calendarBlockHeight,
   calendarResourcesWithUnassigned,
   CALENDAR_ROW_PX,
@@ -18,6 +19,7 @@ import {
 import { useCalendarResourceDrag } from '../../hooks/useCalendarResourceDrag'
 import { cn } from '@/lib/utils'
 import { canBookResource } from '@/modules/configuracion/lib/agendaCabinas'
+import { appointmentBlocksConfirmedSlot } from '../../lib/calendarResourceMove'
 
 const SLOT_CELL_MIN_PX = CALENDAR_ROW_PX
 
@@ -134,8 +136,13 @@ export function DayView({
                       laneCountById: new Map(),
                     }
                     const overlapping = appointmentsOverlappingSlot(displayAppointments, slot)
-                    const laneCount = slotLaneCount(overlapping, laneCountById)
                     const blockingOverlap = appointmentsOverlappingSlot(blockingAppointments, slot)
+                    const confirmedOccupancy = blockingOverlap.filter(appointmentBlocksConfirmedSlot).length
+                    const laneCount = bookableSlotLaneCount({
+                      paintedLaneCount: slotLaneCount(overlapping, laneCountById),
+                      confirmedOccupancy,
+                      canBook,
+                    })
                     const busy = blockingOverlap.length > 0
                     const showLanes = overlapping.length > 0
                     const dropActive = hoverTarget?.resourceId === c.id && hoverTarget?.slot === slot

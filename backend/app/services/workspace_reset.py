@@ -83,6 +83,8 @@ from app.db.models import (
     ItemCategory,
     PaymentMethod,
     PaymentProof,
+    PortalTaskCompletion,
+    PortalTaskTemplate,
     PurchaseRequest,
     PurchaseRequestItem,
     Sale,
@@ -197,7 +199,7 @@ class WorkspaceResetService:
         return self._purge_storage(storage, workspace_id, set(keys))
 
     def _collect_storage_keys(self, ctx: _ResetContext, workspace_id: UUID) -> None:
-        for model in (DocumentAttachment, Attachment, PaymentProof):
+        for model in (DocumentAttachment, Attachment, PaymentProof, PortalTaskTemplate):
             keys = self._session.scalars(
                 select(model.storage_key).where(model.workspace_id == workspace_id)
             ).all()
@@ -271,6 +273,8 @@ class WorkspaceResetService:
             ("employeeBranchAssignments", EmployeeBranchAssignment),
             ("employees", Employee),
             ("attachments", Attachment),
+            ("portalTaskCompletions", PortalTaskCompletion),
+            ("portalTaskTemplates", PortalTaskTemplate),
             ("customerBranchAssignments", CustomerBranchAssignment),
             ("customers", Customer),
             ("itemBranchAssignments", ItemBranchAssignment),

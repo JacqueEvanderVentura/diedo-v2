@@ -104,8 +104,18 @@ class PublicCustomerProfileResponse(ApiModel):
     last_employee_id: UUID | None = None
 
 
+class PublicPendingAppointmentSummary(ApiModel):
+    id: UUID
+    service_name: str
+    date: date
+    time: str
+
+
+PublicPendingAppointmentAction = Literal["keep", "replace"]
+
+
 class PublicIdentifyResponse(PublicCustomerProfileResponse):
-    pass
+    pending_appointment: PublicPendingAppointmentSummary | None = None
 
 
 class PublicSlotsResponse(ApiModel):
@@ -129,6 +139,7 @@ class PublicBookAppointmentRequest(ApiModel):
     employee_id: UUID | None = None
     date: date
     time: TimeValue
+    pending_appointment_action: PublicPendingAppointmentAction | None = None
 
     @field_validator("display_name")
     @classmethod

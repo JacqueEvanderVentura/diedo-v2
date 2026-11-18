@@ -20,7 +20,15 @@ class ResourceNotFoundError(ApplicationError):
 
 
 class ConflictError(ApplicationError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        parameter: str | None = None,
+        *,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(message, parameter)
+        self.details = details
 
 
 class InvalidOperationError(ApplicationError):

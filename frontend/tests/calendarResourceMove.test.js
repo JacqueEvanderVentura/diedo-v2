@@ -89,7 +89,7 @@ describe('explainAppointmentResourceMove', () => {
     })).toBe('No se puede mover: Cabina 2 ya tiene 2 personas a las 10:00.')
   })
 
-  it('rejects an employee overlap when the time changes', () => {
+  it('allows a second customer for the same employee when the time changes', () => {
     expect(explainAppointmentResourceMove({
       appointment,
       sourceResource: cab1,
@@ -108,7 +108,39 @@ describe('explainAppointmentResourceMove', () => {
           customerName: 'Luis',
         },
       ],
-    })).toBe('No se puede mover: el empleado ya atiende a Luis a las 11:00.')
+    })).toBeNull()
+  })
+
+  it('rejects a third customer for the same employee', () => {
+    expect(explainAppointmentResourceMove({
+      appointment,
+      sourceResource: cab1,
+      targetResource: cab2,
+      targetTime: '11:00',
+      appointments: [
+        appointment,
+        {
+          id: 'apt-3',
+          date: DATE,
+          time: '11:00',
+          duration: 30,
+          cabinaId: 'cab3',
+          employeeId: 'emp-1',
+          status: 'confirmada',
+          customerName: 'Luis',
+        },
+        {
+          id: 'apt-4',
+          date: DATE,
+          time: '11:00',
+          duration: 30,
+          cabinaId: 'cab1',
+          employeeId: 'emp-1',
+          status: 'confirmada',
+          customerName: 'Carmen',
+        },
+      ],
+    })).toBe('No se puede mover: el especialista ya atiende a 2 personas a las 11:00.')
   })
 
   it('does not treat cancelled appointments as blocking', () => {

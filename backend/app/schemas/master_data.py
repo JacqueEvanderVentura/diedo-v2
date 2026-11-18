@@ -278,6 +278,59 @@ class DeleteCustomersResponse(ApiModel):
     items: list[DeleteCustomerResultItem]
 
 
+class DuplicateCustomerSummary(ApiModel):
+    id: UUID
+    display_name: str
+    email: str | None
+    phone: str | None
+    document_type: CustomerDocumentType | None = None
+    document_id: str | None = None
+    status: MasterDataStatus
+    version: int
+    created_at: datetime
+
+
+class DuplicateCustomerGroupResponse(ApiModel):
+    match_type: Literal["document", "phone", "email"]
+    match_value: str
+    customers: list[DuplicateCustomerSummary]
+
+
+class DuplicateCustomersResponse(ApiModel):
+    groups: list[DuplicateCustomerGroupResponse]
+    total_groups: int
+
+
+class MergeCustomersRequest(ApiModel):
+    customer_ids: list[UUID] = Field(min_length=2, max_length=50)
+    keep_customer_id: UUID
+
+    @field_validator("customer_ids")
+    @classmethod
+    def reject_duplicate_ids(cls, value: list[UUID]) -> list[UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("No repitas clientes.")
+        return value
+
+    @model_validator(mode="after")
+    def keep_must_be_in_group(self) -> Self:
+        if self.keep_customer_id not in self.customer_ids:
+            raise ValueError("El cliente a conservar debe estar en el grupo.")
+        return self
+
+
+class MergeCustomersResult(ApiModel):
+    kept_customer_id: UUID
+    archived_customer_ids: list[UUID]
+    customer: CustomerResponse
+
+
+class AutoMergeCustomersResponse(ApiModel):
+    merged_groups: int
+    archived_customers: int
+    items: list[MergeCustomersResult]
+
+
 class UpdateCustomerRequest(ApiModel):
     version: int = Field(ge=1)
     customer_type: CustomerType | None = None

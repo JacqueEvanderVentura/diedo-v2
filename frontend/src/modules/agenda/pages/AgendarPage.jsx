@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { MapPin, Calendar, CheckCircle2, ChevronRight, ChevronLeft } from 'lucide-react'
 import { HeliosIcon } from '@/components/brand/HeliosIcon'
 import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { DatePicker } from '@/components/ui/DatePicker'
@@ -29,6 +30,7 @@ import {
   getAvailableSlots,
   getAvailableSlotsForAny,
   isSlotAvailable,
+  PUBLIC_BOOKING_SLOT_CAPACITY,
 } from '../lib/selfBooking'
 import { todayKey } from '@/stores/agendaStore'
 import { cn } from '@/lib/utils'
@@ -62,6 +64,27 @@ function initialBookingForm(intentBook, branchId) {
     ...base,
     docType: session.docType || 'cedula',
     documentId: formatDocumentInput(session.documentId, session.docType),
+  }
+}
+
+function demoPendingBranchAppointment(appointments, { customerId, branchId }) {
+  if (!customerId || !branchId) return null
+  const today = todayKey()
+  const upcoming = appointments
+    .filter((item) => (
+      item.branchId === branchId
+      && item.customerId === customerId
+      && item.status !== 'cancelada'
+      && item.date >= today
+    ))
+    .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`))
+  const next = upcoming[0]
+  if (!next) return null
+  return {
+    id: next.id,
+    serviceName: next.serviceName || 'Servicio',
+    date: next.date,
+    time: next.time,
   }
 }
 
@@ -141,6 +164,8 @@ export default function AgendarPage() {
   const [remoteServices, setRemoteServices] = useState(null)
   const [remoteSpecialists, setRemoteSpecialists] = useState(null)
   const [remoteSlots, setRemoteSlots] = useState(null)
+  const [pendingBranchAppointment, setPendingBranchAppointment] = useState(null)
+  const [pendingChoiceOpen, setPendingChoiceOpen] = useState(false)
 
   const localBookableStaff = useBranchBookableStaff(branch?.id || branchId)
   const services = useMemo(() => {
@@ -278,12 +303,14 @@ export default function AgendarPage() {
       date: form.date,
       employeeId: form.employeeId,
       serviceId: form.serviceId,
+      documentType: form.docType,
+      documentId: normalizeDocumentId(form.documentId, form.docType),
     })
       .then((slots) => { if (active) setRemoteSlots(slots) })
       .catch((error) => { if (active) setSlotError(error.message || 'No se pudieron consultar los horarios.') })
       .finally(() => { if (active) setSlotLoading(false) })
     return () => { active = false }
-  }, [branch?.id, fetchRemoteSlots, form.date, form.employeeId, form.serviceId, isDemo, slotRevision])
+  }, [branch?.id, fetchRemoteSlots, form.date, form.docType, form.documentId, form.employeeId, form.serviceId, isDemo, slotRevision])
 
   const set = (k, v) => {
     const changesAvailability = ['serviceId', 'employeeId', 'date'].includes(k)
@@ -309,6 +336,7 @@ export default function AgendarPage() {
         appointments,
         employee: selectedEmployee,
         vacationRequests,
+        slotCapacity: PUBLIC_BOOKING_SLOT_CAPACITY,
       })
     }
     return getAvailableSlotsForAny({
@@ -317,6 +345,7 @@ export default function AgendarPage() {
       appointments,
       employees: bookableStaff,
       vacationRequests,
+      slotCapacity: PUBLIC_BOOKING_SLOT_CAPACITY,
     })
   }, [
     form.employeeId,
@@ -331,6 +360,7 @@ export default function AgendarPage() {
   ])
 
   const applyProfileToForm = (found, docType) => {
+    setPendingBranchAppointment(found.pendingAppointment || null)
     setForm((current) => applyBranchBookingDefaults({
       ...current,
       docType: found.docType || docType,
@@ -414,6 +444,10 @@ export default function AgendarPage() {
           ...found,
           lastServiceId: defaults.serviceId,
           lastEmployeeId: defaults.employeeId,
+          pendingAppointment: demoPendingBranchAppointment(appointments, {
+            customerId: found.customerId,
+            branchId: branch?.id || branchId,
+          }),
         }
       }
       applyProfileToForm(found, lookupDocType)
@@ -514,8 +548,7 @@ export default function AgendarPage() {
     setStep(3)
   }
 
-  const confirm = async () => {
-    if (savingRef.current) return
+  const runBook = async (pendingAppointmentAction = null) => {
     const profileError = validateBookingProfile(form)
     if (profileError) return toast.error(profileError)
     if (!service || !form.time) return toast.error('Completa la cita')
@@ -528,6 +561,7 @@ export default function AgendarPage() {
         appointments,
         employee: selectedEmployee,
         vacationRequests,
+        slotCapacity: PUBLIC_BOOKING_SLOT_CAPACITY,
       })
       : slots.includes(form.time)
     if (isDemo && !stillAvailable) return toast.error('Ese horario ya no está disponible. Elige otro cupo.')
@@ -536,7 +570,7 @@ export default function AgendarPage() {
     }
     const docKey = normalizeDocumentId(form.documentId, form.docType)
     const profile = upsertProfile({ ...form, documentId: docKey })
-    const fingerprint = JSON.stringify({ branchId: branch.id, serviceId: service.id, ...form })
+    const fingerprint = JSON.stringify({ branchId: branch.id, serviceId: service.id, ...form, pendingAppointmentAction })
     if (attemptRef.current?.fingerprint !== fingerprint) attemptRef.current = { fingerprint, key: crypto.randomUUID() }
     savingRef.current = true
     setSaving(true)
@@ -549,19 +583,40 @@ export default function AgendarPage() {
         time: form.time,
         employeeId: form.employeeId,
         idempotencyKey: attemptRef.current.key,
+        pendingAppointmentAction,
       })
       setSavedAppointment(appointment)
+      setPendingBranchAppointment(null)
       rememberDocument(profile.documentId)
       setDone(true)
+      setPendingChoiceOpen(false)
       toast.success('¡Cita agendada!')
     } catch (error) {
+      if (error.status === 409 && error.parameter === 'pendingAppointment') {
+        const details = error.data?.details?.pendingAppointment
+        if (details) setPendingBranchAppointment(details)
+        setPendingChoiceOpen(true)
+        return
+      }
       toast.error(error.message || 'No se pudo agendar la cita')
       if (error.status === 409) {
         set('time', '')
         setStep(2)
         setSlotRevision((v) => v + 1)
       }
-    } finally { savingRef.current = false; setSaving(false) }
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
+  }
+
+  const confirm = async () => {
+    if (savingRef.current) return
+    if (pendingBranchAppointment) {
+      setPendingChoiceOpen(true)
+      return
+    }
+    await runBook()
   }
 
   const clearBookIntent = () => {
@@ -916,6 +971,39 @@ export default function AgendarPage() {
           </section>
         )}
       </div>
+
+      <Modal
+        open={pendingChoiceOpen && Boolean(pendingBranchAppointment)}
+        onClose={() => !saving && setPendingChoiceOpen(false)}
+        title="Ya tienes una cita"
+        testId="self-booking-pending-choice"
+      >
+        {pendingBranchAppointment && (
+          <div className="space-y-4">
+            <p className="text-sm leading-relaxed text-slate-600">
+              Ya tienes una cita de <strong>{pendingBranchAppointment.serviceName}</strong> para el{' '}
+              <strong className="capitalize">{formatLongDate(pendingBranchAppointment.date)}</strong> a las{' '}
+              <strong>{formatTime12h(pendingBranchAppointment.time)}</strong>. ¿Cómo deseas proceder?
+            </p>
+            <div className="flex flex-col gap-2">
+              <Button disabled={saving} onClick={() => runBook('keep')} data-testid="self-booking-pending-keep">
+                Agendar esta cita sin borrar existente
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={saving}
+                onClick={() => runBook('replace')}
+                data-testid="self-booking-pending-replace"
+              >
+                Borrar cita existente y agendar esta solamente
+              </Button>
+              <Button variant="secondary" disabled={saving} onClick={() => setPendingChoiceOpen(false)}>
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </PublicShell>
   )
 }

@@ -780,7 +780,7 @@ def test_agenda_calendar_management_conflicts_recurrence_and_fresh_reads(
         ),
     )
     assert employee_booking.status_code == 201, employee_booking.text
-    employee_conflict = client.post(
+    employee_second = client.post(
         "/api/v1/appointments",
         headers={**headers, "Idempotency-Key": f"agenda-employee-conflict-{suffix}"},
         json=_appointment_payload(
@@ -788,12 +788,25 @@ def test_agenda_calendar_management_conflicts_recurrence_and_fresh_reads(
             resource_id=second_resource_id,
             scheduled_date=employee_date,
             scheduled_time="16:30",
-            customer_name=f"Conflicto Empleado {suffix}",
+            customer_name=f"Segundo cupo Empleado {suffix}",
             employee_id=employee_id,
         ),
     )
-    assert employee_conflict.status_code == 409, employee_conflict.text
-    assert employee_conflict.json()["parameter"] == "time"
+    assert employee_second.status_code == 201, employee_second.text
+    employee_third = client.post(
+        "/api/v1/appointments",
+        headers={**headers, "Idempotency-Key": f"agenda-employee-third-{suffix}"},
+        json=_appointment_payload(
+            branch_id=branch_id,
+            resource_id=second_resource_id,
+            scheduled_date=employee_date,
+            scheduled_time="16:15",
+            customer_name=f"Tercer cupo Empleado {suffix}",
+            employee_id=employee_id,
+        ),
+    )
+    assert employee_third.status_code == 409, employee_third.text
+    assert employee_third.json()["parameter"] == "employeeId"
 
     cancelled = client.patch(
         f"/api/v1/appointments/{appointment['id']}",

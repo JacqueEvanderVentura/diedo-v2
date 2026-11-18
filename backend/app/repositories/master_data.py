@@ -7,21 +7,28 @@ from datetime import date, datetime
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.db.models import (
+    Appointment,
     Attachment,
     AuditEntry,
     Branch,
+    CarwashWash,
+    CrmActivity,
+    CrmLead,
     Customer,
     CustomerBranchAssignment,
     CustomerCrmProfile,
+    CustomerReceivable,
     Employee,
     EmployeeBranchAssignment,
     EmployeeHrProfile,
     EmployeeSchedule,
     EmployeeSupervisor,
+    Sale,
+    SalesQuote,
     WorkspaceMembership,
 )
 
@@ -497,6 +504,140 @@ class MasterDataRepository:
         )
         self._session.flush()
         return self.customer_record(customer)
+
+    def list_customers_for_duplicate_scan(
+        self,
+        *,
+        workspace_id: UUID,
+        allowed_branch_ids: frozenset[UUID] | None,
+    ) -> list[Customer]:
+        query = (
+            select(Customer)
+            .join(
+                CustomerBranchAssignment,
+                (CustomerBranchAssignment.workspace_id == Customer.workspace_id)
+                & (CustomerBranchAssignment.customer_id == Customer.id),
+            )
+            .where(
+                Customer.workspace_id == workspace_id,
+                Customer.status != "archived",
+                CustomerBranchAssignment.status == "active",
+            )
+            .distinct()
+        )
+        if allowed_branch_ids is not None:
+            query = query.where(CustomerBranchAssignment.branch_id.in_(allowed_branch_ids))
+        seen: dict[UUID, Customer] = {}
+        for customer in self._session.scalars(query):
+            seen.setdefault(customer.id, customer)
+        return list(seen.values())
+
+    def get_customers_by_ids(
+        self,
+        workspace_id: UUID,
+        customer_ids: Sequence[UUID],
+        allowed_branch_ids: frozenset[UUID] | None,
+    ) -> list[Customer]:
+        if not customer_ids:
+            return []
+        query = (
+            select(Customer)
+            .join(
+                CustomerBranchAssignment,
+                (CustomerBranchAssignment.workspace_id == Customer.workspace_id)
+                & (CustomerBranchAssignment.customer_id == Customer.id),
+            )
+            .where(
+                Customer.workspace_id == workspace_id,
+                Customer.id.in_(list(customer_ids)),
+                CustomerBranchAssignment.status == "active",
+            )
+            .distinct()
+        )
+        if allowed_branch_ids is not None:
+            query = query.where(CustomerBranchAssignment.branch_id.in_(allowed_branch_ids))
+        seen: dict[UUID, Customer] = {}
+        for customer in self._session.scalars(query):
+            seen.setdefault(customer.id, customer)
+        return list(seen.values())
+
+    def reassign_customer_references(
+        self,
+        *,
+        workspace_id: UUID,
+        from_customer_ids: Sequence[UUID],
+        to_customer_id: UUID,
+    ) -> None:
+        source_ids = [
+            customer_id for customer_id in from_customer_ids if customer_id != to_customer_id
+        ]
+        if not source_ids:
+            return
+        tables = (
+            Appointment,
+            SalesQuote,
+            Sale,
+            CustomerReceivable,
+            CrmActivity,
+            Attachment,
+            CarwashWash,
+        )
+        for model in tables:
+            self._session.execute(
+                update(model)
+                .where(
+                    model.workspace_id == workspace_id,
+                    model.customer_id.in_(source_ids),
+                )
+                .values(customer_id=to_customer_id)
+            )
+        self._session.execute(
+            update(CrmLead)
+            .where(
+                CrmLead.workspace_id == workspace_id,
+                CrmLead.converted_customer_id.in_(source_ids),
+            )
+            .values(converted_customer_id=to_customer_id)
+        )
+        self._session.flush()
+
+    def merge_customer_crm_profiles(
+        self,
+        *,
+        workspace_id: UUID,
+        keeper_id: UUID,
+        source_ids: Sequence[UUID],
+        actor_platform_user_id: UUID,
+    ) -> None:
+        profiles = list(
+            self._session.scalars(
+                select(CustomerCrmProfile).where(
+                    CustomerCrmProfile.workspace_id == workspace_id,
+                    CustomerCrmProfile.customer_id.in_([keeper_id, *source_ids]),
+                )
+            )
+        )
+        if not profiles:
+            return
+        extras = [row for row in profiles if row.customer_id != keeper_id]
+        keeper = next((row for row in profiles if row.customer_id == keeper_id), None)
+        if keeper is None:
+            if not extras:
+                return
+            keeper = extras.pop(0)
+            keeper.customer_id = keeper_id
+        keeper.loyalty_points += sum(row.loyalty_points for row in extras)
+        notes = [part.strip() for part in (keeper.notes, *(row.notes for row in extras)) if part]
+        if notes:
+            keeper.notes = "\n\n".join(dict.fromkeys(notes))[:2000]
+        if keeper.lifecycle_status != "activo":
+            if any(row.lifecycle_status == "activo" for row in extras):
+                keeper.lifecycle_status = "activo"
+        keeper.updated_by_platform_user_id = actor_platform_user_id
+        keeper.version += 1
+        for row in extras:
+            self._session.delete(row)
+        self._session.flush()
 
     def customer_timeline(
         self, workspace_id: UUID, customer_id: UUID
