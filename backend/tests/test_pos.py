@@ -2185,6 +2185,13 @@ def test_checkout_partial_tenders_leaves_receivable_and_accepts_later_payments(
     )
     assert void_after_abono.status_code == 200, void_after_abono.text
     assert void_after_abono.json()["status"] == "voided"
+    cancelled = client.get(
+        f"/api/v1/pos/receivables/{receivable_id}",
+        headers=headers,
+    )
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["status"] == "cancelled"
+    assert cancelled.json()["paidTotal"] == "0.00"
 
 
 @pytest.mark.integration

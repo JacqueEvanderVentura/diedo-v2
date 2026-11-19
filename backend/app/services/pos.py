@@ -2598,6 +2598,9 @@ class PosService:
         )
         if receivable is not None:
             receivable.status = "cancelled"
+            receivable.paid_amount = Decimal("0")
+            receivable.paid_at = None
+            receivable.approval_pending_amount = Decimal("0")
             receivable.cancelled_at = datetime.now(UTC)
             receivable.cancellation_reason = f"Venta anulada: {reason}"
             receivable.updated_by_platform_user_id = principal.platform_user_id
