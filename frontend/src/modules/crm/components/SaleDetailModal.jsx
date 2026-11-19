@@ -304,7 +304,7 @@ function SaleDetailModalContent({ open, onClose, sale }) {
 
   const confirmDelete = async () => {
     try {
-      await deleteSale(view.id)
+      await deleteSale(view.id, view)
       useCrmStore.setState((state) => ({
         sales: state.sales.filter((item) => item.id !== view.id),
       }))
@@ -566,6 +566,7 @@ function SaleDetailModalContent({ open, onClose, sale }) {
         open={editOpen}
         onClose={() => setEditOpen(false)}
         sale={view}
+        nested
         onSaved={() => {
           ensureSaleDetail(view.id).then((fresh) => {
             if (fresh) setDetail(fresh)
@@ -573,7 +574,7 @@ function SaleDetailModalContent({ open, onClose, sale }) {
         }}
       />
 
-      <Modal open={deleteOpen} onClose={() => setDeleteOpen(false)} title="Eliminar factura" testId="sale-detail-delete-modal">
+      <Modal open={deleteOpen} onClose={() => setDeleteOpen(false)} title="Eliminar factura" testId="sale-detail-delete-modal" nested>
         <div className="space-y-4">
           <p className="text-sm text-slate-600">
             Esta acción quita la factura del sistema. Solo es posible si no tiene cobros ni movimientos de caja.
@@ -587,7 +588,7 @@ function SaleDetailModalContent({ open, onClose, sale }) {
         </div>
       </Modal>
 
-      <Modal open={voidOpen} onClose={() => setVoidOpen(false)} title="Anular factura" testId="sale-detail-void-modal">
+      <Modal open={voidOpen} onClose={() => setVoidOpen(false)} title="Anular factura" testId="sale-detail-void-modal" nested>
         <div className="space-y-4">
           <p className="text-sm text-slate-600">Esta acción dejará la factura como anulada y ajustará los totales de caja.</p>
           <textarea
@@ -618,6 +619,7 @@ function SaleDetailModalContent({ open, onClose, sale }) {
         permissionCode={VOID_INVOICE_PERMISSION}
         description="Para anular una factura, un supervisor con permiso debe autorizar esta sesión por 3 minutos."
         onElevated={() => setVoidOpen(true)}
+        nested
       />
 
       <ReceivablePaymentModal
@@ -627,12 +629,14 @@ function SaleDetailModalContent({ open, onClose, sale }) {
           refreshReceivableForSale(view.id)
         }}
         receivable={collectPaymentOpen ? receivableDetail : null}
+        nested
       />
 
       <ReceivableProofModal
         open={proofUploadOpen}
         onClose={() => setProofUploadOpen(false)}
         receivable={proofUploadOpen ? receivableDetail : null}
+        nested
         onConfirm={async (_receivable, payload) => {
           if (!receivableDetail?.id) return
           try {

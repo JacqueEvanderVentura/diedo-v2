@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils'
 
 const NEEDS_PROOF = ['transferencia', 'link']
 
-export function ReceivablePaymentModal({ open, onClose, receivable }) {
+export function ReceivablePaymentModal({ open, onClose, receivable, nested = false }) {
   const addReceivablePayment = usePosStore((s) => s.addReceivablePayment)
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState('efectivo')
@@ -80,7 +80,7 @@ export function ReceivablePaymentModal({ open, onClose, receivable }) {
   const payFull = () => setAmount(String(balance))
 
   return (
-    <Modal open={open} onClose={onClose} title="Registrar abono" testId="cxc-payment-modal">
+    <Modal open={open} onClose={onClose} title="Registrar abono" testId="cxc-payment-modal" nested={nested}>
       {receivable && (
         <div className="space-y-4">
           <div className="rounded-xl bg-slate-50 p-4 space-y-2 text-sm">

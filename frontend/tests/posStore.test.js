@@ -23,6 +23,8 @@ const mocks = vi.hoisted(() => ({
   createReceivablePayment: vi.fn(),
   voidReceivable: vi.fn(),
   voidSale: vi.fn(),
+  updateSale: vi.fn(),
+  deleteSale: vi.fn(),
   getSale: vi.fn(),
   reversePayment: vi.fn(),
   uploadReceivableProof: vi.fn(),
@@ -625,6 +627,86 @@ describe('store online de Terminal POS', () => {
       status: 'voided',
       version: 5,
     })
+  })
+
+  it('edita una factura que no está en el store de POS consultando la API', async () => {
+    mocks.getSale.mockResolvedValue({
+      id: 'crm-sale-id',
+      status: 'completed',
+      version: 4,
+      total: '50.00',
+      paymentMethod: { id: 'cash-id', code: 'cash' },
+      lines: [{ itemName: 'Servicio', quantity: '1', unitPrice: '50' }],
+    })
+    mocks.updateSale.mockResolvedValue({
+      id: 'crm-sale-id',
+      status: 'completed',
+      version: 5,
+      total: '50.00',
+      paymentMethod: { id: 'cash-id', code: 'cash' },
+      lines: [{ itemName: 'Servicio', quantity: '1', unitPrice: '50' }],
+    })
+    useConfigStore.setState({
+      paymentMethods: [{ id: 'efectivo', apiId: 'cash-id', code: 'cash', enabled: true, label: 'Efectivo' }],
+    })
+    usePosStore.setState({
+      sales: [],
+      shiftSales: [],
+      register: { id: 'register-id', open: true, branchId: 'branch-id', apiSynced: true },
+      apiContext: { hydrated: true, mode: 'online', branchId: 'branch-id', lastSyncedAt: null },
+    })
+    mocks.state.mockRejectedValueOnce(new Error('sin recarga'))
+
+    await usePosStore.getState().updateSale('crm-sale-id', {
+      customer: null,
+      method: 'efectivo',
+      reference: '',
+      notes: '',
+      discountMode: 'percent',
+      discountValue: 0,
+      items: [{ name: 'Servicio', qty: 1, price: 50 }],
+    })
+
+    expect(mocks.getSale).toHaveBeenCalledWith('crm-sale-id')
+    expect(mocks.updateSale).toHaveBeenCalledWith(
+      'crm-sale-id',
+      expect.objectContaining({
+        registerId: 'register-id',
+        paymentMethodId: 'cash-id',
+        version: 4,
+      }),
+      { idempotencyKey: 'attempt-key-1' },
+    )
+    expect(usePosStore.getState().sales[0]).toMatchObject({
+      id: 'crm-sale-id',
+      version: 5,
+    })
+  })
+
+  it('elimina una factura que no está en el store de POS consultando la API', async () => {
+    mocks.getSale.mockResolvedValue({
+      id: 'crm-sale-id',
+      status: 'completed',
+      version: 4,
+      total: '50.00',
+      paymentMethod: { id: 'cash-id', code: 'cash' },
+    })
+    mocks.deleteSale.mockResolvedValue({})
+    usePosStore.setState({
+      sales: [{ id: 'other', apiSynced: true }],
+      shiftSales: [],
+      apiContext: { hydrated: true, mode: 'online', branchId: 'branch-id', lastSyncedAt: null },
+    })
+    mocks.state.mockRejectedValueOnce(new Error('sin recarga'))
+
+    await usePosStore.getState().deleteSale('crm-sale-id')
+
+    expect(mocks.getSale).toHaveBeenCalledWith('crm-sale-id')
+    expect(mocks.deleteSale).toHaveBeenCalledWith(
+      'crm-sale-id',
+      { version: 4, idempotencyKey: 'attempt-key-1' },
+    )
+    expect(usePosStore.getState().sales.some((item) => item.id === 'crm-sale-id')).toBe(false)
   })
 
   it('restaura cliente e ítems pidiendo detalle cuando el listado viene sin líneas', async () => {

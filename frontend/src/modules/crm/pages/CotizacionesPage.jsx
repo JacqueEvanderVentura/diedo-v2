@@ -249,9 +249,15 @@ export default function CotizacionesPage() {
     [quotes, receivables, sales]
   )
 
-  const visibleQuotes = useMemo(() => {
+  const pipelineQuotes = useMemo(() => {
     return enrichedQuotes
       .filter((q) => !isQuoteInvoiced(q))
+      .filter((q) => isActiveCrmQuote(q))
+      .filter((q) => matchesBranches(q, branchIds, (row) => (row.branchId ? [row.branchId] : [])))
+  }, [enrichedQuotes, branchIds])
+
+  const visibleQuotes = useMemo(() => {
+    return enrichedQuotes
       .filter((q) => isActiveCrmQuote(q))
       .filter((q) => matchesBranches(q, branchIds, (row) => (row.branchId ? [row.branchId] : [])))
   }, [enrichedQuotes, branchIds])
@@ -271,12 +277,12 @@ export default function CotizacionesPage() {
   }, [quotes, sales, posSales, receivables, docFilter, branchIds])
 
   const stats = useMemo(() => ({
-    total: visibleQuotes.length,
-    enviadas: visibleQuotes.filter((q) => q.status === 'enviada').length,
-    aceptadas: visibleQuotes.filter((q) => q.status === 'aceptada').length,
-    porCobrar: visibleQuotes.filter((q) => isQuoteInvoicePending(q, receivables)).length,
-    valor: visibleQuotes.reduce((a, q) => a + (q.total || 0), 0),
-  }), [visibleQuotes, receivables])
+    total: pipelineQuotes.length,
+    enviadas: pipelineQuotes.filter((q) => q.status === 'enviada').length,
+    aceptadas: pipelineQuotes.filter((q) => q.status === 'aceptada').length,
+    porCobrar: pipelineQuotes.filter((q) => isQuoteInvoicePending(q, receivables)).length,
+    valor: pipelineQuotes.reduce((a, q) => a + (q.total || 0), 0),
+  }), [pipelineQuotes, receivables])
 
   const exportRows = useMemo(
     () => visibleQuotes.map((q) => ({
@@ -309,6 +315,27 @@ export default function CotizacionesPage() {
     setEditingQuote(quote)
     setInitialContext(null)
     setFormOpen(true)
+  }
+
+  const openQuoteSale = async (quote) => {
+    const saleId = quoteConvertedSaleId(quote, [...sales, ...posSales])
+    if (!saleId) {
+      toast.error('Esta cotización no tiene factura vinculada.')
+      return
+    }
+    const existing = sales.find((item) => item.id === saleId)
+      || posSales.find((item) => item.id === saleId)
+    if (existing) {
+      setSelectedSale(existing)
+      return
+    }
+    try {
+      const fresh = await ensureSaleDetail(saleId)
+      if (!fresh) throw new Error('missing')
+      setSelectedSale(fresh)
+    } catch {
+      toast.error('No se pudo abrir la factura de esta cotización.')
+    }
   }
 
   const closeForm = () => {
@@ -725,6 +752,7 @@ export default function CotizacionesPage() {
                     }
                     const q = row.quote
                     const pending = isQuoteInvoicePending(q, receivables)
+                    const invoiced = Boolean(row.invoiced)
                     return (
                       <tr
                         key={row.id}
@@ -741,6 +769,11 @@ export default function CotizacionesPage() {
                             <Badge tone={QUOTE_STATUS_META[q.status]?.tone || 'neutral'}>
                               {QUOTE_STATUS_META[q.status]?.label}
                             </Badge>
+                            {invoiced && (
+                              <Badge tone="success" data-testid={`quote-invoiced-${q.id}`}>
+                                Facturada{q.invoiceNumber ? ` · ${q.invoiceNumber}` : ''}
+                              </Badge>
+                            )}
                             {pending && (
                               <Badge tone="warning">Por cobrar</Badge>
                             )}
@@ -750,6 +783,17 @@ export default function CotizacionesPage() {
                         <td className="px-6 py-4 text-right font-heading font-bold text-emerald-600">{formatDOP(q.total)}</td>
                         <td className="px-6 py-4">
                           <div className="flex flex-wrap items-center justify-end gap-1">
+                            {invoiced && (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => openQuoteSale(q)}
+                                data-testid={`quote-open-invoice-${q.id}`}
+                              >
+                                <FileText className="h-4 w-4" />
+                                Ver factura
+                              </Button>
+                            )}
                             {canEmitQuoteInvoice(q) && (
                               <Button size="sm" onClick={() => openInvoice(q)} data-testid={`quote-invoice-${q.id}`}>
                                 <Receipt className="h-4 w-4" />
@@ -807,13 +851,22 @@ export default function CotizacionesPage() {
                 }
                 const q = row.quote
                 return (
-                  <MobileCard key={row.id} testId={`cotizaciones-quote-card-${q.id}`}>
+                  <MobileCard
+                    key={row.id}
+                    testId={`cotizaciones-quote-card-${q.id}`}
+                    onClick={row.invoiced ? () => openQuoteSale(q) : undefined}
+                  >
                     <MobileCardHeader
                       title={q.customerName}
                       subtitle={q.number}
                       badge={<Badge tone={QUOTE_STATUS_META[q.status]?.tone || 'neutral'}>{QUOTE_STATUS_META[q.status]?.label}</Badge>}
                     />
                     <MobileField label="Tipo">Cotización</MobileField>
+                    {row.invoiced && (
+                      <MobileField label="Factura">
+                        <span data-testid={`quote-open-invoice-${q.id}`}>Ver factura</span>
+                      </MobileField>
+                    )}
                     <MobileCardFooter>
                       <span className="text-xs text-slate-400">{fmtDate(q.createdAt)}</span>
                       <span className="font-heading font-bold text-emerald-600">{formatDOP(q.total)}</span>
@@ -881,6 +934,17 @@ export default function CotizacionesPage() {
                   </div>
                   <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                     <p className="font-heading text-lg font-bold text-emerald-600">{formatDOP(q.total)}</p>
+                    {isQuoteInvoiced(q) && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => openQuoteSale(q)}
+                        data-testid={`quote-open-invoice-${q.id}`}
+                      >
+                        <FileText className="h-4 w-4" />
+                        Ver factura
+                      </Button>
+                    )}
                     {canEmitQuoteInvoice(q) && (
                       <Button size="sm" onClick={() => openInvoice(q)} data-testid={`quote-invoice-${q.id}`}>
                         <Receipt className="h-4 w-4" />

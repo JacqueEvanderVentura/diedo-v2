@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { posState, sessionState } = vi.hoisted(() => ({
@@ -64,13 +64,27 @@ vi.mock('@/modules/pos/components/InvoicePaymentLog', () => ({
   InvoicePaymentLog: () => <div data-testid="sale-detail-payment-log-body" />,
 }))
 
-vi.mock('@/modules/crm/components/SaleEditModal', () => ({
-  SaleEditModal: () => null,
-}))
+vi.mock('@/modules/crm/components/SaleEditModal', async () => {
+  const { Modal } = await import('@/components/ui/Modal')
+  return {
+    SaleEditModal: ({ open, onClose }) => (
+      <Modal open={open} onClose={onClose} nested title="Editar factura" testId="sale-edit-modal">
+        edit
+      </Modal>
+    ),
+  }
+})
 
-vi.mock('@/modules/pos/components/ReceivablePaymentModal', () => ({
-  ReceivablePaymentModal: () => null,
-}))
+vi.mock('@/modules/pos/components/ReceivablePaymentModal', async () => {
+  const { Modal } = await import('@/components/ui/Modal')
+  return {
+    ReceivablePaymentModal: ({ open, onClose }) => (
+      <Modal open={open} onClose={onClose} nested title="Registrar abono" testId="cxc-payment-modal">
+        pago
+      </Modal>
+    ),
+  }
+})
 
 vi.mock('@/modules/pos/components/ReceivableProofModal', () => ({
   ReceivableProofModal: () => null,
@@ -164,5 +178,40 @@ describe('SaleDetailModal', () => {
 
     expect(screen.getByTestId('sale-detail-collect-payment')).toBeTruthy()
     expect(screen.getByTestId('sale-detail-void')).toBeTruthy()
+  })
+
+  it('abre editar, pago y anular en capa nested sobre el detalle', async () => {
+    sessionState.status = 'online'
+    sessionState.hasPermission = (code) => (
+      code === 'pos.receivables.collect'
+      || code === 'sales.invoice.void'
+      || code === 'sales.invoice.edit'
+    )
+    posState.receivables = [{
+      id: 'recv-1',
+      saleId: 'sale-a',
+      amount: 1500,
+      paidAmount: 500,
+      balance: 1000,
+      status: 'partial',
+      proofs: [],
+      payments: [],
+    }]
+
+    await act(async () => {
+      render(<SaleDetailModal open onClose={vi.fn()} sale={saleA} />)
+    })
+
+    const detailLayer = screen.getByTestId('sale-detail-modal').closest('[data-modal-layer]')
+    expect(detailLayer?.getAttribute('data-modal-layer')).toBe('elevated')
+
+    fireEvent.click(screen.getByTestId('sale-detail-collect-payment'))
+    expect(screen.getByTestId('cxc-payment-modal').closest('[data-modal-layer]')?.getAttribute('data-modal-layer')).toBe('nested')
+
+    fireEvent.click(screen.getByTestId('sale-detail-edit'))
+    expect(screen.getByTestId('sale-edit-modal').closest('[data-modal-layer]')?.getAttribute('data-modal-layer')).toBe('nested')
+
+    fireEvent.click(screen.getByTestId('sale-detail-void'))
+    expect(screen.getByTestId('sale-detail-void-modal').closest('[data-modal-layer]')?.getAttribute('data-modal-layer')).toBe('nested')
   })
 })

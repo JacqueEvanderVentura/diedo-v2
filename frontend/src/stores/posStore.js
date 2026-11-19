@@ -96,6 +96,52 @@ function assertOnline() {
   if (!isOnlineMode()) throw new Error(API_UNAVAILABLE)
 }
 
+async function resolveOnlineSale(get, id, fallbackSale) {
+  let sale = get().sales.find((item) => item.id === id)
+    || get().shiftSales.find((item) => item.id === id)
+    || (fallbackSale?.id === id ? fallbackSale : null)
+  if (!sale?.apiSynced && isOnlineMode()) {
+    try {
+      sale = mapSaleFromApi(await posApi.getSale(id))
+    } catch {
+      sale = sale || null
+    }
+  }
+  return sale
+}
+
+function upsertSaleInLists(state, id, next) {
+  const patchSale = (item) => (item.id === id ? { ...item, ...next } : item)
+  return {
+    sales: state.sales.some((item) => item.id === id)
+      ? state.sales.map(patchSale)
+      : [next, ...state.sales],
+    shiftSales: state.shiftSales.some((item) => item.id === id)
+      ? state.shiftSales.map(patchSale)
+      : state.shiftSales,
+  }
+}
+
+function syncCrmSale(id, patch) {
+  import('@/stores/crmStore').then(({ useCrmStore }) => {
+    useCrmStore.setState((state) => {
+      const exists = state.sales.some((item) => item.id === id)
+      if (!exists) return { sales: [patch, ...state.sales] }
+      return {
+        sales: state.sales.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+      }
+    })
+  }).catch(() => {})
+}
+
+function removeCrmSale(id) {
+  import('@/stores/crmStore').then(({ useCrmStore }) => {
+    useCrmStore.setState((state) => ({
+      sales: state.sales.filter((item) => item.id !== id),
+    }))
+  }).catch(() => {})
+}
+
 function serializableAttemptPayload(value) {
   return JSON.stringify(value, (_key, current) => {
     if (typeof File !== 'undefined' && current instanceof File) {
@@ -1798,16 +1844,7 @@ export const usePosStore = create(
 
       voidSale: async (id, reason, fallbackSale) => {
         assertOnline()
-        let sale = get().sales.find((item) => item.id === id)
-          || get().shiftSales.find((item) => item.id === id)
-          || (fallbackSale?.id === id ? fallbackSale : null)
-        if (!sale && isOnlineMode()) {
-          try {
-            sale = mapSaleFromApi(await posApi.getSale(id))
-          } catch {
-            sale = null
-          }
-        }
+        const sale = await resolveOnlineSale(get, id, fallbackSale)
         if (!sale) return false
         if (!sale.apiSynced) {
           const voidedAt = now()
@@ -1857,9 +1894,8 @@ export const usePosStore = create(
         })
       },
 
-      updateSale: (id, form) => {
-        const sale = get().sales.find((item) => item.id === id)
-          || get().shiftSales.find((item) => item.id === id)
+      updateSale: async (id, form, fallbackSale) => {
+        const sale = await resolveOnlineSale(get, id, fallbackSale)
         if (!sale?.apiSynced || !isOnlineMode()) {
           throw new Error('Solo puedes editar facturas sincronizadas en línea.')
         }
@@ -1878,17 +1914,15 @@ export const usePosStore = create(
           apply: (response) => {
             const updated = mapSaleFromApi(response)
             if (!updated?.id) return
-            set((prev) => ({
-              sales: prev.sales.map((item) => (item.id === id ? { ...item, ...updated } : item)),
-              shiftSales: prev.shiftSales.map((item) => (item.id === id ? { ...item, ...updated } : item)),
-            }))
+            const next = { ...sale, ...updated }
+            set((prev) => upsertSaleInLists(prev, id, next))
+            syncCrmSale(id, next)
           },
         })
       },
 
-      deleteSale: (id) => {
-        const sale = get().sales.find((item) => item.id === id)
-          || get().shiftSales.find((item) => item.id === id)
+      deleteSale: async (id, fallbackSale) => {
+        const sale = await resolveOnlineSale(get, id, fallbackSale)
         if (!sale?.apiSynced || !isOnlineMode()) {
           throw new Error('Solo puedes eliminar facturas sincronizadas en línea.')
         }
@@ -1901,10 +1935,13 @@ export const usePosStore = create(
             version: sale.version,
             idempotencyKey,
           }),
-          apply: () => set((prev) => ({
-            sales: prev.sales.filter((item) => item.id !== id),
-            shiftSales: prev.shiftSales.filter((item) => item.id !== id),
-          })),
+          apply: () => {
+            set((prev) => ({
+              sales: prev.sales.filter((item) => item.id !== id),
+              shiftSales: prev.shiftSales.filter((item) => item.id !== id),
+            }))
+            removeCrmSale(id)
+          },
         })
       },
 

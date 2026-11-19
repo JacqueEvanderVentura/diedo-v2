@@ -16,6 +16,7 @@ export function ReceivableProofModal({
   onConfirm,
   onCash,
   onSaveOnly,
+  nested = false,
 }) {
   const [file, setFile] = useState(null)
   const [reference, setReference] = useState('')
@@ -86,7 +87,7 @@ export function ReceivableProofModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Validar pago con comprobante" testId="cxc-proof-modal">
+    <Modal open={open} onClose={onClose} title="Validar pago con comprobante" testId="cxc-proof-modal" nested={nested}>
       <div className="space-y-4">
         <div className="rounded-xl bg-slate-50 p-4">
           <p className="font-heading font-bold text-slate-900">{receivable.customer?.name}</p>
