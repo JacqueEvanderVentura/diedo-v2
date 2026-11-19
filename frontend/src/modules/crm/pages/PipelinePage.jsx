@@ -355,6 +355,7 @@ export default function PipelinePage() {
     collectionMode,
     reference,
     proof,
+    tenders,
   } = {}) => {
     if (!pendingLead) return
     setBusyLeadId(pendingLead.id)
@@ -367,6 +368,7 @@ export default function PipelinePage() {
         collectionMode,
         reference,
         proof,
+        tenders,
         customerId: resolvedCustomerId,
       })
       if (sale) {

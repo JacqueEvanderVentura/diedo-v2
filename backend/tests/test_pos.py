@@ -2105,6 +2105,167 @@ def test_checkout_split_tenders_creates_partial_receivable_with_approval_pending
 
 
 @pytest.mark.integration
+def test_checkout_partial_tenders_leaves_receivable_and_accepts_later_payments(
+    client: TestClient,
+) -> None:
+    _, branch_id = _bootstrap_isolated_branch()
+    headers = _login(client)
+    suffix = uuid7().hex[-12:]
+    state = client.get(
+        "/api/v1/pos/state",
+        headers=headers,
+        params={"branchId": str(branch_id)},
+    )
+    assert state.status_code == 200, state.text
+    methods = {method["code"]: method for method in state.json()["paymentMethods"]}
+    opened = client.post(
+        "/api/v1/pos/registers",
+        headers=_idempotent(headers, f"partial-tender-open-{suffix}"),
+        json={"branchId": str(branch_id), "openingCash": "50.00", "currency": "DOP"},
+    )
+    assert opened.status_code == 201, opened.text
+    register_id = opened.json()["id"]
+    product = _create_product(client, headers, branch_id, suffix)
+    customer_id = _create_customer(client, headers, branch_id, suffix)
+
+    missing_customer = client.post(
+        "/api/v1/pos/checkout",
+        headers=_idempotent(headers, f"partial-tender-anon-{suffix}"),
+        json={
+            "branchId": str(branch_id),
+            "registerId": register_id,
+            "tenders": [{"paymentMethodId": methods["cash"]["id"], "amount": "10.00"}],
+            "lines": [{"itemId": str(product["id"]), "quantity": "3"}],
+        },
+    )
+    assert missing_customer.status_code == 400, missing_customer.text
+
+    overage = client.post(
+        "/api/v1/pos/checkout",
+        headers=_idempotent(headers, f"partial-tender-over-{suffix}"),
+        json={
+            "branchId": str(branch_id),
+            "registerId": register_id,
+            "customerId": customer_id,
+            "tenders": [{"paymentMethodId": methods["cash"]["id"], "amount": "40.00"}],
+            "lines": [{"itemId": str(product["id"]), "quantity": "3"}],
+        },
+    )
+    assert overage.status_code == 400, overage.text
+
+    checkout = client.post(
+        "/api/v1/pos/checkout",
+        headers=_idempotent(headers, f"partial-tender-ok-{suffix}"),
+        json={
+            "branchId": str(branch_id),
+            "registerId": register_id,
+            "customerId": customer_id,
+            "tenders": [{"paymentMethodId": methods["cash"]["id"], "amount": "10.00"}],
+            "lines": [{"itemId": str(product["id"]), "quantity": "3"}],
+        },
+    )
+    assert checkout.status_code == 201, checkout.text
+    body = checkout.json()
+    assert body["total"] == "30.00"
+    receivable_id = body["receivableId"]
+    assert receivable_id is not None
+    receivable = client.get(
+        f"/api/v1/pos/receivables/{receivable_id}",
+        headers=headers,
+    ).json()
+    assert receivable["status"] == "partial"
+    assert receivable["paidTotal"] == "10.00"
+    assert receivable["balance"] == "20.00"
+
+    sale_id = body["id"]
+    void_after_abono = client.post(
+        f"/api/v1/pos/sales/{sale_id}/void",
+        headers=_idempotent(headers, f"partial-tender-void-{suffix}"),
+        json={"reason": "Abono de prueba", "version": body["version"]},
+    )
+    assert void_after_abono.status_code == 200, void_after_abono.text
+    assert void_after_abono.json()["status"] == "voided"
+
+
+@pytest.mark.integration
+def test_void_sale_blocks_when_receivable_has_posted_payment(client: TestClient) -> None:
+    _, branch_id = _bootstrap_isolated_branch()
+    headers = _login(client)
+    suffix = uuid7().hex[-12:]
+    state = client.get(
+        "/api/v1/pos/state",
+        headers=headers,
+        params={"branchId": str(branch_id)},
+    )
+    assert state.status_code == 200, state.text
+    methods = {method["code"]: method for method in state.json()["paymentMethods"]}
+    opened = client.post(
+        "/api/v1/pos/registers",
+        headers=_idempotent(headers, f"posted-pay-open-{suffix}"),
+        json={"branchId": str(branch_id), "openingCash": "50.00", "currency": "DOP"},
+    )
+    assert opened.status_code == 201, opened.text
+    register_id = opened.json()["id"]
+    product = _create_product(client, headers, branch_id, suffix)
+    customer_id = _create_customer(client, headers, branch_id, suffix)
+    checkout = client.post(
+        "/api/v1/pos/checkout",
+        headers=_idempotent(headers, f"posted-pay-checkout-{suffix}"),
+        json={
+            "branchId": str(branch_id),
+            "registerId": register_id,
+            "customerId": customer_id,
+            "tenders": [{"paymentMethodId": methods["cash"]["id"], "amount": "10.00"}],
+            "lines": [{"itemId": str(product["id"]), "quantity": "3"}],
+        },
+    )
+    assert checkout.status_code == 201, checkout.text
+    receivable_id = checkout.json()["receivableId"]
+    sale = checkout.json()
+    first_payment = client.post(
+        f"/api/v1/pos/receivables/{receivable_id}/payments",
+        headers=_idempotent(headers, f"posted-pay-card-{suffix}"),
+        data={
+            "amount": "8.00",
+            "methodId": methods.get("card", methods["cash"])["id"],
+            "registerId": register_id,
+            "version": str(
+                client.get(f"/api/v1/pos/receivables/{receivable_id}", headers=headers).json()[
+                    "version"
+                ]
+            ),
+        },
+    )
+    assert first_payment.status_code == 201, first_payment.text
+    blocked = client.post(
+        f"/api/v1/pos/sales/{sale['id']}/void",
+        headers=_idempotent(headers, f"posted-pay-void-{suffix}"),
+        json={"reason": "Quiere anular con cobro", "version": sale["version"]},
+    )
+    assert blocked.status_code == 409, blocked.text
+    assert "Revierte primero" in blocked.json()["message"]
+
+    remaining = client.get(
+        f"/api/v1/pos/receivables/{receivable_id}",
+        headers=headers,
+    ).json()
+    final_payment = client.post(
+        f"/api/v1/pos/receivables/{receivable_id}/payments",
+        headers=_idempotent(headers, f"posted-pay-transfer-{suffix}"),
+        data={
+            "amount": remaining["balance"],
+            "methodId": methods["cash"]["id"],
+            "registerId": register_id,
+            "version": str(remaining["version"]),
+        },
+    )
+    assert final_payment.status_code == 201, final_payment.text
+    paid = client.get(f"/api/v1/pos/receivables/{receivable_id}", headers=headers).json()
+    assert paid["status"] == "paid"
+    assert paid["balance"] == "0.00"
+
+
+@pytest.mark.integration
 def test_get_sale_without_split_tenders_synthesizes_single_line(client: TestClient) -> None:
     _, branch_id = _bootstrap_isolated_branch()
     headers = _login(client)

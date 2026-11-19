@@ -1796,11 +1796,19 @@ export const usePosStore = create(
         return id
       },
 
-      voidSale: (id, reason) => {
-        const sale = get().sales.find((item) => item.id === id)
-          || get().shiftSales.find((item) => item.id === id)
-        if (!sale) return false
+      voidSale: async (id, reason, fallbackSale) => {
         assertOnline()
+        let sale = get().sales.find((item) => item.id === id)
+          || get().shiftSales.find((item) => item.id === id)
+          || (fallbackSale?.id === id ? fallbackSale : null)
+        if (!sale && isOnlineMode()) {
+          try {
+            sale = mapSaleFromApi(await posApi.getSale(id))
+          } catch {
+            sale = null
+          }
+        }
+        if (!sale) return false
         if (!sale.apiSynced) {
           const voidedAt = now()
           set((state) => ({
@@ -1831,9 +1839,15 @@ export const usePosStore = create(
               voidReason: response?.voidReason || reason || null,
               version: response?.version ?? sale.version,
             }
+            const patchSale = (item) => (item.id === id ? { ...item, ...voidPatch } : item)
+            const inSales = state.sales.some((item) => item.id === id)
             return {
-              sales: state.sales.map((item) => item.id === id ? { ...item, ...voidPatch } : item),
-              shiftSales: state.shiftSales.map((item) => item.id === id ? { ...item, ...voidPatch } : item),
+              sales: inSales
+                ? state.sales.map(patchSale)
+                : [{ ...sale, ...voidPatch }, ...state.sales],
+              shiftSales: state.shiftSales.some((item) => item.id === id)
+                ? state.shiftSales.map(patchSale)
+                : state.shiftSales,
               cashSales: Math.max(0, state.cashSales - cashDelta),
               register: cashDelta && state.register.expectedCash != null
                 ? { ...state.register, expectedCash: state.register.expectedCash - cashDelta }

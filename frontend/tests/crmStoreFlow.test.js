@@ -14,9 +14,11 @@ const mocks = vi.hoisted(() => ({
   cancelQuote: vi.fn(),
   convertLead: vi.fn(),
   quotes: vi.fn(),
+  invoiceQuote: vi.fn(),
 }))
 
 const customerStore = vi.hoisted(() => ({
+  customers: [],
   hydrate: vi.fn(),
   addCustomer: vi.fn(),
   fetchCustomer: vi.fn(),
@@ -28,6 +30,7 @@ vi.mock('@/stores/customersStore', () => ({
   useCustomersStore: { getState: () => customerStore },
 }))
 
+import { useConfigStore } from '@/stores/configStore'
 import { useCrmStore } from '@/stores/crmStore'
 import { useSessionStore } from '@/stores/sessionStore'
 
@@ -55,6 +58,7 @@ function pipelineLead(overrides = {}) {
 describe('flujo conectado del store CRM', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    customerStore.customers = []
     mocks.leads.mockReset()
     useSessionStore.setState({
       status: 'online',
@@ -416,5 +420,45 @@ describe('flujo conectado del store CRM', () => {
     expect(mocks.convertLead).toHaveBeenCalledWith(leadId, expect.objectContaining({ version: 2 }))
     expect(mocks.updateLead).not.toHaveBeenCalled()
     expect(useCrmStore.getState().leads[0]).toMatchObject({ status: 'propuesta', customerId })
+  })
+
+  it('envía tenders al facturar una cotización con abono parcial', async () => {
+    customerStore.customers = [{ id: customerId, name: 'Cliente' }]
+    useConfigStore.setState({
+      paymentMethods: [
+        { id: 'efectivo', apiId: 'pm-cash', enabled: true, code: 'cash' },
+      ],
+    })
+    useCrmStore.setState({
+      quotes: [{
+        id: 'quote',
+        customerId,
+        status: 'aceptada',
+        version: 1,
+        total: 1000,
+      }],
+      sales: [],
+    })
+    mocks.invoiceQuote.mockResolvedValue({
+      id: 'sale-abono',
+      number: 'VTA-ABONO',
+      total: '1000.00',
+      receivableId: 'recv-abono',
+      lines: [],
+      paymentMethod: { id: 'pm-cash', code: 'cash' },
+    })
+
+    await useCrmStore.getState().invoiceQuote('quote', {
+      tenders: [{ methodId: 'efectivo', amount: 500, reference: null }],
+    })
+
+    expect(mocks.invoiceQuote).toHaveBeenCalledWith(
+      'quote',
+      expect.objectContaining({
+        version: 1,
+        tenders: [{ paymentMethodId: 'pm-cash', amount: 500, reference: null }],
+      }),
+      'crm-quote-invoice-quote',
+    )
   })
 })

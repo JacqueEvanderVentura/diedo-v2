@@ -25,12 +25,22 @@ describe('splitPayment', () => {
     ], 5500)
     expect(ok.ok).toBe(true)
     expect(ok.tenders).toHaveLength(2)
+    expect(ok.outstanding).toBe(0)
     expect(sumSplitDraft(ok.tenders.map((row) => ({ amount: row.amount })))).toBe(5500)
   })
 
-  it('rechaza montos incompletos', () => {
-    const fail = checkoutTendersFromDraft([
+  it('acepta un abono parcial y deja el saldo en CxC', () => {
+    const ok = checkoutTendersFromDraft([
       { methodId: 'efectivo', amount: '1000', reference: '' },
+    ], 5500)
+    expect(ok.ok).toBe(true)
+    expect(ok.tenders).toHaveLength(1)
+    expect(ok.outstanding).toBe(4500)
+  })
+
+  it('rechaza montos que superan el total', () => {
+    const fail = checkoutTendersFromDraft([
+      { methodId: 'efectivo', amount: '6000', reference: '' },
     ], 5500)
     expect(fail.ok).toBe(false)
   })

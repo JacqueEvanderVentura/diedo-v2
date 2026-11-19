@@ -6,6 +6,7 @@ import { InlineSetupCard } from '@/components/ui/InlineSetupCard'
 import { formatDOP } from '@/lib/format'
 import { PaymentMethodPicker } from '@/modules/pos/components/PaymentMethodPicker'
 import { PaymentEvidenceFields } from '@/modules/pos/components/PaymentEvidenceFields'
+import { SplitTenderSection } from '@/modules/pos/components/SplitTenderSection'
 import { validatePaymentEvidence } from '@/modules/pos/lib/paymentMethods'
 import {
   analyzeQuoteInvoicePaymentSetup,
@@ -37,8 +38,10 @@ export function QuoteInvoiceModal({
   const [paymentMethodId, setPaymentMethodId] = useState('')
   const [paymentReference, setPaymentReference] = useState('')
   const [paymentProof, setPaymentProof] = useState(null)
+  const [tenders, setTenders] = useState(null)
   const [evidenceError, setEvidenceError] = useState(false)
   const [inlineError, setInlineError] = useState(null)
+  const splitEnabled = Array.isArray(tenders) && tenders.length > 0
 
   const selectedMethod = useMemo(
     () => enabledMethods.find((method) => method.id === paymentMethodId) || null,
@@ -51,6 +54,7 @@ export function QuoteInvoiceModal({
     setEvidenceError(false)
     setPaymentReference('')
     setPaymentProof(null)
+    setTenders(null)
     const first = enabledMethods[0]
     setPaymentMethodId(first?.id || '')
   }, [open, quote?.id, enabledMethods])
@@ -66,21 +70,33 @@ export function QuoteInvoiceModal({
     [quote]
   )
 
-  const canSubmit = Boolean(quote) && !setupGap && enabledMethods.length > 0 && paymentMethodId
+  const canSubmit = Boolean(quote) && !setupGap && enabledMethods.length > 0
+    && (splitEnabled || paymentMethodId)
 
   const handleConfirm = async () => {
     if (!quote || setupGap) return
     setInlineError(null)
-    const evidenceValidation = validatePaymentEvidence(selectedMethod, {
-      reference: paymentReference,
-      proof: paymentProof,
-    })
-    if (evidenceValidation) {
-      setEvidenceError(true)
-      return
+    if (!splitEnabled) {
+      const evidenceValidation = validatePaymentEvidence(selectedMethod, {
+        reference: paymentReference,
+        proof: paymentProof,
+      })
+      if (evidenceValidation) {
+        setEvidenceError(true)
+        return
+      }
     }
     setEvidenceError(false)
     try {
+      if (splitEnabled) {
+        await onConfirm?.({
+          tenders,
+          collectionMode: 'now',
+          reference: paymentReference.trim() || null,
+          proof: paymentProof,
+        })
+        return
+      }
       const resolved = resolveQuoteInvoicePaymentMethod(paymentMethods, { paymentMethodId })
       await onConfirm?.({
         paymentMethod: resolved.semantic,
@@ -144,13 +160,16 @@ export function QuoteInvoiceModal({
 
           {!setupGap && enabledMethods.length > 0 && (
             <>
-              <PaymentMethodPicker
-                methods={paymentMethods}
-                value={paymentMethodId}
-                onChange={setPaymentMethodId}
-                testIdPrefix="quote-invoice-payment"
-              />
-              {selectedMethod && (
+              {!splitEnabled && (
+                <PaymentMethodPicker
+                  methods={paymentMethods}
+                  value={paymentMethodId}
+                  onChange={setPaymentMethodId}
+                  testIdPrefix="quote-invoice-payment"
+                />
+              )}
+              <SplitTenderSection total={total} tenders={tenders} onTendersChange={setTenders} />
+              {!splitEnabled && selectedMethod && (
                 <PaymentEvidenceFields
                   method={selectedMethod}
                   reference={paymentReference}

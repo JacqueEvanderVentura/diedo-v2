@@ -30,6 +30,8 @@ import { PaymentMethodPicker } from '@/modules/pos/components/PaymentMethodPicke
 
 import { PaymentEvidenceFields } from '@/modules/pos/components/PaymentEvidenceFields'
 
+import { SplitTenderSection } from '@/modules/pos/components/SplitTenderSection'
+
 import { validatePaymentEvidence } from '@/modules/pos/lib/paymentMethods'
 
 import {
@@ -113,7 +115,11 @@ export function CloseLeadInvoiceModal({
 
   const [paymentProof, setPaymentProof] = useState(null)
 
+  const [tenders, setTenders] = useState(null)
+
   const [paymentEvidenceError, setPaymentEvidenceError] = useState(false)
+
+  const splitEnabled = Array.isArray(tenders) && tenders.length > 0
 
   const enabledPaymentMethods = useMemo(
     () => listCheckoutPaymentMethods(paymentMethods),
@@ -166,6 +172,14 @@ export function CloseLeadInvoiceModal({
     setDraftItemId('')
 
     setDraftPrice('')
+
+    setTenders(null)
+
+    setPaymentReference('')
+
+    setPaymentProof(null)
+
+    setPaymentEvidenceError(false)
 
   }, [open, lead?.id])
 
@@ -361,6 +375,17 @@ export function CloseLeadInvoiceModal({
     if (!effectiveCustomerId) return
 
     if (!quote?.convertedSaleId) {
+      if (splitEnabled) {
+        setPaymentEvidenceError(false)
+        onConfirm({
+          customerId: effectiveCustomerId,
+          tenders,
+          collectionMode: 'now',
+          reference: paymentReference.trim() || null,
+          proof: paymentProof,
+        })
+        return
+      }
       const evidenceValidation = validatePaymentEvidence(selectedPaymentMethod, {
         reference: paymentReference,
         proof: paymentProof,
@@ -855,20 +880,25 @@ export function CloseLeadInvoiceModal({
         <div className="shrink-0 space-y-3 border-t border-slate-100 bg-white p-5">
           {!quote?.convertedSaleId && (
             <>
-              <PaymentMethodPicker
-                methods={enabledPaymentMethods}
-                value={paymentMethod}
-                onChange={onPaymentMethodChange}
-                testIdPrefix="pipeline-close-payment"
-              />
-              <PaymentEvidenceFields
-                method={selectedPaymentMethod}
-                reference={paymentReference}
-                onReferenceChange={setPaymentReference}
-                proof={paymentProof}
-                onProofChange={setPaymentProof}
-                showError={paymentEvidenceError}
-              />
+              {!splitEnabled && (
+                <PaymentMethodPicker
+                  methods={enabledPaymentMethods}
+                  value={paymentMethod}
+                  onChange={onPaymentMethodChange}
+                  testIdPrefix="pipeline-close-payment"
+                />
+              )}
+              <SplitTenderSection total={total} tenders={tenders} onTendersChange={setTenders} />
+              {!splitEnabled && (
+                <PaymentEvidenceFields
+                  method={selectedPaymentMethod}
+                  reference={paymentReference}
+                  onReferenceChange={setPaymentReference}
+                  proof={paymentProof}
+                  onProofChange={setPaymentProof}
+                  showError={paymentEvidenceError}
+                />
+              )}
             </>
           )}
 

@@ -1438,19 +1438,11 @@ class PosService:
                 "customerId",
             )
         if resolved_tenders is not None:
-            tender_total = money(sum((tender.amount for tender in resolved_tenders), Decimal("0")))
-            if tender_total != priced.total:
-                raise InvalidOperationError(
-                    "La suma de los pagos debe coincidir con el total de la venta.",
-                    "tenders",
-                )
-            if customer is None and any(
-                tender.method.settlement_policy != "immediate" for tender in resolved_tenders
-            ):
-                raise InvalidOperationError(
-                    "Selecciona un cliente registrado para crear una cuenta por cobrar.",
-                    "customerId",
-                )
+            self._assert_tender_allocation(
+                resolved_tenders=resolved_tenders,
+                priced_total=priced.total,
+                customer=customer,
+            )
         workspace = self._repository.workspace(grant.workspace_id)
         if workspace is None:
             raise ResourceNotFoundError("El workspace no existe.")
@@ -2545,13 +2537,17 @@ class PosService:
         lifecycle.require_reversible(wash)
         sale_record = self._repository.sale_record(sale)
         receivable = self._repository.receivable_for_sale(grant.workspace_id, sale.id, lock=True)
-        if receivable is not None and receivable.paid_amount > 0:
-            raise ConflictError(
-                "Revierte primero los cobros aplicados a la cuenta por cobrar.",
-                "saleId",
+        if receivable is not None:
+            posted_payments = self._repository.posted_payments_for_receivable(
+                grant.workspace_id, receivable.id
             )
-        cash_movement = self._repository.movement_for_sale(grant.workspace_id, sale.id)
-        if cash_movement is not None:
+            if posted_payments:
+                raise ConflictError(
+                    "Revierte primero los cobros aplicados a la cuenta por cobrar.",
+                    "saleId",
+                )
+        cash_movements = self._repository.movements_for_sale(grant.workspace_id, sale.id)
+        for index, cash_movement in enumerate(cash_movements):
             register = self._locked_reversal_register(
                 grant,
                 original_register_id=cash_movement.cash_register_id,
@@ -2565,21 +2561,29 @@ class PosService:
                 currency_code=sale.currency_code,
                 amount=cash_movement.amount,
                 cash_delta=-cash_movement.cash_delta,
-                payment_method_id=sale.payment_method_id,
-                payment_method_code=sale.payment_method_code,
-                payment_method_name=sale.payment_method_name,
-                payment_channel=sale.payment_channel,
-                settlement_policy=sale.settlement_policy,
-                affects_cash_drawer=sale.affects_cash_drawer,
-                requires_evidence=sale.requires_evidence,
+                payment_method_id=cash_movement.payment_method_id or sale.payment_method_id,
+                payment_method_code=cash_movement.payment_method_code or sale.payment_method_code,
+                payment_method_name=cash_movement.payment_method_name or sale.payment_method_name,
+                payment_channel=cash_movement.payment_channel or sale.payment_channel,
+                settlement_policy=cash_movement.settlement_policy or sale.settlement_policy,
+                affects_cash_drawer=(
+                    cash_movement.affects_cash_drawer
+                    if cash_movement.affects_cash_drawer is not None
+                    else sale.affects_cash_drawer
+                ),
+                requires_evidence=(
+                    cash_movement.requires_evidence
+                    if cash_movement.requires_evidence is not None
+                    else sale.requires_evidence
+                ),
                 reversal_of_movement_id=cash_movement.id,
                 concept=f"Anulación {sale.sale_number}",
-                reference=sale.payment_reference,
+                reference=cash_movement.reference or sale.payment_reference,
                 notes=reason,
                 created_by_membership_id=principal.membership_id,
                 created_by_platform_user_id=principal.platform_user_id,
                 created_by_name=principal.display_name,
-                idempotency_key=self._derived_key("pos-cash-sale-void", idempotency_key),
+                idempotency_key=self._derived_key(f"pos-cash-sale-void-{index}", idempotency_key),
                 request_fingerprint=fingerprint,
             )
             self._repository.add_movement(reversal)
@@ -2727,19 +2731,11 @@ class PosService:
                 "customerId",
             )
         if resolved_tenders is not None:
-            tender_total = money(sum((tender.amount for tender in resolved_tenders), Decimal("0")))
-            if tender_total != priced.total:
-                raise InvalidOperationError(
-                    "La suma de los pagos debe coincidir con el total de la venta.",
-                    "tenders",
-                )
-            if customer is None and any(
-                tender.method.settlement_policy != "immediate" for tender in resolved_tenders
-            ):
-                raise InvalidOperationError(
-                    "Selecciona un cliente registrado para crear una cuenta por cobrar.",
-                    "customerId",
-                )
+            self._assert_tender_allocation(
+                resolved_tenders=resolved_tenders,
+                priced_total=priced.total,
+                customer=customer,
+            )
         elif method.settlement_policy != "immediate" and customer is None:
             raise InvalidOperationError(
                 "Selecciona un cliente registrado para crear una cuenta por cobrar.",
@@ -2783,17 +2779,18 @@ class PosService:
         sale_record = self._repository.sale_record(sale)
         self._repository.delete_sale_tender_lines(grant.workspace_id, sale.id)
         receivable = self._repository.receivable_for_sale(grant.workspace_id, sale.id, lock=True)
-        cash_movement = self._repository.movement_for_sale(grant.workspace_id, sale.id)
-        if cash_movement is not None and cash_movement.cash_register_id != register.id:
-            raise ConflictError(
-                "La factura tiene un movimiento de caja en otra sesión; anúlala y vuelve a emitir.",
-                "registerId",
-            )
-        if cash_movement is not None:
+        cash_movements = self._repository.movements_for_sale(grant.workspace_id, sale.id)
+        for cash_movement in cash_movements:
+            if cash_movement.cash_register_id != register.id:
+                raise ConflictError(
+                    "La factura tiene un movimiento de caja en otra sesión; "
+                    "anúlala y vuelve a emitir.",
+                    "registerId",
+                )
             self._reverse_cash_effect(register, cash_movement)
             self._session.delete(cash_movement)
+        if cash_movements:
             self._session.flush()
-            cash_movement = None
         paid_amount = Decimal("0")
         approval_pending_amount = Decimal("0")
         tender_lines: list[SaleTenderLine] = []
@@ -3184,11 +3181,15 @@ class PosService:
         ):
             raise ConflictError("La factura tiene un ingreso registrado en Finanzas.", "saleId")
         receivable = self._repository.receivable_for_sale(grant.workspace_id, sale.id)
-        if receivable is not None and receivable.paid_amount > 0:
-            raise ConflictError(
-                "Revierte primero los cobros aplicados a la cuenta por cobrar.",
-                "saleId",
+        if receivable is not None:
+            posted_payments = self._repository.posted_payments_for_receivable(
+                grant.workspace_id, receivable.id
             )
+            if posted_payments:
+                raise ConflictError(
+                    "Revierte primero los cobros aplicados a la cuenta por cobrar.",
+                    "saleId",
+                )
 
     def sync_appointment_receivable(
         self,
@@ -3981,6 +3982,32 @@ class PosService:
                 "El método de pago no existe o está inactivo.", "paymentMethodId"
             )
         return method
+
+    def _assert_tender_allocation(
+        self,
+        *,
+        resolved_tenders: tuple[_ResolvedCheckoutTender, ...],
+        priced_total: Decimal,
+        customer: object | None,
+    ) -> Decimal:
+        tender_total = money(sum((tender.amount for tender in resolved_tenders), Decimal("0")))
+        if tender_total <= 0:
+            raise InvalidOperationError("Debes indicar al menos un pago.", "tenders")
+        if tender_total > priced_total:
+            raise InvalidOperationError(
+                "La suma de los pagos no puede superar el total de la venta.",
+                "tenders",
+            )
+        outstanding = money(priced_total - tender_total)
+        needs_customer = outstanding > 0 or any(
+            tender.method.settlement_policy != "immediate" for tender in resolved_tenders
+        )
+        if customer is None and needs_customer:
+            raise InvalidOperationError(
+                "Selecciona un cliente registrado para crear una cuenta por cobrar.",
+                "customerId",
+            )
+        return tender_total
 
     def _resolve_checkout_tenders(
         self,

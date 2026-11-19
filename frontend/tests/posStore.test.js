@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   createReceivablePayment: vi.fn(),
   voidReceivable: vi.fn(),
   voidSale: vi.fn(),
+  getSale: vi.fn(),
   reversePayment: vi.fn(),
   uploadReceivableProof: vi.fn(),
   downloadProof: vi.fn(),
@@ -592,6 +593,38 @@ describe('store online de Terminal POS', () => {
     expect(usePosStore.getState().getShiftMovements()).toEqual([
       expect.objectContaining({ id: 'sale-id', status: 'voided' }),
     ])
+  })
+
+  it('anula una factura que no está en el store de POS consultando la API', async () => {
+    mocks.getSale.mockResolvedValue({
+      id: 'crm-sale-id',
+      status: 'completed',
+      version: 4,
+      total: '50.00',
+      paymentMethod: { id: 'cash-id', code: 'cash' },
+    })
+    mocks.voidSale.mockResolvedValue({ id: 'crm-sale-id', status: 'voided', version: 5 })
+    usePosStore.setState({
+      sales: [],
+      shiftSales: [],
+      cashSales: 0,
+      apiContext: { hydrated: true, mode: 'online', branchId: 'branch-id', lastSyncedAt: null },
+    })
+
+    const result = await usePosStore.getState().voidSale('crm-sale-id', 'Error de cobro')
+
+    expect(mocks.getSale).toHaveBeenCalledWith('crm-sale-id')
+    expect(mocks.voidSale).toHaveBeenCalledWith(
+      'crm-sale-id',
+      { reason: 'Error de cobro', version: 4 },
+      { idempotencyKey: 'attempt-key-1' }
+    )
+    expect(result).not.toBe(false)
+    expect(usePosStore.getState().sales[0]).toMatchObject({
+      id: 'crm-sale-id',
+      status: 'voided',
+      version: 5,
+    })
   })
 
   it('restaura cliente e ítems pidiendo detalle cuando el listado viene sin líneas', async () => {

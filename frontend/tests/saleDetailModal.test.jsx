@@ -1,19 +1,26 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const posState = {
-  voidSale: vi.fn(),
-  deleteSale: vi.fn(),
-  downloadPaymentProof: vi.fn(),
-  reversePayment: vi.fn(),
-  approveReceivablePayment: vi.fn(),
-  unapproveReceivablePayment: vi.fn(),
-  deleteReceivableProof: vi.fn(),
-  attachReceivableProof: vi.fn(),
-  receivables: [],
-  mutating: false,
-}
+const { posState, sessionState } = vi.hoisted(() => ({
+  posState: {
+    voidSale: vi.fn(),
+    deleteSale: vi.fn(),
+    downloadPaymentProof: vi.fn(),
+    reversePayment: vi.fn(),
+    approveReceivablePayment: vi.fn(),
+    unapproveReceivablePayment: vi.fn(),
+    deleteReceivableProof: vi.fn(),
+    attachReceivableProof: vi.fn(),
+    receivables: [],
+    mutating: false,
+    setState: vi.fn(),
+  },
+  sessionState: {
+    status: 'offline',
+    hasPermission: () => false,
+  },
+}))
 
 vi.mock('@/stores/configStore', () => ({
   useConfigStore: (selector) => selector({
@@ -41,14 +48,12 @@ vi.mock('@/stores/crmStore', () => {
 vi.mock('@/stores/posStore', () => {
   const store = (selector) => selector(posState)
   store.getState = () => posState
+  store.setState = (...args) => posState.setState(...args)
   return { usePosStore: store }
 })
 
 vi.mock('@/stores/sessionStore', () => ({
-  useSessionStore: (selector) => selector({
-    status: 'offline',
-    hasPermission: () => false,
-  }),
+  useSessionStore: (selector) => selector(sessionState),
 }))
 
 vi.mock('@/services/posApi', () => ({
@@ -100,6 +105,13 @@ const saleB = {
   customer: { name: 'Luis Gómez' },
 }
 
+beforeEach(() => {
+  posState.voidSale.mockReset()
+  posState.receivables = []
+  sessionState.status = 'offline'
+  sessionState.hasPermission = () => false
+})
+
 afterEach(() => {
   cleanup()
 })
@@ -126,5 +138,31 @@ describe('SaleDetailModal', () => {
     expect(screen.getByTestId('sale-detail-id').textContent).toBe('F-002')
     expect(screen.getByTestId('sale-detail-modal').textContent).toContain('Tarjeta')
     expect(screen.getByTestId('sale-detail-modal').textContent).toContain('Luis Gómez')
+  })
+
+  it('muestra registrar pago con saldo y evidencia previa, y anula sin venta en POS', async () => {
+    sessionState.status = 'online'
+    sessionState.hasPermission = (code) => (
+      code === 'pos.receivables.collect' || code === 'sales.invoice.void'
+    )
+    posState.voidSale.mockResolvedValue(true)
+    posState.receivables = [{
+      id: 'recv-1',
+      saleId: 'sale-a',
+      amount: 1500,
+      paidAmount: 500,
+      balance: 1000,
+      status: 'partial',
+      proofs: [{ id: 'proof-1', name: 'voucher.png' }],
+      reference: 'ABONO-1',
+      payments: [{ id: 'pay-1', amount: 500, proof: { id: 'proof-1' } }],
+    }]
+
+    await act(async () => {
+      render(<SaleDetailModal open onClose={vi.fn()} sale={saleA} />)
+    })
+
+    expect(screen.getByTestId('sale-detail-collect-payment')).toBeTruthy()
+    expect(screen.getByTestId('sale-detail-void')).toBeTruthy()
   })
 })
