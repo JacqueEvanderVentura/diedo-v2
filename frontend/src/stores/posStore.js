@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { ephemeralJsonStorage, registerSensitiveStateCleaner } from '@/services/storagePolicy'
+import { formatTime12h } from '@/lib/format'
 import { WALK_IN_CUSTOMER } from '@/lib/walkInCustomer'
 import { useCustomersStore } from '@/stores/customersStore'
 import { useCatalogStore, isPosSellable } from '@/stores/catalogStore'
@@ -31,6 +32,8 @@ import {
   mapSaleFromApi,
   mapSaleMutationResponse,
   movementToApiPayload,
+  paymentMethodApiReference,
+  resolveCashDrawerPaymentMethod,
   quotePatchToApiPayload,
   quoteToApiPayload,
   receivablePatchToApiPayload,
@@ -62,9 +65,16 @@ const DEFAULT_CUSTOMER = WALK_IN_CUSTOMER
 const now = () => new Date().toISOString()
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
 
+function manualMovementTargetHasSyncedApiId(methods, method) {
+  if (method) {
+    return Boolean(paymentMethodApiReference(methods, method).methodId)
+  }
+  return Boolean(resolveCashDrawerPaymentMethod(methods)?.apiId)
+}
+
 function paymentMethodsForManualMovement(method) {
   const methods = useConfigStore.getState().paymentMethods
-  if (method || methods.some((item) => item.apiId)) {
+  if (manualMovementTargetHasSyncedApiId(methods, method)) {
     return Promise.resolve(methods)
   }
   return syncWorkspacePaymentMethods()
@@ -2020,7 +2030,7 @@ export const usePosStore = create(
             customer,
             amount,
             method: 'agenda',
-            reference: `Cita ${appointment.date} · ${appointment.time}`,
+            reference: `Cita ${appointment.date} · ${formatTime12h(appointment.time)}`,
             status: 'pending',
             createdAt: existing?.createdAt || appointment.createdAt || now(),
             dueDate: appointment.date,

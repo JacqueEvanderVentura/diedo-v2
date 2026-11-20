@@ -17,7 +17,7 @@ from app.services.pdf_renderer import PdfRenderer, get_pdf_renderer
 
 def _format_invoice_datetime(value: datetime, tz_name: str) -> str:
     localized = value.astimezone(ZoneInfo(tz_name))
-    return localized.strftime("%d %b %Y, %I:%M %p").replace("AM", "a.m.").replace("PM", "p.m.")
+    return localized.strftime("%d %b %Y, %I:%M %p")
 
 
 def _discount_pct(subtotal: Decimal, discount_amt: Decimal) -> Decimal:

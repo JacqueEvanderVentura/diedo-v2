@@ -1,4 +1,4 @@
-import { formatDOP } from '@/lib/format'
+import { formatDOP, formatTime12h } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { Eye } from 'lucide-react'
 import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
@@ -161,7 +161,7 @@ export function AppointmentChip({
             </span>
           ) : !showDayNote ? (
             <span className={cn('min-w-0 truncate font-bold', compact ? 'text-[10px]' : 'text-[11px]')}>
-              {apt.time}
+              {formatTime12h(apt.time)}
             </span>
           ) : null}
           {hasPendingAmount && (

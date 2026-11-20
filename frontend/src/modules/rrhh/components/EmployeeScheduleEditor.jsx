@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Clock, Copy, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { formatTime12h } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import {
   WEEKDAY_KEYS,
@@ -34,14 +35,14 @@ function DayTimeline({ blocks }) {
               key={`${block.start}-${idx}`}
               className="absolute top-0 h-full rounded-full bg-blue-500"
               style={{ left: `${Math.max(0, left)}%`, width: `${Math.max(2, width)}%` }}
-              title={`${block.start} – ${block.end}`}
+              title={`${formatTime12h(block.start)} – ${formatTime12h(block.end)}`}
             />
           )
         })}
       </div>
       <div className="mt-1.5 flex justify-between text-[10px] font-medium text-slate-400">
-        <span>{minutesToTime(dayStart)}</span>
-        <span>{minutesToTime(dayEnd)}</span>
+        <span>{formatTime12h(minutesToTime(dayStart))}</span>
+        <span>{formatTime12h(minutesToTime(dayEnd))}</span>
       </div>
     </div>
   )

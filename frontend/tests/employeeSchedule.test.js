@@ -30,8 +30,8 @@ describe('getBlockError', () => {
       { start: '08:00', end: '12:00' },
       { start: '11:00', end: '14:00' },
     ]
-    expect(getBlockError(blocks, 0)).toMatch(/solapa con el bloque 11:00 – 14:00/)
-    expect(getBlockError(blocks, 1)).toMatch(/solapa con el bloque 08:00 – 12:00/)
+    expect(getBlockError(blocks, 0)).toMatch(/solapa con el bloque 11:00 AM – 2:00 PM/)
+    expect(getBlockError(blocks, 1)).toMatch(/solapa con el bloque 8:00 AM – 12:00 PM/)
   })
 
   it('permite bloques contiguos', () => {

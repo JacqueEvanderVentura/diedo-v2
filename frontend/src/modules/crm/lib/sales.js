@@ -72,6 +72,7 @@ export function buildInvoiceDataFromSale(sale, { branches = [], settings = {}, p
     customerPhone: sale.customer?.phone || '',
     paymentMethod: pmName,
     paymentReference: sale.reference || '',
+    soldBy: sale.soldBy || '',
     fiscalNcf: sale.fiscalNcf || '',
     items,
     subtotal,

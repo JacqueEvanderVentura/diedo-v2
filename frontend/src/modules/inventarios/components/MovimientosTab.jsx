@@ -22,6 +22,7 @@ import { DataFilterBar } from '@/components/ui/DataFilterBar'
 import { useSortedRows } from '@/hooks/useTableControls'
 import { SalidaMultipleModal } from './SalidaMultipleModal'
 import { AjusteStockModal } from './AjusteStockModal'
+import { formatLocaleDateTime12h } from '@/lib/format'
 
 const TYPE_META = {
   salida: {
@@ -82,7 +83,7 @@ const SCOPE_OPTIONS = [
 
 function formatDate(iso) {
   try {
-    return new Date(iso).toLocaleString('es-DO', { dateStyle: 'medium', timeStyle: 'short' })
+    return formatLocaleDateTime12h(iso, { dateStyle: 'medium', timeStyle: 'short' })
   } catch {
     return iso
   }

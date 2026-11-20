@@ -297,19 +297,41 @@ export const useRrhhStore = create(
         if (Object.hasOwn(data, 'selectableAsSpecialist')) {
           basicPayload.onlineBookingSelectable = data.selectableAsSpecialist
         }
-        const response = await employeesGateway.mutate('updateEmployee', id, {
-          ...basicPayload,
-          version: current.version,
-        })
-        let employee = normalizeEmployee(mapEmployeeFromApi(response))
         const scheduleChanged = Object.hasOwn(data, 'workSchedule')
           && JSON.stringify(normalizeWorkSchedule(data.workSchedule))
             !== JSON.stringify(normalizeWorkSchedule(current.workSchedule))
+        const jefeListEqual = (left, right) => {
+          const a = [...(left || [])].sort()
+          const b = [...(right || [])].sort()
+          return a.length === b.length && a.every((value, index) => value === b[index])
+        }
+        const jefeIdsChanged = Object.hasOwn(data, 'jefeIds')
+          && !jefeListEqual(data.jefeIds, current.jefeIds)
+        const employeeFieldKeys = [
+          'firstName', 'lastName', 'email', 'phone', 'position', 'department', 'branchIds',
+          'contractType', 'documentId', 'documentType', 'hireDate', 'usuarioId', 'active', 'status',
+          'employeeNumber', 'selectableAsSpecialist',
+        ]
+        const employeeFieldsChanged = employeeFieldKeys.some((key) => {
+          if (!Object.hasOwn(data, key)) return false
+          return JSON.stringify(data[key]) !== JSON.stringify(current[key])
+        })
+        let employee = normalizeEmployee({ ...current, ...data })
+        if (employeeFieldsChanged || jefeIdsChanged) {
+          if (!jefeIdsChanged) {
+            delete basicPayload.supervisorIds
+          }
+          const response = await employeesGateway.mutate('updateEmployee', id, {
+            ...basicPayload,
+            version: current.version,
+          })
+          employee = normalizeEmployee(mapEmployeeFromApi(response))
+        }
         if (scheduleChanged) {
           const updatedSchedule = await employeesGateway.mutate('updateEmployeeSchedule', id, {
-            timezone,
-            week: schedule,
-            version: current.scheduleVersion,
+            timezone: timezone || current.scheduleTimezone || 'America/Santo_Domingo',
+            week: schedule || normalizeWorkSchedule(data.workSchedule),
+            version: employee.scheduleVersion ?? current.scheduleVersion,
           })
           employee = normalizeEmployee({
             ...employee,

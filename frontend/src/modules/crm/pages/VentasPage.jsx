@@ -84,7 +84,11 @@ export default function VentasPage() {
       .filter((s) => {
         if (!q) return true
         const ref = saleDisplayReference(s).toLowerCase()
-        return (s.customer?.name || '').toLowerCase().includes(q) || ref.includes(q)
+        return (
+          (s.customer?.name || '').toLowerCase().includes(q)
+          || ref.includes(q)
+          || (s.soldBy || '').toLowerCase().includes(q)
+        )
       })
   }, [sales, query, method, origin, branchIds])
 
@@ -94,6 +98,7 @@ export default function VentasPage() {
       date: (s) => new Date(s.createdAt),
       customer: (s) => s.customer?.name || '',
       branch: (s) => branchMap[s.branchId] || '',
+      seller: (s) => s.soldBy || '',
       method: (s) => s.method || '',
       status: (s) => s.status || '',
       total: (s) => s.total || 0,
@@ -117,7 +122,7 @@ export default function VentasPage() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar por cliente o referencia..."
+            placeholder="Buscar por cliente, referencia o usuario..."
             data-testid="ventas-search"
             className="w-full rounded-xl border-0 bg-white py-3 pl-10 pr-4 text-sm text-slate-700 ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600"
           />
@@ -162,15 +167,16 @@ export default function VentasPage() {
           <EmptyState icon={ShoppingBag} title="Sin ventas" description="No hay ventas con esos filtros." className="py-14" />
         </Card>
       ) : (
-        <ResponsiveList minTableWidth={1000} columnCount={8}>
+        <ResponsiveList minTableWidth={1100} columnCount={9}>
           <ResponsiveTable testId="ventas-table">
             <SortableTableProvider sortKey={sortKey} sortDir={sortDir} onSort={toggleSort}>
-            <table className="w-full min-w-[920px] text-sm">
+            <table className="w-full min-w-[1020px] text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
                   <SortableTh column="date" className="px-6 py-4">Fecha</SortableTh>
                   <SortableTh column="customer" className="px-6 py-4">Cliente</SortableTh>
                   <SortableTh column="branch" className="px-6 py-4">Sucursal</SortableTh>
+                  <SortableTh column="seller" className="px-6 py-4">Creado por</SortableTh>
                   <SortableTh column="method" className="px-6 py-4">Método</SortableTh>
                   <SortableTh column="origin" sortable={false} className="px-6 py-4">Origen</SortableTh>
                   <SortableTh column="reference" sortable={false} className="px-6 py-4">Referencia</SortableTh>
@@ -198,6 +204,7 @@ export default function VentasPage() {
                       <td className="whitespace-nowrap px-6 py-4 text-slate-500">{fmtDateTime(s.createdAt)}</td>
                       <td className={cn('whitespace-nowrap px-6 py-4 font-semibold text-slate-800', isVoided && 'text-slate-500 line-through')}>{s.customer?.name || 'Cliente Mostrador'}</td>
                       <td className="whitespace-nowrap px-6 py-4 text-slate-500">{branchMap[s.branchId] || '—'}</td>
+                      <td className="whitespace-nowrap px-6 py-4 text-slate-600">{s.soldBy || '—'}</td>
                       <td className="px-6 py-4">
                         <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-slate-600"><Icon className="h-4 w-4 text-slate-400" /> {METHOD_LABELS[s.method] || s.method}</span>
                       </td>
@@ -240,6 +247,7 @@ export default function VentasPage() {
                   />
                   <MobileCardGrid>
                     <MobileField label="Sucursal">{branchMap[s.branchId] || '—'}</MobileField>
+                    <MobileField label="Creado por">{s.soldBy || '—'}</MobileField>
                     <MobileField label="Método">
                       <span className="inline-flex items-center gap-1">
                         <Icon className="h-3.5 w-3.5 text-slate-400" />

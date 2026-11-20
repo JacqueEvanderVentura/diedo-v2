@@ -39,6 +39,7 @@ import { nextSelectAllState } from '@/lib/listSelection'
 
 import { QUOTE_STATUS_META } from '@/data/crm'
 import { formatDOP } from '@/lib/format'
+import { fmtDateTime } from '@/modules/crm/lib/crm'
 import { isDiscardedCrmQuote } from '@/modules/crm/lib/crmQuoteVisibility'
 import { buildSimplifiedLeadTimeline } from '@/modules/crm/lib/simplifiedLeadTimeline'
 import { isLeadStageMoveActivity } from '@/modules/crm/lib/leadStageLabels'
@@ -832,9 +833,7 @@ export default function SimplifiedWorkspacePage() {
                           const statusMeta = discarded
                             ? { label: 'Descartada', tone: 'neutral' }
                             : (QUOTE_STATUS_META[quote.status] || { label: quote.status, tone: 'neutral' })
-                          const when = (quote.updatedAt || quote.createdAt)
-                            ? new Date(quote.updatedAt || quote.createdAt).toLocaleString('es-DO')
-                            : ''
+                          const when = fmtDateTime(quote.updatedAt || quote.createdAt)
                           return (
                             <li
                               key={entry.id}

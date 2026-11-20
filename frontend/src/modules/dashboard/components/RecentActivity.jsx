@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import * as Icons from 'lucide-react'
+import { formatLocaleTime12h, formatTime12h } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
 
 const SOURCE_ROUTES = {
@@ -11,14 +12,14 @@ const SOURCE_ROUTES = {
 }
 
 function activityTime(item) {
-  if (!item.occurredAt) return item.time || ''
+  if (!item.occurredAt) return item.time ? formatTime12h(item.time) : ''
   const occurred = new Date(item.occurredAt)
   if (Number.isNaN(occurred.getTime())) return ''
   const now = new Date()
   const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const startOccurred = new Date(occurred.getFullYear(), occurred.getMonth(), occurred.getDate())
   const days = Math.round((startToday - startOccurred) / 86400000)
-  const clock = occurred.toLocaleTimeString('es-DO', { hour: 'numeric', minute: '2-digit' })
+  const clock = formatLocaleTime12h(occurred, { hour: 'numeric', minute: '2-digit' })
   if (days === 0) return clock
   if (days === 1) return `Ayer · ${clock}`
   return occurred.toLocaleDateString('es-DO', { day: 'numeric', month: 'short' })

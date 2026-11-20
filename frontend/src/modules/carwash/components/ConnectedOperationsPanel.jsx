@@ -82,7 +82,7 @@ export function ConnectedOperationsPanel({ branchId, workspace, onChanged, param
   }
   function saved() { onChanged?.(); setModal(null); reload() }
   const columns = [
-    { key: 'date', label: 'Fecha / Hora', render: (row) => <span>{new Intl.DateTimeFormat(workspace?.locale || 'es', { dateStyle: 'short', timeStyle: 'short', timeZone: row.timezone }).format(new Date(row.createdAt))}</span> },
+    { key: 'date', label: 'Fecha / Hora', render: (row) => <span>{new Intl.DateTimeFormat(workspace?.locale || 'es', { dateStyle: 'short', timeStyle: 'short', hour12: true, timeZone: row.timezone }).format(new Date(row.createdAt))}</span> },
     { key: 'customer', label: 'Cliente & Vehículo', render: (row) => <><strong className="font-medium">{row.customerName}</strong><span className="block text-xs text-slate-500">{row.plate} · {[row.vehicleModel, row.vehicleColor].filter(Boolean).join(' · ') || 'Sin datos adicionales'}</span></> },
     { key: 'services', label: 'Servicios', render: (row) => <ul className="space-y-1">{row.lines.map((line) => <li key={line.id}>{line.name}</li>)}</ul> },
     { key: 'washer', label: 'Lavador asignado', render: (row) => row.washerName },

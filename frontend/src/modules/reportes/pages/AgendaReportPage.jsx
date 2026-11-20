@@ -36,7 +36,7 @@ import { SortableTableProvider, SortableTh } from '@/components/ui/SortableTable
 import { Badge } from '@/components/ui/Badge'
 import { AppointmentAuditModal } from '../components/AppointmentAuditModal'
 import { AppointmentFormModal } from '@/modules/agenda/components/AppointmentFormModal'
-import { formatCompactDate } from '@/modules/agenda/lib/calendar'
+import { formatCompactDate, formatTime12h } from '@/modules/agenda/lib/calendar'
 import { CHART_ANIMATION } from '@/lib/chartAnimation'
 
 const STATUS_META = [
@@ -376,7 +376,7 @@ export default function AgendaReportPage() {
                         data-testid={`report-agenda-row-${a.id}`}
                       >
                         <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatCompactDate(a.date)}</td>
-                        <td className="whitespace-nowrap px-4 py-3 text-slate-600">{a.time}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatTime12h(a.time)}</td>
                         <td className="px-4 py-3 font-medium text-slate-800">{client}</td>
                         <td className="px-4 py-3 text-slate-600">{a.employeeName || employeeName(a.employeeId)}</td>
                         <td className="px-4 py-3 text-slate-600">{a.serviceName || a.service}</td>
@@ -423,7 +423,7 @@ export default function AgendaReportPage() {
                 <MobileCard key={a.id} testId={`report-agenda-card-${a.id}`} onClick={() => openEdit(a)}>
                   <MobileCardHeader
                     title={client}
-                    subtitle={`${formatCompactDate(a.date)} · ${a.time}`}
+                    subtitle={`${formatCompactDate(a.date)} · ${formatTime12h(a.time)}`}
                     badge={<Badge tone={st.tone}>{st.name}</Badge>}
                     actions={
                       <div className="flex items-center gap-1">

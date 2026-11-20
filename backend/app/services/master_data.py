@@ -30,9 +30,10 @@ from app.services.auth import AuthPrincipal
 from app.services.authorization import AuthorizationService, PermissionGrant
 from app.services.customer_documents import prepare_customer_document_fields
 from app.services.customer_duplicates import (
-    MATCH_PRIORITY,
+    AUTO_MERGE_MATCH_PRIORITY,
     DuplicateCustomerGroup,
     group_duplicate_customers,
+    name_group_auto_merge_eligible,
     pick_survivor,
     profile_field_updates,
 )
@@ -621,8 +622,17 @@ class MasterDataService:
         union_branches: set[UUID] = set()
         for branch_ids in source_branches.values():
             union_branches.update(branch_ids)
+        union_branches.update(
+            self._repository.customer_active_branch_ids(grant.workspace_id, [keeper.id]).get(
+                keeper.id, set()
+            )
+        )
+        union_branches.update(
+            self._repository.customer_carwash_branch_ids(grant.workspace_id, source_ids)
+        )
         if union_branches:
             self._repository.ensure_customer_branches(grant.workspace_id, keeper.id, union_branches)
+            self._session.flush()
         request_id = get_request_id()
         self._repository.reassign_customer_references(
             workspace_id=grant.workspace_id,
@@ -674,7 +684,7 @@ class MasterDataService:
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         archived: set[UUID] = set()
-        for match_type in MATCH_PRIORITY:
+        for match_type in AUTO_MERGE_MATCH_PRIORITY:
             for group in self.list_duplicate_customers(grant):
                 if group.match_type != match_type:
                     continue
@@ -684,6 +694,8 @@ class MasterDataService:
                     if customer.id not in archived and customer.status != "archived"
                 ]
                 if len(remaining) < 2:
+                    continue
+                if match_type == "name" and not name_group_auto_merge_eligible(remaining):
                     continue
                 merged = self.merge_customers(
                     principal=principal,
@@ -820,7 +832,7 @@ class MasterDataService:
                 raise ConflictError(
                     "Un empleado no puede supervisarse a sí mismo.", "supervisorIds"
                 )
-            self._validate_supervisors(grant, supervisor_ids)
+            self._validate_supervisors_on_update(grant, employee_id, supervisor_ids)
         if "first_name" in changes or "last_name" in changes:
             changes["normalized_name"] = normalize_name(
                 f"{changes.get('first_name', employee.first_name)} "
@@ -1049,6 +1061,29 @@ class MasterDataService:
                 "Un supervisor no existe o está fuera de alcance.", "supervisorIds"
             )
 
+    def _validate_supervisors_on_update(
+        self,
+        grant: PermissionGrant,
+        employee_id: UUID,
+        supervisor_ids: set[UUID],
+    ) -> None:
+        if not supervisor_ids:
+            return
+        if not self._repository.employees_exist_active(grant.workspace_id, supervisor_ids):
+            raise ResourceNotFoundError(
+                "Un supervisor no existe o está fuera de alcance.", "supervisorIds"
+            )
+        current = self._repository.active_supervisor_ids_for_employee(
+            grant.workspace_id, employee_id
+        )
+        new_ids = supervisor_ids - current
+        if new_ids and not self._repository.employees_exist_and_visible(
+            grant.workspace_id, new_ids, grant.allowed_branch_ids
+        ):
+            raise ResourceNotFoundError(
+                "Un supervisor no existe o está fuera de alcance.", "supervisorIds"
+            )
+
     def _validate_employee_uniques(
         self,
         workspace_id: UUID,
@@ -1099,6 +1134,9 @@ class MasterDataService:
             prepared["instagram_url"] = str(value) if value is not None else None
         if "phone" in prepared:
             prepared["normalized_phone"] = normalize_phone(cast_optional_str(prepared["phone"]))
+        for slot in ("phone_2", "phone_3"):
+            if slot in prepared:
+                prepared[f"normalized_{slot}"] = normalize_phone(cast_optional_str(prepared[slot]))
         if "document_type" in prepared or "document_id" in prepared:
             doc_type = cast_optional_str(prepared.get("document_type"))
             doc_id = cast_optional_str(prepared.get("document_id"))

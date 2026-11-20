@@ -67,6 +67,24 @@ def reverse(client, setup, row, key=None, **changes):
     )
 
 
+def other_branch_register(client, setup):
+    current = client.get(
+        "/api/v1/pos/registers/current",
+        headers=setup["headers"],
+        params={"branchId": setup["otherBranchId"]},
+    )
+    assert current.status_code == 200, current.text
+    if current.json() is not None:
+        return current.json()
+    opened = client.post(
+        "/api/v1/pos/registers",
+        headers={**setup["headers"], "Idempotency-Key": str(uuid7())},
+        json={"branchId": setup["otherBranchId"], "openingCash": "0.00"},
+    )
+    assert opened.status_code == 201, opened.text
+    return opened.json()
+
+
 def expenses(setup):
     with session_scope() as session:
         return (
@@ -434,13 +452,8 @@ def test_paid_credit_wash_can_settle_without_collecting_receivable(client, setup
 def test_multiple_washes_with_equal_totals_share_one_expense(client, setup):
     _, first = earned(client, setup)
     _, second = earned(client, setup, plate="CW-SECOND")
-    other_register = client.post(
-        "/api/v1/pos/registers",
-        headers={**setup["headers"], "Idempotency-Key": str(uuid7())},
-        json={"branchId": setup["otherBranchId"], "openingCash": "0.00"},
-    )
-    assert other_register.status_code == 201, other_register.text
-    assert pay(client, setup, first, registerId=other_register.json()["id"]).status_code == 400
+    other_register = other_branch_register(client, setup)
+    assert pay(client, setup, first, registerId=other_register["id"]).status_code == 400
     result = pay(client, setup, first + second)
     assert result.status_code == 201, result.text
     assert result.json()["amount"] == "300.12"

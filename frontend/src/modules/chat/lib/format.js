@@ -1,3 +1,5 @@
+import { formatLocaleDateTime12h } from '@/lib/format'
+
 export function formatChatTimestamp(iso) {
   if (!iso) return ''
   const date = new Date(iso)
@@ -8,9 +10,9 @@ export function formatChatTimestamp(iso) {
     date.getMonth() === now.getMonth() &&
     date.getFullYear() === now.getFullYear()
   if (sameDay) {
-    return date.toLocaleString('es-DO', { hour: '2-digit', minute: '2-digit' })
+    return formatLocaleDateTime12h(iso, { hour: '2-digit', minute: '2-digit' })
   }
-  return date.toLocaleString('es-DO', {
+  return formatLocaleDateTime12h(iso, {
     day: '2-digit',
     month: 'short',
     hour: '2-digit',

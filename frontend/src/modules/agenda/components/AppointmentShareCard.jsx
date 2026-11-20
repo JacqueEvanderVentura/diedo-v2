@@ -4,7 +4,7 @@ import { formatDOP } from '@/lib/format'
 import { fmtAuditWhen } from '../lib/audit'
 import { useStaffName } from '@/modules/rrhh/lib/staff'
 import { statusMeta } from '@/stores/agendaStore'
-import { formatLongDate, endTime } from '../lib/calendar'
+import { formatLongDate, endTime, formatTime12h } from '../lib/calendar'
 import { isProximoAppointment } from '../lib/appointments'
 import { cn } from '@/lib/utils'
 
@@ -60,9 +60,9 @@ export const AppointmentShareCard = forwardRef(function AppointmentShareCard(
             <Clock className="h-4 w-4 shrink-0 text-blue-600" />
             <div className="min-w-0">
               <p className="whitespace-nowrap font-heading text-lg font-bold tabular-nums tracking-tight text-slate-900">
-                {appointment.time}
+                {formatTime12h(appointment.time)}
                 <span className="mx-2 font-normal text-slate-400">–</span>
-                {endTime(appointment.time, appointment.duration)}
+                {formatTime12h(endTime(appointment.time, appointment.duration))}
               </p>
               {appointment.duration ? (
                 <p className="text-xs font-medium text-slate-500">{appointment.duration} min</p>

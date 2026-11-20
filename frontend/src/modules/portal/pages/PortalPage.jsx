@@ -59,6 +59,7 @@ export default function PortalPage() {
   const [profile, setProfile] = useState(null)
   const [appointments, setAppointments] = useState([])
   const [invoices, setInvoices] = useState([])
+  const [payments, setPayments] = useState([])
   const [receivables, setReceivables] = useState([])
   const [portalTasks, setPortalTasks] = useState([])
   const [taskSavingId, setTaskSavingId] = useState(null)
@@ -96,6 +97,7 @@ export default function PortalPage() {
         setProfile(dashboard.profile)
         setAppointments(dashboard.appointments)
         setInvoices(dashboard.invoices)
+        setPayments(dashboard.payments)
         setReceivables(dashboard.receivables)
         setPortalTasks(dashboard.portalTasks)
         const message = portalLoadErrorMessage(dashboard.failures)
@@ -198,12 +200,17 @@ export default function PortalPage() {
     [portalTasks],
   )
 
+  const openReceivables = useMemo(
+    () => receivables.filter((row) => Number(row.balance ?? 0) > 0),
+    [receivables],
+  )
+
   const empty = useMemo(() => ({
     citas: branchAppointments.length === 0,
     tareas: portalTasks.length === 0,
     facturas: invoices.length === 0,
-    pagos: receivables.length === 0,
-  }), [branchAppointments, portalTasks, invoices, receivables])
+    pagos: payments.length === 0 && openReceivables.length === 0,
+  }), [branchAppointments, portalTasks, invoices, payments, openReceivables])
 
   const closeTaskPreview = () => {
     if (taskPreview?.blobUrl) URL.revokeObjectURL(taskPreview.blobUrl)
@@ -462,26 +469,61 @@ export default function PortalPage() {
             )}
             {tab === 'pagos' && (
               <Section empty={empty.pagos} emptyLabel="No hay pagos registrados a tu nombre.">
-                <ul className="space-y-2">
-                  {receivables.map((row) => {
-                    const balance = Number(row.balance ?? 0)
-                    const showBalance = balance > 0
-                    return (
-                    <li key={row.id} className="rounded-xl border border-slate-100 bg-white p-4 text-sm">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="font-semibold text-slate-900">{row.receivableNumber}</p>
-                          {showBalance ? (
-                            <p className="text-slate-500">Saldo: {formatDOP(row.balance)}</p>
-                          ) : null}
+                {payments.length > 0 ? (
+                  <ul className="space-y-2">
+                    {payments.map((row) => (
+                      <li
+                        key={row.id}
+                        className="rounded-xl border border-slate-100 bg-white p-4 text-sm"
+                        data-testid={`portal-payment-${row.id}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="font-semibold text-slate-900">
+                              {row.paymentMethodName || 'Pago'}
+                            </p>
+                            <p className="text-slate-500">{formatDOP(row.amount)}</p>
+                            {row.saleNumber ? (
+                              <p className="mt-0.5 text-xs text-slate-400">Factura {row.saleNumber}</p>
+                            ) : null}
+                          </div>
+                          <Badge tone="success">Pagado</Badge>
                         </div>
-                        <Badge>{row.status}</Badge>
-                      </div>
-                      {row.dueDate ? <p className="mt-1 text-xs text-slate-400">Vence: {fmtDate(row.dueDate)}</p> : null}
-                    </li>
-                    )
-                  })}
-                </ul>
+                        {row.postedAt ? (
+                          <p className="mt-1 text-xs text-slate-400">{fmtDateTime(row.postedAt)}</p>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {openReceivables.length > 0 ? (
+                  <div className={payments.length > 0 ? 'mt-6' : ''}>
+                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Cuentas pendientes
+                    </h3>
+                    <ul className="space-y-2">
+                      {openReceivables.map((row) => (
+                        <li key={row.id} className="rounded-xl border border-slate-100 bg-white p-4 text-sm">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-semibold text-slate-900">
+                                {row.saleNumber ? `Factura ${row.saleNumber}` : row.receivableNumber}
+                              </p>
+                              <p className="text-slate-500">Saldo: {formatDOP(row.balance)}</p>
+                              {row.saleNumber ? (
+                                <p className="mt-0.5 text-xs text-slate-400">{row.receivableNumber}</p>
+                              ) : null}
+                            </div>
+                            <Badge>{row.status}</Badge>
+                          </div>
+                          {row.dueDate ? (
+                            <p className="mt-1 text-xs text-slate-400">Vence: {fmtDate(row.dueDate)}</p>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
               </Section>
             )}
           </>

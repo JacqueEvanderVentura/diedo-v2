@@ -100,6 +100,8 @@ def _customer_response(customer: CustomerRecord) -> CustomerResponse:
         business_name=customer.business_name,
         email=customer.email,
         phone=customer.phone,
+        phone_2=customer.phone_2,
+        phone_3=customer.phone_3,
         instagram_url=customer.instagram_url,
         acquisition_source=customer.acquisition_source,  # type: ignore[arg-type]
         document_type=customer.document_type,  # type: ignore[arg-type]
@@ -253,7 +255,7 @@ def import_customers(
 
 @customers_router.get(
     "/duplicates",
-    summary="Listar grupos de clientes duplicados por cédula, teléfono o correo",
+    summary="Listar grupos de clientes duplicados por cédula, teléfono, correo o nombre",
     responses=_SECURITY_RESPONSES,
 )
 def list_duplicate_customers(
@@ -272,6 +274,8 @@ def list_duplicate_customers(
                         display_name=customer.display_name,
                         email=customer.email,
                         phone=customer.phone,
+                        phone_2=customer.phone_2,
+                        phone_3=customer.phone_3,
                         document_type=customer.document_type,  # type: ignore[arg-type]
                         document_id=customer.document_id,
                         status=customer.status,  # type: ignore[arg-type]
@@ -313,7 +317,10 @@ def merge_customers(
 
 @customers_router.post(
     "/merge-auto",
-    summary="Combinar duplicados automáticamente (cédula, luego teléfono, luego correo)",
+    summary=(
+        "Combinar duplicados automáticamente "
+        "(cédula, teléfono, correo y nombre sin correos distintos)"
+    ),
     responses=_WRITE_RESPONSES,
 )
 def auto_merge_duplicate_customers(

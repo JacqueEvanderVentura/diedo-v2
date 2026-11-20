@@ -10,7 +10,6 @@ import { useCustomersStore } from '@/stores/customersStore'
 import { useCrmStore } from '@/stores/crmStore'
 import { usePosStore } from '@/stores/posStore'
 import { useSessionStore } from '@/stores/sessionStore'
-import { PermissionElevationModal } from '@/components/auth/PermissionElevationModal'
 import { formatDOP } from '@/lib/format'
 import { fmtDateTime, METHOD_LABELS, METHOD_ICON, saleStatusBadge } from '../lib/crm'
 import { buildInvoiceDataFromSale, downloadSaleInvoicePdf, printSaleInvoice } from '../lib/sales'
@@ -36,6 +35,7 @@ import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 const VOID_INVOICE_PERMISSION = 'sales.invoice.void'
 const EDIT_INVOICE_PERMISSION = 'sales.invoice.edit'
 const DELETE_INVOICE_PERMISSION = 'sales.invoice.delete'
+const VOID_PERMISSION_DENIED_MESSAGE = 'Solicita permisos a tu superior inmediato para anular.'
 
 function ItemPrice({ item }) {
   const unit = Number(item.price) || 0
@@ -75,7 +75,6 @@ function SaleDetailModalContent({ open, onClose, sale }) {
   const [detail, setDetail] = useState(sale)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [voidOpen, setVoidOpen] = useState(false)
-  const [elevationOpen, setElevationOpen] = useState(false)
   const [voidReason, setVoidReason] = useState('')
   const [voidError, setVoidError] = useState('')
   const [receivableDetail, setReceivableDetail] = useState(null)
@@ -294,9 +293,10 @@ function SaleDetailModalContent({ open, onClose, sale }) {
 
   const beginVoid = () => {
     if (!canVoidInvoice) {
-      setElevationOpen(true)
+      toast.error(VOID_PERMISSION_DENIED_MESSAGE)
       return
     }
+    if (loadingDetail || Boolean(mutating)) return
     setVoidReason('')
     setVoidError('')
     setVoidOpen(true)
@@ -359,6 +359,9 @@ function SaleDetailModalContent({ open, onClose, sale }) {
               <Badge tone={statusBadge.tone} data-testid="sale-detail-status">{statusBadge.label}</Badge>
             </div>
             <p className="mt-1 text-sm text-slate-500">{fmtDateTime(view.createdAt)} · {branchName}</p>
+            <p className="mt-1 text-sm text-slate-500" data-testid="sale-detail-sold-by">
+              Creado por <span className="font-medium text-slate-700">{view.soldBy || '—'}</span>
+            </p>
             <p className="mt-2 font-semibold text-slate-800">{view.customer?.name || 'Cliente Mostrador'}</p>
             {isVoided && view.voidReason && (
               <p className="mt-2 text-xs font-medium text-red-600">Motivo: {view.voidReason}</p>
@@ -544,8 +547,15 @@ function SaleDetailModalContent({ open, onClose, sale }) {
               <Pencil className="h-4 w-4" /> Editar
             </Button>
           )}
-          {!isVoided && canVoidInvoice && (
-            <Button variant="danger" onClick={beginVoid} disabled={loadingDetail || Boolean(mutating)} data-testid="sale-detail-void">
+          {!isVoided && (
+            <Button
+              variant="danger"
+              onClick={beginVoid}
+              disabled={canVoidInvoice && (loadingDetail || Boolean(mutating))}
+              aria-disabled={!canVoidInvoice}
+              className={cn(!canVoidInvoice && 'cursor-not-allowed opacity-50')}
+              data-testid="sale-detail-void"
+            >
               <Ban className="h-4 w-4" /> Anular factura
             </Button>
           )}
@@ -612,15 +622,6 @@ function SaleDetailModalContent({ open, onClose, sale }) {
           </div>
         </div>
       </Modal>
-
-      <PermissionElevationModal
-        open={elevationOpen}
-        onClose={() => setElevationOpen(false)}
-        permissionCode={VOID_INVOICE_PERMISSION}
-        description="Para anular una factura, un supervisor con permiso debe autorizar esta sesión por 3 minutos."
-        onElevated={() => setVoidOpen(true)}
-        nested
-      />
 
       <ReceivablePaymentModal
         open={collectPaymentOpen}

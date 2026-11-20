@@ -82,7 +82,7 @@ describe('whatsapp variables', () => {
       resourceName: 'Cabina VIP',
     })
     expect(fields.cita_fecha).toBeTruthy()
-    expect(fields.cita_hora).toBe('14:30')
+    expect(fields.cita_hora).toBe('2:30 PM')
     expect(fields.cita_cabina).toBe('Cabina VIP')
     expect(fields.fecha).toBe(fields.cita_fecha)
   })

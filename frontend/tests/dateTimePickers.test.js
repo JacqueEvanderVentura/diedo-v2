@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { formatTime12h, monthGrid, timePeriod, timeSlots } from '@/modules/agenda/lib/calendar'
+import { formatTime12h } from '@/lib/format'
+import { monthGrid, timePeriod, timeSlots } from '@/modules/agenda/lib/calendar'
 import { todayKey } from '@/stores/agendaStore'
 
 describe('appointment date/time pickers', () => {

@@ -800,6 +800,50 @@ describe('store online de Terminal POS', () => {
     })
   })
 
+  it('sincroniza métodos de pago al registrar egreso si el efectivo local no tiene apiId', async () => {
+    useConfigStore.setState({
+      paymentMethods: [
+        { id: 'efectivo', name: 'Efectivo', enabled: true, affectsCash: true, code: 'cash' },
+        { id: 'tarjeta', name: 'Tarjeta', apiId: 'card-id', enabled: true, affectsCash: false, code: 'card' },
+      ],
+    })
+    usePosStore.setState({
+      branchId: 'branch-id',
+      cajaBranchId: 'branch-id',
+      register: { id: 'register-id', open: true },
+      apiContext: { hydrated: true, mode: 'online', branchId: 'branch-id', lastSyncedAt: null },
+    })
+    mocks.paymentMethods.mockResolvedValueOnce([
+      { id: 'cash-id', code: 'cash', name: 'Efectivo', status: 'active', affectsCashDrawer: true },
+      { id: 'card-id', code: 'card', name: 'Tarjeta', status: 'active', affectsCashDrawer: false },
+    ])
+    mocks.createRegisterMovement.mockResolvedValueOnce({
+      id: 'movement-id',
+      type: 'expense',
+      concept: 'Insumos',
+      amount: '925',
+      paymentMethod: { id: 'cash-id', code: 'cash', name: 'Efectivo' },
+    })
+
+    await usePosStore.getState().addExpense({
+      concept: 'Insumos',
+      amount: 925,
+      method: 'efectivo',
+    })
+
+    expect(mocks.paymentMethods).toHaveBeenCalled()
+    expect(mocks.createRegisterMovement).toHaveBeenCalledWith(
+      'register-id',
+      expect.objectContaining({
+        type: 'expense',
+        concept: 'Insumos',
+        amount: 925,
+        paymentMethodId: 'cash-id',
+      }),
+      expect.objectContaining({ idempotencyKey: expect.any(String) }),
+    )
+  })
+
   it('bloquea el cierre de caja cuando la API no está disponible', async () => {
     useSessionStore.setState({ status: 'degraded', accessToken: null, user: null })
     const sale = {

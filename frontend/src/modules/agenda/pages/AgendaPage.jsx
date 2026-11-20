@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { toast } from 'sonner'
 import { Plus, ChevronLeft, ChevronRight, Clock, User, Pencil, Trash2, CalendarDays, CheckCircle2, UserX } from 'lucide-react'
 import { useAgendaStore, statusMeta, toKey, todayKey } from '@/stores/agendaStore'
-import { formatDOP } from '@/lib/format'
+import { formatDOP, formatTime12h } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -46,7 +46,7 @@ function AppointmentCard({ apt, onEdit, onDelete, onComplete, onNoShow, compact 
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-1.5 text-sm font-bold text-slate-800">
           <Clock className="h-3.5 w-3.5 text-blue-500" />
-          {apt.time}
+          {formatTime12h(apt.time)}
         </div>
         <Badge tone={st.tone}>{st.name}</Badge>
       </div>

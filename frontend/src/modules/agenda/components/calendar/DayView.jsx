@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Card } from '@/components/ui/Card'
-import { formatLongDate, timeSlots } from '../../lib/calendar'
+import { formatLongDate, formatTime12h, timeSlots } from '../../lib/calendar'
 import { importStackSiblings } from '../../lib/importStacked'
 import { AppointmentChip } from './AppointmentChip'
 import {
@@ -123,7 +123,7 @@ export function DayView({
                     className="sticky left-0 z-30 border-b border-r border-slate-200 bg-white px-2 py-3 text-xs font-medium text-slate-400 shadow-[4px_0_8px_-6px_rgba(15,23,42,0.4)]"
                     data-testid={`calendar-time-${slot}`}
                   >
-                    {slot}
+                    {formatTime12h(slot)}
                   </div>
                   {displayResources.map((c) => {
                     const canBook = canBookResource(c.access)
@@ -177,7 +177,7 @@ export function DayView({
                                     onClick={() => canBook && onSlotClick?.({ date: dateKey, time: slot, cabinaId: c.id })}
                                     disabled={!onSlotClick || !canBook}
                                     className="min-w-0 flex-1 rounded-lg transition-colors hover:bg-blue-50/60"
-                                    aria-label={`Agendar ${slot} en ${c.name}`}
+                                    aria-label={`Agendar ${formatTime12h(slot)} en ${c.name}`}
                                   />
                                 )
                               }
@@ -227,7 +227,7 @@ export function DayView({
                             disabled={!onSlotClick || !canBook}
                             className="h-full w-full rounded-lg text-left transition-colors hover:bg-blue-50/50"
                             style={{ minHeight: SLOT_CELL_MIN_PX - 8 }}
-                            aria-label={`Agendar ${slot} en ${c.name}`}
+                            aria-label={`Agendar ${formatTime12h(slot)} en ${c.name}`}
                           />
                         )}
                       </div>
@@ -252,7 +252,7 @@ export function DayView({
         >
           <p className="text-sm font-semibold text-slate-900">{dragState.label}</p>
           <p className="text-xs text-slate-500" data-testid="calendar-drag-ghost-time">
-            {hoverTarget?.slot || dragState.time}
+            {formatTime12h(hoverTarget?.slot || dragState.time)}
           </p>
         </div>
       )}

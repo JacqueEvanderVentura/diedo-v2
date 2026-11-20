@@ -3,14 +3,14 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { formatDOP } from '@/lib/format'
+import { formatDOP, formatTime12h } from '@/lib/format'
 import { employeeName } from '../data/preview'
 import { WASH_STATES, filterPreviewWashes } from '../lib/navigation'
 import { CarwashPanel, CarwashTable } from './CarwashPrimitives'
 
 export function OperationsPanel({ data, params, updateQuery, isDemo }) {
   const columns = [
-    { key: 'date', label: 'Fecha / Hora', render: (row) => <><span className="whitespace-nowrap">{row.date}</span><span className="block text-xs text-slate-500">{row.time}</span></> },
+    { key: 'date', label: 'Fecha / Hora', render: (row) => <><span className="whitespace-nowrap">{row.date}</span><span className="block text-xs text-slate-500">{formatTime12h(row.time)}</span></> },
     { key: 'vehicle', label: 'Cliente & Vehículo', render: (row) => <><strong className="font-medium">{row.customer}</strong><span className="block text-xs text-slate-500">{row.plate} · {row.vehicle}</span></> },
     { key: 'service', label: 'Servicio', render: (row) => row.service },
     { key: 'washer', label: 'Lavador asignado', render: (row) => employeeName(row.washerId) },

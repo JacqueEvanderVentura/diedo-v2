@@ -156,7 +156,7 @@ def test_build_invoice_document_html_includes_billing_footer() -> None:
     payload = InvoiceDocumentRequest(
         id="FAC-TEST-001",
         kind="sale",
-        issued_at="7 oct 2026, 4:42 p.m.",
+        issued_at="7 oct 2026, 4:42 PM",
         branch_name="Principal",
         region="es-DO",
         customer_name="Cliente Demo",

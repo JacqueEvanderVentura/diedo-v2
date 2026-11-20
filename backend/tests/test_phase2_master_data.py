@@ -610,3 +610,84 @@ def test_phase2_customers_employees_schedules_and_attachments(
     )
     assert relinked.status_code == 200, relinked.text
     assert relinked.json()["platformUserId"] == platform_user_id
+
+
+def test_employee_supervisor_get_omits_archived_and_update_schedule_without_resend(
+    client: TestClient,
+) -> None:
+    headers, me = _bootstrap_and_login(client)
+    branch_id = me["visibleBranches"][0]["id"]
+    suffix = uuid7().hex[:8]
+
+    supervisor_response = client.post(
+        "/api/v1/employees",
+        headers=headers,
+        json={
+            "employeeNumber": f"SUP-ARCH-{suffix}",
+            "firstName": "Boss",
+            "lastName": f"Archivado {suffix}",
+            "position": "Supervisora",
+            "hireDate": "2025-01-15",
+            "branchIds": [branch_id],
+        },
+    )
+    assert supervisor_response.status_code == 201, supervisor_response.text
+    supervisor = supervisor_response.json()
+
+    employee_response = client.post(
+        "/api/v1/employees",
+        headers=headers,
+        json={
+            "employeeNumber": f"EMP-ARCH-{suffix}",
+            "firstName": "Empleada",
+            "lastName": f"ConJefe {suffix}",
+            "position": "Especialista",
+            "hireDate": "2026-02-01",
+            "branchIds": [branch_id],
+            "supervisorIds": [supervisor["id"]],
+        },
+    )
+    assert employee_response.status_code == 201, employee_response.text
+    employee = employee_response.json()
+    assert employee["supervisorIds"] == [supervisor["id"]]
+
+    archived_supervisor = client.patch(
+        f"/api/v1/employees/{supervisor['id']}",
+        headers=headers,
+        json={"status": "archived", "version": supervisor["version"]},
+    )
+    assert archived_supervisor.status_code == 200, archived_supervisor.text
+
+    employee_detail = client.get(f"/api/v1/employees/{employee['id']}", headers=headers)
+    assert employee_detail.status_code == 200
+    assert employee_detail.json()["supervisorIds"] == []
+
+    touch_phone = client.patch(
+        f"/api/v1/employees/{employee['id']}",
+        headers=headers,
+        json={"version": employee["version"], "phone": "+1 809 555 0101"},
+    )
+    assert touch_phone.status_code == 200, touch_phone.text
+
+    schedule_response = client.put(
+        f"/api/v1/employees/{employee['id']}/schedule",
+        headers=headers,
+        json={
+            "timezone": "America/Santo_Domingo",
+            "week": {"mon": [{"start": "09:00", "end": "17:00"}]},
+            "version": employee["schedule"]["version"],
+        },
+    )
+    assert schedule_response.status_code == 200, schedule_response.text
+    assert schedule_response.json()["week"]["mon"] == [{"start": "09:00", "end": "17:00"}]
+
+    missing_supervisor = client.patch(
+        f"/api/v1/employees/{employee['id']}",
+        headers=headers,
+        json={
+            "version": touch_phone.json()["version"],
+            "supervisorIds": [str(uuid7())],
+        },
+    )
+    assert missing_supervisor.status_code == 404
+    assert missing_supervisor.json()["parameter"] == "supervisorIds"

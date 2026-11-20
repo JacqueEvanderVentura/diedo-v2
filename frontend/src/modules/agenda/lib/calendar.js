@@ -101,13 +101,7 @@ export function timePeriod(slot) {
   return hours >= 12 ? 'pm' : 'am'
 }
 
-export function formatTime12h(slot) {
-  const [hours, minutes] = String(slot).split(':').map(Number)
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return slot
-  const period = hours >= 12 ? 'PM' : 'AM'
-  const hour12 = hours % 12 || 12
-  return `${hour12}:${String(minutes).padStart(2, '0')} ${period}`
-}
+export { formatTime12h } from '@/lib/format'
 
 export function timeSlots(startHour = 8, endHour = 20, stepMin = 30) {
   const slots = []

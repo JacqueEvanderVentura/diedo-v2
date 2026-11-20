@@ -39,6 +39,7 @@ export function formatInvoiceDate(date = new Date()) {
   return date.toLocaleString('es-DO', {
     dateStyle: 'medium',
     timeStyle: 'short',
+    hour12: true,
   })
 }
 

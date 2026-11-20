@@ -1,4 +1,4 @@
-import { formatDOP } from '@/lib/format'
+import { formatDOP, formatTime12h } from '@/lib/format'
 import { formatLongDate, endTime } from './calendar'
 import { fmtAuditWhen } from './audit'
 
@@ -82,8 +82,8 @@ export function buildShareCardModel(appointment, { staffName, statusLabel, proxi
     customerName: appointment?.customerName || 'Cliente',
     customerPhone: appointment?.customerPhone || '',
     dateLabel: formatLongDate(appointment?.date),
-    timeStart: appointment?.time || '',
-    timeEnd: endTime(appointment?.time, appointment?.duration),
+    timeStart: appointment?.time ? formatTime12h(appointment.time) : '',
+    timeEnd: appointment?.time ? formatTime12h(endTime(appointment?.time, appointment?.duration)) : '',
     duration: appointment?.duration,
     serviceName: appointment?.serviceName || 'Servicio',
     staffName: staffName && staffName !== '—' ? staffName : 'Especialista por asignar',

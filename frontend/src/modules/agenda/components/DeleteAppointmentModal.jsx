@@ -1,7 +1,7 @@
 import { AlertTriangle, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { formatShortDate } from '../lib/calendar'
+import { formatShortDate, formatTime12h } from '../lib/calendar'
 
 export function DeleteAppointmentModal({ appointment, loading, onClose, onConfirm }) {
   const open = Boolean(appointment)
@@ -30,7 +30,7 @@ export function DeleteAppointmentModal({ appointment, loading, onClose, onConfir
             <dd className="font-medium text-slate-900">{appointment.customerName}</dd>
             <dt className="text-slate-500">Fecha y hora</dt>
             <dd className="font-medium capitalize text-slate-900">
-              {formatShortDate(appointment.date)} · {appointment.time}
+              {formatShortDate(appointment.date)} · {formatTime12h(appointment.time)}
             </dd>
             <dt className="text-slate-500">Servicio</dt>
             <dd className="font-medium text-slate-900">{appointment.serviceName || '—'}</dd>

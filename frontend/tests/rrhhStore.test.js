@@ -195,6 +195,56 @@ describe('rrhhStore edición de documentos', () => {
     expect(saved.attachmentCount).toBe(3)
   })
 
+  it('solo actualiza horario sin reenviar PATCH de empleado', async () => {
+    mocks.mutate.mockImplementation((action) => {
+      if (action === 'updateEmployeeSchedule') {
+        return Promise.resolve({
+          week: { mon: [{ start: '09:00', end: '17:00' }] },
+          timezone: 'America/Santo_Domingo',
+          version: 2,
+        })
+      }
+      return Promise.resolve(createdEmployee)
+    })
+    const nextSchedule = {
+      mon: [{ start: '09:00', end: '17:00' }],
+    }
+    await useRrhhStore.getState().updateEmployee('emp-new', {
+      workSchedule: nextSchedule,
+    })
+
+    expect(mocks.mutate).toHaveBeenCalledTimes(1)
+    expect(mocks.mutate).toHaveBeenCalledWith('updateEmployeeSchedule', 'emp-new', expect.objectContaining({
+      week: nextSchedule,
+      version: 1,
+    }))
+    expect(mocks.mutate).not.toHaveBeenCalledWith('updateEmployee', expect.anything(), expect.anything())
+  })
+
+  it('omite supervisorIds cuando los jefes no cambiaron', async () => {
+    useRrhhStore.setState({
+      employees: [{
+        ...createdEmployee,
+        branchIds: ['branch-1'],
+        jefeIds: ['boss-1'],
+        workSchedule: {},
+        scheduleVersion: 1,
+      }],
+    })
+    mocks.mutate.mockResolvedValue({
+      ...createdEmployee,
+      supervisorIds: ['boss-1'],
+    })
+
+    await useRrhhStore.getState().updateEmployee('emp-new', {
+      firstName: 'Camila Editada',
+    })
+
+    expect(mocks.mutate).toHaveBeenCalledWith('updateEmployee', 'emp-new', expect.not.objectContaining({
+      supervisorIds: expect.anything(),
+    }))
+  })
+
   it('avisa si fallan los documentos sin perder el guardado', async () => {
     mocks.uploadEmployeeAttachment.mockRejectedValue(new Error(''))
     const img = new File(['img'], 'titulo.png', { type: 'image/png' })

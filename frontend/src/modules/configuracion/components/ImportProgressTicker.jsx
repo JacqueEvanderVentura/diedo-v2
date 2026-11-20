@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 
+import { formatTime12h } from '@/lib/format'
 import {
   getTickerWindow,
   nextTickerStartIndex,
@@ -11,7 +12,7 @@ import {
 const ROW_HEIGHT_PX = 52
 
 function TickerRow({ row }) {
-  const subtitle = [row.date, row.time].filter(Boolean).join(' · ')
+  const subtitle = [row.date, row.time ? formatTime12h(row.time) : ''].filter(Boolean).join(' · ')
   const meta = [row.phone, subtitle, row.serviceName].filter(Boolean).join(' · ')
 
   return (

@@ -40,21 +40,21 @@ describe('fase 3 de Agenda', () => {
     const note = screen.getByText('Confirmar alergia')
     expect(note.getAttribute('title')).toBe('Confirmar alergia')
     expect(note.className).toContain('line-clamp-2')
-    expect(screen.queryByText('08:00')).toBeNull()
+    expect(screen.queryByText('8:00 AM')).toBeNull()
   })
 
   it('no muestra nota ni hora en una tarjeta de Día sin notas', () => {
     render(<AppointmentChip apt={{ ...appointment, notes: '' }} compact showDayNote />)
 
     expect(screen.queryByText('Sin nota')).toBeNull()
-    expect(screen.queryByText('08:00')).toBeNull()
+    expect(screen.queryByText('8:00 AM')).toBeNull()
     expect(screen.queryByLabelText(/^Nota:/)).toBeNull()
   })
 
   it('conserva la hora en tarjetas de Semana y Mes', () => {
     render(<AppointmentChip apt={appointment} compact />)
 
-    expect(screen.getByText('08:00')).toBeTruthy()
+    expect(screen.getByText('8:00 AM')).toBeTruthy()
     expect(screen.queryByText('Confirmar alergia')).toBeNull()
   })
 
@@ -116,6 +116,6 @@ describe('fase 3 de Agenda', () => {
 
     const slot = screen.getByTestId('calendar-slot-resource-1-08:00')
     expect(slot.querySelector('[data-testid^="calendar-apt-"]')).toBeTruthy()
-    expect(slot.querySelector('button[aria-label*="Agendar 08:00"]')).toBeNull()
+    expect(slot.querySelector('button[aria-label*="Agendar 8:00 AM"]')).toBeNull()
   })
 })

@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { BackofficeSelect as Select } from './BackofficeSelect'
+import { formatLocaleDateTime12h } from '@/lib/format'
 import { Pagination } from './Pagination'
 
 const actions = {
@@ -163,7 +164,7 @@ export function AuditPanel({ workspaceId, revision = 0 }) {
             <li className="py-3 text-sm" key={item.id}>
               <p className="font-medium">{actions[item.action] || item.action}</p>
               <p className="text-slate-500">
-                {new Date(item.occurredAt).toLocaleString()} ·{' '}
+                {formatLocaleDateTime12h(item.occurredAt)} ·{' '}
                 {item.actorName ||
                   (item.actorType === 'api_key'
                     ? 'Integración de plataforma'

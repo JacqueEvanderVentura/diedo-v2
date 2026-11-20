@@ -18,6 +18,14 @@ from app.scripts.cheko.agenda_convert import (
 )
 from app.scripts.cheko.context import AGENDA_FILES, CHEKO_ROOT, EXTRA_AGENDA_EXPORTS
 
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+
+ROOT_CONTACT_EXPORTS: tuple[tuple[Path, Path], ...] = (
+    (_REPO_ROOT / "charmdn.json", _REPO_ROOT / "charmdn-contacts.csv"),
+    (_REPO_ROOT / "charmsde.json", _REPO_ROOT / "charmsde-contacts.csv"),
+    (_REPO_ROOT / "charmstgo.json", _REPO_ROOT / "charmstgo-contacts.csv"),
+)
+
 CUSTOMER_HEADERS = [
     "externalId",
     "customerType",
@@ -102,6 +110,25 @@ def _write_csv(path: Path, headers: list[str], rows: list[dict[str, str]]) -> in
     return len(rows)
 
 
+def export_customers_csv_from_agenda_json(json_path: Path, csv_path: Path) -> int:
+    items = build_customer_import_items_from_path(
+        json_path,
+        id_prefix="cheko-",
+        require_charm_branch=False,
+    )
+    rows = [_row_to_csv(customer_import_payload(item), CUSTOMER_KEY_MAP) for item in items]
+    return _write_csv(csv_path, CUSTOMER_HEADERS, rows)
+
+
+def export_root_contact_csvs() -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for json_path, csv_path in ROOT_CONTACT_EXPORTS:
+        if not json_path.is_file():
+            raise FileNotFoundError(f"No existe el JSON de agenda: {json_path}")
+        counts[csv_path.name] = export_customers_csv_from_agenda_json(json_path, csv_path)
+    return counts
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -110,7 +137,26 @@ def main() -> None:
         default=CHEKO_ROOT / "out",
         help="Directorio de salida (default: cheko-massive-import/out)",
     )
+    parser.add_argument(
+        "--customers-only",
+        action="store_true",
+        help="Solo exportar CSV de clientes (sin agenda).",
+    )
+    parser.add_argument(
+        "--root-contacts",
+        action="store_true",
+        help="Exportar charmdn/charmsde/charmstgo-contacts.csv en la raíz del repo "
+        "(implica --customers-only).",
+    )
     args = parser.parse_args()
+
+    if args.root_contacts:
+        counts = export_root_contact_csvs()
+        print(json.dumps({"root_contact_csv": counts}, indent=2, ensure_ascii=False))
+        for name, count in counts.items():
+            print(f"  {name}: {count} filas")
+        return
+
     out_dir = args.out_dir
 
     customer_items = build_customer_import_items()
@@ -131,6 +177,36 @@ def main() -> None:
 
     sde_update_path = EXTRA_AGENDA_EXPORTS.get("sde-update")
 
+    extra_customers_csv: dict[str, str] = {}
+    extra_customers_rows: dict[str, int] = {}
+    for label, json_path in EXTRA_AGENDA_EXPORTS.items():
+        if not json_path.is_file():
+            continue
+        cust_items = build_customer_import_items_from_path(json_path)
+        cust_rows = [
+            _row_to_csv(customer_import_payload(item), CUSTOMER_KEY_MAP) for item in cust_items
+        ]
+        extra_cust_path = out_dir / f"customers-{label}.csv"
+        extra_customers_rows[label] = _write_csv(extra_cust_path, CUSTOMER_HEADERS, cust_rows)
+        extra_customers_csv[label] = str(extra_cust_path)
+
+    if args.customers_only:
+        manifest = {
+            "customers_csv": str(out_dir / "customers-from-agenda.csv"),
+            "customers_rows": cust_count,
+            "customers_by_branch_csv": customers_csv,
+            "customers_by_branch_rows": per_branch_counts,
+            "extra_customers_csv": extra_customers_csv,
+            "extra_customers_rows": extra_customers_rows,
+        }
+        manifest_path = out_dir / "manifest.json"
+        manifest_path.write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        print(json.dumps(manifest, indent=2, ensure_ascii=False))
+        print(f"\nArchivos en: {out_dir.resolve()}")
+        return
+
     agenda_totals: dict[str, int] = {}
     for folder in AGENDA_FILES:
         items = build_appointment_import_items(folder)
@@ -143,8 +219,6 @@ def main() -> None:
 
     extra_agenda_csv: dict[str, str] = {}
     extra_agenda_rows: dict[str, int] = {}
-    extra_customers_csv: dict[str, str] = {}
-    extra_customers_rows: dict[str, int] = {}
     for label, json_path in EXTRA_AGENDA_EXPORTS.items():
         if not json_path.is_file():
             continue
@@ -153,14 +227,6 @@ def main() -> None:
         appt_path = out_dir / f"agenda-{label}.csv"
         extra_agenda_rows[label] = _write_csv(appt_path, AGENDA_HEADERS, appt_rows)
         extra_agenda_csv[label] = str(appt_path)
-
-        cust_items = build_customer_import_items_from_path(json_path)
-        cust_rows = [
-            _row_to_csv(customer_import_payload(item), CUSTOMER_KEY_MAP) for item in cust_items
-        ]
-        extra_cust_path = out_dir / f"customers-{label}.csv"
-        extra_customers_rows[label] = _write_csv(extra_cust_path, CUSTOMER_HEADERS, cust_rows)
-        extra_customers_csv[label] = str(extra_cust_path)
 
     manifest = {
         "customers_csv": str(out_dir / "customers-from-agenda.csv"),

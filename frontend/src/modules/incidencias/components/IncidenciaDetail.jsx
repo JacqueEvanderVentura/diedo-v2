@@ -16,12 +16,13 @@ import {
   typeMeta,
   INCIDENCIA_STATUSES,
 } from '@/data/incidencias'
+import { formatLocaleDateTime12h } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { currentSessionActor } from '@/lib/sessionActor'
 
 function formatDate(iso) {
   try {
-    return new Date(iso).toLocaleString('es-DO', { dateStyle: 'medium', timeStyle: 'short' })
+    return formatLocaleDateTime12h(iso, { dateStyle: 'medium', timeStyle: 'short' })
   } catch {
     return iso
   }

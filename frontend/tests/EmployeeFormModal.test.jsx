@@ -84,6 +84,34 @@ describe('EmployeeFormModal campos de directorio', () => {
     expect(screen.getByRole('alert').textContent).toMatch(/nombre/i)
   })
 
+  it('muestra jefes huérfanos como Supervisor no disponible', () => {
+    useSessionStore.setState({
+      status: 'online',
+      user: { effectivePermissionCodes: ['employee.manage'], branchIds: ['branch-1'] },
+    })
+    useConfigStore.setState({
+      branches: [{ id: 'branch-1', name: 'Principal', active: true }],
+      users: [],
+    })
+    render(
+      <EmployeeFormModal
+        open
+        onClose={() => {}}
+        employee={{
+          id: 'emp-1',
+          firstName: 'Fiordaliza',
+          lastName: 'Fernández',
+          position: 'Supervisora',
+          branchIds: ['branch-1'],
+          jefeIds: ['orphan-boss'],
+        }}
+        employees={[{ id: 'emp-2', firstName: 'Otro', lastName: 'Activo', position: 'Cajera', branchIds: ['branch-1'] }]}
+        onSubmit={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Supervisor no disponible')).toBeTruthy()
+  })
+
   it('bloquea el guardado si un bloque de horario tiene la entrada después de la salida', () => {
     useSessionStore.setState({
       status: 'online',

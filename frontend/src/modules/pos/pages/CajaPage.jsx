@@ -21,7 +21,7 @@ import { usePosStore } from '@/stores/posStore'
 import { useCrmStore } from '@/stores/crmStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
-import { formatDOP } from '@/lib/format'
+import { formatDOP, formatLocaleDateTime12h, formatLocaleTime12h } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -47,17 +47,22 @@ import { cn } from '@/lib/utils'
 import { PosSyncStatus } from '../components/PosSyncStatus'
 import { BranchRegisterStatusBar } from '../components/BranchRegisterStatusBar'
 import { useCajaBranchState } from '../hooks/useCajaBranchState'
-import { PermissionElevationModal } from '@/components/auth/PermissionElevationModal'
-
 const VOID_INVOICE_PERMISSION = 'sales.invoice.void'
+const VOID_PERMISSION_DENIED_MESSAGE = 'Solicita permisos a tu superior inmediato para anular.'
 const EDIT_INVOICE_PERMISSION = 'sales.invoice.edit'
 const DELETE_INVOICE_PERMISSION = 'sales.invoice.delete'
 
 const fmtTime = (iso) =>
-  new Date(iso).toLocaleString('es-DO', { hour: '2-digit', minute: '2-digit' })
+  formatLocaleTime12h(iso, { hour: '2-digit', minute: '2-digit' })
 
 const fmtDateTime = (iso) =>
-  new Date(iso).toLocaleString('es-DO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  formatLocaleDateTime12h(iso, {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 
 const TABS = [
   { id: 'todos', label: 'Todos' },
@@ -232,8 +237,6 @@ export default function CajaPage() {
   const ensureSaleDetail = useCrmStore((s) => s.ensureSaleDetail)
 
   const [openInput, setOpenInput] = useState('')
-  const [elevationOpen, setElevationOpen] = useState(false)
-  const [pendingVoidSale, setPendingVoidSale] = useState(null)
   const [closeOpen, setCloseOpen] = useState(false)
   const [closeInput, setCloseInput] = useState('')
   const [closeError, setCloseError] = useState('')
@@ -329,19 +332,11 @@ export default function CajaPage() {
   const beginVoidSale = (sale) => {
     if (!sale) return
     if (!canVoidSales) {
-      setPendingVoidSale(sale)
-      setElevationOpen(true)
+      toast.error(VOID_PERMISSION_DENIED_MESSAGE)
       return
     }
+    if (mutating) return
     setSaleToVoid(sale)
-    setVoidReason('')
-    setVoidError('')
-  }
-
-  const handleElevatedForVoid = () => {
-    if (!pendingVoidSale) return
-    setSaleToVoid(pendingVoidSale)
-    setPendingVoidSale(null)
     setVoidReason('')
     setVoidError('')
   }
@@ -664,13 +659,17 @@ export default function CajaPage() {
                               <Pencil className="h-4 w-4" />
                             </button>
                           )}
-                          {m.type === 'venta' && !isVoided && canVoidSales && (
+                          {m.type === 'venta' && !isVoided && (
                             <button
                               type="button"
                               title="Anular factura"
-                              disabled={Boolean(mutating)}
+                              disabled={canVoidSales && Boolean(mutating)}
+                              aria-disabled={!canVoidSales}
                               onClick={() => beginVoidSale(m.meta)}
-                              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                              className={cn(
+                                'rounded-lg p-1.5 text-slate-400 transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+                                canVoidSales ? 'hover:bg-red-50 hover:text-red-600' : 'cursor-not-allowed opacity-40',
+                              )}
                               data-testid={`caja-void-sale-${m.id}`}
                             >
                               <Ban className="h-4 w-4" />
@@ -892,16 +891,6 @@ export default function CajaPage() {
         )}
       </Modal>
 
-      <PermissionElevationModal
-        open={elevationOpen}
-        onClose={() => {
-          setElevationOpen(false)
-          setPendingVoidSale(null)
-        }}
-        permissionCode={VOID_INVOICE_PERMISSION}
-        description="Para anular una factura, un supervisor con permiso debe autorizar esta sesión por 3 minutos."
-        onElevated={handleElevatedForVoid}
-      />
     </div>
   )
 }
