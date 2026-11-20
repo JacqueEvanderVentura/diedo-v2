@@ -337,6 +337,39 @@ describe('adaptadores de Terminal POS', () => {
     ])
   })
 
+  it('resuelve el efectivo sincronizado cuando el alta rápida no envía método', () => {
+    const payload = movementToApiPayload({
+      concept: 'Ajuste de caja',
+      amount: 111,
+    }, {
+      paymentMethods: [
+        { id: 'tarjeta', apiId: 'card-id', code: 'card', enabled: true, affectsCash: false },
+        { id: 'efectivo', apiId: 'cash-id', code: 'cash', enabled: true, affectsCash: true },
+      ],
+    }, 'expense')
+
+    expect(payload).toMatchObject({
+      type: 'expense',
+      concept: 'Ajuste de caja',
+      amount: 111,
+      paymentMethodId: 'cash-id',
+    })
+  })
+
+  it('falla el alta rápida si no hay un método de efectivo sincronizado', () => {
+    expect(() => movementToApiPayload({
+      concept: 'Ajuste de caja',
+      amount: 111,
+    }, {
+      paymentMethods: [
+        { id: 'efectivo', name: 'Efectivo', enabled: true },
+        { id: 'tarjeta', apiId: 'card-id', code: 'card', enabled: true, affectsCash: false },
+      ],
+    }, 'expense')).toThrow(
+      'No hay un método de efectivo sincronizado para registrar el movimiento de caja.'
+    )
+  })
+
   it('mapea el resumen de cierre con los nombres reales del backend', () => {
     const mapped = mapRegisterHistoryEntry({
       id: 'register-id',

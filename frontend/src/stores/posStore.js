@@ -56,10 +56,19 @@ import {
   EMPTY_CART_PATCH,
 } from '@/modules/pos/lib/openAccount'
 import { currentSessionActor } from '@/lib/sessionActor'
+import { syncWorkspacePaymentMethods } from '@/lib/paymentMethodsSync'
 
 const DEFAULT_CUSTOMER = WALK_IN_CUSTOMER
 const now = () => new Date().toISOString()
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
+
+function paymentMethodsForManualMovement(method) {
+  const methods = useConfigStore.getState().paymentMethods
+  if (method || methods.some((item) => item.apiId)) {
+    return Promise.resolve(methods)
+  }
+  return syncWorkspacePaymentMethods()
+}
 
 function cartItemsWithCatalogTax(items, fallbackTaxPct = 18) {
   const products = useCatalogStore.getState().products
@@ -1690,17 +1699,19 @@ export const usePosStore = create(
           const register = get().register
           if (!register?.id) return Promise.reject(new Error('Abre la caja antes de registrar movimientos.'))
           const data = { concept, amount, method, reference }
-          const payload = movementToApiPayload(data, {
-            ...get(),
-            paymentMethods: useConfigStore.getState().paymentMethods,
-          }, 'income')
-          return runOnlineMutation({
-            set,
-            get,
-            operation: `register:movement:income:${register.id}`,
-            payload,
-            refreshScope: 'caja',
-            request: (idempotencyKey) => posApi.createRegisterMovement(register.id, payload, { idempotencyKey }),
+          return paymentMethodsForManualMovement(method).then((paymentMethods) => {
+            const payload = movementToApiPayload(data, {
+              ...get(),
+              paymentMethods,
+            }, 'income')
+            return runOnlineMutation({
+              set,
+              get,
+              operation: `register:movement:income:${register.id}`,
+              payload,
+              refreshScope: 'caja',
+              request: (idempotencyKey) => posApi.createRegisterMovement(register.id, payload, { idempotencyKey }),
+            })
           })
         }
         set((s) => {
@@ -1723,18 +1734,20 @@ export const usePosStore = create(
           const register = get().register
           if (!register?.id) return Promise.reject(new Error('Abre la caja antes de registrar movimientos.'))
           const data = { concept, amount, method, reference, items }
-          const payload = movementToApiPayload(data, {
-            ...get(),
-            paymentMethods: useConfigStore.getState().paymentMethods,
-          }, 'expense')
-          return runOnlineMutation({
-            set,
-            get,
-            operation: `register:movement:expense:${register.id}`,
-            payload,
-            refreshScope: 'caja',
-            request: (idempotencyKey) => posApi.createRegisterMovement(register.id, payload, { idempotencyKey }),
-          }).then((response) => mapCashMovementFromApi(response))
+          return paymentMethodsForManualMovement(method).then((paymentMethods) => {
+            const payload = movementToApiPayload(data, {
+              ...get(),
+              paymentMethods,
+            }, 'expense')
+            return runOnlineMutation({
+              set,
+              get,
+              operation: `register:movement:expense:${register.id}`,
+              payload,
+              refreshScope: 'caja',
+              request: (idempotencyKey) => posApi.createRegisterMovement(register.id, payload, { idempotencyKey }),
+            }).then((response) => mapCashMovementFromApi(response))
+          })
         }
         const entry = {
           id: genId('exp'),
