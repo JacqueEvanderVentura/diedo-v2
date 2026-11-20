@@ -591,6 +591,7 @@ def _sale_list_response(record: SaleRecord) -> SaleListItemResponse:
     return SaleListItemResponse(
         id=sale.id,
         number=sale.sale_number,
+        fiscal_ncf=sale.fiscal_ncf,
         branch=_branch_response(record.branch),
         register_id=sale.cash_register_id,
         customer=_customer_response(

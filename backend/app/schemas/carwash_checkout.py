@@ -42,6 +42,7 @@ class CompleteWashRequest(PreviewWashRequest):
     register_id: UUID
     payment_method_id: UUID
     reference: str | None = Field(default=None, max_length=160)
+    emit_ncf: bool = False
 
 
 class VoidWashRequest(WashActionRequest):

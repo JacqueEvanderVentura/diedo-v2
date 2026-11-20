@@ -1751,10 +1751,10 @@ export const usePosStore = create(
         return entry
       },
 
-      recordSale: ({ total, method, customer, reference, items, subtotal, discountAmt, discountPct, taxPct, taxAmt }) => {
+      recordSale: ({ total, method, customer, reference, items, subtotal, discountAmt, discountPct, taxPct, taxAmt, emitNcf = false }) => {
         assertOnline()
         if (isOnlineMode()) {
-          const data = { total, method, customer, reference, items, subtotal, discountAmt, discountPct, taxPct, taxAmt }
+          const data = { total, method, customer, reference, items, subtotal, discountAmt, discountPct, taxPct, taxAmt, emitNcf }
           const state = {
             ...get(),
             paymentMethods: useConfigStore.getState().paymentMethods,

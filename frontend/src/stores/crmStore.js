@@ -1486,6 +1486,7 @@ export const useCrmStore = create(
         reference = null,
         proof = null,
         tenders = null,
+        emitNcf = false,
       } = {}) => {
         const quote = get().quotes.find((item) => item.id === quoteId)
         if (!quote) throw new Error('Cotización no encontrada.')
@@ -1511,6 +1512,7 @@ export const useCrmStore = create(
                   : { paymentMethodId: payment.methodId }),
                 collectionMode: collectionMode === 'receivable' ? 'receivable' : 'now',
                 reference,
+                emitNcf: Boolean(emitNcf),
               },
               `crm-quote-invoice-${quoteId}`
             )

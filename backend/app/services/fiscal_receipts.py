@@ -16,6 +16,10 @@ CREDIT_FISCAL_NCF_DIGIT_MAX = 20
 _PREFIX_ERROR = "El prefijo de crédito fiscal debe ser B01."
 _SEQUENCE_ERROR = "La secuencia debe tener entre 8 y 20 dígitos."
 _PAIR_ERROR = "El prefijo y la próxima secuencia deben configurarse juntos."
+_SEQUENCE_UNCONFIGURED_ERROR = (
+    "Configura el prefijo y la próxima secuencia de NCF en los datos fiscales de la sucursal."
+)
+_SEQUENCE_EXHAUSTED_ERROR = "Se agotó la secuencia de NCF de esta sucursal."
 _SEQUENCE_PATTERN = re.compile(r"\d{8,20}")
 
 
@@ -65,8 +69,16 @@ def next_credit_fiscal_sequence(sequence: str) -> str:
         raise ValueError(_SEQUENCE_ERROR)
     incremented = str(int(normalized) + 1).zfill(len(normalized))
     if len(incremented) != len(normalized):
-        raise ValueError(_SEQUENCE_ERROR)
+        raise ValueError(_SEQUENCE_EXHAUSTED_ERROR)
     return incremented
+
+
+def assign_credit_fiscal_ncf(prefix: str | None, sequence: str | None) -> tuple[str, str]:
+    if prefix is None or sequence is None:
+        raise ValueError(_SEQUENCE_UNCONFIGURED_ERROR)
+    ncf = format_credit_fiscal_ncf(prefix, sequence)
+    next_sequence = next_credit_fiscal_sequence(sequence)
+    return ncf, next_sequence
 
 
 def credit_fiscal_sequence_error_parameter(message: str) -> str:

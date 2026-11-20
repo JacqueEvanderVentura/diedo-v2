@@ -183,6 +183,10 @@ def test_build_invoice_document_html_includes_billing_footer() -> None:
         total=Decimal("1770"),
     )
     html = build_invoice_document_html(payload)
+    assert "NCF:" not in html
+    with_ncf = build_invoice_document_html(payload.model_copy(update={"fiscal_ncf": "B0100000040"}))
+    assert "RNC: 132-90890-2" in with_ncf
+    assert "NCF: B0100000040" in with_ncf
     assert "CHARM ESTHETIC CLINIC SRL" in html
     assert "Principal" in html
     assert "es-DO" not in html

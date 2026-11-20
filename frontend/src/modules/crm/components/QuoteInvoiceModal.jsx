@@ -3,6 +3,7 @@ import { Receipt } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { InlineSetupCard } from '@/components/ui/InlineSetupCard'
+import { EmitNcfToggle } from '@/components/fiscal/EmitNcfToggle'
 import { formatDOP } from '@/lib/format'
 import { PaymentMethodPicker } from '@/modules/pos/components/PaymentMethodPicker'
 import { PaymentEvidenceFields } from '@/modules/pos/components/PaymentEvidenceFields'
@@ -41,6 +42,7 @@ export function QuoteInvoiceModal({
   const [tenders, setTenders] = useState(null)
   const [evidenceError, setEvidenceError] = useState(false)
   const [inlineError, setInlineError] = useState(null)
+  const [emitNcf, setEmitNcf] = useState(false)
   const splitEnabled = Array.isArray(tenders) && tenders.length > 0
 
   const selectedMethod = useMemo(
@@ -55,6 +57,7 @@ export function QuoteInvoiceModal({
     setPaymentReference('')
     setPaymentProof(null)
     setTenders(null)
+    setEmitNcf(false)
     const first = enabledMethods[0]
     setPaymentMethodId(first?.id || '')
   }, [open, quote?.id, enabledMethods])
@@ -94,6 +97,7 @@ export function QuoteInvoiceModal({
           collectionMode: 'now',
           reference: paymentReference.trim() || null,
           proof: paymentProof,
+          emitNcf,
         })
         return
       }
@@ -104,6 +108,7 @@ export function QuoteInvoiceModal({
         collectionMode: resolved.collectionMode,
         reference: paymentReference.trim() || null,
         proof: paymentProof,
+        emitNcf,
       })
     } catch (error) {
       if (error.code === 'not_synced') {
@@ -193,6 +198,13 @@ export function QuoteInvoiceModal({
               testId="quote-invoice-inline-error"
             />
           )}
+
+          <EmitNcfToggle
+            checked={emitNcf}
+            onChange={setEmitNcf}
+            disabled={loading || !canSubmit}
+            testId="quote-invoice-emit-ncf-toggle"
+          />
 
           <div className="flex gap-3 pt-2">
             <Button variant="secondary" className="flex-1" onClick={onClose} disabled={loading}>

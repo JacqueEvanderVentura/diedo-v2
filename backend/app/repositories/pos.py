@@ -151,14 +151,21 @@ class PosRepository:
             select(Workspace).where(Workspace.id == workspace_id, Workspace.status == "active")
         )
 
-    def branch(self, workspace_id: UUID, branch_id: UUID) -> Branch | None:
-        return self._session.scalar(
-            select(Branch).where(
-                Branch.workspace_id == workspace_id,
-                Branch.id == branch_id,
-                Branch.status == "active",
-            )
+    def branch(
+        self,
+        workspace_id: UUID,
+        branch_id: UUID,
+        *,
+        lock: bool = False,
+    ) -> Branch | None:
+        statement = select(Branch).where(
+            Branch.workspace_id == workspace_id,
+            Branch.id == branch_id,
+            Branch.status == "active",
         )
+        if lock:
+            statement = statement.with_for_update()
+        return self._session.scalar(statement)
 
     def customer(self, workspace_id: UUID, branch_id: UUID, customer_id: UUID) -> Customer | None:
         return self._session.scalar(

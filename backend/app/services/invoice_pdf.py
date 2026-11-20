@@ -95,6 +95,7 @@ def sale_to_invoice_request(
         business_name=branding["business_name"],
         legal_name=branding["legal_name"],
         business_rnc=branding["business_rnc"],
+        fiscal_ncf=sale.fiscal_ncf or "",
         business_address=branding["business_address"],
         business_phone=branding["business_phone"],
         business_email=branding["business_email"] or None,

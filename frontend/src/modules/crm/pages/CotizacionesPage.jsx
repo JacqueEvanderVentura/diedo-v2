@@ -389,7 +389,7 @@ export default function CotizacionesPage() {
   const syncPaymentMethodsForInvoice = () => syncWorkspacePaymentMethods()
 
   const confirmInvoice = async (payload) => {
-    const { collectionMode, paymentMethod, paymentMethodId, reference, proof, tenders } = payload || {}
+    const { collectionMode, paymentMethod, paymentMethodId, reference, proof, tenders, emitNcf } = payload || {}
     if (!invoiceQuoteRow) return
     setInvoiceLoading(true)
     try {
@@ -399,6 +399,7 @@ export default function CotizacionesPage() {
         reference,
         proof,
         tenders,
+        emitNcf,
       })
       const status = result.quote?.invoiceCollection
       const parkedHint = result.parkedForNextShift

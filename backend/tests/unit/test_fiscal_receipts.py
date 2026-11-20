@@ -3,6 +3,7 @@ from app.schemas.administration import UpdateBranchRequest
 from app.services.administration import AdministrationService
 from app.services.errors import InvalidOperationError
 from app.services.fiscal_receipts import (
+    assign_credit_fiscal_ncf,
     format_credit_fiscal_ncf,
     next_credit_fiscal_sequence,
     validate_credit_fiscal_sequence_pair,
@@ -16,6 +17,13 @@ def test_credit_fiscal_ncf_formats_sequence_40_and_the_following_numbers() -> No
     assert format_credit_fiscal_ncf("B01", "00000041") == "B0100000041"
     assert format_credit_fiscal_ncf("B01", "0000000040") == "B010000000040"
     assert len(format_credit_fiscal_ncf("B01", "1" * 20)) == 23
+    ncf, following = assign_credit_fiscal_ncf("B01", "00000040")
+    assert ncf == "B0100000040"
+    assert following == "00000041"
+    with pytest.raises(ValueError, match="datos fiscales"):
+        assign_credit_fiscal_ncf(None, None)
+    with pytest.raises(ValueError, match="agotó"):
+        next_credit_fiscal_sequence("9" * 20)
 
 
 def test_update_branch_accepts_credit_fiscal_sequence_and_normalizes_prefix() -> None:

@@ -43,6 +43,34 @@ describe('documentos de venta y cotización', () => {
     expect(html).toContain('FAC-20260908-0001')
     expect(html).toContain('/favicon.svg')
     expect(html).not.toContain('<svg')
+    expect(html).not.toContain('NCF:')
+  })
+
+  it('muestra el NCF debajo del RNC cuando la venta lo emitió', () => {
+    const data = buildInvoiceDataFromSale({
+      id: 'sale-ncf',
+      number: 'FAC-20261119-0040',
+      fiscalNcf: 'B0100000040',
+      branchId: 'charm-dn',
+      createdAt: '2026-11-19T12:00:00.000Z',
+      customer: { name: 'María Fernández', phone: '809-555-0000' },
+      method: 'efectivo',
+      items: [{ name: '1 sesión axilas', qty: 1, price: 900, listPrice: 900 }],
+      subtotal: 900,
+      discountAmt: 0,
+      taxPct: 18,
+      taxAmt: 162,
+      total: 1062,
+    }, {
+      branches,
+      settings: { ...settings, businessRnc: '132-90890-2' },
+      paymentMethods: [{ id: 'efectivo', name: 'Efectivo' }],
+    })
+
+    expect(data.fiscalNcf).toBe('B0100000040')
+    const html = buildInvoiceHtml({ ...data, businessRnc: '132-90890-2' })
+    expect(html).toContain('RNC: 132-90890-2')
+    expect(html).toContain('NCF: B0100000040')
   })
 
   it('tacha el precio de lista cuando la línea tiene descuento', () => {

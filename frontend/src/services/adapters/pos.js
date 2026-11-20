@@ -426,6 +426,7 @@ export function mapSaleFromApi(sale) {
   return {
     id: sale.id,
     number: sale.documentNumber || sale.number || null,
+    fiscalNcf: first(sale.fiscalNcf, sale.fiscal_ncf, null),
     branchId: first(sale.branchId, sale.branch?.id, null),
     registerId: first(sale.registerId, sale.cashRegisterId, sale.shiftId, null),
     customer: mapCustomer(sale.customer || {
@@ -933,6 +934,7 @@ export function checkoutToApiPayload(data, state) {
       tenders: mappedTenders,
       lines: (data.items || []).map(lineToApiPayload),
       ...discountToApiPayload(state.discountMode, state.discountValue),
+      emitNcf: Boolean(data.emitNcf),
     }
   }
   if (!payment.methodId) {
@@ -957,6 +959,7 @@ export function checkoutToApiPayload(data, state) {
     reference: data.reference?.trim() || null,
     lines: (data.items || []).map(lineToApiPayload),
     ...discountToApiPayload(state.discountMode, state.discountValue),
+    emitNcf: Boolean(data.emitNcf),
   }
 }
 

@@ -55,6 +55,7 @@ from app.services.errors import (
     InvalidOperationError,
     ResourceNotFoundError,
 )
+from app.services.fiscal_receipts import assign_credit_fiscal_ncf
 from app.services.pos_money import PricedDocument, PricingInput, money, price_document, quantity
 
 _ALLOWED_PROOF_TYPES = {
@@ -1459,6 +1460,11 @@ class PosService:
             idempotency_key=idempotency_key,
             request_fingerprint=fingerprint,
         )
+        fiscal_ncf = (
+            self._consume_credit_fiscal_ncf(grant.workspace_id, branch_id)
+            if values.get("emit_ncf")
+            else None
+        )
         sale = Sale(
             workspace_id=grant.workspace_id,
             branch_id=branch_id,
@@ -1467,6 +1473,7 @@ class PosService:
             quote_id=quote.id if quote else None,
             inventory_movement_id=inventory_movement_id,
             sale_number=sale_number,
+            fiscal_ncf=fiscal_ncf,
             status="completed",
             currency_code=snapshot.currency if snapshot else workspace.default_currency,
             customer_name=customer.display_name if customer else None,
@@ -3559,6 +3566,22 @@ class PosService:
                 )
             )
         return tuple(buffer)
+
+    def _consume_credit_fiscal_ncf(self, workspace_id: UUID, branch_id: UUID) -> str:
+        branch = self._repository.branch(workspace_id, branch_id, lock=True)
+        if branch is None:
+            raise ResourceNotFoundError("La sucursal no existe.", "branchId")
+        try:
+            ncf, next_sequence = assign_credit_fiscal_ncf(
+                branch.fiscal_credit_ncf_prefix,
+                branch.fiscal_credit_ncf_next_sequence,
+            )
+        except ValueError as exc:
+            raise InvalidOperationError(str(exc), "emitNcf") from exc
+        branch.fiscal_credit_ncf_next_sequence = next_sequence
+        branch.version += 1
+        self._session.flush()
+        return ncf
 
     def _consume_stock(
         self,

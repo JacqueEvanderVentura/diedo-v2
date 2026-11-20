@@ -257,6 +257,7 @@ class CarwashCheckoutService:
             "discount_type": payload.discount_type,
             "discount_value": payload.discount_value,
             "notes": f"Carwash · {wash.plate}",
+            "emit_ncf": payload.emit_ncf,
         }
         try:
             result = self.pos.checkout_in_transaction(

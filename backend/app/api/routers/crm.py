@@ -887,6 +887,7 @@ def invoice_quote(
             register_id=payload.register_id,
             payment_reference=payload.reference,
             idempotency_key=idempotency_key,
+            emit_ncf=payload.emit_ncf,
             tenders=(
                 [
                     {

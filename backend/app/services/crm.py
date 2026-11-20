@@ -1174,6 +1174,7 @@ class CrmService:
         payment_reference: str | None,
         idempotency_key: str,
         tenders: list[dict[str, Any]] | None = None,
+        emit_ncf: bool = False,
     ) -> CheckoutResult:
         quote_grant = self._intersect_grants(crm_grant, sales_grant)
         record = PosService(self._session).get_quote(quote_grant, quote_id)
@@ -1242,6 +1243,7 @@ class CrmService:
             "reference": payment_reference,
             "lines": lines,
             "crm_relaxed_register": True,
+            "emit_ncf": emit_ncf,
         }
         if resolved_tenders is not None:
             checkout_values["tenders"] = resolved_tenders

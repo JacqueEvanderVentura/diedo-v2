@@ -731,6 +731,7 @@ class InvoiceCrmQuoteRequest(ApiModel):
     collection_mode: Literal["now", "receivable"] = "now"
     register_id: UUID | None = None
     reference: str | None = Field(default=None, max_length=160)
+    emit_ncf: bool = False
 
     @model_validator(mode="after")
     def validate_payment(self) -> Self:

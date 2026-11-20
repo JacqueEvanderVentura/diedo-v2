@@ -64,6 +64,7 @@ function buildInvoiceFooterHtml(data) {
     businessName,
     legalName = '',
     businessRnc = '',
+    fiscalNcf = '',
     businessAddress = '',
     businessPhone = '',
     businessEmail = '',
@@ -83,6 +84,7 @@ function buildInvoiceFooterHtml(data) {
   const legalTitle = (legalName && legalName !== businessName ? legalName : businessName) || businessName
   const addressLines = splitAddressLines(businessAddress)
   const rncLine = businessRnc ? `RNC: ${businessRnc}` : ''
+  const ncfLine = fiscalNcf ? `NCF: ${fiscalNcf}` : ''
 
   const contacts = []
   if (businessPhone) {
@@ -105,6 +107,7 @@ function buildInvoiceFooterHtml(data) {
   const legalLines = [
     legalTitle,
     rncLine,
+    ncfLine,
     ...addressLines,
     note,
   ].filter(Boolean)
@@ -131,6 +134,7 @@ export function buildInvoiceHtml(data) {
     businessName,
     legalName = '',
     businessRnc = '',
+    fiscalNcf = '',
     businessAddress = '',
     businessPhone = '',
     businessEmail = '',
@@ -416,6 +420,7 @@ export function buildInvoiceHtml(data) {
         </div>
         <h1>${escapeHtml(businessName)}</h1>
         ${businessRnc ? `<p class="muted">RNC: ${escapeHtml(businessRnc)}</p>` : ''}
+        ${fiscalNcf ? `<p class="muted">NCF: ${escapeHtml(fiscalNcf)}</p>` : ''}
         ${businessAddress ? `<p class="muted">${escapeHtml(businessAddress.split('\n')[0])}</p>` : ''}
       </div>
       <div class="header-right">
