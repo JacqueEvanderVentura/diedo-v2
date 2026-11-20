@@ -1,10 +1,11 @@
 import { useEffect } from 'react'
 import { X } from 'lucide-react'
+import { formatLocaleTime12h } from '@/lib/format'
 import { useSessionStore } from '@/stores/sessionStore'
 
 function formatExpiry(iso) {
   try {
-    return new Date(iso).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })
+    return formatLocaleTime12h(iso, { hour: '2-digit', minute: '2-digit' })
   } catch {
     return ''
   }

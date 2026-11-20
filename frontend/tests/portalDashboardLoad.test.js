@@ -6,7 +6,7 @@ import {
 
 const session = { docType: 'cedula', documentId: '00112345678' }
 
-function apis({ me, appointments, invoices, receivables, tasks, context } = {}) {
+function apis({ me, appointments, invoices, payments, receivables, tasks, context } = {}) {
   return {
     bookingApi: {
       getContext: vi.fn().mockImplementation(
@@ -22,6 +22,9 @@ function apis({ me, appointments, invoices, receivables, tasks, context } = {}) 
       ),
       listInvoices: vi.fn().mockImplementation(
         invoices || (() => Promise.resolve({ items: [{ id: 'inv-1' }] })),
+      ),
+      listPayments: vi.fn().mockImplementation(
+        payments || (() => Promise.resolve({ items: [] })),
       ),
       listReceivables: vi.fn().mockImplementation(
         receivables || (() => Promise.resolve({ items: [] })),
@@ -67,9 +70,25 @@ describe('loadPortalDashboard', () => {
     expect(dashboard.failures).toEqual(['tasks'])
   })
 
+  it('loads payment history without blanking invoices when payments fail', async () => {
+    const { bookingApi, portalApi } = apis({
+      payments: () => Promise.reject(new Error('503')),
+    })
+    const dashboard = await loadPortalDashboard({
+      branchId: 'branch',
+      session,
+      bookingApi,
+      portalApi,
+    })
+    expect(dashboard.payments).toEqual([])
+    expect(dashboard.invoices).toHaveLength(1)
+    expect(dashboard.failures).toEqual(['payments'])
+    expect(portalLoadErrorMessage(dashboard.failures)).toBe('No se pudo cargar: pagos.')
+  })
+
   it('uses the generic portal error when almost everything fails', () => {
     expect(
-      portalLoadErrorMessage(['profile', 'appointments', 'invoices', 'receivables']),
+      portalLoadErrorMessage(['profile', 'appointments', 'invoices', 'payments', 'receivables']),
     ).toBe('No se pudo cargar tu portal. Intenta iniciar sesión de nuevo.')
   })
 })

@@ -5,11 +5,12 @@ import { DropdownPanel } from '@/components/ui/DropdownPanel'
 import { useNotificationsStore } from '@/stores/notificationsStore'
 import { useIncidenciasStore } from '@/stores/incidenciasStore'
 import { useSessionStore } from '@/stores/sessionStore'
+import { formatLocaleDateTime12h } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 function fmtWhen(iso) {
   try {
-    return new Date(iso).toLocaleString('es-DO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+    return formatLocaleDateTime12h(iso, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
   } catch {
     return ''
   }

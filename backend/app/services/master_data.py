@@ -820,7 +820,7 @@ class MasterDataService:
                 raise ConflictError(
                     "Un empleado no puede supervisarse a sí mismo.", "supervisorIds"
                 )
-            self._validate_supervisors(grant, supervisor_ids)
+            self._validate_supervisors_on_update(grant, employee_id, supervisor_ids)
         if "first_name" in changes or "last_name" in changes:
             changes["normalized_name"] = normalize_name(
                 f"{changes.get('first_name', employee.first_name)} "
@@ -1044,6 +1044,29 @@ class MasterDataService:
     def _validate_supervisors(self, grant: PermissionGrant, supervisor_ids: set[UUID]) -> None:
         if not self._repository.employees_exist_and_visible(
             grant.workspace_id, supervisor_ids, grant.allowed_branch_ids
+        ):
+            raise ResourceNotFoundError(
+                "Un supervisor no existe o está fuera de alcance.", "supervisorIds"
+            )
+
+    def _validate_supervisors_on_update(
+        self,
+        grant: PermissionGrant,
+        employee_id: UUID,
+        supervisor_ids: set[UUID],
+    ) -> None:
+        if not supervisor_ids:
+            return
+        if not self._repository.employees_exist_active(grant.workspace_id, supervisor_ids):
+            raise ResourceNotFoundError(
+                "Un supervisor no existe o está fuera de alcance.", "supervisorIds"
+            )
+        current = self._repository.active_supervisor_ids_for_employee(
+            grant.workspace_id, employee_id
+        )
+        new_ids = supervisor_ids - current
+        if new_ids and not self._repository.employees_exist_and_visible(
+            grant.workspace_id, new_ids, grant.allowed_branch_ids
         ):
             raise ResourceNotFoundError(
                 "Un supervisor no existe o está fuera de alcance.", "supervisorIds"

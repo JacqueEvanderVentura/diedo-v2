@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { posState, sessionState } = vi.hoisted(() => ({
+const { posState, sessionState, toastError } = vi.hoisted(() => ({
   posState: {
     voidSale: vi.fn(),
     deleteSale: vi.fn(),
@@ -19,6 +19,14 @@ const { posState, sessionState } = vi.hoisted(() => ({
   sessionState: {
     status: 'offline',
     hasPermission: () => false,
+  },
+  toastError: vi.fn(),
+}))
+
+vi.mock('sonner', () => ({
+  toast: {
+    error: toastError,
+    success: vi.fn(),
   },
 }))
 
@@ -90,10 +98,6 @@ vi.mock('@/modules/pos/components/ReceivableProofModal', () => ({
   ReceivableProofModal: () => null,
 }))
 
-vi.mock('@/components/auth/PermissionElevationModal', () => ({
-  PermissionElevationModal: () => null,
-}))
-
 import { SaleDetailModal } from '@/modules/crm/components/SaleDetailModal'
 
 const saleA = {
@@ -105,6 +109,7 @@ const saleA = {
   branchId: 'branch-1',
   items: [{ name: 'Corte', qty: 1, price: 1500 }],
   customer: { name: 'Ana Pérez' },
+  soldBy: 'Carlos Vendedor',
 }
 
 const saleB = {
@@ -124,6 +129,7 @@ beforeEach(() => {
   posState.receivables = []
   sessionState.status = 'offline'
   sessionState.hasPermission = () => false
+  toastError.mockReset()
 })
 
 afterEach(() => {
@@ -140,6 +146,7 @@ describe('SaleDetailModal', () => {
     })
     expect(screen.getByTestId('sale-detail-id').textContent).toBe('F-001')
     expect(screen.getByTestId('sale-detail-modal').textContent).toContain('Efectivo')
+    expect(screen.getByTestId('sale-detail-sold-by').textContent).toContain('Carlos Vendedor')
 
     await act(async () => {
       rerender(<SaleDetailModal open={false} onClose={onClose} sale={null} />)
@@ -213,5 +220,19 @@ describe('SaleDetailModal', () => {
 
     fireEvent.click(screen.getByTestId('sale-detail-void'))
     expect(screen.getByTestId('sale-detail-void-modal').closest('[data-modal-layer]')?.getAttribute('data-modal-layer')).toBe('nested')
+  })
+
+  it('muestra anular deshabilitado y toast sin permiso sales.invoice.void', async () => {
+    await act(async () => {
+      render(<SaleDetailModal open onClose={vi.fn()} sale={saleA} />)
+    })
+
+    const voidBtn = screen.getByTestId('sale-detail-void')
+    expect(voidBtn).toBeTruthy()
+    expect(voidBtn.getAttribute('aria-disabled')).toBe('true')
+
+    fireEvent.click(voidBtn)
+    expect(toastError).toHaveBeenCalledWith('Solicita permisos a tu superior inmediato para anular.')
+    expect(screen.queryByTestId('sale-detail-void-modal')).toBeNull()
   })
 })

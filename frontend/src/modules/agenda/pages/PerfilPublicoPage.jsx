@@ -14,6 +14,7 @@ import { publicBookingApi } from '@/services/publicBookingApi'
 import { useConfigStore } from '@/stores/configStore'
 import { normalizeDocumentId } from '../lib/selfBooking'
 import { fmtDate } from '@/modules/crm/lib/crm'
+import { formatTime12h } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import GestionCitaPage from './GestionCitaPage'
 
@@ -258,7 +259,7 @@ function AppointmentRow({ apt, muted }) {
   return (
     <li className={cn('flex items-center justify-between rounded-xl border border-slate-100 p-3 text-sm', muted && 'opacity-75')}>
       <span className="text-slate-700">
-        {fmtDate(apt.date)} · {apt.time} · {apt.serviceName || 'Cita'}
+        {fmtDate(apt.date)} · {formatTime12h(apt.time)} · {apt.serviceName || 'Cita'}
         {apt.source === 'self' && <span className="ml-1 text-[10px] text-blue-500">(en línea)</span>}
       </span>
       <Badge tone={st.tone}>{st.name}</Badge>

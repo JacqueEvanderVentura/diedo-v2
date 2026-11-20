@@ -1,3 +1,5 @@
+import { formatClock12h } from '@/lib/format'
+
 const LEGACY_STATUS_MAP = {
   completada: 'cumplida',
   asistio: 'cumplida',
@@ -14,9 +16,8 @@ export function normalizeAppointmentStatus(status) {
 
 export function formatCompletionTime(value) {
   if (!value) return null
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return null
-  return date.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', hour12: false })
+  const label = formatClock12h(value)
+  return label || null
 }
 
 export function formatCompletionSummary(appointment) {

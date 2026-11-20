@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, time
 from html import escape
 from typing import Any
 from urllib.parse import urlencode
@@ -21,6 +21,10 @@ _TEXT = "#0f172a"
 _TEXT_MUTED = "#64748b"
 _SURFACE = "#ffffff"
 _PAGE_BG = "#f8fafc"
+# Google Sans is not on Google Fonts; Roboto loads where clients allow <link> (e.g. Gmail).
+_EMAIL_DISPLAY_FONT = "'Google Sans', Roboto, Helvetica, Arial, sans-serif"
+_EMAIL_BODY_FONT = "Helvetica, Arial, sans-serif"
+_GOOGLE_FONTS_LINK = "https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;800&display=swap"
 
 _MONTHS_ES = (
     "enero",
@@ -148,6 +152,13 @@ def _format_date_es(value: date) -> str:
     return f"{weekday} {value.day} de {month} de {value.year}"
 
 
+def _format_time_12h(value: time) -> str:
+    hour = value.hour % 12 or 12
+    minute = f"{value.minute:02d}"
+    period = "PM" if value.hour >= 12 else "AM"
+    return f"{hour}:{minute} {period}"
+
+
 def _html(value: object) -> str:
     return escape(str(value), quote=True)
 
@@ -190,6 +201,7 @@ def _render_html_email(
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link href="{_GOOGLE_FONTS_LINK}" rel="stylesheet" />
     <title>{_html(headline)}</title>
   </head>
   <body style="margin:0;padding:0;background:{_PAGE_BG};">
@@ -238,7 +250,7 @@ def _render_html_email(
                         font-weight:700;letter-spacing:0;text-transform:uppercase;line-height:18px;">
                         Agenda en línea
                       </div>
-                      <h1 style="margin:10px 0 0;color:#ffffff;font-family:Inter,Arial,sans-serif;
+                      <h1 style="margin:10px 0 0;color:#ffffff;font-family:{_EMAIL_DISPLAY_FONT};
                         font-size:28px;font-weight:800;line-height:34px;">
                         {_html(headline)}
                       </h1>
@@ -264,7 +276,8 @@ def _render_html_email(
                     border-collapse:separate;font-family:Inter,Arial,sans-serif;">
                   <tr>
                     <td style="padding:18px 20px 4px;">
-                      <div style="color:{_TEXT};font-size:16px;font-weight:800;line-height:22px;">
+                      <div style="color:{_TEXT};font-family:{_EMAIL_DISPLAY_FONT};
+                        font-size:16px;font-weight:800;line-height:22px;">
                         {_html(detail_heading)}
                       </div>
                       <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
@@ -280,8 +293,8 @@ def _render_html_email(
               <td align="center" style="padding:22px 28px 26px;font-family:Inter,Arial,sans-serif;">
                 <a href="{_html(action_url)}"
                   style="display:inline-block;background:{_BRAND_BLUE};color:#ffffff;text-decoration:none;
-                    border-radius:12px;padding:14px 22px;font-size:15px;font-weight:800;
-                    line-height:20px;">
+                    border-radius:12px;padding:14px 22px;font-family:{_EMAIL_DISPLAY_FONT};
+                    font-size:15px;font-weight:800;line-height:20px;">
                   {_html(action_label)}
                 </a>
               </td>
@@ -294,11 +307,10 @@ def _render_html_email(
                   {_html(footer_context)}
                 </p>
                 <p style="margin:0;color:{_TEXT_MUTED};font-size:12px;line-height:19px;">
-                  Enviado por Helios 360. Si el botón no abre, usa este enlace:
+                  Enviado por Helios 360. Si el botón no abre,
                   <a href="{_html(action_url)}" style="color:{_BRAND_BLUE_DARK};
                     text-decoration:underline;">
-                    {_html(action_url)}
-                  </a>
+                    haz clic aquí</a>.
                 </p>
               </td>
             </tr>
@@ -353,7 +365,7 @@ def render_appointment_email(
 ) -> dict[str, Any]:
     template = _TEMPLATES[event]
     date_label = _format_date_es(appointment.scheduled_date)
-    time_label = appointment.scheduled_time.strftime("%H:%M")
+    time_label = _format_time_12h(appointment.scheduled_time)
     context = {
         "customer_name": appointment.customer_name,
         "service_name": appointment.service_name,
@@ -368,7 +380,7 @@ def render_appointment_email(
     details: list[tuple[str, object]] = [
         ("Servicio", appointment.service_name),
         ("Fecha", date_label),
-        ("Hora", f"{time_label} h"),
+        ("Hora", time_label),
         ("Duración", f"{appointment.duration_minutes} minutos"),
         ("Establecimiento", workspace_name),
         ("Sucursal", branch_name),

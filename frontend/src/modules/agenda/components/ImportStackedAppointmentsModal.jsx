@@ -1,3 +1,4 @@
+import { formatTime12h } from '@/lib/format'
 import { Modal } from '@/components/ui/Modal'
 import { IMPORT_STACK_NOTE_MARKER } from '@/modules/agenda/lib/importStacked'
 
@@ -22,7 +23,7 @@ export function ImportStackedAppointmentsModal({ open, onClose, appointments = [
             >
               <p className="font-semibold">{apt.customerName}</p>
               <p className="text-xs text-slate-500">
-                {[apt.date, apt.time, apt.serviceName, apt.resourceName].filter(Boolean).join(' · ')}
+                {[apt.date, apt.time ? formatTime12h(apt.time) : '', apt.serviceName, apt.resourceName].filter(Boolean).join(' · ')}
               </p>
               {apt.notes?.includes(IMPORT_STACK_NOTE_MARKER) ? (
                 <p className="mt-1 text-xs text-amber-800">{IMPORT_STACK_NOTE_MARKER}.</p>

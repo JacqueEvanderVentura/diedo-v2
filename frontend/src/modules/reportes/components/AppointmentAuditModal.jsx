@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/Badge'
 import { useConfigStore } from '@/stores/configStore'
 import { useRrhhStore } from '@/stores/rrhhStore'
 import { statusMeta } from '@/stores/agendaStore'
+import { formatTime12h } from '@/lib/format'
 import { actionLabel, fmtAuditWhen, sourceLabel } from '@/modules/agenda/lib/audit'
 import { cn } from '@/lib/utils'
 
@@ -44,7 +45,7 @@ export function AppointmentAuditModal({ open, onClose, appointment }) {
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <p className="flex items-center gap-2 text-sm text-slate-600">
               <Calendar className="h-4 w-4 text-blue-500" />
-              {appointment.date} · {appointment.time}
+              {appointment.date} · {formatTime12h(appointment.time)}
             </p>
             <p className="flex items-center gap-2 text-sm text-slate-600">
               <User className="h-4 w-4 text-violet-500" />

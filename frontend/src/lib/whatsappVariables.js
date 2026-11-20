@@ -1,5 +1,5 @@
 import { normalizeAppointmentStatus } from '@/modules/agenda/lib/completion'
-import { formatShortDate } from '@/modules/agenda/lib/calendar'
+import { formatShortDate, formatTime12h } from '@/modules/agenda/lib/calendar'
 
 export const WHATSAPP_VARIABLE_CHIPS = {
   agenda: [
@@ -100,7 +100,7 @@ export function findNextCustomerAppointment(appointments, customerId) {
 export function appointmentWhatsAppFields(appointment, resources = []) {
   if (!appointment) return {}
   const fecha = appointment.date ? formatShortDate(appointment.date) : ''
-  const hora = appointment.time || ''
+  const hora = appointment.time ? formatTime12h(appointment.time) : ''
   const servicio = appointment.serviceName || ''
   const sucursal = appointment.branchName || ''
   const resourceId = appointment.cabinaId || appointment.resourceId

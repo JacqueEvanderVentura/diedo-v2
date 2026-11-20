@@ -1414,6 +1414,180 @@ def test_public_portal_lists_completed_invoice_for_customer(client, booking_setu
 
 
 @pytest.mark.integration
+def test_public_portal_lists_cash_payment_for_completed_sale(client, booking_setup):
+    headers, _, branch, employee, service = booking_setup
+    body = payload_for(employee, service)
+    booked = client.post(
+        f"/api/v1/public/booking/branches/{branch}/appointments",
+        json=body,
+        headers={"Idempotency-Key": str(uuid7())},
+    )
+    assert booked.status_code == 201, booked.text
+    customer_id = booked.json()["appointment"]["customerId"]
+    sale_id = _checkout_completed_sale(client, headers, branch, customer_id)
+    params = {"documentType": body["documentType"], "documentId": body["documentId"]}
+    payments = client.get(f"/api/v1/public/portal/branches/{branch}/payments", params=params)
+    assert payments.status_code == 200, payments.text
+    items = payments.json()["items"]
+    assert len(items) == 1, items
+    payment = items[0]
+    assert payment["saleId"] == sale_id
+    assert payment["source"] == "sale"
+    assert payment["amount"] == "25.00"
+    assert payment["receivableId"] is None
+    method_name = payment["paymentMethodName"].lower()
+    assert "efectivo" in method_name or "cash" in method_name
+
+
+@pytest.mark.integration
+def test_public_portal_payments_empty_for_unknown_customer(client, booking_setup):
+    _, _, branch, _, _ = booking_setup
+    params = {"documentType": "pasaporte", "documentId": f"NOPE{uuid7().hex[:12]}"}
+    payments = client.get(f"/api/v1/public/portal/branches/{branch}/payments", params=params)
+    assert payments.status_code == 200, payments.text
+    assert payments.json()["items"] == []
+
+
+def _portal_pos_checkout_setup(client, headers, branch_id):
+    suffix = uuid7().hex[-10:]
+    state = client.get(
+        "/api/v1/pos/state",
+        headers=headers,
+        params={"branchId": branch_id},
+    )
+    assert state.status_code == 200, state.text
+    methods = {method["code"]: method for method in state.json()["paymentMethods"]}
+    category = client.post(
+        "/api/v1/catalog/categories",
+        headers=headers,
+        json={"name": f"Portal split {suffix}"},
+    )
+    assert category.status_code == 201, category.text
+    unit_id = client.get("/api/v1/catalog/units-of-measure", headers=headers).json()[0]["id"]
+    product = client.post(
+        "/api/v1/inventory/products",
+        headers={**headers, "Idempotency-Key": f"portal-split-product-{suffix}"},
+        json={
+            "name": f"Portal split {suffix}",
+            "sku": f"PSPLIT-{suffix}",
+            "categoryId": category.json()["id"],
+            "unitOfMeasureId": unit_id,
+            "branchId": branch_id,
+            "salePrice": "15.00",
+            "unitCost": "5.00",
+            "taxRate": "0.00",
+            "stock": "20",
+            "minimumStock": "0",
+        },
+    )
+    assert product.status_code == 201, product.text
+    open_register = state.json().get("register")
+    if open_register and open_register.get("status") == "open":
+        register_id = open_register["id"]
+    else:
+        register = client.post(
+            "/api/v1/pos/registers",
+            headers={**headers, "Idempotency-Key": f"portal-split-register-{suffix}"},
+            json={"branchId": branch_id, "openingCash": "50.00", "currency": "DOP"},
+        )
+        assert register.status_code == 201, register.text
+        register_id = register.json()["id"]
+    return methods, product.json()["id"], register_id, suffix
+
+
+@pytest.mark.integration
+def test_public_portal_split_tender_shows_transfer_and_zero_client_balance(client, booking_setup):
+    headers, _, branch, employee, service = booking_setup
+    body = payload_for(employee, service)
+    booked = client.post(
+        f"/api/v1/public/booking/branches/{branch}/appointments",
+        json=body,
+        headers={"Idempotency-Key": str(uuid7())},
+    )
+    assert booked.status_code == 201, booked.text
+    customer_id = booked.json()["appointment"]["customerId"]
+    params = {"documentType": body["documentType"], "documentId": body["documentId"]}
+    methods, product_id, register_id, suffix = _portal_pos_checkout_setup(client, headers, branch)
+
+    checkout = client.post(
+        "/api/v1/pos/checkout",
+        headers={**headers, "Idempotency-Key": f"portal-split-checkout-{suffix}"},
+        json={
+            "branchId": branch,
+            "registerId": register_id,
+            "customerId": customer_id,
+            "tenders": [
+                {"paymentMethodId": methods["cash"]["id"], "amount": "15.00"},
+                {
+                    "paymentMethodId": methods["transfer"]["id"],
+                    "amount": "15.00",
+                    "reference": f"TR-PORTAL-{suffix}",
+                },
+            ],
+            "lines": [{"itemId": product_id, "quantity": "2"}],
+        },
+    )
+    assert checkout.status_code == 201, checkout.text
+    checkout_body = checkout.json()
+    assert checkout_body["total"] == "30.00"
+    receivable_id = checkout_body["receivableId"]
+    assert receivable_id is not None
+    sale_number = checkout_body["number"]
+
+    payments = client.get(f"/api/v1/public/portal/branches/{branch}/payments", params=params)
+    assert payments.status_code == 200, payments.text
+    payment_items = payments.json()["items"]
+    assert len(payment_items) == 2, payment_items
+    payment_amounts = sorted(row["amount"] for row in payment_items)
+    assert payment_amounts == ["15.00", "15.00"]
+    assert {row["saleNumber"] for row in payment_items} == {sale_number}
+
+    receivables = client.get(f"/api/v1/public/portal/branches/{branch}/receivables", params=params)
+    assert receivables.status_code == 200, receivables.text
+    portal_cxc = next(row for row in receivables.json()["items"] if row["id"] == receivable_id)
+    assert portal_cxc["balance"] == "0.00"
+    assert portal_cxc["saleNumber"] == sale_number
+
+
+@pytest.mark.integration
+def test_public_portal_receivable_includes_sale_number_for_true_balance(client, booking_setup):
+    headers, _, branch, employee, service = booking_setup
+    body = payload_for(employee, service)
+    booked = client.post(
+        f"/api/v1/public/booking/branches/{branch}/appointments",
+        json=body,
+        headers={"Idempotency-Key": str(uuid7())},
+    )
+    assert booked.status_code == 201, booked.text
+    customer_id = booked.json()["appointment"]["customerId"]
+    params = {"documentType": body["documentType"], "documentId": body["documentId"]}
+    methods, product_id, register_id, suffix = _portal_pos_checkout_setup(client, headers, branch)
+
+    checkout = client.post(
+        "/api/v1/pos/checkout",
+        headers={**headers, "Idempotency-Key": f"portal-partial-checkout-{suffix}"},
+        json={
+            "branchId": branch,
+            "registerId": register_id,
+            "customerId": customer_id,
+            "tenders": [{"paymentMethodId": methods["cash"]["id"], "amount": "10.00"}],
+            "lines": [{"itemId": product_id, "quantity": "2"}],
+        },
+    )
+    assert checkout.status_code == 201, checkout.text
+    checkout_body = checkout.json()
+    assert checkout_body["total"] == "30.00"
+    receivable_id = checkout_body["receivableId"]
+    sale_number = checkout_body["number"]
+
+    receivables = client.get(f"/api/v1/public/portal/branches/{branch}/receivables", params=params)
+    assert receivables.status_code == 200, receivables.text
+    portal_cxc = next(row for row in receivables.json()["items"] if row["id"] == receivable_id)
+    assert portal_cxc["balance"] == "20.00"
+    assert portal_cxc["saleNumber"] == sale_number
+
+
+@pytest.mark.integration
 def test_public_booking_rejects_second_customer_in_occupied_cabin_slot(client, booking_setup):
     headers, _, branch, employee, service = booking_setup
     other_employee = _create_online_specialist(client, headers, branch)

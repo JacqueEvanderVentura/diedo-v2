@@ -2,7 +2,8 @@ const FAILURE_LABELS = {
   profile: 'perfil',
   appointments: 'citas',
   invoices: 'facturas',
-  receivables: 'pagos',
+  payments: 'pagos',
+  receivables: 'cuentas pendientes',
   tasks: 'tareas',
 }
 
@@ -31,11 +32,12 @@ export function portalLoadErrorMessage(failures) {
 }
 
 export async function loadPortalDashboard({ branchId, session, bookingApi, portalApi }) {
-  const [context, me, apts, invs, cxc, tasks] = await Promise.all([
+  const [context, me, apts, invs, payments, cxc, tasks] = await Promise.all([
     settled(bookingApi.getContext(branchId)),
     settled(portalApi.me(branchId, session)),
     settled(portalApi.listAppointments(branchId, session)),
     settled(portalApi.listInvoices(branchId, session)),
+    settled(portalApi.listPayments(branchId, session)),
     settled(portalApi.listReceivables(branchId, session)),
     settled(portalApi.listTasks(branchId, session)),
   ])
@@ -44,6 +46,7 @@ export async function loadPortalDashboard({ branchId, session, bookingApi, porta
   if (!me.ok) failures.push('profile')
   if (!apts.ok) failures.push('appointments')
   if (!invs.ok) failures.push('invoices')
+  if (!payments.ok) failures.push('payments')
   if (!cxc.ok) failures.push('receivables')
   if (!tasks.ok) failures.push('tasks')
 
@@ -52,6 +55,7 @@ export async function loadPortalDashboard({ branchId, session, bookingApi, porta
     profile: me.ok ? me.value : null,
     appointments: itemsFrom(apts),
     invoices: itemsFrom(invs),
+    payments: itemsFrom(payments),
     receivables: itemsFrom(cxc),
     portalTasks: itemsFrom(tasks),
     failures,

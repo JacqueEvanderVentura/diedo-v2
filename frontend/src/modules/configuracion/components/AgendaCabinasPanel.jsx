@@ -24,6 +24,7 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { TimePicker } from '@/components/ui/TimePicker'
+import { formatTime12h } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { WEEKDAY_KEYS, WEEKDAY_LABELS } from '@/modules/rrhh/lib/schedule'
 import {
@@ -542,7 +543,7 @@ export default function AgendaCabinasPanel({ embedded = false, visibleBlockIds }
                     <div>
                       <p className="font-semibold text-slate-900">{WEEKDAY_LABELS[weekday]}</p>
                       <p className="text-sm text-slate-500">
-                        {row ? `${row.opensAt} – ${row.closesAt}` : 'Sin horario (día cerrado en calendario)'}
+                        {row ? `${formatTime12h(row.opensAt)} – ${formatTime12h(row.closesAt)}` : 'Sin horario (día cerrado en calendario)'}
                       </p>
                     </div>
                     {row && (

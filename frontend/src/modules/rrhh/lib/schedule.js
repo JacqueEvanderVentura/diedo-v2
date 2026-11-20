@@ -1,3 +1,4 @@
+import { formatTime12h } from '@/lib/format'
 import { fromKey } from '@/modules/agenda/lib/calendar'
 import { timeSlots } from '@/modules/agenda/lib/calendar'
 
@@ -85,12 +86,12 @@ function blockIssue(blocks, index) {
   const startMin = timeToMinutes(start)
   const endMin = timeToMinutes(end)
   if (startMin === endMin) {
-    return { kind: 'order', message: `La entrada y la salida no pueden ser la misma hora (${start}).` }
+    return { kind: 'order', message: `La entrada y la salida no pueden ser la misma hora (${formatTime12h(start)}).` }
   }
   if (endMin < startMin) {
     return {
       kind: 'order',
-      message: `La entrada no puede ser posterior a la salida (${start} – ${end}). ${OVERNIGHT_HINT}`,
+      message: `La entrada no puede ser posterior a la salida (${formatTime12h(start)} – ${formatTime12h(end)}). ${OVERNIGHT_HINT}`,
     }
   }
   const otherIndex = blocks.findIndex((other, i) => {
@@ -102,7 +103,7 @@ function blockIssue(blocks, index) {
     return {
       kind: 'overlap',
       otherIndex,
-      message: `Se solapa con el bloque ${normalizeTime(other.start)} – ${normalizeTime(other.end)}.`,
+      message: `Se solapa con el bloque ${formatTime12h(normalizeTime(other.start))} – ${formatTime12h(normalizeTime(other.end))}.`,
     }
   }
   return null
@@ -223,7 +224,7 @@ export function isOnApprovedVacation({ employeeId, date, vacationRequests = [] }
 
 export function summarizeDayBlocks(blocks) {
   if (!blocks?.length) return 'Sin bloques'
-  return blocks.map((b) => `${b.start}–${b.end}`).join(', ')
+  return blocks.map((b) => `${formatTime12h(b.start)}–${formatTime12h(b.end)}`).join(', ')
 }
 
 export function summarizeSchedule(schedule) {

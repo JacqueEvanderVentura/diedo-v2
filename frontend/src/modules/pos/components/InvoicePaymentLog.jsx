@@ -1,7 +1,7 @@
 import { Download, RotateCcw } from 'lucide-react'
 import { formatDOP } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { fmtDate } from '@/modules/crm/lib/crm'
+import { fmtDateTime } from '@/modules/crm/lib/crm'
 import { PAYMENT_METHODS } from '../lib/receivables'
 import { buildInvoicePaymentLog } from '../lib/invoicePaymentLog'
 
@@ -66,7 +66,7 @@ export function InvoicePaymentLog({
           <p className="mt-1 text-xs text-slate-500">
             {methodLabel(entry.method)}
             {entry.reference ? ` · Ref. ${entry.reference}` : ''}
-            {entry.createdAt ? ` · ${fmtDate(entry.createdAt)}` : ''}
+            {entry.createdAt ? ` · ${fmtDateTime(entry.createdAt)}` : ''}
             {statusHint(entry)}
           </p>
           {entry.note && <p className="mt-1 text-xs text-slate-600">{entry.note}</p>}

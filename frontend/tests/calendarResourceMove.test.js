@@ -46,7 +46,7 @@ describe('appointmentMoveConfirmMessage', () => {
       toTime: '09:30',
       toResourceName: 'Cabina 2',
     })).toBe(
-      '¿Mover Barba Roja Barber Shop de las 08:00 en Cabina 1 a 09:30 en Cabina 2?',
+      '¿Mover Barba Roja Barber Shop de las 8:00 AM en Cabina 1 a 9:30 AM en Cabina 2?',
     )
   })
 
@@ -57,7 +57,7 @@ describe('appointmentMoveConfirmMessage', () => {
       fromResourceName: '',
       toTime: '10:30',
       toResourceName: 'Cabina 3',
-    })).toBe('¿Mover esta cita de las 10:00 en Sin cabina a 10:30 en Cabina 3?')
+    })).toBe('¿Mover esta cita de las 10:00 AM en Sin cabina a 10:30 AM en Cabina 3?')
   })
 })
 
@@ -121,7 +121,7 @@ describe('explainAppointmentResourceMove', () => {
         occupant('apt-2', '10:00', 30, 'María Fernández'),
         occupant('apt-5', '10:00', 60, 'Rosa'),
       ],
-    })).toBe('No se puede mover: Cabina 2 ya tiene 2 personas a las 10:00.')
+    })).toBe('No se puede mover: Cabina 2 ya tiene 2 personas a las 10:00 AM.')
   })
 
   it('allows a second customer for the same employee when the time changes', () => {
@@ -175,7 +175,7 @@ describe('explainAppointmentResourceMove', () => {
           customerName: 'Carmen',
         },
       ],
-    })).toBe('No se puede mover: el especialista ya atiende a 2 personas a las 11:00.')
+    })).toBe('No se puede mover: el especialista ya atiende a 2 personas a las 11:00 AM.')
   })
 
   it('does not treat cancelled appointments as blocking', () => {
@@ -234,7 +234,7 @@ describe('cabina shared occupancy', () => {
   it('builds the shared and full cabina messages', () => {
     const shared = findResourceSharing(query([occupant('a', '10:00', 30, 'María')]))
     expect(sharedResourceWarning({ resourceName: 'Cabina 2', occupant: shared })).toBe(
-      'Ya hay una persona en Cabina 2 (María) a las 10:00. Tomas el riesgo de doble acumulación.',
+      'Ya hay una persona en Cabina 2 (María) a las 10:00 AM. Tomas el riesgo de doble acumulación.',
     )
     expect(resourceCapacityMessage('Cabina 2')).toBe('Cabina 2 ya tiene 2 personas en ese horario.')
     expect(resourceCapacityMessage()).toBe('La cabina ya tiene 2 personas en ese horario.')

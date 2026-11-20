@@ -3,6 +3,7 @@ import { CalendarClock, Clock, ArrowRight } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { formatTime12h } from '@/lib/format'
 import { statusMeta } from '@/stores/agendaStore'
 
 export function AppointmentsToday({ appointments = [] }) {
@@ -41,7 +42,7 @@ export function AppointmentsToday({ appointments = [] }) {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold text-slate-800">{a.customerName}</p>
-                  <p className="truncate text-xs text-slate-400">{a.time} · {a.serviceName || 'Sin servicio'}</p>
+                  <p className="truncate text-xs text-slate-400">{formatTime12h(a.time)} · {a.serviceName || 'Sin servicio'}</p>
                 </div>
                 <Badge tone={st.tone}>{st.name}</Badge>
               </div>

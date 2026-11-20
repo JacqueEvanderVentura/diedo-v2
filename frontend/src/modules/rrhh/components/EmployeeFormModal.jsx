@@ -160,8 +160,11 @@ export function EmployeeFormModal({ open, onClose, employee, employees, platform
     if (scheduleErrors.length) return setErr(scheduleErrors.join(' '))
     setSaving(true)
     try {
+      const visibleJefeIds = new Set(employees.map((item) => item.id))
+      const jefeIds = form.jefeIds.filter((id) => visibleJefeIds.has(id))
       const saved = await onSubmit({
         ...form,
+        jefeIds,
         workSchedule: normalizeWorkSchedule(form.workSchedule),
         documentType: form.documentId.trim() ? 'cedula' : null,
         documentId: form.documentId.trim() || null,
@@ -180,9 +183,19 @@ export function EmployeeFormModal({ open, onClose, employee, employees, platform
     }
   }
 
-  const jefeOptions = employees
-    .filter((e) => e.id !== employee?.id)
-    .map((e) => ({ value: e.id, label: fullName(e) }))
+  const visibleEmployeeIds = new Set(employees.map((item) => item.id))
+  const orphanJefeIds = form.jefeIds.filter(
+    (id) => id !== employee?.id && !visibleEmployeeIds.has(id)
+  )
+  const jefeOptions = [
+    ...orphanJefeIds.map((id) => ({
+      value: id,
+      label: 'Supervisor no disponible',
+    })),
+    ...employees
+      .filter((e) => e.id !== employee?.id)
+      .map((e) => ({ value: e.id, label: fullName(e) })),
+  ]
 
   const branchOptions = branches.filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))
   const linkedUserIds = new Set(

@@ -26,7 +26,7 @@ import { usePosStore } from '@/stores/posStore'
 import { useCrmStore } from '@/stores/crmStore'
 import { useAgendaStore, statusMeta, todayKey } from '@/stores/agendaStore'
 import { useConfigStore } from '@/stores/configStore'
-import { formatDOP } from '@/lib/format'
+import { formatDOP, formatTime12h } from '@/lib/format'
 import { ACQUISITION_SOURCE_LABELS, QUOTE_STATUS_META, STAGE_META } from '@/data/crm'
 import { buildCustomerWhatsAppVariables } from '@/lib/whatsappVariables'
 import { fmtDate, fmtDateTime, METHOD_LABELS, saleStatusBadge } from '../lib/crm'
@@ -403,7 +403,7 @@ export function CustomerDetailPanel({
                         testId={`customer-detail-appointment-${a.id}`}
                       >
                         <div className="flex items-center justify-between gap-3">
-                          <span className="text-slate-700">{fmtDate(a.date)} · {a.time} · {a.serviceName || 'Sin servicio'}</span>
+                          <span className="text-slate-700">{fmtDate(a.date)} · {formatTime12h(a.time)} · {a.serviceName || 'Sin servicio'}</span>
                           <Badge tone={st.tone}>{st.name}</Badge>
                         </div>
                       </DetailRowButton>
@@ -428,7 +428,7 @@ export function CustomerDetailPanel({
                         testId={`customer-detail-past-appointment-${a.id}`}
                       >
                         <div className="flex items-center justify-between gap-3">
-                          <span className="text-slate-700">{fmtDate(a.date)} · {a.time} · {a.serviceName || 'Sin servicio'}</span>
+                          <span className="text-slate-700">{fmtDate(a.date)} · {formatTime12h(a.time)} · {a.serviceName || 'Sin servicio'}</span>
                           <Badge tone={st.tone}>{st.name}</Badge>
                         </div>
                       </DetailRowButton>

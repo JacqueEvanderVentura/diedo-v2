@@ -185,10 +185,12 @@ describe('adaptadores de Terminal POS', () => {
       fiscalNcf: 'B0100000040',
       total: '100.00',
       paymentMethod: { code: 'cash' },
+      soldByName: 'Ana Cashier',
     })).toMatchObject({
       id: 'sale-ncf',
       number: 'VTA-00000040',
       fiscalNcf: 'B0100000040',
+      soldBy: 'Ana Cashier',
     })
 
     const proof = new File(['image'], 'proof.png', { type: 'image/png' })

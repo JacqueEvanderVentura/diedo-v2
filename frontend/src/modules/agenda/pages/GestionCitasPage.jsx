@@ -15,7 +15,7 @@ import { AppointmentShareModal } from '../components/AppointmentShareModal'
 import { DeleteAppointmentModal } from '../components/DeleteAppointmentModal'
 import { WhatsAppMenuButton } from '@/components/ui/WhatsAppMenuButton'
 import { appointmentWhatsAppFields, buildWhatsAppVariables } from '@/lib/whatsappVariables'
-import { formatShortDate, endTime } from '../lib/calendar'
+import { formatShortDate, endTime, formatTime12h } from '../lib/calendar'
 import { buildBookingUrl } from '../lib/selfBooking'
 import { isProximoAppointment } from '../lib/appointments'
 import { ResponsiveList, ResponsiveTable, ResponsiveCards } from '@/components/ui/ResponsiveList'
@@ -150,7 +150,7 @@ function AppointmentMobileCard({ apt, branchName, staffName, onEdit, onDelete, o
         </div>
         <div>
           <p className="font-medium uppercase tracking-wide text-slate-400">Hora</p>
-          <p className="mt-0.5 text-slate-700">{apt.time} – {endTime(apt.time, apt.duration)}</p>
+          <p className="mt-0.5 text-slate-700">{formatTime12h(apt.time)} – {formatTime12h(endTime(apt.time, apt.duration))}</p>
         </div>
         <div>
           <p className="font-medium uppercase tracking-wide text-slate-400">Empleado</p>
@@ -404,7 +404,7 @@ export default function GestionCitasPage() {
                         </td>
                         <td className="whitespace-nowrap px-6 py-4 capitalize text-slate-600">{formatShortDate(apt.date)}</td>
                         <td className="whitespace-nowrap px-6 py-4 text-slate-600">
-                          {apt.time} – {endTime(apt.time, apt.duration)}
+                          {formatTime12h(apt.time)} – {formatTime12h(endTime(apt.time, apt.duration))}
                         </td>
                         <td className="whitespace-nowrap px-6 py-4 text-slate-600">{staffName(apt.employeeId)}</td>
                         <td className="whitespace-nowrap px-6 py-4 text-slate-600">{branchMap[apt.branchId] || '—'}</td>

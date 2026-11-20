@@ -943,6 +943,30 @@ class MasterDataRepository:
             query = query.where(EmployeeBranchAssignment.branch_id.in_(allowed_branch_ids))
         return int(self._session.scalar(query) or 0) == len(employee_ids)
 
+    def employees_exist_active(self, workspace_id: UUID, employee_ids: set[UUID]) -> bool:
+        if not employee_ids:
+            return True
+        count = self._session.scalar(
+            select(func.count(Employee.id)).where(
+                Employee.workspace_id == workspace_id,
+                Employee.id.in_(employee_ids),
+                Employee.status != "archived",
+            )
+        )
+        return int(count or 0) == len(employee_ids)
+
+    def active_supervisor_ids_for_employee(
+        self, workspace_id: UUID, employee_id: UUID
+    ) -> set[UUID]:
+        rows = self._session.scalars(
+            select(EmployeeSupervisor.supervisor_employee_id).where(
+                EmployeeSupervisor.workspace_id == workspace_id,
+                EmployeeSupervisor.employee_id == employee_id,
+                EmployeeSupervisor.status == "active",
+            )
+        ).all()
+        return set(rows)
+
     def platform_user_is_workspace_member(self, workspace_id: UUID, platform_user_id: UUID) -> bool:
         return (
             self._session.scalar(
@@ -1232,9 +1256,15 @@ class MasterDataRepository:
             return {}
         rows = self._session.execute(
             select(EmployeeSupervisor.employee_id, EmployeeSupervisor.supervisor_employee_id)
+            .join(
+                Employee,
+                (Employee.workspace_id == EmployeeSupervisor.workspace_id)
+                & (Employee.id == EmployeeSupervisor.supervisor_employee_id),
+            )
             .where(
                 EmployeeSupervisor.employee_id.in_(employee_ids),
                 EmployeeSupervisor.status == "active",
+                Employee.status != "archived",
             )
             .order_by(EmployeeSupervisor.supervisor_employee_id)
         )

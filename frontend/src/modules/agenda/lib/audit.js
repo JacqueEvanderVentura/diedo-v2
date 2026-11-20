@@ -1,12 +1,12 @@
 import { CABINAS, CALENDAR_STATUSES } from '@/data/agenda'
-import { formatDOP } from '@/lib/format'
+import { formatDOP, formatTime12h, formatLocaleDateTime12h } from '@/lib/format'
 import { statusMeta } from '@/stores/agendaStore'
 
 const BOOL = (v) => (v ? 'Sí' : 'No')
 
 const FIELD_DEFS = [
   { field: 'date', label: 'Fecha' },
-  { field: 'time', label: 'Hora' },
+  { field: 'time', label: 'Hora', format: (v) => formatTime12h(v) },
   { field: 'duration', label: 'Duración (min)' },
   { field: 'customerName', label: 'Cliente' },
   { field: 'customerPhone', label: 'Teléfono' },
@@ -110,7 +110,7 @@ export function backfillHistory(appointment) {
 
 export function fmtAuditWhen(iso) {
   try {
-    return new Date(iso).toLocaleString('es-DO', { dateStyle: 'medium', timeStyle: 'short' })
+    return formatLocaleDateTime12h(iso, { dateStyle: 'medium', timeStyle: 'short' })
   } catch {
     return iso || '—'
   }

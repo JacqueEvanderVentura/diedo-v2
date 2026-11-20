@@ -41,7 +41,10 @@ export function SaleInvoiceModal({ open, onClose, invoice }) {
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
           <div>
             <p className="font-semibold text-emerald-900" data-testid="pos-invoice-id">{data.id}</p>
-            <p className="text-sm text-emerald-800">{data.customerName} · {data.paymentMethod}</p>
+            <p className="text-sm text-emerald-800">
+              {data.customerName} · {data.paymentMethod}
+              {data.soldBy ? ` · Creado por ${data.soldBy}` : ''}
+            </p>
           </div>
           <p className="font-heading text-xl font-bold text-emerald-700">{formatDOP(data.total)}</p>
         </div>

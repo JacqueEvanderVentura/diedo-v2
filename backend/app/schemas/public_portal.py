@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from app.schemas.common import ApiModel
@@ -24,6 +25,7 @@ class PublicPortalReceivableItem(ApiModel):
     id: UUID
     branch_id: UUID
     receivable_number: str
+    sale_number: str | None = None
     status: str
     amount: Decimal
     paid_amount: Decimal
@@ -39,7 +41,10 @@ class PublicPortalReceivablesResponse(ApiModel):
 class PublicPortalPaymentItem(ApiModel):
     id: UUID
     branch_id: UUID
-    receivable_id: UUID
+    receivable_id: UUID | None = None
+    sale_id: UUID | None = None
+    sale_number: str | None = None
+    source: Literal["sale", "receivable"]
     amount: Decimal
     currency_code: str
     payment_method_name: str

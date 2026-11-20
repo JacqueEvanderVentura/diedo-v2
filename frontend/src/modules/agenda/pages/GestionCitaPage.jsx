@@ -5,6 +5,7 @@ import { publicBookingApi } from '@/services/publicBookingApi'
 import { Button } from '@/components/ui/Button'
 import { DatePicker } from '@/components/ui/DatePicker'
 import { TimePicker } from '@/components/ui/TimePicker'
+import { formatTime12h } from '@/lib/format'
 import { durationLabel } from '@/data/agenda'
 import { branchDateKey, emailResultMessage } from '../lib/notification'
 
@@ -88,7 +89,7 @@ export default function GestionCitaPage({ branchId, appointmentId, token }) {
           <div className="space-y-1 text-slate-700">
             <p className="font-semibold">{appointment.workspaceName} · {appointment.branchName}</p>
             <p>{appointment.serviceName}</p>
-            <p data-testid="managed-appointment-time">{appointment.date} · {appointment.time} · {appointment.durationMinutes} minutos</p>
+            <p data-testid="managed-appointment-time">{appointment.date} · {formatTime12h(appointment.time)} · {appointment.durationMinutes} minutos</p>
             <p className="text-sm">Hora del establecimiento ({appointment.timezone})</p>
             <p data-testid="managed-appointment-status">{appointment.status === 'cancelled' ? 'Cancelada' : appointment.status === 'confirmed' ? 'Confirmada' : 'Cita cerrada'}</p>
           </div>

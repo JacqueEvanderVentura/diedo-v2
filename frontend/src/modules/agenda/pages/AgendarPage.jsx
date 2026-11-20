@@ -679,7 +679,7 @@ export default function AgendarPage() {
           <CheckCircle2 className="mx-auto h-16 w-16 text-emerald-500" />
           <h1 className="mt-4 font-heading text-2xl font-bold text-slate-900">¡Cita confirmada!</h1>
           <p className="mt-2 text-slate-600">
-            {service?.name} · {formatLongDate(form.date)} · {form.time}
+            {service?.name} · {formatLongDate(form.date)} · {formatTime12h(form.time)}
           </p>
           {assignedSpecialistName ? (
             <p className="mt-1 text-sm text-slate-600">

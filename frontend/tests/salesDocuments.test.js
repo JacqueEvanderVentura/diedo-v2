@@ -27,9 +27,11 @@ describe('documentos de venta y cotización', () => {
       taxPct: 18,
       taxAmt: 226.8,
       total: 1486.8,
+      soldBy: 'Franchesko',
     }, { branches, settings, paymentMethods: [{ id: 'efectivo', name: 'Efectivo' }] })
 
     expect(data.id).toBe('FAC-20260908-0001')
+    expect(data.soldBy).toBe('Franchesko')
     expect(data.branchName).toBe('Charm DN')
     expect(data.items).toHaveLength(2)
 

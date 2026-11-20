@@ -86,7 +86,7 @@ test('enlace por correo, reserva pública y gestión desde otro navegador', asyn
   await managementPage.getByTestId('manage-time-select').click()
   await managementPage.getByTestId('manage-time-slot-13:00').click()
   await managementPage.getByTestId('manage-reschedule').click()
-  await expect(managementPage.getByTestId('managed-appointment-time')).toContainText(`13:00 · ${appointment.durationMinutes} minutos`)
+  await expect(managementPage.getByTestId('managed-appointment-time')).toContainText(`1:00 PM · ${appointment.durationMinutes} minutos`)
   await managementPage.getByTestId('manage-cancel').click()
   await managementPage.getByTestId('manage-confirm-cancel').click()
   await expect(managementPage.getByTestId('managed-appointment-status')).toHaveText('Cancelada')

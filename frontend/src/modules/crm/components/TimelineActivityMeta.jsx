@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { ACTIVITY_TYPE_META } from '@/data/crm'
 import { activityDueUrgencyClass, activityDueUrgencyTone } from '@/modules/crm/lib/countdown'
+import { formatLocaleDateTime12h } from '@/lib/format'
 
 function formatWhen(iso) {
   if (!iso) return ''
-  return new Date(iso).toLocaleString('es-DO')
+  return formatLocaleDateTime12h(iso)
 }
 
 export function TimelineActivityMeta({ activity, stageMove }) {

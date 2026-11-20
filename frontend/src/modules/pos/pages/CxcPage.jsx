@@ -77,6 +77,7 @@ import { cn } from '@/lib/utils'
 import { PosSyncStatus } from '../components/PosSyncStatus'
 import { useCxcPageState } from '../hooks/useCxcPageState'
 import { collectSalePaymentProofs } from '@/modules/crm/lib/saleProofs'
+import { fmtDateTime } from '@/modules/crm/lib/crm'
 
 const METHOD_LABELS = {
   transferencia: { label: 'Transferencia', icon: ArrowLeftRight },
@@ -91,12 +92,7 @@ const METHOD_LABELS = {
 }
 
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
-const fmtDate = (iso) => {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  const p = (n) => String(n).padStart(2, '0')
-  return `${p(d.getDate())} ${MONTHS[d.getMonth()]} ${d.getFullYear()} · ${p(d.getHours())}:${p(d.getMinutes())}`
-}
+const fmtDate = (iso) => fmtDateTime(iso)
 const fmtDateShort = (iso) => {
   if (!iso) return '—'
   const d = new Date(iso.includes('T') ? iso : `${iso}T12:00:00`)

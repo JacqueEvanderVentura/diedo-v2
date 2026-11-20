@@ -41,6 +41,7 @@ import {
 import { SIMPLIFIED_LOST_REASONS } from '@/modules/crm/lib/lostReasons'
 import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
 import { formatLeadOfferText, resolveInstagramUrl } from '@/modules/crm/lib/simplifiedOffer'
+import { fmtDateTime } from '@/modules/crm/lib/crm'
 import {
   SIMPLIFIED_STAGE_LOST_OPTION_VALUE,
   SIMPLIFIED_DIRECT_MOVE_STAGES,
@@ -494,7 +495,7 @@ export function SimplifiedLeadActions({
               <p className="mt-1 font-medium text-slate-800">{liveLead.lostReason || 'Sin motivo registrado'}</p>
               {liveLead.pipelineClosedAt && (
                 <p className="mt-1 text-xs text-slate-500">
-                  Fecha de pérdida: {new Date(liveLead.pipelineClosedAt).toLocaleString('es-DO')}
+                  Fecha de pérdida: {fmtDateTime(liveLead.pipelineClosedAt)}
                 </p>
               )}
             </div>

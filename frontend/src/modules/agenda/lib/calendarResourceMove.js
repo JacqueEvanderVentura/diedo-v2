@@ -1,3 +1,4 @@
+import { formatTime12h } from '@/lib/format'
 import { canBookResource, canEditResource } from '@/modules/configuracion/lib/agendaCabinas'
 import { normalizeAppointmentStatus } from '@/modules/agenda/lib/completion'
 import { fitsInSchedule, normalizeAppointmentTime, timeRangesOverlap } from '@/modules/agenda/lib/selfBooking'
@@ -63,7 +64,7 @@ export function resourceCapacityMessage(resourceName) {
 }
 
 export function sharedResourceWarning({ resourceName, occupant }) {
-  return `Ya hay una persona en ${resourceName || 'la cabina'} (${occupant.customerName}) a las ${normalizeAppointmentTime(occupant.time)}. Tomas el riesgo de doble acumulación.`
+  return `Ya hay una persona en ${resourceName || 'la cabina'} (${occupant.customerName}) a las ${formatTime12h(normalizeAppointmentTime(occupant.time))}. Tomas el riesgo de doble acumulación.`
 }
 
 export function employeeSlotOccupants({
@@ -136,8 +137,8 @@ export function appointmentMoveConfirmMessage({
   const who = (customerName || '').trim() || 'esta cita'
   const origin = (fromResourceName || '').trim() || 'Sin cabina'
   const destination = (toResourceName || '').trim() || 'Sin cabina'
-  const from = normalizeAppointmentTime(fromTime || '')
-  const to = normalizeAppointmentTime(toTime || '')
+  const from = formatTime12h(normalizeAppointmentTime(fromTime || ''))
+  const to = formatTime12h(normalizeAppointmentTime(toTime || ''))
   return `¿Mover ${who} de las ${from} en ${origin} a ${to} en ${destination}?`
 }
 
@@ -210,7 +211,7 @@ export function explainAppointmentResourceMove({
     excludeId: appointment.id,
   })
   if (peak > SHARED_RESOURCE_CAPACITY) {
-    return `No se puede mover: ${targetResource.name} ya tiene ${SHARED_RESOURCE_CAPACITY} personas a las ${normalizeAppointmentTime(time)}.`
+    return `No se puede mover: ${targetResource.name} ya tiene ${SHARED_RESOURCE_CAPACITY} personas a las ${formatTime12h(normalizeAppointmentTime(time))}.`
   }
 
   if (appointment.employeeId) {
@@ -223,7 +224,7 @@ export function explainAppointmentResourceMove({
       excludeId: appointment.id,
     })
     if (employeePeak > SHARED_RESOURCE_CAPACITY) {
-      return `No se puede mover: el especialista ya atiende a ${SHARED_RESOURCE_CAPACITY} personas a las ${normalizeAppointmentTime(time)}.`
+      return `No se puede mover: el especialista ya atiende a ${SHARED_RESOURCE_CAPACITY} personas a las ${formatTime12h(normalizeAppointmentTime(time))}.`
     }
   }
 

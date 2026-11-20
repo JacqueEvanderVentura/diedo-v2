@@ -5,12 +5,12 @@ import { Badge } from '@/components/ui/Badge'
 import { ImageLightbox } from '@/modules/pos/components/ProofImagePreview'
 import { statusMeta as incidentStatusMeta } from '@/data/incidencias'
 import { statusMeta as assetStatusMeta } from '@/stores/activosStore'
-import { formatDOP } from '@/lib/format'
+import { formatDOP, formatLocaleDateTime12h } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 function formatDate(iso) {
   try {
-    return new Date(iso).toLocaleString('es-DO', { dateStyle: 'medium', timeStyle: 'short' })
+    return formatLocaleDateTime12h(iso, { dateStyle: 'medium', timeStyle: 'short' })
   } catch {
     return iso
   }

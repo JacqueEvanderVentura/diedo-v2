@@ -54,8 +54,12 @@ def test_appointment_template_escapes_content_and_uses_public_origin(monkeypatch
     assert "#2563eb" in content["html"]
     assert "https://example.workers.dev/agendar/perfil?" in content["text"]
     assert "45 minutos" in content["text"]
+    assert "10:00 AM" in content["text"]
     assert "Mi establecimiento" in content["text"]
     assert "America/Santo_Domingo" in content["text"]
+    assert "haz clic aquí</a>." in content["html"]
+    assert "'Google Sans', Roboto" in content["html"]
+    assert "fonts.googleapis.com" in content["html"]
 
 
 def test_reminder_uses_explicit_date_instead_of_relative_tomorrow(monkeypatch):

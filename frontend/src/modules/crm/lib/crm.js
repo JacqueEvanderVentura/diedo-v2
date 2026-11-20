@@ -1,3 +1,4 @@
+import { formatClock12h } from '@/lib/format'
 import { getBalance, getPaidAmount, requiresPaymentApproval } from '@/modules/pos/lib/receivables'
 import { invoiceCollectionFromSalePolicy } from '@/modules/crm/lib/quoteInvoice'
 
@@ -76,7 +77,8 @@ export function fmtDate(iso) {
 }
 
 export function fmtDateTime(iso) {
+  if (!iso) return '—'
   const d = new Date(iso)
-  const p = (n) => String(n).padStart(2, '0')
-  return `${fmtDate(iso)} · ${p(d.getHours())}:${p(d.getMinutes())}`
+  if (Number.isNaN(d.getTime())) return '—'
+  return `${fmtDate(iso)} · ${formatClock12h(d)}`
 }
