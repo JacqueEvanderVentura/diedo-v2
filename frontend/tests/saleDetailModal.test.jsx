@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { posState, sessionState, toastError } = vi.hoisted(() => ({
+const { posState, sessionState, crmState, toastError } = vi.hoisted(() => ({
   posState: {
     voidSale: vi.fn(),
     deleteSale: vi.fn(),
@@ -19,6 +19,11 @@ const { posState, sessionState, toastError } = vi.hoisted(() => ({
   sessionState: {
     status: 'offline',
     hasPermission: () => false,
+  },
+  crmState: {
+    ensureSaleDetail: vi.fn(async () => null),
+    ensureQuoteDetail: vi.fn(async () => null),
+    quotes: [],
   },
   toastError: vi.fn(),
 }))
@@ -43,13 +48,9 @@ vi.mock('@/stores/customersStore', () => ({
 }))
 
 vi.mock('@/stores/crmStore', () => {
-  const store = (selector) => selector({
-    ensureSaleDetail: vi.fn(async () => null),
-    ensureQuoteDetail: vi.fn(async () => null),
-    quotes: [],
-  })
+  const store = (selector) => selector(crmState)
   store.setState = vi.fn()
-  store.getState = () => ({ sales: [] })
+  store.getState = () => ({ sales: [], quotes: crmState.quotes })
   return { useCrmStore: store }
 })
 
@@ -98,6 +99,11 @@ vi.mock('@/modules/pos/components/ReceivableProofModal', () => ({
   ReceivableProofModal: () => null,
 }))
 
+vi.mock('@/components/auth/PermissionElevationModal', () => ({
+  PermissionElevationModal: () => null,
+}))
+
+import { posApi } from '@/services/posApi'
 import { SaleDetailModal } from '@/modules/crm/components/SaleDetailModal'
 
 const saleA = {
@@ -126,6 +132,9 @@ const saleB = {
 
 beforeEach(() => {
   posState.voidSale.mockReset()
+  posState.setState.mockReset()
+  posApi.getReceivableForSale.mockReset()
+  posApi.getReceivableForSale.mockRejectedValue(new Error('skip'))
   posState.receivables = []
   sessionState.status = 'offline'
   sessionState.hasPermission = () => false
@@ -234,5 +243,47 @@ describe('SaleDetailModal', () => {
     fireEvent.click(voidBtn)
     expect(toastError).toHaveBeenCalledWith('Solicita permisos a tu superior inmediato para anular.')
     expect(screen.queryByTestId('sale-detail-void-modal')).toBeNull()
+  })
+
+  it('no vuelve a pedir el receivable cuando el store de CxC se actualiza', async () => {
+    sessionState.status = 'online'
+    posApi.getReceivableForSale.mockImplementation(async (saleId) => ({
+      id: `recv-${saleId}`,
+      saleId,
+      amount: 1500,
+      paidAmount: 0,
+      balance: 1500,
+      status: 'pending',
+    }))
+
+    const onClose = vi.fn()
+    const view = render(<SaleDetailModal open onClose={onClose} sale={saleA} />)
+    await act(async () => {})
+    expect(posApi.getReceivableForSale).toHaveBeenCalledTimes(1)
+    expect(posApi.getReceivableForSale).toHaveBeenCalledWith('sale-a')
+
+    posState.receivables = [{
+      id: 'recv-sale-a',
+      saleId: 'sale-a',
+      amount: 1500,
+      paidAmount: 0,
+      balance: 1500,
+      status: 'pending',
+    }]
+    await act(async () => {
+      view.rerender(<SaleDetailModal open onClose={onClose} sale={{ ...saleA }} />)
+    })
+    expect(posApi.getReceivableForSale).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      view.rerender(<SaleDetailModal open onClose={onClose} sale={saleB} />)
+    })
+    expect(posApi.getReceivableForSale).toHaveBeenCalledTimes(2)
+    expect(posApi.getReceivableForSale).toHaveBeenLastCalledWith('sale-b')
+
+    await act(async () => {
+      view.rerender(<SaleDetailModal open={false} onClose={onClose} sale={null} />)
+    })
+    expect(posApi.getReceivableForSale).toHaveBeenCalledTimes(2)
   })
 })

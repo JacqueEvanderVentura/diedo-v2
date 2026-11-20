@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as Icons from 'lucide-react'
 import { Printer, Download, Ban, DollarSign, CheckCircle2, RotateCcw, Upload, Pencil, Trash2, History } from 'lucide-react'
 import { toast } from 'sonner'
@@ -56,7 +56,6 @@ function SaleDetailModalContent({ open, onClose, sale }) {
   const customers = useCustomersStore((s) => s.customers)
   const ensureSaleDetail = useCrmStore((s) => s.ensureSaleDetail)
   const ensureQuoteDetail = useCrmStore((s) => s.ensureQuoteDetail)
-  const quotes = useCrmStore((s) => s.quotes)
   const voidSale = usePosStore((s) => s.voidSale)
   const deleteSale = usePosStore((s) => s.deleteSale)
   const downloadPaymentProof = usePosStore((s) => s.downloadPaymentProof)
@@ -65,7 +64,6 @@ function SaleDetailModalContent({ open, onClose, sale }) {
   const unapproveReceivablePayment = usePosStore((s) => s.unapproveReceivablePayment)
   const deleteReceivableProof = usePosStore((s) => s.deleteReceivableProof)
   const attachReceivableProof = usePosStore((s) => s.attachReceivableProof)
-  const receivables = usePosStore((s) => s.receivables)
   const mutating = usePosStore((s) => s.mutating)
   const canVoidInvoice = useSessionStore((s) => s.hasPermission(VOID_INVOICE_PERMISSION))
   const canEditInvoice = useSessionStore((s) => s.hasPermission(EDIT_INVOICE_PERMISSION))
@@ -84,6 +82,10 @@ function SaleDetailModalContent({ open, onClose, sale }) {
   const [loadingQuote, setLoadingQuote] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const saleRef = useRef(sale)
+  saleRef.current = sale
+  const saleId = sale?.id
+  const quoteIdFromSale = sale?.quoteId
 
   const hydrateReceivable = (mapped) => {
     setReceivableDetail(mapped)
@@ -104,7 +106,7 @@ function SaleDetailModalContent({ open, onClose, sale }) {
   }
 
   useEffect(() => {
-    if (!open || !sale) {
+    if (!open || !saleId) {
       setDetail(null)
       setReceivableDetail(null)
       setCollectPaymentOpen(false)
@@ -112,24 +114,28 @@ function SaleDetailModalContent({ open, onClose, sale }) {
       setQuoteDetail(null)
       return
     }
-    setDetail(sale)
-    setReceivableDetail(findReceivableForSale(receivables, sale.id))
+    const currentSale = saleRef.current
+    const cachedReceivables = usePosStore.getState().receivables
+    setDetail(currentSale)
+    setReceivableDetail(findReceivableForSale(cachedReceivables, saleId))
     let cancelled = false
     if (isOnline) {
-    posApi.getReceivableForSale(sale.id)
-      .then((response) => {
-        if (!cancelled) hydrateReceivable(mapReceivableFromApi(response))
-      })
-      .catch(() => {
-        if (!cancelled) setReceivableDetail(findReceivableForSale(receivables, sale.id))
-      })
+      posApi.getReceivableForSale(saleId)
+        .then((response) => {
+          if (!cancelled) hydrateReceivable(mapReceivableFromApi(response))
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setReceivableDetail(findReceivableForSale(usePosStore.getState().receivables, saleId))
+          }
+        })
     }
-    const needsLines = !sale.detailLoaded && !sale.items?.length
+    const needsLines = !currentSale?.detailLoaded && !currentSale?.items?.length
     if (!isOnline || !needsLines) {
       return () => { cancelled = true }
     }
     setLoadingDetail(true)
-    ensureSaleDetail(sale.id)
+    ensureSaleDetail(saleId)
       .then((loaded) => {
         if (loaded && !cancelled) setDetail(loaded)
       })
@@ -138,11 +144,12 @@ function SaleDetailModalContent({ open, onClose, sale }) {
         if (!cancelled) setLoadingDetail(false)
       })
     return () => { cancelled = true }
-  }, [open, sale, isOnline, ensureSaleDetail, receivables])
+  }, [open, saleId, isOnline, ensureSaleDetail])
 
   useEffect(() => {
-    if (!open || !sale) return
-    const quoteId = sale.quoteId || quotes.find((item) => item.convertedSaleId === sale.id)?.id
+    if (!open || !saleId) return
+    const quotes = useCrmStore.getState().quotes || []
+    const quoteId = quoteIdFromSale || quotes.find((item) => item.convertedSaleId === saleId)?.id
     if (!quoteId) {
       setQuoteDetail(null)
       return
@@ -154,13 +161,16 @@ function SaleDetailModalContent({ open, onClose, sale }) {
         if (!cancelled) setQuoteDetail(loaded)
       })
       .catch(() => {
-        if (!cancelled) setQuoteDetail(quotes.find((item) => item.id === quoteId) || null)
+        if (!cancelled) {
+          const latestQuotes = useCrmStore.getState().quotes || []
+          setQuoteDetail(latestQuotes.find((item) => item.id === quoteId) || null)
+        }
       })
       .finally(() => {
         if (!cancelled) setLoadingQuote(false)
       })
     return () => { cancelled = true }
-  }, [open, sale, quotes, ensureQuoteDetail])
+  }, [open, saleId, quoteIdFromSale, ensureQuoteDetail])
 
   const ctx = useMemo(
     () => ({ branches, settings, paymentMethods, customers }),
