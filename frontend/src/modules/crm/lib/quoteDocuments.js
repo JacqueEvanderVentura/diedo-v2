@@ -27,12 +27,13 @@ export function buildCrmDocumentRows({
   const enrichedQuotes = quotes.map((quote) => resolveQuoteBilling(quote, receivables, sales))
 
   const quoteRows = enrichedQuotes
-    .filter((quote) => !isQuoteInvoiced(quote))
     .filter((quote) => isActiveCrmQuote(quote))
     .map((quote) => ({
       kind: 'quote',
       id: `quote-${quote.id}`,
       quote,
+      invoiced: isQuoteInvoiced(quote),
+      saleId: quote.convertedSaleId || null,
       sortAt: quote.createdAt || quote.updatedAt || '',
       branchId: quote.branchId || '',
       label: quote.number || '',
@@ -65,7 +66,7 @@ export function filterDocumentRows(rows, docFilter) {
   const filter = parseDocFilter(docFilter)
   if (filter === 'quotes') return rows.filter((row) => row.kind === 'quote')
   if (filter === 'invoices') return rows.filter((row) => row.kind === 'invoice')
-  return rows
+  return rows.filter((row) => row.kind === 'invoice' || !row.invoiced)
 }
 
 export function documentRowTypeLabel(row) {

@@ -26,6 +26,10 @@ vi.mock('@/modules/pos/components/PaymentEvidenceFields', () => ({
   PaymentEvidenceFields: () => null,
 }))
 
+vi.mock('@/modules/pos/components/SplitTenderSection', () => ({
+  SplitTenderSection: () => <div data-testid="split-tender-stub" />,
+}))
+
 import { CloseLeadInvoiceModal } from '@/modules/crm/components/CloseOpportunityInvoiceModal'
 
 const lead = { id: 'lead-1', branchId: 'b1', name: 'Ana', company: 'Spa Zen', customerId: null, status: 'propuesta' }

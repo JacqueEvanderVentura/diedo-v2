@@ -1296,11 +1296,121 @@ def test_public_portal_register_and_empty_history(client, booking_setup):
     body = register.json()
     assert body["customerId"]
     params = {"documentType": "pasaporte", "documentId": document_id}
+    me = client.get(f"/api/v1/public/portal/branches/{branch}/me", params=params)
+    assert me.status_code == 200, me.text
+    assert me.json()["customerId"] == body["customerId"]
+    assert me.json().get("pendingAppointment") is None
     appointments = client.get(
         f"/api/v1/public/portal/branches/{branch}/appointments", params=params
     )
     assert appointments.status_code == 200
     assert appointments.json()["items"] == []
+
+
+@pytest.mark.integration
+def test_public_portal_me_and_appointments_after_booking(client, booking_setup):
+    _, _, branch, employee, service = booking_setup
+    body = payload_for(employee, service)
+    booked = client.post(
+        f"/api/v1/public/booking/branches/{branch}/appointments",
+        json=body,
+        headers={"Idempotency-Key": str(uuid7())},
+    )
+    assert booked.status_code == 201, booked.text
+    appointment_id = booked.json()["appointment"]["id"]
+    params = {"documentType": body["documentType"], "documentId": body["documentId"]}
+    me = client.get(f"/api/v1/public/portal/branches/{branch}/me", params=params)
+    assert me.status_code == 200, me.text
+    profile = me.json()
+    assert profile["customerId"]
+    assert profile.get("pendingAppointment") is not None
+    appointments = client.get(
+        f"/api/v1/public/portal/branches/{branch}/appointments", params=params
+    )
+    assert appointments.status_code == 200, appointments.text
+    ids = {row["id"] for row in appointments.json()["items"]}
+    assert appointment_id in ids
+
+
+def _checkout_completed_sale(client, headers, branch_id, customer_id):
+    suffix = uuid7().hex[-10:]
+    state = client.get(
+        "/api/v1/pos/state",
+        headers=headers,
+        params={"branchId": branch_id},
+    )
+    assert state.status_code == 200, state.text
+    cash_method = next(
+        method for method in state.json()["paymentMethods"] if method["channel"] == "cash"
+    )
+    category = client.post(
+        "/api/v1/catalog/categories",
+        headers=headers,
+        json={"name": f"Portal invoice {suffix}"},
+    )
+    assert category.status_code == 201, category.text
+    unit_id = client.get("/api/v1/catalog/units-of-measure", headers=headers).json()[0]["id"]
+    product = client.post(
+        "/api/v1/inventory/products",
+        headers={**headers, "Idempotency-Key": f"portal-invoice-product-{suffix}"},
+        json={
+            "name": f"Portal invoice {suffix}",
+            "sku": f"PINV-{suffix}",
+            "categoryId": category.json()["id"],
+            "unitOfMeasureId": unit_id,
+            "branchId": branch_id,
+            "salePrice": "25.00",
+            "unitCost": "10.00",
+            "taxRate": "0.00",
+            "stock": "5",
+            "minimumStock": "0",
+        },
+    )
+    assert product.status_code == 201, product.text
+    state_body = state.json()
+    open_register = state_body.get("register")
+    if open_register and open_register.get("status") == "open":
+        register_id = open_register["id"]
+    else:
+        register = client.post(
+            "/api/v1/pos/registers",
+            headers={**headers, "Idempotency-Key": f"portal-invoice-register-{suffix}"},
+            json={"branchId": branch_id, "openingCash": "0.00", "currency": "DOP"},
+        )
+        assert register.status_code == 201, register.text
+        register_id = register.json()["id"]
+    checkout = client.post(
+        "/api/v1/pos/checkout",
+        headers={**headers, "Idempotency-Key": f"portal-invoice-checkout-{suffix}"},
+        json={
+            "branchId": branch_id,
+            "registerId": register_id,
+            "paymentMethodId": cash_method["id"],
+            "customerId": customer_id,
+            "lines": [{"itemId": product.json()["id"], "quantity": "1"}],
+        },
+    )
+    assert checkout.status_code == 201, checkout.text
+    return checkout.json()["id"]
+
+
+@pytest.mark.integration
+def test_public_portal_lists_completed_invoice_for_customer(client, booking_setup):
+    headers, _, branch, employee, service = booking_setup
+    body = payload_for(employee, service)
+    booked = client.post(
+        f"/api/v1/public/booking/branches/{branch}/appointments",
+        json=body,
+        headers={"Idempotency-Key": str(uuid7())},
+    )
+    assert booked.status_code == 201, booked.text
+    customer_id = booked.json()["appointment"]["customerId"]
+    sale_id = _checkout_completed_sale(client, headers, branch, customer_id)
+    params = {"documentType": body["documentType"], "documentId": body["documentId"]}
+    invoices = client.get(f"/api/v1/public/portal/branches/{branch}/invoices", params=params)
+    assert invoices.status_code == 200, invoices.text
+    ids = {row["id"] for row in invoices.json()["items"]}
+    assert sale_id in ids
 
 
 @pytest.mark.integration

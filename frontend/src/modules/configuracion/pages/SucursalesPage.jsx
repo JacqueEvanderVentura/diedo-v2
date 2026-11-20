@@ -4,6 +4,7 @@ import { Building2, Mail, MapPin, Pencil, Phone, Plus, Search, Store, Trash2, Us
 import { administrationGateway } from '@/services/administrationApi'
 import {
   branchAssignmentToApi,
+  branchFiscalSequencePatchToApi,
   branchGeneralPatchToApi,
   branchPartnersPatchToApi,
   createBranchToApi,
@@ -199,26 +200,49 @@ export default function SucursalesPage({ embedded = false, visibleBlockIds }) {
       if (!canManageBranch) throw new Error('No tienes permiso para actualizar sucursales.')
       await administrationGateway.mutate('updateBranch', editing.id, branchPartnersPatchToApi(data, editing))
       successMessage = 'Socios actualizados'
-    } else if (data.legalEntityAction === 'current') {
-      if (!canManageLegalEntity) throw new Error('No tienes permiso para actualizar datos fiscales.')
-      await administrationGateway.mutate(
-        'updateFiscalProfile',
-        editing.legalEntityId,
-        fiscalProfileToApi(data, editing.legalEntityVersion)
-      )
-      successMessage = 'Datos fiscales actualizados'
-    } else {
-      if (!canManageBranch || !canManageLegalEntity) {
-        throw new Error('Compartir o separar una entidad legal requiere permisos sobre sucursales y datos fiscales.')
+    } else if (tab === 'fiscal') {
+      let branchVersion = editing.version
+      let savedFiscalData = false
+      if (data.legalEntityAction === 'current') {
+        if (canManageLegalEntity) {
+          await administrationGateway.mutate(
+            'updateFiscalProfile',
+            editing.legalEntityId,
+            fiscalProfileToApi(data, editing.legalEntityVersion)
+          )
+          savedFiscalData = true
+          successMessage = 'Datos fiscales actualizados'
+        } else if (!canManageBranch) {
+          throw new Error('No tienes permiso para actualizar datos fiscales.')
+        }
+      } else {
+        if (!canManageBranch || !canManageLegalEntity) {
+          throw new Error('Compartir o separar una entidad legal requiere permisos sobre sucursales y datos fiscales.')
+        }
+        const assignment = await administrationGateway.mutate(
+          'assignBranchLegalEntity',
+          editing.id,
+          branchAssignmentToApi(data, editing)
+        )
+        branchVersion = assignment?.branch?.version ?? branchVersion
+        savedFiscalData = true
+        successMessage = data.legalEntityAction === 'new'
+          ? 'Sucursal separada en una entidad legal nueva'
+          : 'Entidad legal compartida con la sucursal'
       }
-      await administrationGateway.mutate(
-        'assignBranchLegalEntity',
-        editing.id,
-        branchAssignmentToApi(data, editing)
-      )
-      successMessage = data.legalEntityAction === 'new'
-        ? 'Sucursal separada en una entidad legal nueva'
-        : 'Entidad legal compartida con la sucursal'
+      if (canManageBranch) {
+        const sequencePatch = branchFiscalSequencePatchToApi(data, {
+          ...editing,
+          version: branchVersion,
+        })
+        if (sequencePatch) {
+          await administrationGateway.mutate('updateBranch', editing.id, sequencePatch)
+          if (!savedFiscalData) successMessage = 'Secuencia de comprobantes actualizada'
+        }
+      }
+      if (!savedFiscalData && successMessage === 'Sucursal actualizada') {
+        throw new Error('No hay cambios de secuencia para guardar.')
+      }
     }
 
     const reloaded = await load()

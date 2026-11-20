@@ -20,6 +20,7 @@ from app.db.models import (
 )
 from app.db.session import session_scope
 from app.services.carwash_operations import CarwashOperationsService
+from app.services.fiscal_receipts import next_credit_fiscal_sequence
 from app.services.pos import PosService
 from sqlalchemy import func, select
 
@@ -564,3 +565,35 @@ def test_pos_and_carwash_checkout_share_register_lock_order(client, checkout_set
         assert session.get(CashRegister, UUID(setup["registerId"])).cash_sales_amount == Decimal(
             "1416.60"
         )
+
+
+def test_complete_emits_ncf_from_the_same_checkout(client, checkout_setup):
+    setup = checkout_setup
+    branches = client.get("/api/v1/branches", headers=setup["headers"])
+    assert branches.status_code == 200, branches.text
+    branch = next(row for row in branches.json() if row["id"] == setup["branchId"])
+    sequence = f"{uuid7().int % 10**12:012d}"
+    if set(sequence) == {"0"}:
+        sequence = "000000000001"
+    configured = client.patch(
+        f"/api/v1/branches/{setup['branchId']}",
+        headers=setup["headers"],
+        json={
+            "fiscalCreditNcfPrefix": "B01",
+            "fiscalCreditNcfNextSequence": sequence,
+            "version": branch["version"],
+        },
+    )
+    assert configured.status_code == 200, configured.text
+    wash = washing(client, setup)
+    response = complete(client, setup, wash, emitNcf=True)
+    assert response.status_code == 200, response.text
+    result = response.json()
+    with session_scope() as session:
+        sale = session.get(Sale, UUID(result["saleId"]))
+        assert sale is not None
+        assert sale.fiscal_ncf == f"B01{sequence}"
+    after = client.get("/api/v1/branches", headers=setup["headers"])
+    assert after.status_code == 200, after.text
+    saved = next(row for row in after.json() if row["id"] == setup["branchId"])
+    assert saved["fiscalCreditNcfNextSequence"] == next_credit_fiscal_sequence(sequence)

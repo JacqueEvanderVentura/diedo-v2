@@ -14,6 +14,7 @@ import {
   invoiceCollectionFromSalePolicy,
   invoiceCollectionStatusFromMethod,
   isQuoteInvoicePendingValidation,
+  quoteInvoiceTendersToApi,
   resolveQuoteInvoicePaymentMethod,
 } from '@/modules/crm/lib/quoteInvoice'
 
@@ -71,6 +72,16 @@ describe('quoteInvoice helpers', () => {
     expect(resolveQuoteInvoicePaymentMethod(methods, { paymentMethodId: 'efectivo' }).collectionMode).toBe('now')
     expect(resolveQuoteInvoicePaymentMethod(methods, { paymentMethodId: 'cxc' }).collectionMode).toBe('receivable')
     expect(collectionModeForMethod(methods[1])).toBe('receivable')
+  })
+
+  it('mapea abonos split al contrato de facturación CRM', () => {
+    expect(quoteInvoiceTendersToApi([
+      { methodId: 'efectivo', amount: 500, reference: null },
+      { methodId: 'transferencia', amount: '200', reference: 'TR-1' },
+    ], methods)).toEqual([
+      { paymentMethodId: 'pm-cash', amount: 500, reference: null },
+      { paymentMethodId: 'pm-transfer', amount: 200, reference: 'TR-1' },
+    ])
   })
 
   it('detecta huecos de configuración para mostrar CTA inline', () => {

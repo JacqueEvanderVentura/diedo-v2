@@ -26,7 +26,7 @@ function saleToForm(sale) {
   }
 }
 
-export function SaleEditModal({ open, onClose, sale, onSaved }) {
+export function SaleEditModal({ open, onClose, sale, onSaved, nested = false }) {
   const paymentMethods = useConfigStore((s) => s.paymentMethods)
   const taxPct = useConfigStore((s) => s.settings?.taxPct ?? 18)
   const updateSale = usePosStore((s) => s.updateSale)
@@ -67,7 +67,7 @@ export function SaleEditModal({ open, onClose, sale, onSaved }) {
     }
     setSaving(true)
     try {
-      await updateSale(sale.id, form)
+      await updateSale(sale.id, form, sale)
       toast.success('Factura actualizada')
       onSaved?.()
       onClose()
@@ -79,7 +79,7 @@ export function SaleEditModal({ open, onClose, sale, onSaved }) {
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Editar factura" testId="sale-edit-modal" wide>
+    <Modal open={open} onClose={onClose} title="Editar factura" testId="sale-edit-modal" wide nested={nested}>
       <div className="space-y-4">
         {!registerOpen && (
           <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">

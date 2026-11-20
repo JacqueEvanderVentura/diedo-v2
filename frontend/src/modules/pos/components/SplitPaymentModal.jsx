@@ -34,7 +34,7 @@ export function SplitPaymentModal({
 
   const allocated = sumSplitDraft(draft)
   const remaining = Math.max(0, (Number(total) || 0) - allocated)
-  const canConfirm = remaining <= 0.009 && allocated > 0
+  const canConfirm = allocated > 0 && remaining >= -0.009
 
   const handleConfirm = () => {
     const result = checkoutTendersFromDraft(draft, total)
@@ -117,8 +117,10 @@ export function SplitPaymentModal({
           })}
         </div>
 
-        <div className="rounded-xl bg-amber-50 px-4 py-3 text-center">
-          <p className="text-xs font-medium text-amber-800/80">Restante</p>
+        <div className="rounded-xl bg-amber-50 px-4 py-3 text-center" data-testid="split-payment-outstanding">
+          <p className="text-xs font-medium text-amber-800/80">
+            {remaining > 0.009 ? 'Saldo a cuenta por cobrar' : 'Restante'}
+          </p>
           <p className="font-heading text-2xl font-bold text-amber-700">{formatDOP(remaining)}</p>
         </div>
 
@@ -134,7 +136,7 @@ export function SplitPaymentModal({
             disabled={!canConfirm}
             data-testid="split-payment-confirm"
           >
-            <Check className="h-4 w-4" /> Confirmar pago
+            <Check className="h-4 w-4" /> {remaining > 0.009 ? 'Confirmar abono' : 'Confirmar pago'}
           </Button>
         </div>
       </div>

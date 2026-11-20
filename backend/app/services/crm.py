@@ -1168,11 +1168,13 @@ class CrmService:
         sell_grant: PermissionGrant,
         quote_id: UUID,
         expected_version: int,
-        payment_method_id: UUID,
+        payment_method_id: UUID | None,
         collection_mode: str,
         register_id: UUID | None,
         payment_reference: str | None,
         idempotency_key: str,
+        tenders: list[dict[str, Any]] | None = None,
+        emit_ncf: bool = False,
     ) -> CheckoutResult:
         quote_grant = self._intersect_grants(crm_grant, sales_grant)
         record = PosService(self._session).get_quote(quote_grant, quote_id)
@@ -1196,14 +1198,22 @@ class CrmService:
             raise InvalidOperationError("La cotización debe incluir al menos un ítem.", "lines")
         if not replaying:
             self._require_version(record.quote.version, expected_version)
-        method = PosService(self._session)._require_payment_method(
-            sell_grant.workspace_id, payment_method_id
-        )
-        effective_collection = "now" if method.settlement_policy == "immediate" else "receivable"
         if collection_mode not in ("now", "receivable"):
             raise InvalidOperationError("Modo de cobro inválido.", "collectionMode")
-        if collection_mode != effective_collection:
-            collection_mode = effective_collection
+        resolved_tenders = tenders if tenders else None
+        if resolved_tenders is None:
+            if payment_method_id is None:
+                raise InvalidOperationError(
+                    "Debes indicar paymentMethodId o tenders.", "paymentMethodId"
+                )
+            method = PosService(self._session)._require_payment_method(
+                sell_grant.workspace_id, payment_method_id
+            )
+            effective_collection = (
+                "now" if method.settlement_policy == "immediate" else "receivable"
+            )
+            if collection_mode != effective_collection:
+                collection_mode = effective_collection
         if record.quote.customer_id is None:
             raise InvalidOperationError(
                 "La cotización debe tener un cliente antes de facturar.", "customerId"
@@ -1224,7 +1234,6 @@ class CrmService:
         checkout_values: dict[str, Any] = {
             "branch_id": record.quote.branch_id,
             "customer_id": record.quote.customer_id,
-            "payment_method_id": payment_method_id,
             "channel_origin": "pipeline",
             "quote_id": quote_id,
             "quote_version": expected_version,
@@ -1234,7 +1243,12 @@ class CrmService:
             "reference": payment_reference,
             "lines": lines,
             "crm_relaxed_register": True,
+            "emit_ncf": emit_ncf,
         }
+        if resolved_tenders is not None:
+            checkout_values["tenders"] = resolved_tenders
+        else:
+            checkout_values["payment_method_id"] = payment_method_id
         if register_id is not None:
             checkout_values["register_id"] = register_id
         pos = PosService(self._session)

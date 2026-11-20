@@ -12,6 +12,7 @@ export function PermissionElevationModal({
   title = 'Autorización requerida',
   description = 'Un supervisor debe confirmar sus credenciales para continuar.',
   onElevated,
+  nested = false,
 }) {
   const elevateSession = useSessionStore((s) => s.elevateSession)
   const [email, setEmail] = useState('')
@@ -42,7 +43,7 @@ export function PermissionElevationModal({
   }
 
   return (
-    <Modal open={open} onClose={handleClose} title={title} testId="permission-elevation-modal">
+    <Modal open={open} onClose={handleClose} title={title} testId="permission-elevation-modal" nested={nested}>
       <div className="space-y-4">
         <div className="flex items-start gap-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" />

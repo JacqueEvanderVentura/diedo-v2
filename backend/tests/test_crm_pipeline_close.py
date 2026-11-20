@@ -416,3 +416,44 @@ def test_invoice_recovers_from_concurrent_checkout_insert(
     assert invoice.status_code == 201, invoice.text
     assert calls["count"] == 2
     assert _get_lead(client, headers, lead["id"])["status"] == "cerrado"
+
+
+@pytest.mark.integration
+def test_invoice_quote_partial_tenders_creates_receivable(client: TestClient) -> None:
+    branch_id, item_id = _seed(with_item=True)
+    assert item_id is not None
+    headers = _headers(client)
+    lead = _lead(client, headers, branch_id, "abono")
+    customer = _customer(client, headers, branch_id, "abono")
+    quote = _accepted_quote(
+        client,
+        headers,
+        branch_id=branch_id,
+        item_id=item_id,
+        lead_id=lead["id"],
+        customer_id=customer["id"],
+        label="abono",
+    )
+    cash_id = _cash_method_id(client, headers, branch_id)
+    total = Decimal(quote["total"])
+    abono = (total / 2).quantize(Decimal("0.01"))
+    invoice = client.post(
+        f"/api/v1/crm/quotes/{quote['id']}/invoice",
+        headers={**headers, "Idempotency-Key": f"pcl-abono-{uuid7().hex[-12:]}"},
+        json={
+            "version": quote["version"],
+            "tenders": [{"paymentMethodId": cash_id, "amount": str(abono)}],
+            "collectionMode": "now",
+        },
+    )
+    assert invoice.status_code == 201, invoice.text
+    body = invoice.json()
+    assert body["receivableId"] is not None
+    receivable = client.get(
+        f"/api/v1/pos/receivables/{body['receivableId']}",
+        headers=headers,
+    )
+    assert receivable.status_code == 200, receivable.text
+    assert receivable.json()["status"] == "partial"
+    assert Decimal(receivable.json()["paidTotal"]) == abono
+    assert Decimal(receivable.json()["balance"]) == total - abono

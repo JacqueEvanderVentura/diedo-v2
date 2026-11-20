@@ -435,6 +435,17 @@ class Sale(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             postgresql_where=text("void_idempotency_key IS NOT NULL"),
         ),
         Index(
+            "uq_sales_workspace_fiscal_ncf",
+            "workspace_id",
+            "fiscal_ncf",
+            unique=True,
+            postgresql_where=text("fiscal_ncf IS NOT NULL"),
+        ),
+        CheckConstraint(
+            "fiscal_ncf IS NULL OR fiscal_ncf ~ '^B01[0-9]{8,20}$'",
+            name="fiscal_ncf_format",
+        ),
+        Index(
             "ix_sales_workspace_branch_completed",
             "workspace_id",
             "branch_id",
@@ -457,6 +468,7 @@ class Sale(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     quote_id: Mapped[UUID | None] = mapped_column(nullable=True)
     inventory_movement_id: Mapped[UUID | None] = mapped_column(nullable=True)
     sale_number: Mapped[str] = mapped_column(String(32), nullable=False)
+    fiscal_ncf: Mapped[str | None] = mapped_column(String(23))
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="completed", server_default=text("'completed'")
     )

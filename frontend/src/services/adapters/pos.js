@@ -163,6 +163,13 @@ export function paymentMethodApiReference(methods, selected) {
   }
 }
 
+export function resolveCashDrawerPaymentMethod(methods) {
+  const synced = (methods || []).filter((method) => method?.apiId && method.enabled !== false)
+  return synced.find((method) => paymentMethodSemanticCode(method) === 'efectivo')
+    || synced.find((method) => method.affectsCash)
+    || null
+}
+
 function mapCustomer(customer, fallbackName = 'Cliente Mostrador') {
   if (!customer) return { id: 'walk-in', name: fallbackName, phone: null }
   return {
@@ -426,6 +433,7 @@ export function mapSaleFromApi(sale) {
   return {
     id: sale.id,
     number: sale.documentNumber || sale.number || null,
+    fiscalNcf: first(sale.fiscalNcf, sale.fiscal_ncf, null),
     branchId: first(sale.branchId, sale.branch?.id, null),
     registerId: first(sale.registerId, sale.cashRegisterId, sale.shiftId, null),
     customer: mapCustomer(sale.customer || {
@@ -933,6 +941,7 @@ export function checkoutToApiPayload(data, state) {
       tenders: mappedTenders,
       lines: (data.items || []).map(lineToApiPayload),
       ...discountToApiPayload(state.discountMode, state.discountValue),
+      emitNcf: Boolean(data.emitNcf),
     }
   }
   if (!payment.methodId) {
@@ -957,6 +966,7 @@ export function checkoutToApiPayload(data, state) {
     reference: data.reference?.trim() || null,
     lines: (data.items || []).map(lineToApiPayload),
     ...discountToApiPayload(state.discountMode, state.discountValue),
+    emitNcf: Boolean(data.emitNcf),
   }
 }
 
@@ -976,9 +986,17 @@ export function registerCloseToApiPayload(register, countedCash, notes = null) {
 }
 
 export function movementToApiPayload(data, state, type) {
-  const payment = paymentMethodApiReference(state.paymentMethods, data.method || 'efectivo')
+  const selected = data.method
+  const cashMethod = selected ? null : resolveCashDrawerPaymentMethod(state.paymentMethods)
+  const payment = selected
+    ? paymentMethodApiReference(state.paymentMethods, selected)
+    : { methodId: cashMethod?.apiId }
   if (!payment.methodId) {
-    throw new Error('Selecciona un método de pago sincronizado con la API.')
+    throw new Error(
+      selected
+        ? 'Selecciona un método de pago sincronizado con la API.'
+        : 'No hay un método de efectivo sincronizado para registrar el movimiento de caja.'
+    )
   }
   const lines = (data.items || []).map((item) => ({
     itemId: item.apiId || item.id || null,

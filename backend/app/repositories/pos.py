@@ -151,14 +151,21 @@ class PosRepository:
             select(Workspace).where(Workspace.id == workspace_id, Workspace.status == "active")
         )
 
-    def branch(self, workspace_id: UUID, branch_id: UUID) -> Branch | None:
-        return self._session.scalar(
-            select(Branch).where(
-                Branch.workspace_id == workspace_id,
-                Branch.id == branch_id,
-                Branch.status == "active",
-            )
+    def branch(
+        self,
+        workspace_id: UUID,
+        branch_id: UUID,
+        *,
+        lock: bool = False,
+    ) -> Branch | None:
+        statement = select(Branch).where(
+            Branch.workspace_id == workspace_id,
+            Branch.id == branch_id,
+            Branch.status == "active",
         )
+        if lock:
+            statement = statement.with_for_update()
+        return self._session.scalar(statement)
 
     def customer(self, workspace_id: UUID, branch_id: UUID, customer_id: UUID) -> Customer | None:
         return self._session.scalar(
@@ -491,11 +498,33 @@ class PosRepository:
         )
 
     def movement_for_sale(self, workspace_id: UUID, sale_id: UUID) -> CashMovement | None:
-        return self._session.scalar(
-            select(CashMovement).where(
-                CashMovement.workspace_id == workspace_id,
-                CashMovement.sale_id == sale_id,
-            )
+        movements = self.movements_for_sale(workspace_id, sale_id)
+        return movements[0] if movements else None
+
+    def movements_for_sale(self, workspace_id: UUID, sale_id: UUID) -> tuple[CashMovement, ...]:
+        return tuple(
+            self._session.scalars(
+                select(CashMovement)
+                .where(
+                    CashMovement.workspace_id == workspace_id,
+                    CashMovement.sale_id == sale_id,
+                    CashMovement.movement_type == "sale",
+                )
+                .order_by(CashMovement.created_at, CashMovement.id)
+            ).all()
+        )
+
+    def posted_payments_for_receivable(
+        self, workspace_id: UUID, receivable_id: UUID
+    ) -> tuple[CustomerPayment, ...]:
+        return tuple(
+            self._session.scalars(
+                select(CustomerPayment).where(
+                    CustomerPayment.workspace_id == workspace_id,
+                    CustomerPayment.receivable_id == receivable_id,
+                    CustomerPayment.status == "posted",
+                )
+            ).all()
         )
 
     def movement_for_payment(self, workspace_id: UUID, payment_id: UUID) -> CashMovement | None:

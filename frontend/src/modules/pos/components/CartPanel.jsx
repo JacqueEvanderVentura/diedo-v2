@@ -42,8 +42,9 @@ import { applyBillingBrandingToInvoiceData } from '@/modules/configuracion/lib/b
 import { ensureWorkspaceBillingSettings } from '@/modules/configuracion/lib/workspaceSettings'
 import { useCustomersStore } from '@/stores/customersStore'
 import { mapSaleFromApi } from '@/services/adapters/pos'
+import { EmitNcfToggle } from '@/components/fiscal/EmitNcfToggle'
 import { resolveBranchRegisterOpen } from '../lib/registerBranchState'
-import { checkoutTendersFromDraft, sumSplitDraft } from '../lib/splitPayment'
+import { checkoutTendersFromDraft } from '../lib/splitPayment'
 
 
 
@@ -153,6 +154,7 @@ export function CartPanel({ onCheckoutDone }) {
 
   const [paymentReceivable, setPaymentReceivable] = useState(null)
   const [completedInvoice, setCompletedInvoice] = useState(null)
+  const [emitNcf, setEmitNcf] = useState(false)
 
 
 
@@ -367,9 +369,6 @@ export function CartPanel({ onCheckoutDone }) {
 
     const splitEnabled = Array.isArray(checkoutTenders) && checkoutTenders.length > 0
     if (splitEnabled) {
-      const allocated = sumSplitDraft(
-        checkoutTenders.map((row) => ({ methodId: row.methodId, amount: row.amount }))
-      )
       const validation = checkoutTendersFromDraft(
         checkoutTenders.map((row) => ({
           methodId: row.methodId,
@@ -382,8 +381,8 @@ export function CartPanel({ onCheckoutDone }) {
         toast.error(validation.error)
         return
       }
-      if (Math.abs(allocated - total) > 0.009) {
-        toast.error('El pago dividido debe cubrir el total de la venta.')
+      if ((validation.outstanding || 0) > 0.009 && (!customer?.id || customer.id === 'walk-in')) {
+        toast.error('Selecciona un cliente registrado para dejar el saldo en cuenta por cobrar.')
         return
       }
     } else if (
@@ -436,7 +435,7 @@ export function CartPanel({ onCheckoutDone }) {
     const invoiceDraft = buildCurrentInvoice()
 
     try {
-      const checkoutResponse = await recordSale({ total, method: paymentMethod, customer, reference: paymentReference, items, subtotal, discountAmt, discountPct, taxPct, taxAmt })
+      const checkoutResponse = await recordSale({ total, method: paymentMethod, customer, reference: paymentReference, items, subtotal, discountAmt, discountPct, taxPct, taxAmt, emitNcf })
 
       if (isOnline && transferProof && checkoutResponse?.receivableId) {
         try {
@@ -462,6 +461,7 @@ export function CartPanel({ onCheckoutDone }) {
 
       openSaleInvoice(checkoutResponse, invoiceDraft)
       clearCart()
+      setEmitNcf(false)
       onCheckoutDone?.()
     } catch (operationError) {
       toast.error(operationError.message || 'No se pudo completar el cobro.')
@@ -1058,7 +1058,14 @@ export function CartPanel({ onCheckoutDone }) {
 
         </div>
 
-
+        {!isQuote && !isExpense && (
+          <EmitNcfToggle
+            checked={emitNcf}
+            onChange={setEmitNcf}
+            disabled={empty || Boolean(mutating) || !canSubmit}
+            testId="pos-emit-ncf-toggle"
+          />
+        )}
 
         {isQuote ? (
 

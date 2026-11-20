@@ -35,6 +35,12 @@ from app.services.errors import (
     InvalidOperationError,
     ResourceNotFoundError,
 )
+from app.services.fiscal_receipts import (
+    credit_fiscal_sequence_error_parameter,
+    normalize_credit_fiscal_prefix,
+    normalize_credit_fiscal_sequence,
+    validate_credit_fiscal_sequence_pair,
+)
 
 
 @dataclass(frozen=True)
@@ -522,6 +528,7 @@ class AdministrationService:
         ):
             raise ConflictError("Debe existir al menos una sucursal activa.", "status")
         details = normalized_changes.pop("details", None)
+        self._apply_fiscal_credit_sequence(normalized_changes)
         for key, value in normalized_changes.items():
             setattr(branch, key, value)
         if isinstance(details, dict):
@@ -533,6 +540,40 @@ class AdministrationService:
         branch.version += 1
         self._session.commit()
         return branch
+
+    @staticmethod
+    def _apply_fiscal_credit_sequence(changes: dict[str, object]) -> None:
+        prefix_key = "fiscal_credit_ncf_prefix"
+        sequence_key = "fiscal_credit_ncf_next_sequence"
+        if prefix_key not in changes and sequence_key not in changes:
+            return
+        if prefix_key not in changes or sequence_key not in changes:
+            raise InvalidOperationError(
+                "El prefijo y la próxima secuencia deben enviarse juntos.",
+                "fiscalCreditNcfPrefix",
+            )
+        prefix = changes[prefix_key]
+        sequence = changes[sequence_key]
+        if prefix is not None and not isinstance(prefix, str):
+            raise InvalidOperationError(
+                "El prefijo de crédito fiscal debe ser B01.",
+                "fiscalCreditNcfPrefix",
+            )
+        normalized_prefix = (
+            normalize_credit_fiscal_prefix(prefix) if isinstance(prefix, str) else None
+        )
+        try:
+            if normalized_prefix not in {None, "B01"}:
+                raise ValueError("El prefijo de crédito fiscal debe ser B01.")
+            normalized_sequence = normalize_credit_fiscal_sequence(sequence)
+            validate_credit_fiscal_sequence_pair(normalized_prefix, normalized_sequence)
+        except ValueError as exc:
+            raise InvalidOperationError(
+                str(exc),
+                credit_fiscal_sequence_error_parameter(str(exc)),
+            ) from exc
+        changes[prefix_key] = normalized_prefix
+        changes[sequence_key] = normalized_sequence
 
     def assign_branch_legal_entity(
         self,

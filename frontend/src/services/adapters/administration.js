@@ -119,6 +119,8 @@ export function mapBranchFromApi(branch, legalEntities = []) {
     fiscalEffectiveFrom: entity?.taxIdentity?.validFrom || '',
     legalEntityVersion: entity?.version || null,
     sharing: entity?.sharing || { branchCount: 0, shared: false },
+    fiscalCreditNcfPrefix: branch.fiscalCreditNcfPrefix || null,
+    fiscalCreditNcfNextSequence: branch.fiscalCreditNcfNextSequence ?? null,
     billingDocuments: mapBillingDocumentsFromApi(details.billingDocuments || details.billing_documents),
     onlineBookingSelectable: Boolean(branch.onlineBookingSelectable),
     publicBookingMinLeadMinutes: normalizePublicBookingLeadMinutes(
@@ -264,6 +266,43 @@ export function createBranchToApi(form, { code, timezone }) {
   }
 }
 
+export function formatCreditFiscalNcf(prefix, sequence) {
+  const normalized = String(prefix || '').trim().toUpperCase()
+  const digits = String(sequence ?? '').trim()
+  if (normalized !== 'B01' || !/^\d{8,20}$/.test(digits) || /^0+$/.test(digits)) return ''
+  return `${normalized}${digits}`
+}
+
+export function nextCreditFiscalSequence(sequence) {
+  const digits = String(sequence ?? '').trim()
+  if (!/^\d{8,20}$/.test(digits) || /^0+$/.test(digits)) return ''
+  const incremented = (BigInt(digits) + 1n).toString().padStart(digits.length, '0')
+  return incremented.length === digits.length ? incremented : ''
+}
+
+export function branchFiscalSequencePatchToApi(form, branch) {
+  const sequenceText = String(form.fiscalCreditNcfNextSequence ?? '').trim()
+  const savedSequence = branch.fiscalCreditNcfNextSequence == null
+    ? null
+    : String(branch.fiscalCreditNcfNextSequence)
+  const savedPrefix = branch.fiscalCreditNcfPrefix || null
+  if (!sequenceText) {
+    if (savedSequence == null && savedPrefix == null) return null
+    return {
+      fiscalCreditNcfPrefix: null,
+      fiscalCreditNcfNextSequence: null,
+      version: branch.version,
+    }
+  }
+  const prefix = String(form.fiscalCreditNcfPrefix || 'B01').trim().toUpperCase()
+  if (prefix === savedPrefix && sequenceText === savedSequence) return null
+  return {
+    fiscalCreditNcfPrefix: prefix,
+    fiscalCreditNcfNextSequence: sequenceText,
+    version: branch.version,
+  }
+}
+
 export function branchAssignmentToApi(form, branch) {
   return {
     assignment: form.legalEntityAction === 'new'
@@ -295,6 +334,15 @@ export function branchErrorTarget(parameter, fallbackTab = 'general') {
       tab: 'fiscal',
       field,
     }
+  }
+  if (value.includes('fiscalCreditNcfPrefix') || value.includes('fiscal_credit_ncf_prefix')) {
+    return { tab: 'fiscal', field: 'fiscalCreditNcfPrefix' }
+  }
+  if (
+    value.includes('fiscalCreditNcfNextSequence')
+    || value.includes('fiscal_credit_ncf_next_sequence')
+  ) {
+    return { tab: 'fiscal', field: 'fiscalCreditNcfNextSequence' }
   }
   const field = value.startsWith('details.') ? value.slice('details.'.length) : value
   return { tab: fallbackTab, field: field || null }

@@ -73,7 +73,8 @@ def _legal_lines(data: InvoiceDocumentRequest) -> list[dict[str, str]]:
     )
     address_lines = [line.strip() for line in data.business_address.splitlines() if line.strip()]
     rnc_line = f"RNC: {data.business_rnc}" if data.business_rnc else ""
-    raw_lines = [legal_title, rnc_line, *address_lines, note]
+    ncf_line = f"NCF: {data.fiscal_ncf}" if data.fiscal_ncf else ""
+    raw_lines = [legal_title, rnc_line, ncf_line, *address_lines, note]
     filtered = [line for line in raw_lines if line]
     lines: list[dict[str, str]] = []
     for index, line in enumerate(filtered):
@@ -136,6 +137,7 @@ def build_invoice_document_html(data: InvoiceDocumentRequest) -> str:
         total_color=total_color,
         business_name=_escape(data.business_name),
         business_rnc=_escape(data.business_rnc),
+        fiscal_ncf=_escape(data.fiscal_ncf),
         business_address_line=_escape(address_line),
         logo_html=_logo_html(data.logo_data_url, data.business_name),
         issued_at=_escape(data.issued_at),

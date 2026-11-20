@@ -4,7 +4,11 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { AnimatedTabPanel } from '@/components/ui/AnimatedTabPanel'
-import { branchErrorTarget } from '@/services/adapters/administration'
+import {
+  branchErrorTarget,
+  formatCreditFiscalNcf,
+  nextCreditFiscalSequence,
+} from '@/services/adapters/administration'
 import { PUBLIC_BOOKING_LEAD_TIME_OPTIONS, PUBLIC_BOOKING_LEAD_MINUTES_DEFAULT } from '@/lib/bookingLeadTimes'
 import { cn } from '@/lib/utils'
 
@@ -36,6 +40,8 @@ const empty = (legalEntities = []) => {
     legalEntityMode: defaultLegalEntity ? 'existing' : 'new',
     legalEntityAction: 'current',
     targetLegalEntityId: defaultLegalEntity?.id || '',
+    fiscalCreditNcfPrefix: 'B01',
+    fiscalCreditNcfNextSequence: '',
   }
 }
 
@@ -99,6 +105,10 @@ export function BranchFormModal({
           ...branch,
           legalEntityAction: 'current',
           targetLegalEntityId: legalEntities.find((entity) => entity.id !== branch.legalEntityId)?.id || '',
+          fiscalCreditNcfPrefix: branch.fiscalCreditNcfPrefix || 'B01',
+          fiscalCreditNcfNextSequence: branch.fiscalCreditNcfNextSequence == null
+            ? ''
+            : String(branch.fiscalCreditNcfNextSequence),
         }
       : defaults)
     setPartnerName('')
@@ -118,12 +128,29 @@ export function BranchFormModal({
   const fiscalMode = editing ? form.legalEntityAction : form.legalEntityMode
   const creatingFiscalEntity = fiscalMode === 'new'
   const selectingExistingEntity = fiscalMode === 'existing'
+  const sequenceText = String(form.fiscalCreditNcfNextSequence ?? '').trim()
+  const sequenceDigits = /^\d{8,20}$/.test(sequenceText) && !/^0+$/.test(sequenceText) ? sequenceText : ''
+  const ncfPreview = formatCreditFiscalNcf(form.fiscalCreditNcfPrefix, sequenceDigits)
+  const nextSequence = sequenceDigits ? nextCreditFiscalSequence(sequenceDigits) : ''
+  const nextNcfPreview = nextSequence
+    ? formatCreditFiscalNcf(form.fiscalCreditNcfPrefix, nextSequence)
+    : ''
+  const exampleDigits = sequenceDigits || '00000040'
+  const exampleNcf = formatCreditFiscalNcf('B01', exampleDigits.length >= 8 ? exampleDigits : '00000040')
+  const exampleNext = nextCreditFiscalSequence(exampleDigits.length >= 8 ? exampleDigits : '00000040')
+  const savedSequence = branch?.fiscalCreditNcfNextSequence == null
+    ? null
+    : String(branch.fiscalCreditNcfNextSequence)
+  const sequenceLowered = editing
+    && savedSequence
+    && sequenceDigits
+    && BigInt(sequenceDigits) < BigInt(savedSequence)
   const fiscalEditable = !online || creatingFiscalEntity || (editing && fiscalMode === 'current')
   const canSubmit = !online || (
     editing
       ? tab === 'fiscal'
         ? fiscalMode === 'current'
-          ? canManageLegalEntity
+          ? canManageLegalEntity || canManageBranch
           : canManageBranch && canManageLegalEntity
         : canManageBranch
       : canManageBranch && (!creatingFiscalEntity || (canManageLegalEntity && supportsAtomicNewEntity))
@@ -208,13 +235,31 @@ export function BranchFormModal({
         failValidation('Selecciona los datos fiscales que usará la sucursal.', 'fiscal', 'targetLegalEntityId')
         return false
       }
-      if ((creatingFiscalEntity || fiscalMode === 'current') && !form.legalName.trim()) {
+      if ((creatingFiscalEntity || (fiscalMode === 'current' && canManageLegalEntity)) && !form.legalName.trim()) {
         failValidation('Ingresa la razón social.', 'fiscal', 'legalName')
         return false
       }
       if (creatingFiscalEntity && !form.rnc.trim()) {
         failValidation('Ingresa el RNC de los datos fiscales propios.', 'fiscal', 'rnc')
         return false
+      }
+      if (editing) {
+        const sequenceText = String(form.fiscalCreditNcfNextSequence ?? '').trim()
+        if (sequenceText) {
+          const prefix = String(form.fiscalCreditNcfPrefix || '').trim().toUpperCase()
+          if (prefix !== 'B01') {
+            failValidation('El prefijo de crédito fiscal debe ser B01.', 'fiscal', 'fiscalCreditNcfPrefix')
+            return false
+          }
+          if (!/^\d{8,20}$/.test(sequenceText) || /^0+$/.test(sequenceText)) {
+            failValidation(
+              'La secuencia debe tener entre 8 y 20 dígitos.',
+              'fiscal',
+              'fiscalCreditNcfNextSequence',
+            )
+            return false
+          }
+        }
       }
     }
     return true
@@ -518,6 +563,61 @@ export function BranchFormModal({
                   </Button>
                 )}
               </>
+            )}
+
+            {editing && (
+              <div className="space-y-3 rounded-xl border border-slate-200 p-3" data-testid="branch-fiscal-sequence">
+                <div>
+                  <p className="text-sm font-semibold text-slate-700">Secuencia de comprobantes fiscales</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Escribe la secuencia con los dígitos completos, de 8 a 20. El comprobante une el prefijo B01 con esos dígitos.
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-600">Prefijo NCF crédito fiscal (B01)</label>
+                    <Input
+                      data-testid="branch-ncf-prefix"
+                      value={form.fiscalCreditNcfPrefix || ''}
+                      disabled={submitting || branchFieldsDisabled}
+                      aria-invalid={error?.field === 'fiscalCreditNcfPrefix'}
+                      onChange={(event) => set('fiscalCreditNcfPrefix', event.target.value.toUpperCase())}
+                      placeholder="B01"
+                    />
+                    <FieldError error={error} field="fiscalCreditNcfPrefix" />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-600">Próxima secuencia</label>
+                    <Input
+                      data-testid="branch-ncf-next-sequence"
+                      inputMode="numeric"
+                      value={form.fiscalCreditNcfNextSequence ?? ''}
+                      disabled={submitting || branchFieldsDisabled}
+                      aria-invalid={error?.field === 'fiscalCreditNcfNextSequence'}
+                      maxLength={20}
+                      onChange={(event) => set('fiscalCreditNcfNextSequence', event.target.value.replace(/\D/g, '').slice(0, 20))}
+                      placeholder="00000040"
+                    />
+                    <p className="mt-1 text-xs text-slate-500" data-testid="branch-ncf-example">
+                      Ejemplo: {exampleDigits} produce {exampleNcf}.{exampleNext ? ` El siguiente es ${exampleNext}.` : ''}
+                    </p>
+                    <FieldError error={error} field="fiscalCreditNcfNextSequence" />
+                  </div>
+                </div>
+                {ncfPreview ? (
+                  <p className="text-sm text-slate-600" data-testid="branch-ncf-preview">
+                    Próximo NCF: {ncfPreview}.{nextNcfPreview ? ` Después se usará ${nextNcfPreview}.` : ''}
+                  </p>
+                ) : null}
+                {sequenceLowered ? (
+                  <p className="text-sm text-amber-700" data-testid="branch-ncf-lower-warning">
+                    Este número es menor que el guardado y puede repetir un NCF ya emitido.
+                  </p>
+                ) : null}
+                {online && branchFieldsDisabled ? (
+                  <p className="text-xs text-slate-400">Tu rol no puede cambiar la secuencia de esta sucursal.</p>
+                ) : null}
+              </div>
             )}
           </div>
         )}
