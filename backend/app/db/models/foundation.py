@@ -170,6 +170,22 @@ class Branch(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             "public_cancel_min_lead_minutes IN (5, 30, 45, 60, 90, 240, 360, 720, 1440)",
             name="public_cancel_min_lead_minutes",
         ),
+        CheckConstraint(
+            "fiscal_credit_ncf_prefix IS NULL OR fiscal_credit_ncf_prefix = 'B01'",
+            name="ck_branches_fiscal_credit_ncf_prefix",
+        ),
+        CheckConstraint(
+            "fiscal_credit_ncf_next_sequence IS NULL OR ("
+            "fiscal_credit_ncf_next_sequence ~ '^[0-9]{8,20}$' "
+            "AND fiscal_credit_ncf_next_sequence <> "
+            "repeat('0', char_length(fiscal_credit_ncf_next_sequence))"
+            ")",
+            name="ck_branches_fiscal_credit_ncf_sequence",
+        ),
+        CheckConstraint(
+            "(fiscal_credit_ncf_prefix IS NULL) = (fiscal_credit_ncf_next_sequence IS NULL)",
+            name="ck_branches_fiscal_credit_ncf_pair",
+        ),
         Index("ix_branches_workspace_entity", "workspace_id", "legal_entity_id"),
         Index("ix_branches_workspace_status", "workspace_id", "status"),
     )
@@ -203,6 +219,8 @@ class Branch(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
         default=5,
         server_default=text("5"),
     )
+    fiscal_credit_ncf_prefix: Mapped[str | None] = mapped_column(String(3))
+    fiscal_credit_ncf_next_sequence: Mapped[str | None] = mapped_column(String(20))
 
 
 class ModuleDefinition(UuidPrimaryKeyMixin, TimestampMixin, Base):

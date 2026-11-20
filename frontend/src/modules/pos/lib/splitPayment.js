@@ -66,13 +66,14 @@ export function checkoutTendersFromDraft(draft, total) {
   if (!rows.length) {
     return { ok: false, error: 'Indica al menos un monto en un método de pago.' }
   }
-  if (Math.abs(allocated - targetTotal) > 0.009) {
+  if (allocated - targetTotal > 0.009) {
     return {
       ok: false,
-      error: `La suma (${allocated.toFixed(2)}) debe coincidir con el total (${targetTotal.toFixed(2)}).`,
+      error: `La suma (${allocated.toFixed(2)}) no puede superar el total (${targetTotal.toFixed(2)}).`,
     }
   }
-  return { ok: true, tenders: rows }
+  const outstanding = Math.max(0, Math.round((targetTotal - allocated) * 100) / 100)
+  return { ok: true, tenders: rows, outstanding }
 }
 
 export function splitPaymentSummary(tenders, methods) {

@@ -5,6 +5,55 @@ import { X } from 'lucide-react'
 import { modalBackdropTransition, modalPanelTransition } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
+export const MODAL_LAYER_Z = {
+  default: 80,
+  elevated: 100,
+  nested: 120,
+}
+
+export function modalLayerRank({ nested = false, elevated = false } = {}) {
+  if (nested) return MODAL_LAYER_Z.nested
+  if (elevated) return MODAL_LAYER_Z.elevated
+  return MODAL_LAYER_Z.default
+}
+
+export function modalLayerClass(options) {
+  const rank = modalLayerRank(options)
+  if (rank === MODAL_LAYER_Z.nested) return 'z-[120]'
+  if (rank === MODAL_LAYER_Z.elevated) return 'z-[100]'
+  return 'z-[80]'
+}
+
+const openModals = []
+let escapeBound = false
+
+function onEscapeKey(event) {
+  if (event.key !== 'Escape' || !openModals.length) return
+  const top = openModals.reduce((best, entry) => (
+    entry.rank >= best.rank ? entry : best
+  ))
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  top.onClose?.()
+}
+
+function registerOpenModal(entry) {
+  openModals.push(entry)
+  if (!escapeBound) {
+    document.addEventListener('keydown', onEscapeKey, true)
+    escapeBound = true
+  }
+}
+
+function unregisterOpenModal(entry) {
+  const index = openModals.indexOf(entry)
+  if (index >= 0) openModals.splice(index, 1)
+  if (!openModals.length && escapeBound) {
+    document.removeEventListener('keydown', onEscapeKey, true)
+    escapeBound = false
+  }
+}
+
 export function Modal({
   open,
   onClose,
@@ -15,21 +64,23 @@ export function Modal({
   xlarge = false,
   bodyClassName,
   elevated = false,
+  nested = false,
 }) {
   const titleId = useId()
+  const rank = modalLayerRank({ nested, elevated })
+  const layer = nested ? 'nested' : elevated ? 'elevated' : 'default'
+
   useEffect(() => {
     if (!open) return
-    const onKey = (e) => {
-      if (e.key === 'Escape') onClose?.()
-    }
+    const entry = { onClose, rank }
+    registerOpenModal(entry)
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    document.addEventListener('keydown', onKey)
     return () => {
+      unregisterOpenModal(entry)
       document.body.style.overflow = prev
-      document.removeEventListener('keydown', onKey)
     }
-  }, [open, onClose])
+  }, [open, onClose, rank])
 
   if (typeof document === 'undefined') return null
 
@@ -39,8 +90,9 @@ export function Modal({
         <div
           className={cn(
             'fixed inset-0 flex items-end justify-center overflow-y-auto p-4 sm:items-center',
-            elevated ? 'z-[100]' : 'z-[80]',
+            modalLayerClass({ nested, elevated }),
           )}
+          data-modal-layer={layer}
         >
           <motion.div
             initial={modalBackdropTransition.initial}

@@ -27,7 +27,6 @@ import {
   requiresPaymentApproval,
   canAttachNewReceivableProof,
   canShowReceivableUnapprove,
-  receivableHasEvidence,
   isReceivableProofRequiredError,
 } from '@/modules/pos/lib/receivables'
 import { QUOTE_REVISION_EVENT_LABELS } from '@/modules/crm/lib/quoteRevisions'
@@ -87,13 +86,21 @@ function SaleDetailModalContent({ open, onClose, sale }) {
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
+  const hydrateReceivable = (mapped) => {
+    setReceivableDetail(mapped)
+    if (!mapped?.id) return
+    usePosStore.setState((state) => ({
+      receivables: [mapped, ...state.receivables.filter((item) => item.id !== mapped.id)],
+    }))
+  }
+
   const refreshReceivableForSale = (saleId) => {
     if (!saleId) return
     const cached = findReceivableForSale(usePosStore.getState().receivables, saleId)
     setReceivableDetail(cached)
     if (!isOnline) return
     posApi.getReceivableForSale(saleId)
-      .then((response) => setReceivableDetail(mapReceivableFromApi(response)))
+      .then((response) => hydrateReceivable(mapReceivableFromApi(response)))
       .catch(() => setReceivableDetail(findReceivableForSale(usePosStore.getState().receivables, saleId)))
   }
 
@@ -110,13 +117,13 @@ function SaleDetailModalContent({ open, onClose, sale }) {
     setReceivableDetail(findReceivableForSale(receivables, sale.id))
     let cancelled = false
     if (isOnline) {
-      posApi.getReceivableForSale(sale.id)
-        .then((response) => {
-          if (!cancelled) setReceivableDetail(mapReceivableFromApi(response))
-        })
-        .catch(() => {
-          if (!cancelled) setReceivableDetail(findReceivableForSale(receivables, sale.id))
-        })
+    posApi.getReceivableForSale(sale.id)
+      .then((response) => {
+        if (!cancelled) hydrateReceivable(mapReceivableFromApi(response))
+      })
+      .catch(() => {
+        if (!cancelled) setReceivableDetail(findReceivableForSale(receivables, sale.id))
+      })
     }
     const needsLines = !sale.detailLoaded && !sale.items?.length
     if (!isOnline || !needsLines) {
@@ -189,7 +196,6 @@ function SaleDetailModalContent({ open, onClose, sale }) {
     && receivableDetail
     && !requiresPaymentApproval(receivableDetail)
     && receivableBalance > 0
-    && !receivableHasEvidence(receivableDetail)
   const paymentProofs = collectSalePaymentProofs(view, receivableDetail)
   const proofSubtitle = [
     METHOD_LABELS[view.method] || view.method,
@@ -298,7 +304,7 @@ function SaleDetailModalContent({ open, onClose, sale }) {
 
   const confirmDelete = async () => {
     try {
-      await deleteSale(view.id)
+      await deleteSale(view.id, view)
       useCrmStore.setState((state) => ({
         sales: state.sales.filter((item) => item.id !== view.id),
       }))
@@ -320,7 +326,7 @@ function SaleDetailModalContent({ open, onClose, sale }) {
       return
     }
     try {
-      const result = await voidSale(view.id, voidReason.trim())
+      const result = await voidSale(view.id, voidReason.trim(), view)
       if (!result) throw new Error('La factura ya no está disponible para anular.')
       setDetail((current) => ({
         ...(current || view),
@@ -560,6 +566,7 @@ function SaleDetailModalContent({ open, onClose, sale }) {
         open={editOpen}
         onClose={() => setEditOpen(false)}
         sale={view}
+        nested
         onSaved={() => {
           ensureSaleDetail(view.id).then((fresh) => {
             if (fresh) setDetail(fresh)
@@ -567,7 +574,7 @@ function SaleDetailModalContent({ open, onClose, sale }) {
         }}
       />
 
-      <Modal open={deleteOpen} onClose={() => setDeleteOpen(false)} title="Eliminar factura" testId="sale-detail-delete-modal">
+      <Modal open={deleteOpen} onClose={() => setDeleteOpen(false)} title="Eliminar factura" testId="sale-detail-delete-modal" nested>
         <div className="space-y-4">
           <p className="text-sm text-slate-600">
             Esta acción quita la factura del sistema. Solo es posible si no tiene cobros ni movimientos de caja.
@@ -581,7 +588,7 @@ function SaleDetailModalContent({ open, onClose, sale }) {
         </div>
       </Modal>
 
-      <Modal open={voidOpen} onClose={() => setVoidOpen(false)} title="Anular factura" testId="sale-detail-void-modal">
+      <Modal open={voidOpen} onClose={() => setVoidOpen(false)} title="Anular factura" testId="sale-detail-void-modal" nested>
         <div className="space-y-4">
           <p className="text-sm text-slate-600">Esta acción dejará la factura como anulada y ajustará los totales de caja.</p>
           <textarea
@@ -612,6 +619,7 @@ function SaleDetailModalContent({ open, onClose, sale }) {
         permissionCode={VOID_INVOICE_PERMISSION}
         description="Para anular una factura, un supervisor con permiso debe autorizar esta sesión por 3 minutos."
         onElevated={() => setVoidOpen(true)}
+        nested
       />
 
       <ReceivablePaymentModal
@@ -621,12 +629,14 @@ function SaleDetailModalContent({ open, onClose, sale }) {
           refreshReceivableForSale(view.id)
         }}
         receivable={collectPaymentOpen ? receivableDetail : null}
+        nested
       />
 
       <ReceivableProofModal
         open={proofUploadOpen}
         onClose={() => setProofUploadOpen(false)}
         receivable={proofUploadOpen ? receivableDetail : null}
+        nested
         onConfirm={async (_receivable, payload) => {
           if (!receivableDetail?.id) return
           try {

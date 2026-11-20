@@ -248,6 +248,7 @@ class CreateAppointmentRequest(ApiModel):
     source: AppointmentSource = "staff"
     recurrence: AppointmentRecurrence = "none"
     repeat_count: int = Field(default=1, ge=1, le=12)
+    allow_outside_employee_schedule: bool = False
 
     @field_validator("customer_name", "service_name")
     @classmethod
@@ -314,6 +315,7 @@ class UpdateAppointmentRequest(ApiModel):
     first_time: bool | None = None
     free_trial: bool | None = None
     reminder_sent: bool | None = None
+    allow_outside_employee_schedule: bool | None = None
 
     @field_validator("customer_name", "service_name")
     @classmethod

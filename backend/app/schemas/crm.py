@@ -10,7 +10,7 @@ from pydantic import EmailStr, Field, HttpUrl, PlainSerializer, field_validator,
 from app.schemas.common import ApiModel, ImportRowModel
 from app.schemas.instagram import validate_instagram_url
 from app.schemas.master_data import CustomerDocumentType
-from app.schemas.pos import QuoteDetailResponse
+from app.schemas.pos import CheckoutTenderRequest, QuoteDetailResponse
 
 LeadStatus = Literal["nuevo", "contactado", "propuesta", "negociacion", "cerrado", "perdido"]
 EditableLeadStatus = Literal[
@@ -726,10 +726,21 @@ class CrmQuoteResponse(ApiModel):
 
 class InvoiceCrmQuoteRequest(ApiModel):
     version: int = Field(ge=1)
-    payment_method_id: UUID
-    collection_mode: Literal["now", "receivable"]
+    payment_method_id: UUID | None = None
+    tenders: list[CheckoutTenderRequest] | None = Field(default=None, min_length=1, max_length=20)
+    collection_mode: Literal["now", "receivable"] = "now"
     register_id: UUID | None = None
     reference: str | None = Field(default=None, max_length=160)
+    emit_ncf: bool = False
+
+    @model_validator(mode="after")
+    def validate_payment(self) -> Self:
+        if self.tenders is not None:
+            if self.payment_method_id is not None:
+                raise ValueError("Envía paymentMethodId o tenders, no ambos.")
+        elif self.payment_method_id is None:
+            raise ValueError("Debes indicar paymentMethodId o tenders.")
+        return self
 
 
 class CrmQuoteListResponse(ApiModel):

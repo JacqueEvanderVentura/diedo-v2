@@ -1,0 +1,792 @@
+[
+    {
+        "id": "877cfe35-b836-5b4a-8649-b0738f1f1b4b",
+        "nombre": "Cabina 1",
+        "descripcion": "Cabina 1",
+        "orden": 0,
+        "sucursal_id": "1973ca3c-2bb4-551e-b6ec-2ec594a9b7f6",
+        "cabina_allowed_users": [
+            {
+                "nivel": "use",
+                "user_id": "ca5bbfcf-7ad0-5e1b-80f2-99a44d362bc7"
+            },
+            {
+                "nivel": "use",
+                "user_id": "201266f1-3871-52f0-9357-bd3e5a1d6bca"
+            },
+            {
+                "nivel": "view",
+                "user_id": "3bb346ce-7766-5488-bece-dc5f9c94c2ae"
+            },
+            {
+                "nivel": "use",
+                "user_id": "8e65ab7c-5bf7-5105-8d65-0ced0252970f"
+            },
+            {
+                "nivel": "use",
+                "user_id": "be19e624-cbbd-5e43-96b8-79c76592efa6"
+            },
+            {
+                "nivel": "use",
+                "user_id": "53f25464-c239-5873-bcdc-e30e99479ae8"
+            },
+            {
+                "nivel": "use",
+                "user_id": "6bbe52a2-2e0e-475a-869a-4684bd9f8442"
+            },
+            {
+                "nivel": "use",
+                "user_id": "2b918401-cf7d-4bb6-9d3e-1fcf23bb2314"
+            }
+        ]
+    },
+    {
+        "id": "e772d159-8085-511e-8ac4-43db830ea836",
+        "nombre": "Cabina 1",
+        "descripcion": null,
+        "orden": 0,
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "cabina_allowed_users": [
+            {
+                "nivel": "use",
+                "user_id": "8e65ab7c-5bf7-5105-8d65-0ced0252970f"
+            },
+            {
+                "nivel": "use",
+                "user_id": "be19e624-cbbd-5e43-96b8-79c76592efa6"
+            },
+            {
+                "nivel": "view",
+                "user_id": "3aab6e62-62cf-5f66-83d9-195274545747"
+            },
+            {
+                "nivel": "view",
+                "user_id": "3bb346ce-7766-5488-bece-dc5f9c94c2ae"
+            },
+            {
+                "nivel": "use",
+                "user_id": "ca5bbfcf-7ad0-5e1b-80f2-99a44d362bc7"
+            },
+            {
+                "nivel": "use",
+                "user_id": "53f25464-c239-5873-bcdc-e30e99479ae8"
+            },
+            {
+                "nivel": "use",
+                "user_id": "6bbe52a2-2e0e-475a-869a-4684bd9f8442"
+            },
+            {
+                "nivel": "use",
+                "user_id": "ad280e6b-1377-454d-a5ea-c0c193dbc345"
+            },
+            {
+                "nivel": "use",
+                "user_id": "2b918401-cf7d-4bb6-9d3e-1fcf23bb2314"
+            }
+        ]
+    },
+    {
+        "id": "2cdf7eac-e66b-5ed4-9af6-8f1c70f49d12",
+        "nombre": "Cabina 1 ",
+        "descripcion": "Depilación laser",
+        "orden": 0,
+        "sucursal_id": "63278b45-21ee-50ff-8a2f-2dc6e6787747",
+        "cabina_allowed_users": [
+            {
+                "nivel": "use",
+                "user_id": "53f25464-c239-5873-bcdc-e30e99479ae8"
+            },
+            {
+                "nivel": "view",
+                "user_id": "be19e624-cbbd-5e43-96b8-79c76592efa6"
+            },
+            {
+                "nivel": "use",
+                "user_id": "d1446c22-ecee-5034-9dc9-8f476af2feaf"
+            },
+            {
+                "nivel": "use",
+                "user_id": "360a75b6-1646-55ee-868d-00728a548712"
+            },
+            {
+                "nivel": "view",
+                "user_id": "ca5bbfcf-7ad0-5e1b-80f2-99a44d362bc7"
+            },
+            {
+                "nivel": "view",
+                "user_id": "8e65ab7c-5bf7-5105-8d65-0ced0252970f"
+            },
+            {
+                "nivel": "view",
+                "user_id": "209096ee-9694-5683-9f5d-6e62bbc4c685"
+            },
+            {
+                "nivel": "view",
+                "user_id": "3aab6e62-62cf-5f66-83d9-195274545747"
+            },
+            {
+                "nivel": "view",
+                "user_id": "292a31de-4eee-5c3d-93c4-7acca6051f23"
+            },
+            {
+                "nivel": "use",
+                "user_id": "6bbe52a2-2e0e-475a-869a-4684bd9f8442"
+            },
+            {
+                "nivel": "use",
+                "user_id": "2b918401-cf7d-4bb6-9d3e-1fcf23bb2314"
+            }
+        ]
+    },
+    {
+        "id": "6c9bbc5c-07b8-55e1-86f8-a2d910e4b05e",
+        "nombre": "Cuts Factory",
+        "descripcion": "cabina retrasos, reprogramaciones y nuevos",
+        "orden": 0,
+        "sucursal_id": "8441d036-6c00-52c9-97b9-6e928bb45766",
+        "cabina_allowed_users": [
+            {
+                "nivel": "use",
+                "user_id": "3225f117-b4d6-514f-9b53-2b7962313255"
+            },
+            {
+                "nivel": "view",
+                "user_id": "3bb346ce-7766-5488-bece-dc5f9c94c2ae"
+            },
+            {
+                "nivel": "use",
+                "user_id": "8ca09446-266c-54f5-a510-097d244b04a0"
+            },
+            {
+                "nivel": "use",
+                "user_id": "f0b5b44e-a0f1-5e90-acb3-57fd1f1c22b6"
+            },
+            {
+                "nivel": "use",
+                "user_id": "f6510f13-d5bb-5cf0-9cbc-c3a66b07bd54"
+            },
+            {
+                "nivel": "use",
+                "user_id": "f9465ba4-753b-5dab-9ec3-bd7d90d4d21e"
+            },
+            {
+                "nivel": "edit",
+                "user_id": "3aab6e62-62cf-5f66-83d9-195274545747"
+            }
+        ]
+    },
+    {
+        "id": "af10ab19-8fe0-5e1a-a99a-d51e9d45b5eb",
+        "nombre": "Auxiliar de Ventas",
+        "descripcion": "ventas aux ",
+        "orden": 1,
+        "sucursal_id": "1973ca3c-2bb4-551e-b6ec-2ec594a9b7f6",
+        "cabina_allowed_users": [
+            {
+                "nivel": "view",
+                "user_id": "3bb346ce-7766-5488-bece-dc5f9c94c2ae"
+            },
+            {
+                "nivel": "use",
+                "user_id": "53f25464-c239-5873-bcdc-e30e99479ae8"
+            },
+            {
+                "nivel": "use",
+                "user_id": "ca5bbfcf-7ad0-5e1b-80f2-99a44d362bc7"
+            },
+            {
+                "nivel": "use",
+                "user_id": "6bbe52a2-2e0e-475a-869a-4684bd9f8442"
+            },
+            {
+                "nivel": "use",
+                "user_id": "2b918401-cf7d-4bb6-9d3e-1fcf23bb2314"
+            }
+        ]
+    },
+    {
+        "id": "d5594921-e8b3-5e8a-96fd-ba914e3ae2fc",
+        "nombre": "Cabina 2",
+        "descripcion": null,
+        "orden": 1,
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "cabina_allowed_users": [
+            {
+                "nivel": "view",
+                "user_id": "3bb346ce-7766-5488-bece-dc5f9c94c2ae"
+            },
+            {
+                "nivel": "use",
+                "user_id": "ca5bbfcf-7ad0-5e1b-80f2-99a44d362bc7"
+            },
+            {
+                "nivel": "view",
+                "user_id": "8e65ab7c-5bf7-5105-8d65-0ced0252970f"
+            },
+            {
+                "nivel": "view",
+                "user_id": "be19e624-cbbd-5e43-96b8-79c76592efa6"
+            },
+            {
+                "nivel": "use",
+                "user_id": "3aab6e62-62cf-5f66-83d9-195274545747"
+            },
+            {
+                "nivel": "use",
+                "user_id": "53f25464-c239-5873-bcdc-e30e99479ae8"
+            },
+            {
+                "nivel": "use",
+                "user_id": "6bbe52a2-2e0e-475a-869a-4684bd9f8442"
+            },
+            {
+                "nivel": "use",
+                "user_id": "ad280e6b-1377-454d-a5ea-c0c193dbc345"
+            },
+            {
+                "nivel": "use",
+                "user_id": "2b918401-cf7d-4bb6-9d3e-1fcf23bb2314"
+            }
+        ]
+    },
+    {
+        "id": "e41d6245-f75c-5b81-b972-403791e3f443",
+        "nombre": "Cabina 2",
+        "descripcion": "depilacion laser",
+        "orden": 1,
+        "sucursal_id": "63278b45-21ee-50ff-8a2f-2dc6e6787747",
+        "cabina_allowed_users": [
+            {
+                "nivel": "use",
+                "user_id": "3aab6e62-62cf-5f66-83d9-195274545747"
+            },
+            {
+                "nivel": "use",
+                "user_id": "8e65ab7c-5bf7-5105-8d65-0ced0252970f"
+            },
+            {
+                "nivel": "use",
+                "user_id": "be19e624-cbbd-5e43-96b8-79c76592efa6"
+            },
+            {
+                "nivel": "view",
+                "user_id": "209096ee-9694-5683-9f5d-6e62bbc4c685"
+            },
+            {
+                "nivel": "view",
+                "user_id": "d1446c22-ecee-5034-9dc9-8f476af2feaf"
+            },
+            {
+                "nivel": "view",
+                "user_id": "360a75b6-1646-55ee-868d-00728a548712"
+            },
+            {
+                "nivel": "use",
+                "user_id": "ca5bbfcf-7ad0-5e1b-80f2-99a44d362bc7"
+            },
+            {
+                "nivel": "use",
+                "user_id": "53f25464-c239-5873-bcdc-e30e99479ae8"
+            },
+            {
+                "nivel": "use",
+                "user_id": "6bbe52a2-2e0e-475a-869a-4684bd9f8442"
+            },
+            {
+                "nivel": "use",
+                "user_id": "2b918401-cf7d-4bb6-9d3e-1fcf23bb2314"
+            }
+        ]
+    },
+    {
+        "id": "89788964-d340-5410-9543-0d208a2fca20",
+        "nombre": "Junior Arias",
+        "descripcion": "sillon 3",
+        "orden": 1,
+        "sucursal_id": "8441d036-6c00-52c9-97b9-6e928bb45766",
+        "cabina_allowed_users": [
+            {
+                "nivel": "use",
+                "user_id": "8ca09446-266c-54f5-a510-097d244b04a0"
+            },
+            {
+                "nivel": "use",
+                "user_id": "f6510f13-d5bb-5cf0-9cbc-c3a66b07bd54"
+            },
+            {
+                "nivel": "view",
+                "user_id": "3bb346ce-7766-5488-bece-dc5f9c94c2ae"
+            },
+            {
+                "nivel": "use",
+                "user_id": "3225f117-b4d6-514f-9b53-2b7962313255"
+            }
+        ]
+    },
+    {
+        "id": "19996abd-3fe0-5ee0-a4cd-c3db26f75357",
+        "nombre": "Adrinson Arias",
+        "descripcion": "sillon 2",
+        "orden": 2,
+        "sucursal_id": "8441d036-6c00-52c9-97b9-6e928bb45766",
+        "cabina_allowed_users": [
+            {
+                "nivel": "view",
+                "user_id": "f0b5b44e-a0f1-5e90-acb3-57fd1f1c22b6"
+            },
+            {
+                "nivel": "use",
+                "user_id": "8ca09446-266c-54f5-a510-097d244b04a0"
+            },
+            {
+                "nivel": "use",
+                "user_id": "f6510f13-d5bb-5cf0-9cbc-c3a66b07bd54"
+            },
+            {
+                "nivel": "use",
+                "user_id": "3225f117-b4d6-514f-9b53-2b7962313255"
+            },
+            {
+                "nivel": "view",
+                "user_id": "3bb346ce-7766-5488-bece-dc5f9c94c2ae"
+            }
+        ]
+    },
+    {
+        "id": "828c24d3-c567-5046-a0a6-ec77368dd15d",
+        "nombre": "Auxiliar de Ventas",
+        "descripcion": "Ventas",
+        "orden": 2,
+        "sucursal_id": "63278b45-21ee-50ff-8a2f-2dc6e6787747",
+        "cabina_allowed_users": [
+            {
+                "nivel": "view",
+                "user_id": "292a31de-4eee-5c3d-93c4-7acca6051f23"
+            },
+            {
+                "nivel": "view",
+                "user_id": "3aab6e62-62cf-5f66-83d9-195274545747"
+            },
+            {
+                "nivel": "view",
+                "user_id": "209096ee-9694-5683-9f5d-6e62bbc4c685"
+            },
+            {
+                "nivel": "view",
+                "user_id": "8e65ab7c-5bf7-5105-8d65-0ced0252970f"
+            },
+            {
+                "nivel": "use",
+                "user_id": "ca5bbfcf-7ad0-5e1b-80f2-99a44d362bc7"
+            },
+            {
+                "nivel": "view",
+                "user_id": "360a75b6-1646-55ee-868d-00728a548712"
+            },
+            {
+                "nivel": "view",
+                "user_id": "d1446c22-ecee-5034-9dc9-8f476af2feaf"
+            },
+            {
+                "nivel": "use",
+                "user_id": "53f25464-c239-5873-bcdc-e30e99479ae8"
+            },
+            {
+                "nivel": "view",
+                "user_id": "be19e624-cbbd-5e43-96b8-79c76592efa6"
+            },
+            {
+                "nivel": "use",
+                "user_id": "6bbe52a2-2e0e-475a-869a-4684bd9f8442"
+            },
+            {
+                "nivel": "use",
+                "user_id": "2b918401-cf7d-4bb6-9d3e-1fcf23bb2314"
+            }
+        ]
+    },
+    {
+        "id": "194b1315-4b63-5a57-8499-273800f69327",
+        "nombre": "Cabina 3",
+        "descripcion": null,
+        "orden": 2,
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "cabina_allowed_users": [
+            {
+                "nivel": "use",
+                "user_id": "8e65ab7c-5bf7-5105-8d65-0ced0252970f"
+            },
+            {
+                "nivel": "use",
+                "user_id": "be19e624-cbbd-5e43-96b8-79c76592efa6"
+            },
+            {
+                "nivel": "use",
+                "user_id": "53f25464-c239-5873-bcdc-e30e99479ae8"
+            },
+            {
+                "nivel": "view",
+                "user_id": "3aab6e62-62cf-5f66-83d9-195274545747"
+            },
+            {
+                "nivel": "view",
+                "user_id": "3bb346ce-7766-5488-bece-dc5f9c94c2ae"
+            },
+            {
+                "nivel": "use",
+                "user_id": "ca5bbfcf-7ad0-5e1b-80f2-99a44d362bc7"
+            },
+            {
+                "nivel": "use",
+                "user_id": "6bbe52a2-2e0e-475a-869a-4684bd9f8442"
+            },
+            {
+                "nivel": "use",
+                "user_id": "ad280e6b-1377-454d-a5ea-c0c193dbc345"
+            },
+            {
+                "nivel": "use",
+                "user_id": "2b918401-cf7d-4bb6-9d3e-1fcf23bb2314"
+            }
+        ]
+    },
+    {
+        "id": "fb8d5424-fd35-566d-8cb4-fb1138c0edd8",
+        "nombre": "Cabina 4",
+        "descripcion": null,
+        "orden": 3,
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "cabina_allowed_users": [
+            {
+                "nivel": "view",
+                "user_id": "3aab6e62-62cf-5f66-83d9-195274545747"
+            },
+            {
+                "nivel": "use",
+                "user_id": "8e65ab7c-5bf7-5105-8d65-0ced0252970f"
+            },
+            {
+                "nivel": "use",
+                "user_id": "be19e624-cbbd-5e43-96b8-79c76592efa6"
+            },
+            {
+                "nivel": "use",
+                "user_id": "ca5bbfcf-7ad0-5e1b-80f2-99a44d362bc7"
+            },
+            {
+                "nivel": "view",
+                "user_id": "3bb346ce-7766-5488-bece-dc5f9c94c2ae"
+            },
+            {
+                "nivel": "use",
+                "user_id": "53f25464-c239-5873-bcdc-e30e99479ae8"
+            },
+            {
+                "nivel": "use",
+                "user_id": "6bbe52a2-2e0e-475a-869a-4684bd9f8442"
+            },
+            {
+                "nivel": "use",
+                "user_id": "ad280e6b-1377-454d-a5ea-c0c193dbc345"
+            },
+            {
+                "nivel": "use",
+                "user_id": "2b918401-cf7d-4bb6-9d3e-1fcf23bb2314"
+            }
+        ]
+    },
+    {
+        "id": "c33fb33d-053c-5562-85b0-a2996e70d49e",
+        "nombre": "Cliente sin cita",
+        "descripcion": "cliente sin cita ",
+        "orden": 3,
+        "sucursal_id": "63278b45-21ee-50ff-8a2f-2dc6e6787747",
+        "cabina_allowed_users": [
+            {
+                "nivel": "use",
+                "user_id": "360a75b6-1646-55ee-868d-00728a548712"
+            },
+            {
+                "nivel": "use",
+                "user_id": "6bbe52a2-2e0e-475a-869a-4684bd9f8442"
+            },
+            {
+                "nivel": "use",
+                "user_id": "ca5bbfcf-7ad0-5e1b-80f2-99a44d362bc7"
+            },
+            {
+                "nivel": "use",
+                "user_id": "d1446c22-ecee-5034-9dc9-8f476af2feaf"
+            },
+            {
+                "nivel": "use",
+                "user_id": "2b918401-cf7d-4bb6-9d3e-1fcf23bb2314"
+            }
+        ]
+    },
+    {
+        "id": "c369429c-5e84-5285-9048-7cabd4bd8126",
+        "nombre": "Starling Subervi",
+        "descripcion": "sillon 1",
+        "orden": 3,
+        "sucursal_id": "8441d036-6c00-52c9-97b9-6e928bb45766",
+        "cabina_allowed_users": [
+            {
+                "nivel": "use",
+                "user_id": "3225f117-b4d6-514f-9b53-2b7962313255"
+            },
+            {
+                "nivel": "view",
+                "user_id": "3bb346ce-7766-5488-bece-dc5f9c94c2ae"
+            },
+            {
+                "nivel": "use",
+                "user_id": "f6510f13-d5bb-5cf0-9cbc-c3a66b07bd54"
+            }
+        ]
+    },
+    {
+        "id": "473f1e23-e672-5cd5-8af3-a2f793c79b50",
+        "nombre": "Cabina 5",
+        "descripcion": null,
+        "orden": 4,
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "cabina_allowed_users": [
+            {
+                "nivel": "view",
+                "user_id": "3aab6e62-62cf-5f66-83d9-195274545747"
+            },
+            {
+                "nivel": "view",
+                "user_id": "be19e624-cbbd-5e43-96b8-79c76592efa6"
+            },
+            {
+                "nivel": "view",
+                "user_id": "8e65ab7c-5bf7-5105-8d65-0ced0252970f"
+            },
+            {
+                "nivel": "view",
+                "user_id": "292a31de-4eee-5c3d-93c4-7acca6051f23"
+            },
+            {
+                "nivel": "use",
+                "user_id": "ca5bbfcf-7ad0-5e1b-80f2-99a44d362bc7"
+            },
+            {
+                "nivel": "view",
+                "user_id": "3bb346ce-7766-5488-bece-dc5f9c94c2ae"
+            },
+            {
+                "nivel": "use",
+                "user_id": "53f25464-c239-5873-bcdc-e30e99479ae8"
+            },
+            {
+                "nivel": "use",
+                "user_id": "6bbe52a2-2e0e-475a-869a-4684bd9f8442"
+            },
+            {
+                "nivel": "view",
+                "user_id": "ad280e6b-1377-454d-a5ea-c0c193dbc345"
+            },
+            {
+                "nivel": "use",
+                "user_id": "2b918401-cf7d-4bb6-9d3e-1fcf23bb2314"
+            }
+        ]
+    },
+    {
+        "id": "fb02c90c-ffbf-5a96-b740-be778840b835",
+        "nombre": "Jefferson Ramirez ",
+        "descripcion": "Sillón 1",
+        "orden": 4,
+        "sucursal_id": "8441d036-6c00-52c9-97b9-6e928bb45766",
+        "cabina_allowed_users": [
+            {
+                "nivel": "view",
+                "user_id": "3bb346ce-7766-5488-bece-dc5f9c94c2ae"
+            },
+            {
+                "nivel": "use",
+                "user_id": "8ca09446-266c-54f5-a510-097d244b04a0"
+            },
+            {
+                "nivel": "use",
+                "user_id": "f6510f13-d5bb-5cf0-9cbc-c3a66b07bd54"
+            }
+        ]
+    },
+    {
+        "id": "48e4e92d-0f55-5c4a-bb2d-55ec03ebce7d",
+        "nombre": "Cliente sin cita",
+        "descripcion": "operaciones",
+        "orden": 5,
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "cabina_allowed_users": [
+            {
+                "nivel": "view",
+                "user_id": "3bb346ce-7766-5488-bece-dc5f9c94c2ae"
+            },
+            {
+                "nivel": "use",
+                "user_id": "3aab6e62-62cf-5f66-83d9-195274545747"
+            },
+            {
+                "nivel": "view",
+                "user_id": "ca5bbfcf-7ad0-5e1b-80f2-99a44d362bc7"
+            },
+            {
+                "nivel": "use",
+                "user_id": "6bbe52a2-2e0e-475a-869a-4684bd9f8442"
+            },
+            {
+                "nivel": "use",
+                "user_id": "ad280e6b-1377-454d-a5ea-c0c193dbc345"
+            },
+            {
+                "nivel": "use",
+                "user_id": "2b918401-cf7d-4bb6-9d3e-1fcf23bb2314"
+            },
+            {
+                "nivel": "use",
+                "user_id": "53f25464-c239-5873-bcdc-e30e99479ae8"
+            }
+        ]
+    },
+    {
+        "id": "3f91eaf7-e66c-5101-89fe-de70bd86fd2c",
+        "nombre": "Kelvin Medina",
+        "descripcion": "Sillón 4",
+        "orden": 5,
+        "sucursal_id": "8441d036-6c00-52c9-97b9-6e928bb45766",
+        "cabina_allowed_users": [
+            {
+                "nivel": "view",
+                "user_id": "f0b5b44e-a0f1-5e90-acb3-57fd1f1c22b6"
+            },
+            {
+                "nivel": "use",
+                "user_id": "8ca09446-266c-54f5-a510-097d244b04a0"
+            },
+            {
+                "nivel": "view",
+                "user_id": "3bb346ce-7766-5488-bece-dc5f9c94c2ae"
+            },
+            {
+                "nivel": "use",
+                "user_id": "f6510f13-d5bb-5cf0-9cbc-c3a66b07bd54"
+            }
+        ]
+    },
+    {
+        "id": "f8ba6fb8-e5e4-562f-8cc4-616625943a49",
+        "nombre": "Gabriela Rodriguez",
+        "descripcion": "manicure y pedicure",
+        "orden": 6,
+        "sucursal_id": "8441d036-6c00-52c9-97b9-6e928bb45766",
+        "cabina_allowed_users": [
+            {
+                "nivel": "use",
+                "user_id": "3225f117-b4d6-514f-9b53-2b7962313255"
+            },
+            {
+                "nivel": "use",
+                "user_id": "f6510f13-d5bb-5cf0-9cbc-c3a66b07bd54"
+            },
+            {
+                "nivel": "use",
+                "user_id": "8ca09446-266c-54f5-a510-097d244b04a0"
+            },
+            {
+                "nivel": "view",
+                "user_id": "3bb346ce-7766-5488-bece-dc5f9c94c2ae"
+            }
+        ]
+    },
+    {
+        "id": "1a8b5509-635b-590a-ace9-1834e3c98a11",
+        "nombre": "Sharleny Castillo",
+        "descripcion": "manicure y pedicure",
+        "orden": 7,
+        "sucursal_id": "8441d036-6c00-52c9-97b9-6e928bb45766",
+        "cabina_allowed_users": [
+            {
+                "nivel": "view",
+                "user_id": "3bb346ce-7766-5488-bece-dc5f9c94c2ae"
+            },
+            {
+                "nivel": "use",
+                "user_id": "f6510f13-d5bb-5cf0-9cbc-c3a66b07bd54"
+            },
+            {
+                "nivel": "use",
+                "user_id": "8ca09446-266c-54f5-a510-097d244b04a0"
+            },
+            {
+                "nivel": "use",
+                "user_id": "3225f117-b4d6-514f-9b53-2b7962313255"
+            }
+        ]
+    },
+    {
+        "id": "fe7fa501-c263-5cb8-a169-ec24e7fb1e89",
+        "nombre": "Emperatriz Gomez",
+        "descripcion": "Peinados, faciales, texturizados",
+        "orden": 8,
+        "sucursal_id": "8441d036-6c00-52c9-97b9-6e928bb45766",
+        "cabina_allowed_users": [
+            {
+                "nivel": "use",
+                "user_id": "f6510f13-d5bb-5cf0-9cbc-c3a66b07bd54"
+            },
+            {
+                "nivel": "use",
+                "user_id": "8ca09446-266c-54f5-a510-097d244b04a0"
+            },
+            {
+                "nivel": "view",
+                "user_id": "f0b5b44e-a0f1-5e90-acb3-57fd1f1c22b6"
+            },
+            {
+                "nivel": "view",
+                "user_id": "3bb346ce-7766-5488-bece-dc5f9c94c2ae"
+            },
+            {
+                "nivel": "use",
+                "user_id": "3225f117-b4d6-514f-9b53-2b7962313255"
+            }
+        ]
+    },
+    {
+        "id": "a74fce74-e695-5862-83b7-d7d61ffdcd00",
+        "nombre": "Jharolin Méndez",
+        "descripcion": "Maricure y pedicure",
+        "orden": 9,
+        "sucursal_id": "8441d036-6c00-52c9-97b9-6e928bb45766",
+        "cabina_allowed_users": [
+            {
+                "nivel": "use",
+                "user_id": "f6510f13-d5bb-5cf0-9cbc-c3a66b07bd54"
+            },
+            {
+                "nivel": "use",
+                "user_id": "8ca09446-266c-54f5-a510-097d244b04a0"
+            },
+            {
+                "nivel": "view",
+                "user_id": "3bb346ce-7766-5488-bece-dc5f9c94c2ae"
+            },
+            {
+                "nivel": "use",
+                "user_id": "3225f117-b4d6-514f-9b53-2b7962313255"
+            }
+        ]
+    },
+    {
+        "id": "7add5560-b79f-5324-9833-586a02c3990f",
+        "nombre": "Eventos Franchesko",
+        "descripcion": "reuniones y actividades de Franchesko",
+        "orden": 17,
+        "sucursal_id": "3424650d-ce9f-55f2-a287-a3d7e4f69a16",
+        "cabina_allowed_users": []
+    }
+]

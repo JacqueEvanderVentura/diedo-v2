@@ -12,7 +12,7 @@ describe('quoteDocuments', () => {
     expect(parseDocFilter('facturas')).toBe('invoices')
   })
 
-  it('arma filas de cotizaciones abiertas y facturas', () => {
+  it('arma filas de cotizaciones abiertas, facturadas y facturas', () => {
     const rows = buildCrmDocumentRows({
       quotes: [
         { id: 'q1', number: 'COT-1', createdAt: '2026-01-02', total: 100 },
@@ -21,17 +21,22 @@ describe('quoteDocuments', () => {
       crmSales: [{ id: 's1', number: 'VTA-1', createdAt: '2026-01-03', total: 200, method: 'efectivo', status: 'completed' }],
       receivables: [],
     })
-    expect(rows.some((row) => row.kind === 'quote' && row.quote.id === 'q1')).toBe(true)
-    expect(rows.some((row) => row.kind === 'quote' && row.quote.id === 'q2')).toBe(false)
+    expect(rows.some((row) => row.kind === 'quote' && row.quote.id === 'q1' && !row.invoiced)).toBe(true)
+    const invoicedQuote = rows.find((row) => row.kind === 'quote' && row.quote.id === 'q2')
+    expect(invoicedQuote?.invoiced).toBe(true)
+    expect(invoicedQuote?.saleId).toBe('s1')
     expect(rows.some((row) => row.kind === 'invoice' && row.sale.id === 's1')).toBe(true)
+    expect(filterDocumentRows(rows, 'quotes').some((row) => row.quote?.id === 'q2')).toBe(true)
+    expect(filterDocumentRows(rows, 'all').some((row) => row.kind === 'quote' && row.quote?.id === 'q2')).toBe(false)
   })
 
   it('filtra por tipo de documento', () => {
     const rows = [
       { kind: 'quote', id: 'quote-1' },
+      { kind: 'quote', id: 'quote-2', invoiced: true, saleId: 'sale-1' },
       { kind: 'invoice', id: 'sale-1', pendingCxc: true },
     ]
-    expect(filterDocumentRows(rows, 'quotes')).toHaveLength(1)
+    expect(filterDocumentRows(rows, 'quotes')).toHaveLength(2)
     expect(filterDocumentRows(rows, 'invoices')).toHaveLength(1)
     expect(filterDocumentRows(rows, 'all')).toHaveLength(2)
   })

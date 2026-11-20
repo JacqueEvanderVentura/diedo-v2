@@ -5,10 +5,10 @@ from decimal import Decimal
 from uuid import UUID
 
 from app.schemas.common import ApiModel
-from app.schemas.public_booking import PublicAppointmentSummary, PublicCustomerProfileResponse
+from app.schemas.public_booking import PublicAppointmentSummary, PublicIdentifyResponse
 
 
-class PublicPortalMeResponse(PublicCustomerProfileResponse):
+class PublicPortalMeResponse(PublicIdentifyResponse):
     pass
 
 

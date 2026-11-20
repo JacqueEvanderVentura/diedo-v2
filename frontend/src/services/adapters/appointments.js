@@ -157,6 +157,9 @@ export function appointmentToApiPayload(data) {
     repeatCount: data.recurrence === 'none' ? 1 : Number(data.repeatCount) || 1,
     source: data.source || 'staff',
   }
+  if (data.allowOutsideEmployeeSchedule === true) {
+    payload.allowOutsideEmployeeSchedule = true
+  }
   if (status === 'cumplida') {
     payload.completedAt = data.completedAt || new Date().toISOString()
     payload.completionPunctuality = data.completionPunctuality || 'on_time'
@@ -194,6 +197,7 @@ export function appointmentPatchToApiPayload(data, version) {
     firstTime: payload.firstTime,
     freeTrial: payload.freeTrial,
     anyAvailable: payload.anyAvailable,
+    ...(payload.allowOutsideEmployeeSchedule ? { allowOutsideEmployeeSchedule: true } : {}),
     version,
   }
 }

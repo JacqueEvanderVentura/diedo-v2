@@ -11,6 +11,11 @@ from app.schemas.booking_policy import (
     PublicBookingLeadMinutes,
 )
 from app.schemas.common import ApiModel
+from app.services.fiscal_receipts import (
+    normalize_credit_fiscal_prefix,
+    normalize_credit_fiscal_sequence,
+    validate_credit_fiscal_sequence_pair,
+)
 
 PaymentChannel = Literal[
     "cash",
@@ -287,6 +292,8 @@ class BranchResponse(ApiModel):
     online_booking_selectable: bool = False
     public_booking_min_lead_minutes: PublicBookingLeadMinutes = DEFAULT_PUBLIC_BOOKING_LEAD_MINUTES
     public_cancel_min_lead_minutes: PublicBookingLeadMinutes = DEFAULT_PUBLIC_BOOKING_LEAD_MINUTES
+    fiscal_credit_ncf_prefix: str | None = None
+    fiscal_credit_ncf_next_sequence: str | None = None
     version: int
 
 
@@ -318,7 +325,32 @@ class UpdateBranchRequest(ApiModel):
     online_booking_selectable: bool | None = None
     public_booking_min_lead_minutes: PublicBookingLeadMinutes | None = None
     public_cancel_min_lead_minutes: PublicBookingLeadMinutes | None = None
+    fiscal_credit_ncf_prefix: str | None = None
+    fiscal_credit_ncf_next_sequence: str | None = None
     version: int = Field(ge=1)
+
+    @field_validator("fiscal_credit_ncf_prefix")
+    @classmethod
+    def normalize_fiscal_credit_ncf_prefix(cls, value: str | None) -> str | None:
+        return normalize_credit_fiscal_prefix(value)
+
+    @field_validator("fiscal_credit_ncf_next_sequence", mode="before")
+    @classmethod
+    def normalize_fiscal_credit_ncf_next_sequence(cls, value: object) -> str | None:
+        return normalize_credit_fiscal_sequence(value)
+
+    @model_validator(mode="after")
+    def validate_fiscal_credit_ncf_pair(self) -> UpdateBranchRequest:
+        prefix_set = "fiscal_credit_ncf_prefix" in self.model_fields_set
+        sequence_set = "fiscal_credit_ncf_next_sequence" in self.model_fields_set
+        if prefix_set != sequence_set:
+            raise ValueError("El prefijo y la próxima secuencia deben enviarse juntos.")
+        if prefix_set:
+            validate_credit_fiscal_sequence_pair(
+                self.fiscal_credit_ncf_prefix,
+                self.fiscal_credit_ncf_next_sequence,
+            )
+        return self
 
 
 class UpdateBranchLegalEntityAssignmentRequest(ApiModel):

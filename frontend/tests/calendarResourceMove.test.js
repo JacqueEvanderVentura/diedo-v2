@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  appointmentMoveConfirmMessage,
   explainAppointmentResourceMove,
   findResourceSharing,
   resourceCapacityMessage,
   resourcePeakOccupancy,
+  sharedEmployeeOutsideScheduleConfirmMessage,
   sharedResourceWarning,
 } from '@/modules/agenda/lib/calendarResourceMove'
 
@@ -25,6 +27,39 @@ const cab2 = { id: 'cab2', name: 'Cabina 2', access: 'edit', active: true }
 function occupant(id, time, duration, customerName, status = 'confirmada') {
   return { id, date: DATE, time, duration, cabinaId: 'cab2', status, customerName }
 }
+
+describe('sharedEmployeeOutsideScheduleConfirmMessage', () => {
+  it('names the employee in the override prompt', () => {
+    expect(sharedEmployeeOutsideScheduleConfirmMessage({ employeeName: 'Laura' })).toBe(
+      'Este horario está fuera del horario designado para Laura. ¿Seguro que deseas continuar?',
+    )
+    expect(sharedEmployeeOutsideScheduleConfirmMessage()).toContain('este colaborador')
+  })
+})
+
+describe('appointmentMoveConfirmMessage', () => {
+  it('builds move copy for cabina and time changes', () => {
+    expect(appointmentMoveConfirmMessage({
+      customerName: 'Barba Roja Barber Shop',
+      fromTime: '08:00',
+      fromResourceName: 'Cabina 1',
+      toTime: '09:30',
+      toResourceName: 'Cabina 2',
+    })).toBe(
+      '¿Mover Barba Roja Barber Shop de las 08:00 en Cabina 1 a 09:30 en Cabina 2?',
+    )
+  })
+
+  it('uses fallbacks for missing customer and origin cabina', () => {
+    expect(appointmentMoveConfirmMessage({
+      customerName: '',
+      fromTime: '10:00:00',
+      fromResourceName: '',
+      toTime: '10:30',
+      toResourceName: 'Cabina 3',
+    })).toBe('¿Mover esta cita de las 10:00 en Sin cabina a 10:30 en Cabina 3?')
+  })
+})
 
 describe('explainAppointmentResourceMove', () => {
   it('allows moving to a free cabina at the same time', () => {

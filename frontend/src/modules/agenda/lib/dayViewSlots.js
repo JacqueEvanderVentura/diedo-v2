@@ -1,7 +1,5 @@
 import { normalizeAppointmentTime, timeRangesOverlap } from '@/modules/agenda/lib/selfBooking'
 import { normalizeAppointmentStatus } from '@/modules/agenda/lib/completion'
-import { SHARED_RESOURCE_CAPACITY } from '@/modules/agenda/lib/calendarResourceMove'
-
 export const CALENDAR_SLOT_MINUTES = 30
 export const CALENDAR_ROW_PX = 88
 /** Vertical padding on slot cells (`p-1` = 8px total). */
@@ -149,21 +147,9 @@ export function slotLaneCount(overlappingAppointments, laneCountById) {
   )
 }
 
-/**
- * Keep a clickable empty lane while the cabin still has confirmed capacity.
- * Fulfilled/cancelled cards can already occupy painted lanes, so this adds one
- * extra bookable column whenever occupancy is between 1 and capacity-1.
- */
-export function bookableSlotLaneCount({
-  paintedLaneCount,
-  confirmedOccupancy,
-  capacity = SHARED_RESOURCE_CAPACITY,
-  canBook = true,
-}) {
-  const painted = Math.max(1, Number(paintedLaneCount) || 1)
-  const occupancy = Math.max(0, Number(confirmedOccupancy) || 0)
-  if (!canBook || occupancy <= 0 || occupancy >= capacity) return painted
-  return Math.max(painted, occupancy) + 1
+/** Lanes to render for a slot: only painted appointments, no spare bookable column. */
+export function bookableSlotLaneCount({ paintedLaneCount }) {
+  return Math.max(1, Number(paintedLaneCount) || 1)
 }
 
 export function calendarRowSpan(durationMinutes = 30, slotMinutes = CALENDAR_SLOT_MINUTES) {

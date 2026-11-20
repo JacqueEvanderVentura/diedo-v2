@@ -56,10 +56,19 @@ import {
   EMPTY_CART_PATCH,
 } from '@/modules/pos/lib/openAccount'
 import { currentSessionActor } from '@/lib/sessionActor'
+import { syncWorkspacePaymentMethods } from '@/lib/paymentMethodsSync'
 
 const DEFAULT_CUSTOMER = WALK_IN_CUSTOMER
 const now = () => new Date().toISOString()
 const genId = (p) => `${p}-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
+
+function paymentMethodsForManualMovement(method) {
+  const methods = useConfigStore.getState().paymentMethods
+  if (method || methods.some((item) => item.apiId)) {
+    return Promise.resolve(methods)
+  }
+  return syncWorkspacePaymentMethods()
+}
 
 function cartItemsWithCatalogTax(items, fallbackTaxPct = 18) {
   const products = useCatalogStore.getState().products
@@ -94,6 +103,52 @@ const API_UNAVAILABLE = 'La API no está disponible.'
 
 function assertOnline() {
   if (!isOnlineMode()) throw new Error(API_UNAVAILABLE)
+}
+
+async function resolveOnlineSale(get, id, fallbackSale) {
+  let sale = get().sales.find((item) => item.id === id)
+    || get().shiftSales.find((item) => item.id === id)
+    || (fallbackSale?.id === id ? fallbackSale : null)
+  if (!sale?.apiSynced && isOnlineMode()) {
+    try {
+      sale = mapSaleFromApi(await posApi.getSale(id))
+    } catch {
+      sale = sale || null
+    }
+  }
+  return sale
+}
+
+function upsertSaleInLists(state, id, next) {
+  const patchSale = (item) => (item.id === id ? { ...item, ...next } : item)
+  return {
+    sales: state.sales.some((item) => item.id === id)
+      ? state.sales.map(patchSale)
+      : [next, ...state.sales],
+    shiftSales: state.shiftSales.some((item) => item.id === id)
+      ? state.shiftSales.map(patchSale)
+      : state.shiftSales,
+  }
+}
+
+function syncCrmSale(id, patch) {
+  import('@/stores/crmStore').then(({ useCrmStore }) => {
+    useCrmStore.setState((state) => {
+      const exists = state.sales.some((item) => item.id === id)
+      if (!exists) return { sales: [patch, ...state.sales] }
+      return {
+        sales: state.sales.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+      }
+    })
+  }).catch(() => {})
+}
+
+function removeCrmSale(id) {
+  import('@/stores/crmStore').then(({ useCrmStore }) => {
+    useCrmStore.setState((state) => ({
+      sales: state.sales.filter((item) => item.id !== id),
+    }))
+  }).catch(() => {})
 }
 
 function serializableAttemptPayload(value) {
@@ -1644,17 +1699,19 @@ export const usePosStore = create(
           const register = get().register
           if (!register?.id) return Promise.reject(new Error('Abre la caja antes de registrar movimientos.'))
           const data = { concept, amount, method, reference }
-          const payload = movementToApiPayload(data, {
-            ...get(),
-            paymentMethods: useConfigStore.getState().paymentMethods,
-          }, 'income')
-          return runOnlineMutation({
-            set,
-            get,
-            operation: `register:movement:income:${register.id}`,
-            payload,
-            refreshScope: 'caja',
-            request: (idempotencyKey) => posApi.createRegisterMovement(register.id, payload, { idempotencyKey }),
+          return paymentMethodsForManualMovement(method).then((paymentMethods) => {
+            const payload = movementToApiPayload(data, {
+              ...get(),
+              paymentMethods,
+            }, 'income')
+            return runOnlineMutation({
+              set,
+              get,
+              operation: `register:movement:income:${register.id}`,
+              payload,
+              refreshScope: 'caja',
+              request: (idempotencyKey) => posApi.createRegisterMovement(register.id, payload, { idempotencyKey }),
+            })
           })
         }
         set((s) => {
@@ -1677,18 +1734,20 @@ export const usePosStore = create(
           const register = get().register
           if (!register?.id) return Promise.reject(new Error('Abre la caja antes de registrar movimientos.'))
           const data = { concept, amount, method, reference, items }
-          const payload = movementToApiPayload(data, {
-            ...get(),
-            paymentMethods: useConfigStore.getState().paymentMethods,
-          }, 'expense')
-          return runOnlineMutation({
-            set,
-            get,
-            operation: `register:movement:expense:${register.id}`,
-            payload,
-            refreshScope: 'caja',
-            request: (idempotencyKey) => posApi.createRegisterMovement(register.id, payload, { idempotencyKey }),
-          }).then((response) => mapCashMovementFromApi(response))
+          return paymentMethodsForManualMovement(method).then((paymentMethods) => {
+            const payload = movementToApiPayload(data, {
+              ...get(),
+              paymentMethods,
+            }, 'expense')
+            return runOnlineMutation({
+              set,
+              get,
+              operation: `register:movement:expense:${register.id}`,
+              payload,
+              refreshScope: 'caja',
+              request: (idempotencyKey) => posApi.createRegisterMovement(register.id, payload, { idempotencyKey }),
+            }).then((response) => mapCashMovementFromApi(response))
+          })
         }
         const entry = {
           id: genId('exp'),
@@ -1705,10 +1764,10 @@ export const usePosStore = create(
         return entry
       },
 
-      recordSale: ({ total, method, customer, reference, items, subtotal, discountAmt, discountPct, taxPct, taxAmt }) => {
+      recordSale: ({ total, method, customer, reference, items, subtotal, discountAmt, discountPct, taxPct, taxAmt, emitNcf = false }) => {
         assertOnline()
         if (isOnlineMode()) {
-          const data = { total, method, customer, reference, items, subtotal, discountAmt, discountPct, taxPct, taxAmt }
+          const data = { total, method, customer, reference, items, subtotal, discountAmt, discountPct, taxPct, taxAmt, emitNcf }
           const state = {
             ...get(),
             paymentMethods: useConfigStore.getState().paymentMethods,
@@ -1796,11 +1855,10 @@ export const usePosStore = create(
         return id
       },
 
-      voidSale: (id, reason) => {
-        const sale = get().sales.find((item) => item.id === id)
-          || get().shiftSales.find((item) => item.id === id)
-        if (!sale) return false
+      voidSale: async (id, reason, fallbackSale) => {
         assertOnline()
+        const sale = await resolveOnlineSale(get, id, fallbackSale)
+        if (!sale) return false
         if (!sale.apiSynced) {
           const voidedAt = now()
           set((state) => ({
@@ -1831,9 +1889,15 @@ export const usePosStore = create(
               voidReason: response?.voidReason || reason || null,
               version: response?.version ?? sale.version,
             }
+            const patchSale = (item) => (item.id === id ? { ...item, ...voidPatch } : item)
+            const inSales = state.sales.some((item) => item.id === id)
             return {
-              sales: state.sales.map((item) => item.id === id ? { ...item, ...voidPatch } : item),
-              shiftSales: state.shiftSales.map((item) => item.id === id ? { ...item, ...voidPatch } : item),
+              sales: inSales
+                ? state.sales.map(patchSale)
+                : [{ ...sale, ...voidPatch }, ...state.sales],
+              shiftSales: state.shiftSales.some((item) => item.id === id)
+                ? state.shiftSales.map(patchSale)
+                : state.shiftSales,
               cashSales: Math.max(0, state.cashSales - cashDelta),
               register: cashDelta && state.register.expectedCash != null
                 ? { ...state.register, expectedCash: state.register.expectedCash - cashDelta }
@@ -1843,9 +1907,8 @@ export const usePosStore = create(
         })
       },
 
-      updateSale: (id, form) => {
-        const sale = get().sales.find((item) => item.id === id)
-          || get().shiftSales.find((item) => item.id === id)
+      updateSale: async (id, form, fallbackSale) => {
+        const sale = await resolveOnlineSale(get, id, fallbackSale)
         if (!sale?.apiSynced || !isOnlineMode()) {
           throw new Error('Solo puedes editar facturas sincronizadas en línea.')
         }
@@ -1864,17 +1927,15 @@ export const usePosStore = create(
           apply: (response) => {
             const updated = mapSaleFromApi(response)
             if (!updated?.id) return
-            set((prev) => ({
-              sales: prev.sales.map((item) => (item.id === id ? { ...item, ...updated } : item)),
-              shiftSales: prev.shiftSales.map((item) => (item.id === id ? { ...item, ...updated } : item)),
-            }))
+            const next = { ...sale, ...updated }
+            set((prev) => upsertSaleInLists(prev, id, next))
+            syncCrmSale(id, next)
           },
         })
       },
 
-      deleteSale: (id) => {
-        const sale = get().sales.find((item) => item.id === id)
-          || get().shiftSales.find((item) => item.id === id)
+      deleteSale: async (id, fallbackSale) => {
+        const sale = await resolveOnlineSale(get, id, fallbackSale)
         if (!sale?.apiSynced || !isOnlineMode()) {
           throw new Error('Solo puedes eliminar facturas sincronizadas en línea.')
         }
@@ -1887,10 +1948,13 @@ export const usePosStore = create(
             version: sale.version,
             idempotencyKey,
           }),
-          apply: () => set((prev) => ({
-            sales: prev.sales.filter((item) => item.id !== id),
-            shiftSales: prev.shiftSales.filter((item) => item.id !== id),
-          })),
+          apply: () => {
+            set((prev) => ({
+              sales: prev.sales.filter((item) => item.id !== id),
+              shiftSales: prev.shiftSales.filter((item) => item.id !== id),
+            }))
+            removeCrmSale(id)
+          },
         })
       },
 

@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   branchAssignmentToApi,
   branchErrorTarget,
+  branchFiscalSequencePatchToApi,
   branchGeneralPatchToApi,
   branchPartnersPatchToApi,
+  formatCreditFiscalNcf,
+  nextCreditFiscalSequence,
   createBranchToApi,
   fiscalProfileToApi,
   legalEntityReferencesFromBranches,
@@ -235,5 +238,57 @@ describe('administration adapters', () => {
     expect(branchErrorTarget('taxIdentity.identifierValue')).toEqual({ tab: 'fiscal', field: 'rnc' })
     expect(branchErrorTarget('assignment.fiscalProfile.effectiveFrom')).toEqual({ tab: 'fiscal', field: 'fiscalEffectiveFrom' })
     expect(branchErrorTarget('details.partners')).toEqual({ tab: 'socios', field: 'partners' })
+    expect(branchErrorTarget('fiscalCreditNcfPrefix')).toEqual({
+      tab: 'fiscal',
+      field: 'fiscalCreditNcfPrefix',
+    })
+    expect(branchErrorTarget('fiscal_credit_ncf_next_sequence')).toEqual({
+      tab: 'fiscal',
+      field: 'fiscalCreditNcfNextSequence',
+    })
+  })
+
+  it('formatea el NCF B01 y arma el parche de la próxima secuencia', () => {
+    expect(formatCreditFiscalNcf('b01', '00000040')).toBe('B0100000040')
+    expect(nextCreditFiscalSequence('00000040')).toBe('00000041')
+    expect(formatCreditFiscalNcf('B01', '0000000040')).toBe('B010000000040')
+    expect(formatCreditFiscalNcf('B01', '40')).toBe('')
+    expect(formatCreditFiscalNcf('B01', '1'.repeat(21))).toBe('')
+    expect(formatCreditFiscalNcf('B02', '00000040')).toBe('')
+
+    const branch = { version: 4, fiscalCreditNcfPrefix: null, fiscalCreditNcfNextSequence: null }
+    expect(branchFiscalSequencePatchToApi({
+      fiscalCreditNcfPrefix: 'B01',
+      fiscalCreditNcfNextSequence: '00000040',
+    }, branch)).toEqual({
+      fiscalCreditNcfPrefix: 'B01',
+      fiscalCreditNcfNextSequence: '00000040',
+      version: 4,
+    })
+    expect(branchFiscalSequencePatchToApi({
+      fiscalCreditNcfPrefix: 'B01',
+      fiscalCreditNcfNextSequence: '',
+    }, branch)).toBeNull()
+    expect(branchFiscalSequencePatchToApi({
+      fiscalCreditNcfPrefix: 'B01',
+      fiscalCreditNcfNextSequence: '',
+    }, { ...branch, fiscalCreditNcfPrefix: 'B01', fiscalCreditNcfNextSequence: '00000040' })).toEqual({
+      fiscalCreditNcfPrefix: null,
+      fiscalCreditNcfNextSequence: null,
+      version: 4,
+    })
+  })
+
+  it('mapea la secuencia fiscal de la sucursal', () => {
+    const [branch] = mapBranchesFromApi([{
+      ...apiBranches[0],
+      fiscalCreditNcfPrefix: 'B01',
+      fiscalCreditNcfNextSequence: '00000040',
+    }], [mapLegalEntityFromApi(apiEntity)])
+
+    expect(branch.fiscalCreditNcfPrefix).toBe('B01')
+    expect(branch.fiscalCreditNcfNextSequence).toBe('00000040')
+    expect(formatCreditFiscalNcf(branch.fiscalCreditNcfPrefix, branch.fiscalCreditNcfNextSequence))
+      .toBe('B0100000040')
   })
 })

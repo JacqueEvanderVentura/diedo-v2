@@ -1,0 +1,98 @@
+[
+    {
+        "id": "2482104b-33ae-5c1a-930f-377ea0ca2fc0",
+        "name": "Operaciones",
+        "sucursal_id": "41ba9d52-09cb-5270-910d-c36a47c45bb2",
+        "budget": 15000.00
+    },
+    {
+        "id": "38a09b1b-4c68-5fc7-9990-b8695e734ac2",
+        "name": "Marketing",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "budget": 10000.00
+    },
+    {
+        "id": "63dbd711-ab73-58c4-8b67-35bfbb38636c",
+        "name": "Columna Del Orbe",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "budget": 0.00
+    },
+    {
+        "id": "964028f5-0fbe-5290-a244-a00a2a85f92c",
+        "name": "RH & Nómina",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "budget": 20000.00
+    },
+    {
+        "id": "4d95881a-f325-592a-be2c-7fb61e63ce87",
+        "name": "Operaciones",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "budget": 15000.00
+    },
+    {
+        "id": "2d6a45f3-a384-5ff1-9cd6-c6e92525dddf",
+        "name": "RH & Nómina",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "budget": 20000.00
+    },
+    {
+        "id": "576dbea1-f7f6-537e-a7fc-5cb103712f36",
+        "name": "IT & Infraestructura",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "budget": 5000.00
+    },
+    {
+        "id": "a1c4293d-c2e1-5809-a429-74a4c165e491",
+        "name": "Marketing",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "budget": 10000.00
+    },
+    {
+        "id": "800ec6c0-2e9d-5657-8a09-276e9f05e1fe",
+        "name": "IT & Infraestructura",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "budget": 5000.00
+    },
+    {
+        "id": "c2870845-3440-5cb4-b274-978d9d57f591",
+        "name": "Operaciones",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "budget": 15000.00
+    },
+    {
+        "id": "65145f47-848b-5124-9278-0c92e8506005",
+        "name": "I+D",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "budget": 3000.00
+    },
+    {
+        "id": "f70cbcf7-c456-59be-a78c-bd1dc1e427ae",
+        "name": "IT & Infraestructura",
+        "sucursal_id": "41ba9d52-09cb-5270-910d-c36a47c45bb2",
+        "budget": 5000.00
+    },
+    {
+        "id": "77125660-e889-58e3-a5c2-c915911af811",
+        "name": "Marketing",
+        "sucursal_id": "41ba9d52-09cb-5270-910d-c36a47c45bb2",
+        "budget": 10000.00
+    },
+    {
+        "id": "a0a87dbe-6d59-5443-9801-1906494d9048",
+        "name": "RH & Nómina",
+        "sucursal_id": "41ba9d52-09cb-5270-910d-c36a47c45bb2",
+        "budget": 20000.00
+    },
+    {
+        "id": "7d77e03a-38c4-55e8-b031-9da7654e9979",
+        "name": "I+D",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "budget": 3000.00
+    },
+    {
+        "id": "0e8fd9d2-e16e-5329-901e-114fb76d01cd",
+        "name": "I+D",
+        "sucursal_id": "41ba9d52-09cb-5270-910d-c36a47c45bb2",
+        "budget": 3000.00
+    }
+]

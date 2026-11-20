@@ -1,0 +1,613 @@
+﻿externalId,date,time,duration,customerName,customerPhone,customerEmail,documentType,documentId,serviceName,resourceName,specialistName,price,notes
+import-c5bddfce-0b53-441f-9a03-c81908bfaa25,2026-10-19,10:00,30,Eunice Sencion,809-453-8149,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,Ruby Arleny  Paredes de los Santos,0,
+import-df836de0-a691-5f88-8209-ae9775dda182,2026-10-19,10:00,30,Rosalvic Garrido,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-8da452c5-1a92-53b3-8c06-36f52fa92ca5,2026-10-19,10:30,30,Sagine Guillaume,8496521713,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-e941220e-7b39-5e68-9554-4a338d66cf01,2026-10-19,11:00,30,Bianny González,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-05be4b4e-fec8-5a93-9651-3e6b0a7a99ec,2026-10-19,11:30,90,José Vargas Villar,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,"El cliente dura 1hora y 30minutos en cabina por favor no poner a nadie más a esa misma hora, gracias  | Importación Cheko: cancelada en origen"
+import-dfdaa4d0-009a-506a-9c55-8369e2d11148,2026-10-19,13:00,30,Rosaira Martinez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-00deef6e-5174-5b13-960b-727662e044dd,2026-10-19,13:30,30,Elianny German,849-883-3526,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-779fe7bf-c51c-561e-bedb-45a756991e96,2026-10-19,14:00,30,Ericka Michelle Ruiz,+1 (849) 595-2563,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,Importación Cheko: cancelada en origen
+import-a48fa92f-bdfe-4723-81ac-c194289bdf15,2026-10-19,14:00,30,Daison Cabral,+1 (849) 330-5680,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-95868ab3-9955-4006-9120-6c2ede6a7e5d,2026-10-19,14:30,30,Zaynab Castillo,829-528-8535,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-7c42c336-1e81-41ce-83db-d0ab307dce09,2026-10-19,15:00,30,Ana Silvia Perez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-39bb4fb3-7301-4867-85a0-a2624a3d65db,2026-10-19,15:30,30,Sheymar Bravo,8497635115,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Ruby Arleny  Paredes de los Santos,0,
+import-41991aef-21cc-51b0-8af5-a1f81eafa63a,2026-10-19,15:30,30,Shauny Jiménez,8293412351,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-d087f338-1f34-4692-8fe2-a3f489e158c1,2026-10-19,16:00,30,Clara Ivette Castro,8298582812,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-ef918e76-c98c-419d-ba58-2c4939b6b4eb,2026-10-19,16:00,30,Cheila Bravo,8294669530,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Ruby Arleny  Paredes de los Santos,0,
+import-129ca5d3-b3e3-4c2f-88c2-264ac0c41bd1,2026-10-19,16:30,30,Yuleana Garrido,,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-0ac844f4-2be7-5969-a228-b351854cfd03,2026-10-19,17:00,30,Ashley Cortes,+1 (829) 679-7351,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-0eba574d-d197-4598-8289-f04c0c802141,2026-10-19,17:00,30,Wendi Diaz,829-393-0009,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-a983d360-3b2a-448b-9214-18f0ba47b97f,2026-10-19,17:30,30,Ana Silvia Perez,,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-38317887-2d54-51f4-83ee-5680f07d6c8b,2026-10-19,18:00,30,Alanna Guzman,8094975601,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,Importación Cheko: cancelada en origen
+import-819fa5d7-7659-4460-8b28-f9b08ec55412,2026-10-19,18:00,30,Elianne Perez,809-968-1714,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,Ruby Arleny  Paredes de los Santos,0,Axilas
+import-1d4366ae-d646-5abb-b4a2-ab533a795320,2026-10-19,18:30,30,Alanna Ramirez,8099723348,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-621b8a1b-61df-54a8-9b3a-ccef4220573f,2026-10-20,10:00,30,Emely Cordero Mendez,849-252-8152,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,Importación Cheko: cancelada en origen
+import-98f4e2bb-549c-5553-8353-590aef61e6ba,2026-10-20,10:30,30,Milena Fabre,8499258505,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,Importación Cheko: cancelada en origen
+import-65f58eeb-293f-4339-b4db-06b9005c80fd,2026-10-20,11:00,30,Wanda Melo,8295249871,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-47c6d6da-ebd7-46b4-a838-866afa23a4b3,2026-10-20,12:00,30,Arlenis Martinez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-c656c638-a9e1-4be4-82b1-dfa36a1502fd,2026-10-20,12:30,30,Keila Gonzalez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-2ba3e109-07d0-5411-8196-5cb8ac9d8e96,2026-10-20,13:30,30,Mariela Hernández Reyes,‪+1 (829) 629‑1765‬,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-c56a2a83-8ea0-4f5b-9e03-0025ba845a39,2026-10-20,14:00,30,Nicole Aquino,8097167318,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-4f571dcc-c578-4c47-acf8-91eedfddb41e,2026-10-20,14:30,30,Sheslie Sena,917-858-3434,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-d9939f11-dde1-5fd7-b714-5c6774eeeaa4,2026-10-20,15:00,30,Alexandra Mendoza,8296582429,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-aca3059d-4526-5b0f-81b1-a9612d0b073e,2026-10-20,15:30,30,Yaritza Bazan,‪+1 (829) 977‑4766‬,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-aaef0f0b-abbd-58d8-a36a-9ca8183d0cb5,2026-10-20,16:00,30,Arelin Tineo,829-320-3950,,,,Paq. 12 sesiones - Cuerpo Completo,Cabina 1,,0,Rostro  | Importación Cheko: cancelada en origen
+import-868456b5-df9f-4018-83c2-ed616937bc1d,2026-10-20,16:30,30,Priscila Chala,8494493310,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-d376c8dd-8a38-48d0-a6ce-b60cd15d8b03,2026-10-20,17:00,30,Jenniffer Diaz,,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-90584ce3-6adf-43a7-8ef4-12acac6b27f8,2026-10-20,17:30,30,Pamela Fernandez,8493567996,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-f81ee14e-f488-5947-b586-1e24d51ea6b4,2026-10-20,17:30,30,Karla Mendez,829-301-9793,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-e9f9a45f-1e9a-508d-a0dc-7c96c0bd4dd6,2026-10-20,18:00,30,Rosa Taveras,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-dc25aae3-0322-54ee-a2b9-21c90ff9bce6,2026-10-20,18:30,30,Laurent Peralta,,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-a6771b37-74a7-424e-935d-48f16d986030,2026-10-21,10:00,30,Saury Encarnacion,+1 (829) 872-0457,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-d2eb051b-9605-5e4d-bb1e-497c03ef6e06,2026-10-21,10:30,30,Laura Rubio,849-590-0426,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-6c7bca30-c390-55e3-8553-166a99429e61,2026-10-21,11:00,30,Paola Ramos Pichardo,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-c688dbbf-9434-4be6-a722-7f347ec1a363,2026-10-21,11:30,30,Gisell Polanco,8098539075,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-8dc03c11-7742-4da9-aa2f-76efedb69e69,2026-10-21,12:00,30,Laura Rubio,849-590-0426,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,Ruby Arleny  Paredes de los Santos,0,
+import-f3c90d69-86b2-4f53-8cb6-29630846b198,2026-10-21,12:00,30,Mariela kelly,,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-62794c57-e809-4e13-bbe7-4b700059b20c,2026-10-21,12:30,30,Francisco Felix,,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-68121e99-bf54-51be-8dec-0475bb3dc474,2026-10-21,13:00,30,Petra Andreina Ferreras,8299744454,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-d5f4263f-24dc-51a5-aa71-4567e527d70a,2026-10-21,13:30,30,Melanie Peralta,,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-bb94f2a1-283e-4769-96ee-ef019fce2d73,2026-10-21,14:00,30,Marillely Gomez,809-309-4950,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-2c5cc2e8-d885-5b1d-a33d-c6519b00c5cc,2026-10-21,14:30,30,Lorainnys Hernandez,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-798a72a7-4d25-4f4d-b63b-9a23470e4880,2026-10-21,14:30,30,Lisa Florian,849-343-2800,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Ruby Arleny  Paredes de los Santos,0,
+import-f62ccc3a-82fb-503e-ab87-bca6046e34e3,2026-10-21,15:30,30,Rokenia De La Cruz,+1 (829) 861-3445,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,Importación Cheko: cancelada en origen
+import-cf89ae55-d693-58d5-b3d2-c011f58f4f11,2026-10-21,16:00,30,Mariela Medina,8492208341,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,Importación Cheko: cancelada en origen
+import-3802cac9-cc01-5d06-8e3a-ce37b274126d,2026-10-21,16:30,30,Ashley Cortes,+1 (829) 679-7351,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-970c7326-c132-427c-b108-a1b262b307bb,2026-10-21,17:00,30,Yaroldina Soto,8098607548,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-973d779f-b9cd-4510-a208-ac158a6fc278,2026-10-21,17:00,30,Laura German,,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-f8ab8214-4100-5d52-b03c-fd62c4b13fda,2026-10-21,17:30,30,Carla Sosa,849-633-5583,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,"La señorita Carla Sosa, se presentara 10 o 15 minutos tarde. | Importación Cheko: cancelada en origen"
+import-7da45aef-b637-594e-9f25-07a8fd4ec677,2026-10-21,18:00,30,Angel Montaño,829-537-8853,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,Importación Cheko: cancelada en origen
+import-c2695f97-cd5a-4715-96d5-ce741ae2a0e1,2026-10-21,18:00,30,Sally Ramírez,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-d68ff9a1-2f18-5480-8d48-8f7bd2c22278,2026-10-21,18:30,30,Laysha Adames,+1 (829) 353-0913,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-046ac7ac-7f13-4b4d-8a56-7f71e9e6b091,2026-10-22,10:00,30,Melissa Santos,809-996-4989,,,,Paq. 12 sesiones - Cuerpo Completo,Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-f6c3dc36-6219-46d3-9e6e-077113713abe,2026-10-22,10:30,30,Leslie Perez,829-860-1635,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,Ruby Arleny  Paredes de los Santos,0,
+import-454c183c-6418-5623-8ee6-2d4b9fab009e,2026-10-22,11:00,30,Mariela Ciprian,8493962917,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-0ce6facb-c980-42a6-a754-591ce0877252,2026-10-22,11:30,90,José Vargas Villar,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-39abe474-0e9b-4066-81ea-f789d34998f2,2026-10-22,13:30,30,Yaroldina Soto,8098607548,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-3c718f9e-ace7-561a-8dd7-db2172700907,2026-10-22,14:00,30,Jahziel Otaño,8298121006,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-b095256c-7ade-5fd4-8cad-2d8d78529301,2026-10-22,14:30,30,Nilcia Soriano,203-570-6493,,,,Cuerpo completo - pago,Auxiliar de Ventas,Ruby Arleny  Paredes de los Santos,0,
+import-d2c12567-d957-43bf-9fbc-801df9388166,2026-10-22,14:30,30,Genesis Castro,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-09089de0-30a7-4d6c-818c-f62312b06b1f,2026-10-22,15:00,30,Bianny González,,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-6db6cfe1-42f4-58c7-9d36-ec450a08ec18,2026-10-22,16:00,30,Leidy Rosado,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-4ab2863a-0f72-52d8-b600-0d97ec8c622b,2026-10-22,16:30,30,Crisly De La Cruz,8095028955,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-31a24f95-58a7-5fde-a72d-fab25fd78335,2026-10-22,17:00,30,Francis Calcaño,829-650-7212,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,Importación Cheko: cancelada en origen
+import-cf99172b-e868-4af4-b4f2-9135a5e12c44,2026-10-22,17:30,30,Pamela Fernandez,8493567996,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-2ebed9d5-032c-55f4-9e41-af1baad5f1e3,2026-10-22,18:00,30,Yomairy Fragoso,8296030129,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-b7b7fe6d-6950-53d2-9c7d-fdc0623d25c6,2026-10-22,18:30,30,Chantal Ortiz,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-90eda956-4cc9-46f7-9073-91166623bfee,2026-10-23,10:00,30,Amelia Rosario,829-619-6460,,,,Paq. 12 sesiones - Cuerpo Completo,Cabina 1,,0,Importación Cheko: cancelada en origen
+import-26ac614d-2a5d-56b3-9772-f8076cd856a6,2026-10-23,10:30,30,Karina Contreras,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-eac41e6f-9e9f-4b31-9acd-171b11aba394,2026-10-23,10:30,30,Nerolyn Cruz,829-854-3803,,,,Cuerpo completo - pago,Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-609496f7-28b4-56fb-92a5-9ad7621287a8,2026-10-23,11:00,30,Jessica Castillo,8494042107,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-86e5f32a-1a5b-5f99-9236-3aed0dc34291,2026-10-23,11:30,30,Kimberlly Reinoso,8297922315,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-219350c5-147f-4a2a-a78e-cb1f787ec582,2026-10-23,12:30,30,Chantal Jimenez,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-f1d7a4b5-9c1e-41b2-b50f-49eca32ba6c9,2026-10-23,14:00,30,Mariela Hernández Reyes,‪+1 (829) 629‑1765‬,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-c3294976-255a-4456-aa71-e91ea46acc96,2026-10-23,14:30,30,Yamilka Concepcion,809-465-3211,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-c3eed410-46f8-5634-94f8-9cb830834892,2026-10-23,15:00,30,Laryssa Ramirez,‪+1 (849) 407‑9713‬,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-84f04a84-3c20-5d4b-b3b1-ccda19c42faa,2026-10-23,15:30,30,Marilyn Valdez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-943c69f5-bde9-46ae-ab53-5ee78ceed9d1,2026-10-23,15:30,30,Odalina Del Carmen,809-602-2269,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-7f2f1359-a096-55bd-91fd-806560348d89,2026-10-23,16:00,30,Yarexi De La Rosa,8492556481,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-90ce0ff9-774b-5b48-b7cc-7a7a8c10cddb,2026-10-23,16:30,30,Fatima Reyes,9295769935,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-93cbe7db-ca6d-5e57-ac94-6d6b06db0818,2026-10-23,17:00,30,Raquel Jimenez,829-652-1410,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-1a46d04f-f2fd-4d14-8ec1-3815022d2546,2026-10-23,18:00,30,María Asunción Genao,849-859-7771,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-88187b45-3c3a-5d47-b9e0-1dfabdea86fc,2026-10-23,18:00,30,Madian Medrano,+1 (809) 861-5298,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-a1024a85-01ed-496a-95ac-94a37762b27f,2026-10-23,18:30,30,Arelin Tineo,829-320-3950,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-bdf857fe-64e7-5021-8622-cb39a593c0ba,2026-10-23,18:30,30,Genesis Rodriguez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-22bba95e-5527-5495-a26c-6bee9aae7f81,2026-10-24,10:00,30,Isamar Rojas,‪+1 (809) 634‑1754‬,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-eb802f82-bec4-40ba-8029-78199024dd6b,2026-10-24,10:00,30,Wisaira Rodriguez,+1 (809) 602-7805,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-9fae9aaa-723a-5a6c-ba88-2f3a30325e9d,2026-10-24,10:30,30,Arlette Baldera,849-330-1173,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-dce55c4b-8740-4f71-b102-874197fa4f43,2026-10-24,10:30,30,Greysi Pimentel,,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-e54f1f02-3e5f-57e9-856e-cc2b0913821f,2026-10-24,11:00,30,Yuleisy Mejía,8296766204,,,,Sesión Individual,Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-4a26bcc5-fece-42a5-9653-ebf1206c01c0,2026-10-24,11:30,30,Sagine Guillaume,8496521713,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Ruby Arleny  Paredes de los Santos,0,
+import-9b470d64-b5e1-5b23-b167-d8d32821d447,2026-10-24,11:30,30,Milleika Escalante,8299212055,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-04102cf4-f936-5549-8427-6a32234d77a9,2026-10-24,12:00,30,Francia Contreras,8294772703,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-bedc42f5-7546-5393-95ac-ee8074a0f972,2026-10-24,12:30,30,Aydee Sandoval,,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-f4f7d46d-82ac-5778-a138-06c914a5490a,2026-10-24,12:30,30,Aurelys Espejo,8494964463,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-482097f0-74ff-590e-b08b-b103d52f9d95,2026-10-24,13:00,30,Angely Vergara,,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-0a17412a-5a62-5203-b139-919a160e04c5,2026-10-24,13:30,30,Dilianny Lorenzo,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-4214bfcb-b23d-560d-95f3-2d963a2a170b,2026-10-24,13:30,30,Luisa Jimenez Espinosa,829-877-3752,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-dff1a524-a00d-5792-8956-3d1e4fe729b4,2026-10-24,14:00,30,Stephanie Perez Ureña,+1 (809) 454-5525,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-3ad46a63-75e0-587b-ac1c-d0b093c6124f,2026-10-24,14:30,30,Dangely Matos,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-6d136c5d-e8bb-449e-b590-606ebf49876f,2026-10-24,14:30,30,Genesis Ricon,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Ruby Arleny  Paredes de los Santos,0,
+import-52df5877-f486-4406-9860-a5813abe16d4,2026-10-24,15:00,30,Brendaliz Garcia,829-776-2826,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-8c1e3e5c-bbbe-596d-9ba0-f74171e6502e,2026-10-24,15:00,30,Erica Rosado,+1 (849) 886-2111,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-367aea5f-8143-59f3-aa38-95ab059843fd,2026-10-24,15:30,30,Alicia Alvarez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-fa86b908-bd79-43ba-87e4-4af0e29b99f5,2026-10-24,15:30,30,Katherine Coronel,‪+1 (849) 595‑3392‬,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-705ee6b9-1497-5dd7-a029-d4b4cba7d6a5,2026-10-24,16:00,30,Dormaris Jimenez SDE,,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-4f643ef9-d93b-507f-ba1b-9085795fbb6f,2026-10-24,16:30,30,Doris Diaz,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Ruby Arleny  Paredes de los Santos,0,
+import-844a2316-64b7-53f6-9e19-77ce3f023b49,2026-10-24,16:30,30,Kelliangel Sanchez,8293426776,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-2638e398-339e-5bf4-8615-45226c7a707a,2026-10-24,17:00,30,Yilda Salvatierra,8297221408,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-bab64dde-3577-53fd-a872-a917474033bd,2026-10-24,17:00,30,Sobeida Medina,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-9c8d7393-9c7f-4f8d-b1b0-6bbe238d094c,2026-10-24,17:30,30,Meredith Díaz,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-1fc2c8ed-0eec-4f67-ad53-b6648beb9d69,2026-10-24,18:30,30,Laysha Adames,+1 (829) 353-0913,,,,Sesión Individual,Auxiliar de Ventas,Ruby Arleny  Paredes de los Santos,0,
+import-a40f86ab-6aa0-5d32-b02b-05cc8e0a61e7,2026-10-24,18:30,30,Dominic Diaz,8292788009,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-09862483-7957-40d1-85bf-1c94422c3cf8,2026-10-26,10:00,30,Reinisel Zarzuela,829-429-3530,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-33eff680-9adb-4baf-9277-db18b604e3e2,2026-10-26,10:30,30,Joelissa Sanchez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-80e2bbd2-5b97-540b-9037-cce230e58ad6,2026-10-26,11:00,30,Whitney Montero,,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-15eeb8c3-07ba-4f55-a729-7dd94db60a37,2026-10-26,11:30,30,Paola Ramos Pichardo,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-dab98875-8955-5855-85cd-bebeb375ff9b,2026-10-26,12:00,30,Valeria Bello,(829) 655-5871,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-b831b2ab-7436-412d-bfa9-b30c9323e33f,2026-10-26,12:30,30,Amelia Rosario,829-619-6460,,,,Paq. 12 sesiones - Cuerpo Completo,Cabina 1,Loreinni Rosario Peña,0,
+import-fa9deae8-2a42-4f3d-8380-384217f46659,2026-10-26,13:00,30,Kimberly Sepulveda,8299198000,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-0d427965-eba9-55c1-a94c-923b8dae5c8d,2026-10-26,13:30,30,Dinanyily Cruz,8495386106,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-f16b9106-344b-536b-b16f-1eda26b65782,2026-10-26,14:00,30,Massiel Nuñez,809-787-2808,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-5669d631-9601-4419-ab49-332e05b19731,2026-10-26,14:30,30,Noriely Rivas Stgo,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-9ab089ae-2076-5da6-af79-0a3facecc811,2026-10-26,15:00,30,Jazmín meló,,,,,Cita de continuación (seguimiento),Cabina 1,Ruby Arleny  Paredes de los Santos,0,
+import-6a602074-5b17-5e15-813e-e1f32abeb43d,2026-10-26,15:30,30,Claudia Batista,829-604-8133,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-c795904b-18c3-4fd7-a667-e9d5efce326d,2026-10-26,16:00,30,Scarlett Herrera,829-731-7134,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-5629418f-e91f-41a2-805b-abc3a3560f86,2026-10-26,16:30,30,Angela Leonardo,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-5b8f2fb3-d645-41b3-a4d7-bd7306779f21,2026-10-26,16:30,30,Chaded Jimenez,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-16a98523-f89b-5a51-a25f-e94d6a80f3d6,2026-10-26,17:00,30,Melany Medina,849-254-0236,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-4fed5bd7-7c89-578e-a777-b6345e417b5c,2026-10-26,17:00,30,Cecilia Perez,,,,,Sesión Individual,Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-64c88cf4-1390-52cf-9be3-b3d9d2077446,2026-10-26,17:30,30,Karossky Silverio,+1 (849) 630-4040,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-3cb0b29b-739f-5177-b5ed-94283e8fef3d,2026-10-26,18:00,30,Digna Vargas,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-72d17aa4-9d9b-4c2e-8cff-5a690ff72b83,2026-10-26,18:00,30,Yuleisy mejia,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-8de95d2b-dbfa-4b51-bfcc-155fab7d7ba1,2026-10-26,18:00,30,Ashley Paulino,849-359-7001,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-f49feaa9-c019-530e-af5c-2c08a9d92e62,2026-10-26,18:30,30,Sindia Damian,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-98d2648f-ad3c-5340-808c-dd847b458f33,2026-10-27,13:00,30,Karla Encarnacion,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-45036640-51dc-4012-b4af-36a9b75f9a0d,2026-10-27,13:30,30,Litzy Nuñez,+1 (829) 491-1005,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-95520310-65f2-486a-ae60-8693d11d342e,2026-10-27,14:00,30,Natalia Isabel De La Rosa,8299885975,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-8e88df02-d255-4e6c-a26e-580a5ce15ab2,2026-10-27,14:30,30,Keila Gonzalez,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-a3cd6d50-6edf-4be4-9222-8814fefdc3d1,2026-10-27,15:00,30,Sindia Damian,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-ed14fc86-1672-4998-a9ca-ca469b4d2218,2026-10-27,15:30,30,Yamileisy Del Valle,8494275624,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-7b016470-aa0e-4224-b10d-df15f8416a4d,2026-10-27,16:00,30,Rosaira Martinez,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-2fc31d26-3651-4eac-b428-e4b4a91f0b1f,2026-10-27,16:30,30,Crisly De La Cruz,8095028955,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-028827ec-3dbe-4076-a245-a790cc19ec18,2026-10-27,17:00,30,Yokashi Gonzalez,8497076899,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-36a59643-c595-4052-ac8a-82b8b574ae0d,2026-10-27,17:30,30,Alanna Guzman,8094975601,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-5b42369b-7332-4f62-a7fe-61077b555b31,2026-10-27,18:00,30,Britney Cespedes,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-05361ff6-f7fa-4380-bbd9-9941d217456d,2026-10-27,18:30,30,Cecilia Perez,,,,,Sesión Individual,Cabina 1,Loreinni Rosario Peña,0,
+import-6dd9f897-f931-5292-acbe-a27b78900ded,2026-10-28,10:00,30,Laura Cedano,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,Importación Cheko: cancelada en origen
+import-c74716ab-772b-5672-b8cd-40ba7eceabee,2026-10-28,10:30,30,Patricia Michel Paniagua,829-381-7267,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-f2b51c67-6187-5f18-b39a-af0c442f4a27,2026-10-28,10:30,30,Isaree Pérez,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-7ae807d6-c764-589e-b2ff-74aa6495df95,2026-10-28,11:00,30,Yamileisy Del Valle,8494275624,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-62b8b9c9-02fb-5854-a502-3f5a4b81e1c7,2026-10-28,11:30,30,Maria toledo,8493564520,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-cd6f2047-5a3b-4939-9e0d-7aedf1cd2efb,2026-10-28,11:30,30,Milena Fabre,8499258505,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-21080b9b-32fe-457d-baff-b339819cd298,2026-10-28,12:00,30,Alianna Medina,518-364-5068,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-5de97aea-0c68-5860-845b-79549a1c7c17,2026-10-28,12:00,30,Nicole Then,8093777130,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,Importación Cheko: cancelada en origen
+import-3b5258c0-1c41-5f99-86c3-ed5ac6caef8b,2026-10-28,12:30,30,Emilio Guerrero,8297661702,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-27d6efcb-743e-501f-bf7b-bdd76ef667be,2026-10-28,13:30,30,Jorge Luis Jorge,8094024161,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-697799a2-267a-47c2-8f6b-c57bb36e2e43,2026-10-28,14:00,30,Nayelis Calderon,8492501812,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-b67a73fd-ed02-5d11-9dbc-8f506ebc4227,2026-10-28,15:00,30,Pedro Hernandez Isabel,849-523-2798,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-67e56cd1-a3dc-5687-94cd-8b268aeac686,2026-10-28,15:30,30,Gabriela Bencosme,+1 (829) 840-8005,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-cb2703d7-507e-508f-bde3-8199f1613bf1,2026-10-28,15:30,30,Victor Calzado,+1 (829) 676-5332,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-7955fefa-59e0-501c-8918-09ba4f4ce037,2026-10-28,16:00,30,Genesis Daniela Rosario,829-645-6243,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-cdf2b45d-59cd-4eb1-8909-1154899679ba,2026-10-28,16:30,30,Madison Palacios,829-692-0835,,,,Paq. 12 sesiones - Cuerpo Completo,Cabina 1,,0,Importación Cheko: cancelada en origen
+import-666abde8-c535-47d9-8eeb-fe3b2f938360,2026-10-28,17:00,30,Milleika Escalante,8299212055,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-3c9ebe8b-4e47-4b19-912d-d4b3e69b5dcb,2026-10-28,17:30,30,Gabrileiny Hernández,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-c126ffb5-3538-4425-8c76-de4281784f93,2026-10-28,17:30,30,Angel Montaño,829-537-8853,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-31cab76d-9c6e-49ff-a82f-86487a72acb8,2026-10-28,18:00,30,Priscila Chala,8494493310,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-ebb18216-079d-4dae-bfe1-a96040cf065f,2026-10-28,18:00,30,Sherlyn Polanco,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-7abf6f2e-152a-4a4c-854d-10bafe06e25d,2026-10-28,18:30,30,Carla Sosa,849-633-5583,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-10142478-c1cb-43d2-a78a-11424838f539,2026-10-29,10:00,30,Ambar De La Cruz,8097098091,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-d22d7e87-5825-5624-9693-095608b99bd9,2026-10-29,10:30,30,Nayelis Calderon,8492501812,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,Importación Cheko: cancelada en origen
+import-1f51e7f5-b077-432c-8b2a-81118332c0ef,2026-10-29,11:00,30,Stephanie Villar,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-a8b0806e-6576-4286-bfa4-f7c9560f8c75,2026-10-29,11:00,30,Rosa Ramirez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-b70be7cf-9542-55b8-975a-410c0be5f548,2026-10-29,11:30,30,Marielis Familia,829-647-9172,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-5ed710ef-e14e-5296-ad49-e99c23d9f9cb,2026-10-29,12:00,30,Washly Gabriela Sanchez Grullon,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,
+import-30ad57bc-e1b3-4bc1-b5c5-d5ed490501b6,2026-10-29,12:30,30,Eymmy Veras,+1 (849) 362-6813,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-ea808b5d-435d-4958-bc2a-a975d1185b46,2026-10-29,13:00,30,Litzy Nuñez,+1 (829) 491-1005,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-e826a39b-36cf-45b3-8f82-4dbdb8a722e8,2026-10-29,13:30,30,Mariela Ciprian,8493962917,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-033c96d0-69f9-410c-b026-df63c96da88e,2026-10-29,14:00,30,Nayelin Almonte,8299381820,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-4a8ec54b-a31c-499e-8c0f-1df68e5307c4,2026-10-29,14:00,30,Milena Fabre,8499258505,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-8689df49-a737-4aaa-a697-47aa6119ec74,2026-10-29,14:30,30,Yamileisy Del Valle,8494275624,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-24ab5520-7d5d-56ee-86b3-385cdb452972,2026-10-29,15:00,30,Nayelin Almonte,8299381820,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-48bd4182-f844-44c8-a8a7-612a79fb7744,2026-10-29,15:30,30,Ivette cornielle Traspaso De SDE,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-f46d0ff4-f8eb-5095-836c-8128f6eddf79,2026-10-29,16:00,30,Elianny Del Carmen,809-609-6815,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-7ceecdfc-54aa-5e8d-8be8-089446d3d716,2026-10-29,16:30,30,Glenny Ceballo,809-918-8462,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-06407445-290b-53da-9795-34b40b56ba63,2026-10-29,17:00,30,Alexandra Buret Rivas,849-258-9975,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-db1ce3a0-f844-5202-a4b6-6c9bc96f4d5c,2026-10-29,17:00,30,Angelica Muñoz,8299214626,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-49ec3993-0569-52e6-ab3c-3ada4b18ffc4,2026-10-29,17:30,30,Odette Baez,8296109975,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-869f3059-6871-43bb-93e3-3a341462149d,2026-10-29,17:30,30,Camila Nuñez,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-ac42f97c-2413-5eff-9d09-5c682d6970e6,2026-10-29,18:00,30,Alianna Peña,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-48b7ffcb-6930-5c25-b73e-2b72e52ac8c6,2026-10-29,18:30,30,Edianna peña,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,Importación Cheko: cancelada en origen
+import-e2583d2d-a226-432e-80ec-f4b4106a8090,2026-10-29,18:30,30,Herlin Daniela Leyba,8093894622,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-fbec7ef2-6ccc-53e2-ad47-7b284ea60444,2026-10-30,10:00,30,Keydi Reyes,‪+1 (829) 663‑2007‬,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-4c32328d-e785-48f8-924d-2f4deda5a559,2026-10-30,10:30,30,Patricia Michel Paniagua,829-381-7267,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-0e7c193d-4b66-41b1-97b4-9f65c98a459b,2026-10-30,11:00,30,Metzly Reyes,849-501-0091,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-9daceb74-a389-52b8-810a-d175ee4400b8,2026-10-30,11:30,30,Ana Amelia Abreu,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-1ffa8624-e06c-4e78-9f3f-02fbeb76a8d1,2026-10-30,12:00,30,Nayheli Arias,17065784962,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-10b0db4b-5d4c-5f80-acdd-86844037aa5f,2026-10-30,12:30,30,Alexa Castillo,8293554307,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-483a746e-20e2-4539-975c-5bd56bc864a8,2026-10-30,13:00,30,Victor Calzado,+1 (829) 676-5332,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-2a70f688-16d0-4647-ba2f-189da24b01ca,2026-10-30,13:30,30,Nayelis Calderon,8492501812,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-73f8a1c3-973d-4ec6-9df1-4a4eadc1d31f,2026-10-30,14:00,30,Geraldine Paulino,8099738764,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-79915b69-9143-5345-8834-8756d7ad35cc,2026-10-30,14:30,30,Inrry Hernandez,8295505654,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,
+import-f45f1dba-f2e0-5bae-bf00-b6b208eb86e4,2026-10-30,15:00,30,Arisleidy Perez,8297217755,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,Importación Cheko: cancelada en origen
+import-8f57bc1d-e961-5c82-88b3-6318de859732,2026-10-30,15:30,30,Yeimi Dominga Reyes,8494632915,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-06f7c6a0-632a-5018-94b6-2f837800741c,2026-10-30,16:00,30,Reyna De Los Santos,8293047504,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-75a06bb2-587a-4ece-9579-550d604bafa9,2026-10-30,16:00,30,Pedro Hernandez Isabel,849-523-2798,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-39df2577-f018-5bb5-9e3b-cddb8ff05011,2026-10-30,16:30,30,Alizamel Hernanez,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,Importación Cheko: cancelada en origen
+import-f0279582-0a38-582c-b725-485fe79f37ab,2026-10-30,17:30,30,Leidy pèrez,8499808859,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-2df1a6ae-ddac-4707-ad0c-3a766cd59052,2026-10-30,18:00,30,Caliz Espaillat,809-447-1384,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-63830f44-851c-5ee7-b0fb-92f744777e9b,2026-10-30,18:00,30,Mariela Castillo,849-886-9896,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-4ce0910e-e3ac-4faf-842e-696423c1941b,2026-10-30,18:30,30,Karla Mendez,829-301-9793,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-4e9d918d-1335-48d5-a2c9-67bbbb5463d8,2026-10-30,18:30,30,Hilda Espaillat,849-447-1399,,,,Prueba sin costo,Auxiliar de Ventas,Emilie Marie Lopez,0,Axilas
+import-251bc5df-14e7-5097-845d-64b076e8bc9c,2026-10-31,10:00,30,Saori Garcia,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-315cea8c-d74c-4d01-a895-84540f089815,2026-10-31,10:00,30,Jazmin Brea,809-317-6134,,,,Cuerpo completo - pago,Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-b0f2afc4-cc5f-58f7-bbc6-93e3ade9eac0,2026-10-31,10:30,30,Luisa Maria Heredia,829-804-7845,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-c94983ec-e639-46c4-be61-0f1043ceb534,2026-10-31,10:30,30,Mariel Marcelino,+1 (829) 785-2017,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-77a338da-b0d5-5eab-8900-3f0f91c40dd6,2026-10-31,11:00,30,Erika Yammell Diaz,+1 (829) 803-2109,,,,Sesión Individual,Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-ab39e539-0149-5ae4-b96b-835e6805eadc,2026-10-31,11:30,30,Rosa Muñoz,+1 (809) 443-7019,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-7fec04ef-9d7e-42cd-a5f6-fc9369394155,2026-10-31,12:00,30,Sherlyn polaco,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-c8a0e452-0637-5e3b-a947-9bd6c5cda2b0,2026-10-31,12:30,30,Elizabeth Balcacer,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,
+import-4288ab73-dd23-4f00-8375-0d620285568d,2026-10-31,13:00,30,Bethania Alvarez,809-777-1665,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-50da2c9b-ca9a-427b-a6af-4e6d59bab701,2026-10-31,13:00,30,Aurelys Espejo,8494964463,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-67f7c8ee-47f8-4851-a834-67a3733b55fb,2026-10-31,13:00,30,Glennys Sorelis Camilo,849-266-9330,,,,Prueba sin costo,Auxiliar de Ventas,Loreinni Rosario Peña,0,Piernas
+import-b766ee08-2f91-5dff-8659-ed27250665a2,2026-10-31,13:00,30,Arisnel Alcantara,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,Importación Cheko: cancelada en origen
+import-0bf71c55-5386-5ce4-b26a-81fe3697e45e,2026-10-31,13:30,60,Tomas De Los Santos,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-7bc731af-24c8-5f93-8fe1-220243819336,2026-10-31,14:30,30,Manuel Guzmán,829-560-5293,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-4eef0517-9e07-45c9-beb2-62e26e4d20c3,2026-10-31,15:00,30,Samantha Crisostomo,809-326-0853,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-ad3e62e5-63ac-5447-9a6b-c5fc7932c136,2026-10-31,15:00,30,Olga Ramírez,8295748558,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-83e6c3d4-d750-40d0-9c9b-fa10d1a88dec,2026-10-31,15:30,30,Maria Estela Montaño,829-779-8879,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-d859dc59-3a7a-4da7-8f1c-dd116808ff61,2026-10-31,15:30,30,Katherine Tezy,+1 (849) 564-8840,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-1b509694-4bcb-43c6-85bc-1e81a70a6a18,2026-10-31,16:00,30,Aura Ramirez Rodriguez,829-881-3763,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-aeb8549d-642a-5198-a15c-a0038f0ef2d0,2026-10-31,16:00,30,Sarahil Leon,829-676-1257,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-b908c552-c020-5923-88b6-3b4d1737ad68,2026-10-31,16:30,30,Madelyn Morla,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-52d3601b-7df3-5107-8b4e-34052ef8ac92,2026-10-31,17:00,30,Angie Rodriguez,849-245-6881,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,Importación Cheko: cancelada en origen
+import-2dfd4dad-2d9f-5a0a-a589-ef42216a9726,2026-10-31,17:30,30,Nicauris Maria Marte,8094596357,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-36c6d270-fe44-48d4-a810-70a079e922e5,2026-10-31,17:30,30,Emilio Adames,809-355-8154,,,,Prueba sin costo,Auxiliar de Ventas,,0,Axilas | Importación Cheko: cancelada en origen
+import-b0e6e55c-0c17-5d83-8acc-9eca6b9b9c32,2026-10-31,18:00,30,Mary Altagracia Amancio,829-926-7526,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-cdb1ce40-610d-4cce-8e35-3ca654352d12,2026-10-31,18:30,30,Alicia Alvarez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-05f67b7d-43f2-5437-a4e2-f18674553cc9,2026-11-02,10:00,30,Medjina Jules,8495195405,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-9d2702be-a104-40aa-92ab-55ff9edecf85,2026-11-02,10:30,30,Lia Castro,829-980-2404,,,,Paq. 12 sesiones - Cuerpo Completo,Cabina 1,Loreinni Rosario Peña,0,
+import-f1bd7c75-e385-40d7-966d-d1eeb2086424,2026-11-02,11:00,30,Uri Bisono,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-27205dd4-748a-459d-b073-c0a9d0a3983b,2026-11-02,11:30,30,Natalia Isabel De La Rosa,8299885975,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-3edb37b1-d683-4496-9bcd-1bbdebb1d16b,2026-11-02,12:00,30,Silvia Encarnacion,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-ae2a2f58-82bc-5f7c-a197-b5477a541c84,2026-11-02,12:30,30,Bielka hernandez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-cfa463ac-b873-5574-b992-613a222d48e0,2026-11-02,12:30,30,Estefania Cabrera,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-d24daa96-095c-49d6-a120-d9fbb16d1f43,2026-11-02,12:30,30,Carla Feliz,8299426707,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-c6df680a-9ba8-5abe-a34c-0a8c704be85e,2026-11-02,13:00,30,Nallely Maria Jimenez,8498652260,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-d18e144d-456b-43f5-a1d0-f3ec4a597695,2026-11-02,13:30,30,Irayni Paredes,8299808851,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-72d68b9b-de42-5ff7-a7d8-33918824ef67,2026-11-02,14:00,30,Karina Ramirez,809-697-1193,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-5e1b3bd5-3d73-597a-8adf-ad6d011b3ae7,2026-11-02,14:30,30,Brenda Acosta Mejia,8498063494,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-842d27f2-72f0-47ac-9209-031b98c60c3c,2026-11-02,15:00,30,Angelica Esther Maria Santos,‪+1 (849) 860‑4625‬,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-d9976207-b3a2-5fdf-90f3-87ddc1402822,2026-11-02,15:00,30,Ninoska Acosta Mejia,8094152273,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-e90fa74d-4dc6-56d4-8cee-8c083f104559,2026-11-02,15:30,30,Alaska lopez,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-effa3723-3e0c-515e-abf9-f3a733da25a9,2026-11-02,16:00,30,Massiel Ortiz,8298706416,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-df2636ef-3872-4bf9-996f-3f58295cda9c,2026-11-02,16:30,30,Genesis Rodriguez,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-1f1691f4-c08d-4823-9025-402ea0339ce0,2026-11-02,17:00,30,Aura Ramirez Rodriguez,829-881-3763,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-d3d3bf63-5917-54b6-9321-0b06e99ddf23,2026-11-02,17:00,30,Carol Hernandez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-4a00167d-585f-43b6-9491-444f1f86316a,2026-11-02,17:30,30,Jael Torres,8292095309,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-1cb66890-dd96-5d5a-ad4b-5fe224e93afb,2026-11-02,18:00,30,Nazaret Mendez,8295700790,,,,Cita de continuación (seguimiento),Cabina 1,,0,Marcar la tarjeta  | Importación Cheko: cancelada en origen
+import-cc6f788d-1452-57f9-8335-d8a46417574b,2026-11-02,18:30,30,Isabella mercado,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-86165b25-7dbb-536b-b728-61b332a3a5c2,2026-11-03,10:00,90,Juan Popoter,809-664-9573,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-44e6713b-48c9-4b64-89dc-dcea1d696772,2026-11-03,11:30,30,Genesis Rubiera,8094415461,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-85afdcfd-e92e-5f92-86ee-3f7b5524a2dc,2026-11-03,13:00,30,Dorangel Perez Rodriguez,8099968855,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,Importación Cheko: cancelada en origen
+import-35c0c602-7f0a-442f-9cf7-affb9659966a,2026-11-03,13:30,30,Kimberly Sepulveda,8299198000,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-c876d3b7-6aa5-5489-b899-56e54048e615,2026-11-03,13:30,30,Melany Rodriguez,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,Importación Cheko: cancelada en origen
+import-c59d3706-f8cb-418f-9ef7-8826f28c8ab5,2026-11-03,14:00,30,Isamal Diaz,+1 (829) 801-5087,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-f0132ed7-fb56-4523-b024-76229a13f173,2026-11-03,14:30,30,Yamileisy Del Valle,8494275624,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-8a5a3abf-f8fd-5168-a245-46f47056212d,2026-11-03,15:30,30,Katherine Solis Reynoso,809-437-5079,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-277175b3-800b-4532-95f0-70687f715fe7,2026-11-03,16:00,30,Crisly De La Cruz,8095028955,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-7ff22dca-93f2-48e6-a6fc-52e860dc0de4,2026-11-03,16:30,30,Marilyn Valdez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-6fd6e7ce-67ef-4982-8dc7-8d5f08eb1c87,2026-11-03,17:00,30,Joely Luna,8492607888,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-f46d7f76-d53b-5717-bb85-ca272dedfe42,2026-11-03,17:30,30,Alenny Lopez,+1 (829) 904-5995,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-f902efa0-8fbb-5949-b442-166f04f16d41,2026-11-03,18:00,30,Indiana Antun,8294090845,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-f19387a4-9951-5b00-9525-d8d87b07477d,2026-11-03,18:30,30,Steffany Espinosa,8099031479,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-b088f8d4-5479-44f1-a7af-688099f4d6b7,2026-11-04,10:00,30,Carolina Javier,809-303-2017,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-a2cb2954-22a9-4689-a5e5-e4f4345e3e51,2026-11-04,10:30,30,Marianny Perez,849-607-6590,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-ef3264a6-60f0-4df5-934c-9bd0b44b2b5d,2026-11-04,11:00,30,David Caraballo,829-387-8040,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-9c314bfc-acb3-4622-a423-846c3ccd4e14,2026-11-04,11:30,30,Patricia Michel Paniagua,829-381-7267,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-bbda9f62-044c-40d1-ae28-1de3ca12ee2b,2026-11-04,11:30,30,Nicauris Maria Marte,8094596357,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-85f18312-5163-49b0-9e6c-86a682eed085,2026-11-04,12:00,30,Nathalia Rivas,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-f607e4a6-b037-5162-b9e5-591e1e4b53b0,2026-11-04,12:30,30,Luz Inés Victoriano,8498164587,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-5a8e46f8-5cf6-4513-8cc4-c42c34566000,2026-11-04,13:00,30,Viandry Recio,8297043037,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-af48fbb9-6a14-4ec5-aef3-8d672f8eddf6,2026-11-04,13:30,30,Keydi Reyes,‪+1 (829) 663‑2007‬,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-a6f1b8c5-222e-49c0-8821-a5e0fa5dd437,2026-11-04,14:00,30,Tiffany Wikes,,,,,Paq. 12 sesiones - Cuerpo Completo,Cabina 1,Emilie Marie Lopez,0,
+import-791f204e-3d99-5c7a-b052-555c82db86b9,2026-11-04,14:30,30,Yaniurki Gomez,8293811716,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,
+import-604284c8-e96d-4bf2-b8b7-956b33d77fed,2026-11-04,15:00,30,Ashley Arias,829-251-6622,,,,Cuerpo completo - pago,Cabina 1,Emilie Marie Lopez,0,
+import-7e470d4c-d8af-4728-9f80-294c362e14a7,2026-11-04,16:00,30,Dorangel Perez Rodriguez,8099968855,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-a65cdc79-5564-4860-b314-5c7ac8944fe5,2026-11-04,16:00,30,Yessi Ruiz,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-82000c9b-7e2f-4b2a-9721-e5942d343e95,2026-11-04,16:30,30,Alexandra Buret Rivas,849-258-9975,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-35e0de33-5d16-4ff9-8b9b-6d6ea60e06cf,2026-11-04,17:00,30,Adris Adad,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-b844d15f-954f-4ca0-9153-14b90c902628,2026-11-04,17:30,30,Sindia Damian,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-fcf9c519-1681-4680-8ee8-bd7c5722c06b,2026-11-04,17:30,30,Lorena Gutiérrez,809-817-9174,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-61a44314-4dbb-42a3-8dd8-cbc5137753d0,2026-11-04,18:00,30,Scarlette Segura,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-9a0dec8c-fbcf-48e6-b058-b483ad8afba3,2026-11-04,18:30,30,Kamill Suero,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-2fb55dcd-2f68-45e9-9945-8823122bc3c7,2026-11-05,10:00,30,Madian Medrano,+1 (809) 861-5298,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-bb1dd639-0ec1-5b2a-9a1a-e4a09bb41c73,2026-11-05,10:30,30,Aleyda Duran,8094311856,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-a5ce2b7f-d9c4-5aae-9c73-4078773e0726,2026-11-05,11:00,30,Kirsys Duran,8297026685,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-4bd3e6a8-7d43-4c86-ac5a-770b8b025fe3,2026-11-05,11:30,30,Maria Dominguez,8293240137,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-0a998376-9245-45e5-a082-85fc8fc1febc,2026-11-05,12:00,30,Rosa Ramirez,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-25dee9c4-ef6f-5681-b9b0-9e3ef3f1f2ee,2026-11-05,12:30,30,Solangy Velez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-1d3b2b1d-69ed-4fe9-9676-f9769c8c9d49,2026-11-05,13:00,30,Sarai rubiera,8299262685,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-dbf4fea8-1719-4b31-852c-6e613220c35d,2026-11-05,13:00,30,Sheila Ventura,849-367-4807,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-6f49bb6e-c136-5bb3-a915-f609ca450b17,2026-11-05,13:30,30,Pamela Veras,8292662758,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-c1464dbc-997b-4c00-ad6d-df0fae143892,2026-11-05,16:00,30,Noelia Rodriguez,+1 (849) 281-0020,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-b583645f-1302-4f18-9120-d0ec382c6102,2026-11-05,16:30,30,Aisha Mendez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-77608f4d-68c8-514d-ba3d-abd63c9c0d05,2026-11-05,17:00,30,Perla Del Carmen,8299452017,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-c90f6761-4da1-4e0d-a1db-4111c9e4fd61,2026-11-05,17:00,30,Erika Yammell Diaz,+1 (829) 803-2109,,,,Sesión Individual,Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-c3de8224-33ff-5d19-9457-66850bd06bd7,2026-11-05,17:30,30,Perla Del Carmen,8299452017,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,
+import-a6283c62-b4fd-415b-9170-8f487e1b80cc,2026-11-05,18:00,30,Francis Calcaño,829-650-7212,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-b163b2d8-0e86-5a4a-a66a-ddd36c62fc80,2026-11-05,18:00,30,Lucidania Hidalgo,8098783775,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,
+import-2252084c-c491-590a-8a06-a2eebe048649,2026-11-05,18:30,30,Carmen Gomez,8295738893,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Lopez,0,
+import-45ca9481-e488-4f91-bd0b-05a6bed45ab5,2026-11-06,10:00,30,Francis Calcaño,829-650-7212,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-844725df-34bc-5112-9106-7c4f20254b03,2026-11-06,10:00,30,Pamela Santos,849-884-7712,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-17c96e35-8382-420c-a023-a4c2c62ce6c2,2026-11-06,10:30,30,Ateiris Perez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-a45f74cb-f483-450d-98a6-a5db9c9b3f51,2026-11-06,11:00,30,Nanyeli Trinidad,8094059775,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-dd83e975-545c-46c2-b567-b022bc7458ce,2026-11-06,11:30,30,Dulmari Orozco,8299416718,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-dca963f6-5e69-40cf-b355-bad81b9175c3,2026-11-06,12:00,30,Jocabed De La Rosa,829-846-3551,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-48e5d34e-c71b-4eb9-903e-7d0cd2874760,2026-11-06,12:30,30,Yanselis Jerez Payano,‪+1 (829) 359‑3027‬,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-7c55f07b-71f1-4fcb-b221-cca08e916b0b,2026-11-06,13:00,45,Manuel Guzmán,829-560-5293,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-ea75ffe7-6a98-44eb-826c-de5f2eb4d042,2026-11-06,14:00,30,Annia Caro,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-34dba9b6-973a-40a2-beb7-06071beaa732,2026-11-06,14:30,30,Edith Alvarez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-98419a25-6c4a-40e2-b6fa-b7dc5cf743d7,2026-11-06,16:30,30,Crisbel Liz,8298581931,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-b51967ae-7925-41c5-82c7-68fe2537b04a,2026-11-06,16:30,30,Yeniza Lopez,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-91a5eb3c-6815-5c9f-a93a-f60a00a5ee86,2026-11-06,17:00,30,Darileysis Marcano,8295845384,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-c7bfa3ea-4cc3-43cd-a4c4-98656247ebbf,2026-11-06,17:30,30,Shannel Santana,8494432006,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-a2d3ce9a-ad71-49e6-9434-e6e4e64208dd,2026-11-06,18:30,30,Maite Guerrero,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-12795f5e-4a8d-4a44-a185-a84f9b00a1f5,2026-11-07,10:00,30,Lauri Oviedo,8298782365,,,,Prueba sin costo,Auxiliar de Ventas,,0,Brasileño | Importación Cheko: cancelada en origen
+import-cb45efc5-109c-5f5c-9e9c-422595a4fddf,2026-11-07,10:00,30,Wilkys Menaldo,8298671515,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-91367ca6-531c-446a-8d16-d7f5e2320da7,2026-11-07,10:30,30,Chelsea Ventura,809-850-2014,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-2e3f58aa-f1ec-493e-9e19-dd0679269307,2026-11-07,11:00,30,Meredith Martinez,1 7543166332,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-c3df740c-b238-5b4b-bf44-f6693e99992f,2026-11-07,11:00,30,Carla Feliz,8299426707,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-6067ff17-cf51-5bcc-9631-354013b2814f,2026-11-07,11:30,30,Pamela Gomez,+1 (829) 846-6105,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-e60c11ac-0c5f-4c0a-ba47-ead54eb04992,2026-11-07,11:30,30,Katherine Bonilla,809-416-4016,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-aa8321e1-4ee3-49ed-a3e7-198b33093a3e,2026-11-07,12:00,30,Angie Lisnette Mateo Rosario,8093024286,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-ee1c7801-9c69-5ad6-8acc-d45788da16d3,2026-11-07,12:00,30,Heidy Arvelo,8498479997,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-7df4b4bf-a3e2-4054-97da-730f2a061192,2026-11-07,12:30,30,Christel Ventura Alvarez,8299885975,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-a7503211-278f-5452-a8ac-cfaf0749ec9b,2026-11-07,12:30,30,Hilary Contreras Rochttis,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-0df832eb-57ce-5ed2-836f-2b471c2d7066,2026-11-07,13:00,30,Yocandra Leon,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-9a7e43e4-3752-534b-8bce-36e01ae7c4cb,2026-11-07,13:00,30,Joelys Llano,829-730-8022,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-002c4a17-f3fc-43da-b757-6cd0dc6b04a1,2026-11-07,13:30,30,Julika Santana,8293257036,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-725f2236-2ae4-4a78-9210-92418d2decfe,2026-11-07,13:30,30,Suleydi De la Rosa,8297144254,,,,Paq. 12 sesiones Brasileño (Intima y bikini),Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-82b88cde-2c34-5750-821f-a6bd6cbe6704,2026-11-07,14:00,30,Katherine Concepcion,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-9ab91c1e-8c7c-4e94-9823-e38d95ffe035,2026-11-07,14:00,30,Marleni Torres,849-207-2807,,,,Cuerpo completo - pago,Auxiliar de Ventas,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-bb82e50d-3deb-507e-b206-b11c4a9f0a60,2026-11-07,14:30,30,Grace Peralta,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-9f763523-d830-4136-857c-347c1315cc09,2026-11-07,15:00,30,Dominic Diaz,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-56f6e4b0-609c-58e2-bfa8-97f8a32ba295,2026-11-07,15:30,30,Heidy Grullon,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-cc5d34d4-541d-5937-8fbc-45336a9556a1,2026-11-07,16:00,30,Heilie sanchez,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-af9e09f1-6a90-4c0d-aa3d-c85cc6e6b685,2026-11-07,16:30,30,Angélica María Santos,8297903802,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-4c7f7801-9224-4915-af8a-c668c69d3926,2026-11-07,17:00,30,Mara Rodriguez,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-b52fdfb5-7497-443c-b6bc-f461e9e468a7,2026-11-07,17:00,30,Yemary De La Cruz,829-874-9415,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-1c62f6b0-222e-4122-a3cf-8f6f1b3bcaa8,2026-11-07,17:30,30,Ysabel Jimenez,829-623-1577,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-05df67ad-4945-4e0b-9a47-84f0c798dc7a,2026-11-07,18:00,30,Emely Sierra,829-518-3993,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-2dcb4a7c-5d13-4ffc-bdb0-89de1ca33c19,2026-11-07,18:00,30,Venecia gomez,8295597898,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-974b9d64-dc34-4f4c-b02a-1bb176860734,2026-11-07,18:30,30,Alondra Soto,8299273075,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-aef7fdc5-7da6-4264-a7a2-da3bc9121bc8,2026-11-10,10:00,30,Mirelis Elizabeth Ferreira,849-350-9851,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-5191b6d9-903d-4869-a521-3d4a7318a6f5,2026-11-10,11:00,30,Nicole Mercedes,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-89ab5f91-f8b4-48c3-961e-9699fd981239,2026-11-10,11:30,90,Juan Popoter,809-664-9573,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-7e41a817-752a-4953-811c-b6ffb7cf970a,2026-11-10,12:00,30,Glennys Sorelis Camilo,849-266-9330,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-c5194399-bc06-44f1-81ae-ad04d0dd861b,2026-11-10,12:30,30,Isamal Diaz,+1 (829) 801-5087,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-184a9e45-c6b4-4978-bc39-865c51c02070,2026-11-10,13:00,30,Emely Sierra,829-518-3993,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-74d287c3-b3ea-40e1-8776-94926715ef22,2026-11-10,13:00,30,Melany Rodriguez,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-a36d59d7-4718-4037-8386-3c44aeff1883,2026-11-10,13:30,30,Madelinne Valdez,8299284879,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-ee15e6da-960b-58a3-8c4f-8d28330f5f4e,2026-11-10,14:00,30,Beriozca Moreta,8099839784,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-edea5d86-493a-461c-89a8-1bbc0e77ddbe,2026-11-10,14:30,30,Marcia victoriano sierra,8295699271,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-121183f8-90be-4264-ba51-46dcf97f2c5d,2026-11-10,15:00,60,Cintia Abreu,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-da555a23-d21f-4915-8055-42fecd932c65,2026-11-10,15:30,30,Ondy Álvarez,8493944407,,,,Cuerpo completo - pago,Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-d0bff9c7-0283-492e-9409-5f6d2497a258,2026-11-10,16:00,30,Odelmi Nuñez,809-829-0981,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-663b8521-b81a-44c6-9224-648cef2b95e2,2026-11-10,16:30,30,Johanna Mendez,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-e2c2eb31-0cfa-402f-8750-83c814f8db8b,2026-11-10,17:00,30,Lewrys Sosa,8098120341,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-2f20fca1-b518-4871-a995-076de49a6b26,2026-11-10,17:30,30,Maria Vasquez,8293454164,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-ad9dc788-a7de-490f-9f67-9e216b9c96ba,2026-11-10,18:00,30,Sahyri Ramirez,+1 (829) 856-2709,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-363825e1-92a9-446f-962e-237978ad710b,2026-11-10,18:30,30,Rossi Esther Beltre,8094933827,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-4e0723f9-913a-4686-902c-aff70ae17e59,2026-11-11,10:00,30,Karem Contreras,,,,,Cuerpo completo - pago,Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-c04e38f4-9170-4ce9-85a1-4fe5ebb551bd,2026-11-11,10:00,30,Leanny Quezada,849-652-9560,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-1c80f734-c7e7-44e6-9b87-12de717a3c11,2026-11-11,10:30,30,Elaine Cruceta,+18296180875,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-404abcbd-ff87-4522-8099-2a6f6634736f,2026-11-11,11:00,30,Frimarlyn Polanco,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-d060415e-9e64-4406-acfe-c88389c14a3e,2026-11-11,13:00,30,Elianny Florian,829-610-2553,,,,Paq. 12 sesiones - Cuerpo Completo,Cabina 1,Emilie Marie Lopez,0,
+import-59c73d51-2c07-44ee-8042-d4a5ec44472a,2026-11-11,13:30,30,Yuliana Perez,‪+1 (829) 941‑5127‬,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-989b144d-ee63-4fac-81eb-6857b4956e6c,2026-11-11,13:30,30,Lucia Marie Diaz Cid,8495395599,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-9b46eefa-3c3c-4740-bf05-1bc34dacaebc,2026-11-11,14:00,30,Marcia victoriano sierra,8295699271,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-2a80fbf3-47d6-4887-aaaa-587d7d0404fa,2026-11-11,14:30,30,Maria Mancebo,829-763-3028,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-2692fba3-fd42-42f0-89b4-dd834d72336a,2026-11-11,15:00,30,Mariela Medina,8492208341,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-453e9507-52ea-4cba-8746-1270fc93395f,2026-11-11,15:00,30,Chanel Ramírez,8097983297,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-7c4f9ed4-fbf9-48d2-9f0a-8480ecfff6fe,2026-11-11,15:30,30,Massiel Ortiz,8298706416,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-861ecf15-2d12-4f8d-9c43-d7e9d48e8b0b,2026-11-11,16:00,30,Yeiri Castro,8492602220,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-dd171c1e-c362-4906-9bdb-e41d32308444,2026-11-11,16:00,60,Nathalia Estrella,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-2a86c66a-8d53-4cd4-af4d-44c26c970fcc,2026-11-11,17:00,30,Nilza Sosa,+1 (829) 868-4304,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-54e88abe-d171-46df-a1d4-05ece054776f,2026-11-11,17:30,30,Alanna Guzman,8094975601,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-97a7ada3-c278-557c-bd3b-a640795b3653,2026-11-11,18:00,30,Ashley Cortes,+1 (829) 679-7351,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-abfd6b1c-7c3a-4f24-aa85-161a819284f2,2026-11-11,18:00,30,Chanell Caceres,‪+1 (829) 589‑9018‬,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-bdd86cce-2a7c-4ee8-9aa3-b04d11d58392,2026-11-11,18:30,30,Larimar Lucia Santos,829-210-1294,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-3519407a-84c7-4a91-ab64-12f461f2e100,2026-11-12,10:00,30,Lucia Garcia,8299136571,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-ee18814f-9bde-407b-82a0-37d2794f1604,2026-11-12,10:00,30,Leonidas Silverio,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-0c154f9f-1e05-4657-bcc3-52f32c800888,2026-11-12,10:30,30,Ruth Montero,8498820908,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-dd2d0650-007e-4598-9823-dee7011ed2e1,2026-11-12,10:30,30,Franchesca Dandrade,8493531234,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-8151c96a-4e2c-480e-b019-75db8391acd6,2026-11-12,11:00,30,Weigel Gascon,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-a1867b15-c45d-441f-9596-ec90f6956ce0,2026-11-12,11:00,30,Kirsys Duran,8297026685,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-0d8a917f-0952-44bd-bfda-472293a75132,2026-11-12,11:30,30,Manuela Rodriguez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-0edf5a89-4625-471d-a976-c9418f9820d4,2026-11-12,11:30,30,Aleyda Duran,8094311856,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-582b5083-c958-43f1-8922-a7d24e87741a,2026-11-12,12:00,30,Britany Alcántara,8294452001,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-c9cb4531-96d0-4d54-899a-8e9234a500ce,2026-11-12,12:30,30,Yeimi Dominga Reyes,8494632915,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-8b0d3c90-477e-4be6-815f-61e8b1eccf49,2026-11-12,13:00,30,Arisleidy Lopez,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-5e8275e6-4b96-4998-a6a7-82b52ce29e59,2026-11-12,14:00,30,Ursula Ramos,8296579682,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-39b7791e-2228-4e3f-976c-86fff2b59c6f,2026-11-12,14:30,30,Carolina Vittini,809-401-5489,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-1dc15833-c664-4714-bf7c-8a22a0467bfe,2026-11-12,15:00,30,Francia Santana,8098588702,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-b0c3a60b-7cb8-4762-8236-60a99387f2f6,2026-11-12,15:00,30,Vicmeiri Volquez,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-c3778d5b-4d39-4a8f-9c15-9108fb730a7d,2026-11-12,15:30,30,Gianna volquez,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-1422eec3-e57b-441d-97fb-b8ee16eb5686,2026-11-12,16:00,30,Ambar De La Cruz,8097098091,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-8cf4d802-e749-4d20-8554-3356087c9fd2,2026-11-12,16:30,30,Angely Mejia,8297782688,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-61e1e4e7-2dda-403c-b190-2bd7ac9ad430,2026-11-12,17:30,30,Digna Vargas,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-961ad5be-a540-48be-906c-cd255305f065,2026-11-12,17:30,30,Luisa Maria Heredia,829-804-7845,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-24628996-f40c-4dde-a3dd-e534aa88639c,2026-11-12,18:00,30,Leslie De Los Santos,829-571-1539,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-93245756-d67c-44b8-a7da-f350e3c88ecd,2026-11-12,18:30,30,Yojeidi Massiel Reyes Concepcion,8298647483,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,
+import-31986253-2fc8-4d12-8f05-da09c8e531be,2026-11-13,10:00,30,Gema Oleaga,8299842876,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-3b200310-b144-412b-9c07-ae9d3d22489a,2026-11-13,10:00,30,Mia Polanco,829-793-8550,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-1ec4d196-5c86-4f3e-9faa-8d14b53e41b3,2026-11-13,10:30,30,Sirkid Contreras,+1 (829) 405-0453,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-d7ebe253-b0ae-43c2-ba2b-72fc628f1e5e,2026-11-13,10:30,30,Ateiris Perez,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-42a50941-7fda-4646-8b34-59922dbf885d,2026-11-13,11:00,30,Edylaine Ramirez,809-798-2621,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-76b44484-9489-43c2-aaaa-0020157a3c7b,2026-11-13,11:30,30,Lorena Pérez,8092935590,,,,Paq. 12 sesiones - Cuerpo Completo,Cabina 1,Emilie Marie Lopez,0,
+import-11e389af-4143-44b0-89a5-41655e49d81c,2026-11-13,12:00,30,Cintia Abreu,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Pendiente brazos  | Importación Cheko: cancelada en origen
+import-89ee54db-03aa-459a-a9d9-d026c740cfaa,2026-11-13,12:30,30,Leanny Quezada,849-652-9560,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-9de50a89-2af0-44bd-9ce0-a861ef678438,2026-11-13,13:00,30,Allendy Diaz,809-803-3424,,,,Paq. 12 sesiones - Cuerpo Completo,Cabina 1,,0,Importación Cheko: cancelada en origen
+import-c3f46f6d-3052-47e5-8ab7-857bb289dccb,2026-11-13,14:30,30,Hilary Contreras Rochttis,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-080fb808-27ca-4082-91a9-1418ca669900,2026-11-13,15:00,30,Alanys Peralta,8494030402,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-52ea77ac-e258-43cd-bd37-307e5438afac,2026-11-13,15:00,30,Ruth Montero,8498820908,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-aeaa138e-4a7e-489a-8946-9c7edbf0788c,2026-11-13,15:30,30,Estefania Catalino,8099319773,,,,Cuerpo completo - pago,Cabina 1,,0,Importación Cheko: cancelada en origen
+import-747f481e-1427-4e5b-ac8a-2b5a566e4e99,2026-11-13,16:00,30,Nathaly Then,8295795252,,,,Prueba sin costo,Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-eb66b04d-613a-469f-8705-2bab419c3e46,2026-11-13,16:00,30,Jenny Quezada,8094012510,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-32182651-1dbe-4533-9fd4-739895b939f4,2026-11-13,16:30,30,Walkiria Santana,8094173828,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-4eefd3be-8321-41e0-b086-11d93759b83b,2026-11-13,17:00,30,Keilyn Tejada,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-0f3a41cb-c6d3-4cdd-b0a2-a413f85f7f60,2026-11-13,17:30,30,Minorka Paulino,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-d2999b75-aef5-499a-8f8d-7bd324b9bebe,2026-11-13,17:30,30,Emely Sierra,829-518-3993,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-8328c80f-5445-5bdd-ac8c-b6a8c156b54f,2026-11-13,18:00,30,Carolina Vargas,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-aed6ae48-beda-447b-ad16-915f80fb9ebd,2026-11-13,18:00,30,Loraine Rodriguez Martinez,8293416182,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-cc27bcf4-71d3-4d16-90a0-f204fd1fb8ef,2026-11-13,18:30,30,Rosmeris Novas,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-e27388e7-d06c-4ec6-be51-5e62ecde37eb,2026-11-13,18:30,30,Adianka Doñé,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-1d3f210e-c077-465c-892e-9ebfe0070ac8,2026-11-14,10:00,30,Alanna Segura,8299838848,,,,Cuerpo completo - pago,Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-f061d8ba-7a6f-5c26-a8c8-a8499c272e09,2026-11-14,10:00,30,Isamar Rojas,‪+1 (809) 634‑1754‬,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-7210fc75-3d5c-42a4-a94a-cc6e2f47fdba,2026-11-14,10:30,30,Eva Perez,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-7abdf1a8-20d5-47cd-a2d4-1e9e96853026,2026-11-14,10:30,30,Marleni Torres,849-207-2807,,,,Cuerpo completo - pago,Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-40a66c9a-d68e-5c77-8857-7bd869af6af7,2026-11-14,11:00,30,Isnaira Paniagua Herrera,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Lopez,0,
+import-95e6b325-68b5-4ecf-8a0d-08879c79c5c6,2026-11-14,11:00,30,Alanys Peralta,8494030402,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-b084b86b-410c-41f6-b021-925a79980831,2026-11-14,11:30,30,Leslie Michelle Andrés,809-777-3410,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-bf127175-af00-47e5-ac2b-d945d8143470,2026-11-14,11:30,30,Jorge Luis Jorge,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-59b04321-8ae8-4396-8003-6c8fb3256079,2026-11-14,12:00,30,Briana de la cruz,829 446 3961,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-fdc4e24f-44b7-5e1a-a9a5-01f2c07ba018,2026-11-14,12:00,30,Gianna volquez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-0a9f2b37-4d09-41c9-9e9d-2bb5ec689207,2026-11-14,12:30,30,Ninoska Pichardo,809 617 3961,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-321a9aaf-ef40-4815-bff4-72e61c7a3e0a,2026-11-14,12:30,30,Grismel Ortiz,8492812354,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-ada74777-4cbf-477f-bc27-a08a4464701c,2026-11-14,13:00,30,Chelsea Ventura,809-850-2014,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-fabd0bac-e94c-4d28-b6a5-78299387da47,2026-11-14,13:00,30,Angely Mejia,8297782688,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-158f4364-fb1f-43f9-8e0a-c1f7a4fb757d,2026-11-14,13:30,30,Alexandra Otaño,+1 (829) 336-3217,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-7969359b-dbe3-4d77-8905-b2f9e1331db4,2026-11-14,13:30,30,Estephanie Yaniulkys De La Rosa Pérez,829-865-2478,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-f920a913-356f-45c6-aa08-9ca85d2e9ce6,2026-11-14,14:00,30,Yireily Perez,8293545556,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-ffba96cf-5aca-55a9-918f-9f44a4f78376,2026-11-14,14:00,30,Avi Lisbeth Del Valle,8299795939,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-29c2a3f6-6bc3-4c6e-83a3-f36dd2cdf638,2026-11-14,14:30,30,Edith Segura Montero,8297470623,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-d33d7c77-1f21-4e2e-9ea3-0edcd6b8acf4,2026-11-14,14:30,30,Alanna Guzman,8094975601,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-7d427e52-587f-4c33-b5c8-0d822efee70c,2026-11-14,15:00,30,Genesis De Los Santos SDE,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-ef7d0fdb-e245-4ba9-8503-b7f06ef64b1e,2026-11-14,15:00,30,Yankairy Valenzuela,8296280464,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-753a2d6c-115a-454b-b43c-cd70e6b25650,2026-11-14,15:30,30,Allendy Diaz,809-803-3424,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-acaa17c2-047d-4d84-ae23-906072d65571,2026-11-14,15:30,30,Yelitza Martinez,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-3d8f72d0-204a-4bf2-acaa-ef6f2716a45d,2026-11-14,16:00,30,Yadelsa García,829-221-3830,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-b34929bc-d917-474c-aeba-3490bd2a155d,2026-11-14,16:00,30,Marlyn Guzman,8293751013,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-3697a567-3d58-4265-b727-11350ecb29c9,2026-11-14,16:30,30,Winder Diaz,8496216050,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-f0416e4c-6af0-4f34-8f0c-c5a3170c1c83,2026-11-14,16:30,30,Nicole Tejeda,8292783584,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-0afbd0cf-5ba5-46ce-af29-faf61dd42d47,2026-11-14,17:00,30,Marieny Mariano Sanchez,8492485769,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-a592297c-4701-4d24-a94b-6f1df03b89b9,2026-11-14,17:00,30,Liliana Crystal Ventura,8098577364,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-5332a4eb-b5ff-4f29-9ac1-4d493f925224,2026-11-14,17:30,30,Heili Sanchez,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-5c42f2f0-b673-4510-bc7f-c156f6285909,2026-11-14,17:30,30,Daury Zapata,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-16a8e299-2b55-45ef-9b8c-40157ad0777a,2026-11-14,18:00,30,Ashley Lisette Nuñez,8494771714,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-b4bd360a-29e3-4fca-9540-b748b68d6137,2026-11-14,18:00,30,Anabel Rodríguez Morel,849-880-2590,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-556ef0d1-117d-4230-b81a-86764265bbc1,2026-11-14,18:30,30,Yelianny Ledesma,‪+1 (829) 972‑8186‬,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-dbe3c145-6c04-47e1-b042-101d92c7763b,2026-11-14,18:30,30,Rosaira Martinez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-7de794c1-e95f-46a2-a9db-48742e1d36ab,2026-11-16,10:00,30,Shanthia Pincel,809-408-0372,,,,Sesión Individual,Cabina 1,,0,Importación Cheko: cancelada en origen
+import-08c40c45-09de-49a9-bef9-4c59cbd49cf8,2026-11-16,10:30,30,Chantal Rosario,849-642-3355,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-9e793f32-78cb-43ee-817f-bc1589f29a0e,2026-11-16,10:30,30,Ana Mercedes Quezada,8295728117,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-40392c5a-5907-467c-97d3-31defe4cca50,2026-11-16,11:00,30,Topsy Ovalle,8093422961,,,,Membresía,Cabina 1,,0,Importación Cheko: cancelada en origen
+import-76c9908e-ffae-4a8e-84b3-e770fc1d8b5d,2026-11-16,11:00,30,Jennifer De Leon Reyes,+1 (809) 713-3340,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-4ca6c4ad-40de-4511-9941-99c604ef8195,2026-11-16,11:30,30,Franchesca Dandrade,8493531234,,,,Membresía,Cabina 1,,0,Importación Cheko: cancelada en origen
+import-f2d31f88-7554-42b4-8165-1aa81ffb7668,2026-11-16,12:00,30,Jocabed De La Rosa,829-846-3551,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-0f2dac33-53d4-450f-bf8f-f28a1e05e87f,2026-11-16,12:30,30,Zahra Abdallah,8494590477,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-3443ce32-706f-4d31-8eb9-93ffff04bf0e,2026-11-16,13:00,30,Brandy Almonte,8298020503,,,,Paq. 12 sesiones - Cuerpo Completo,Cabina 1,Loreinni Rosario Peña,0,
+import-cce64931-5c40-4c52-8d9b-0e81a051b9fc,2026-11-16,13:30,30,Esther Giannini,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-5008addf-49cd-4da2-8903-a4d0b01f3f98,2026-11-16,14:00,30,Katherine Concepcion Cambero,829-944-0810,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-c10e0d3d-2596-4a45-9686-1fdeddfcf87c,2026-11-16,14:00,30,Nailyn Diaz,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-42f5d39b-74c8-4461-b7ec-077ca12e47b2,2026-11-16,14:30,30,Marbin Ortiz,809-997-0168,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-3ac5374b-ac33-4934-b5d2-e32503e3b419,2026-11-16,15:00,30,Mayoly Marte Rochttis,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-ee3f1e93-f095-4259-8066-e0a1d2fab3bd,2026-11-16,15:00,30,Jessica Yoenny,8492011129,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-7babc00d-5eae-434a-be8e-d1c51385fdbe,2026-11-16,15:30,30,Roselia Nolasco,+1 (809) 819-1289,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-c6a93d67-496c-4616-9634-ff3fe49a7fac,2026-11-16,16:00,30,Clara Ivette Castro,8298582812,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-7796e187-df2d-4d0b-8c4c-31f5c5d199e6,2026-11-16,16:30,30,Zoila Abreu,829-904-0406,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-b352d270-ec7b-48c2-9535-385c697e5838,2026-11-16,16:30,30,Laura Mateo,809-819-1472,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-6286423e-4baf-48bf-910d-9dbe80491e9a,2026-11-16,17:00,30,Alejandra Liriano,8298467192,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-fb41b4f9-b963-4781-83f2-36daeadc86ff,2026-11-16,17:00,30,Lissette Nuñez,8295584385,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-57fd628b-948b-41b4-93d5-c22cbe0b8660,2026-11-16,17:30,30,Julianne Jimenez,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-4959d005-188c-4480-99b8-33c704101e0b,2026-11-16,18:00,30,Loraine Rodriguez Martinez,8293416182,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-1a8c6b0a-79e0-4a45-9e4e-f005f5a05077,2026-11-16,18:30,30,Gisell Polanco,8098539075,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-85d6d083-b73b-41dc-95ce-33a75de92ec8,2026-11-17,10:00,30,Helen lacorte,,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-4c06bb80-0ca8-4736-8206-fa9f1a22d6ae,2026-11-17,10:30,30,Edili Medrano Melo,8297059657,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-0b100d99-bb0f-4c64-9a11-dcba1ea4f8d7,2026-11-17,11:00,30,Judith Ovalles,+1 (829) 908-0037,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-c4f19853-f202-43d5-9708-555749f50f55,2026-11-17,11:00,30,Weigel Gascon,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Emilie Marie Lopez,0,
+import-19bf3155-93c6-4581-b6a8-fc111ef7d3d5,2026-11-17,11:30,30,Isabella Denis,8494077030,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-99b2e135-0f62-4146-94fd-605ed486d9f5,2026-11-17,11:30,30,Mariela Cabrera Sanchez,+1 (829) 775-5855,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-4faa70b4-e2a4-415f-8af0-f3292489b8fb,2026-11-17,12:00,30,Rosaura Almanzar Batista,829-636-0966,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-2a0cbfb7-96e1-4086-86aa-ae69c5a7a753,2026-11-17,12:30,30,Fernanda Jimenez,8295427365,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-3ba7b6e7-0338-4fe7-8a70-1a0895be6406,2026-11-17,13:00,30,Estefania Catalino,8099319773,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-199d1d41-ef84-4068-9efb-c0732b01f52b,2026-11-17,14:00,30,Liandra Reyes,829-466-2349,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-c77f78e8-50e0-4b41-8da1-d28d8127aed9,2026-11-17,14:30,30,Juan Popoter,809-664-9573,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-245a3bba-33a6-5ecf-8c37-7ff00b94b17e,2026-11-17,15:00,30,Priscila Salas,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-665140da-1ad8-458d-8eab-86fa70b5e08a,2026-11-17,15:30,30,Mariomy Araujo,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,Importación Cheko: cancelada en origen
+import-2bc234e4-ff89-486a-ab4e-2c1519f805eb,2026-11-17,16:00,30,Reyna Bartolome,8093010643,,,,Cuerpo completo - pago,Auxiliar de Ventas,,0,Asistirá a las 4:30pm | Importación Cheko: cancelada en origen
+import-fdb75680-c342-429d-9490-8cc3c85ce7c7,2026-11-17,16:00,30,Sarah Gregorio,8096608422,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-f0805b06-8056-44ab-aba0-60e0cb33f98b,2026-11-17,16:30,30,Rosa Cristina Peguero,849-592-2310,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-7f35695f-3e54-421c-9dc6-bdea792f2392,2026-11-17,17:00,30,Keilin Peña,829-968-3865,,,,Cita de continuación (seguimiento),Cabina 1,,0,Importación Cheko: cancelada en origen
+import-a41ab426-f830-4554-895f-c01e9b96accc,2026-11-17,17:00,30,Mileidy Albays Avila Cordero,+1 (809) 601-6097,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-504412b5-b255-40b6-817e-1af7ef5e2a40,2026-11-17,17:30,30,Alejandra Liriano,8298467192,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,Importación Cheko: cancelada en origen
+import-5998197f-f67c-4626-be27-5880f5fc5246,2026-11-17,18:00,30,Aylin Gonzalez,8097837284,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,Importación Cheko: cancelada en origen
+import-0a05af12-b917-413c-b600-3a92e50b1634,2026-11-17,18:30,30,Fedainy Sánchez,+1 (829) 373-3390,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-7bcefef8-e40a-475a-9051-0287deea9540,2026-11-17,18:30,30,Kevelin Peña,809-401-3866,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,Loreinni Rosario Peña,0,
+import-122a53e3-4ba8-4e13-a818-8321c3e097a8,2026-11-18,10:00,30,Margaret Robles,846-624-9443,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,
+import-c856dbec-7fbf-481c-9ba5-369b40204237,2026-11-18,10:00,30,Madian Medrano,8098615298,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-80487ec0-99d9-4172-b798-f09ee21daca1,2026-11-18,10:30,30,Nicole Mercedes,,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-95145e6a-a2ba-4060-93f4-514e34e0e851,2026-11-18,11:00,30,Lewrys Sosa,8098120341,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-e11ab070-f441-415d-aed6-2d40eaaa92b5,2026-11-18,11:30,30,Mayoly Marte Rochttis,,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-b0715380-055c-4261-8b45-885c652acab0,2026-11-18,14:30,30,Nailyn Diaz,,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-1b2b54a4-bb2c-4318-aa9a-0ccac0e3ce72,2026-11-18,15:00,30,Chanel Ramírez,8097983297,,,,Paq. 12 sesiones - Cuerpo Completo,Cabina 1,,0,
+import-791c753f-1d59-4e1e-845b-8b3154058042,2026-11-18,15:30,30,Marbin Ortiz,809-997-0168,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-9a7e630e-5bdb-4b24-bb9f-c15919371d2e,2026-11-18,16:00,30,Aurielis Guzman,8299592568,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-b71dfb39-794a-46e2-8c86-b411d4b0666d,2026-11-18,16:00,30,Mariela Medina,8492208341,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,
+import-69ef9a70-d7ec-4cc0-9385-7a8581330c8a,2026-11-18,16:30,30,María del Carmen López,8093099655,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,
+import-fce4d69f-50ae-4447-8237-b715e99b0c21,2026-11-18,16:30,30,Lexie Uribe,849-265-9904,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-51ffdecb-8bd7-40ec-8d5c-f0393b971627,2026-11-18,17:00,30,Lyann Uribe,829-904-7536,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-e0baa8d7-0e31-4954-ad99-fd07b63222b9,2026-11-18,17:30,30,Camila Nuñez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-71c103c2-bdf6-49bf-975f-2f6269dc04e8,2026-11-18,18:00,30,Alanna Ramirez,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,
+import-d7b320ea-dcb7-4a6a-81bc-528a6be7cb14,2026-11-18,18:00,30,Yisel Ortiz,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-9fdbaf99-67cc-4ad3-a211-09a18492491b,2026-11-18,18:30,30,Ivonny Mary Mejía Berroa,8298992642,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-bff4423e-2218-4248-9f61-655ba926f086,2026-11-18,18:30,30,Sahyri Ramirez,+1 (829) 856-2709,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,
+import-8f62bbf2-1f87-4e6f-9dd4-ea7d5be8d5c1,2026-11-19,10:00,30,Eunice Sencion,809-453-8149,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-c8f2ce44-90d2-4a50-a91b-84e792192f08,2026-11-19,10:30,30,Zaynab Castillo,829-528-8535,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-679fd11a-36cb-428f-a866-1d1f7be4f040,2026-11-19,11:00,30,Shauny Jiménez,8293412351,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-4d94a754-ff09-4294-ae7a-0ca817d3b9ea,2026-11-19,11:30,30,Leslie Perez,829-860-1635,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-613e1d9c-90a6-44dc-896e-aa2fad7ee1b1,2026-11-19,12:00,30,Melissa Santos,809-996-4989,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-a9dd47ee-8700-4d66-828e-f9b57ea9d5d4,2026-11-19,15:00,30,Aisha Mendez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-71da891d-5bdd-4da0-b292-087d1537f8a3,2026-11-19,15:30,30,Sheymar Bravo,8497635115,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-cf0a16bb-ecb4-4fad-bad8-0f0aeb25c16e,2026-11-19,16:00,30,Cheila Bravo,8294669530,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-e953a509-85b6-4f1b-8f69-b5af08290a61,2026-11-19,16:30,30,Yuleana Garrido,,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-498d4c2a-905d-4f63-b05d-35be8ef67c1d,2026-11-19,17:00,30,Yokashi Gonzalez,8497076899,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-2cb6d6d3-1059-4f29-b97d-6c9e3d8fa8fd,2026-11-19,17:30,30,Ana Silvia Perez,,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-a560d783-752e-5af4-9a1a-0ee5fa32b42d,2026-11-19,18:00,30,Ashley Cortes,+1 (829) 679-7351,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-c51c23bf-046c-4e16-a31b-b1d125cb5519,2026-11-19,18:00,30,Carolina Vargas,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,
+import-04c99ec8-801b-4c1d-8ecf-8b387e95e017,2026-11-19,18:30,30,Divanna Moreno,809-821-0010,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-3c085ed0-ec39-4720-b53b-5bb0273664aa,2026-11-19,18:30,30,Yojeidi Massiel Reyes Concepcion,8298647483,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,
+import-1a31e75f-cec6-4ef1-8f6e-11ca49af0239,2026-11-20,10:00,30,Bianny González,,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-fc4f15f2-01c5-4c8a-b2a2-447b46497f5b,2026-11-20,11:00,30,Milena Fabre,8499258505,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-e9713fd6-f7a0-476a-b60b-9cd1bd3d0ea6,2026-11-20,12:00,30,Anyi Paola Cuevas,,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,
+import-c9ccd8b0-521d-44bc-8677-22ca08157cd7,2026-11-20,12:30,30,Rosaura Almanzar Batista,829-636-0966,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-e2afd0af-351d-436b-b762-8088dc21a2a8,2026-11-20,13:00,30,Dairys Peña,8295987414,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-6452ac0b-c2e7-444f-9cca-8f5641ad4d9b,2026-11-20,13:30,30,Misael Cuello,,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-25bc39bc-ad45-4dd6-914a-fc78d6b89472,2026-11-20,14:00,30,Yaroldina Soto,8098607548,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-18abb6e1-65cf-4c1a-b30d-4fa3a5f0f37e,2026-11-20,15:00,30,Sheslie Sena,917-858-3434,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-42721192-4b19-4c03-a1a3-a7b1f2fb1895,2026-11-20,15:30,30,Laryssa Ramirez,‪+1 (849) 407‑9713‬,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-8a5359b2-69b4-423b-bfb6-7cef9d9ed67a,2026-11-20,15:30,30,Jedelin Rodriguez,,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,Es menor de edad
+import-b5a2d4d2-f68a-4e22-b68d-1793b29bd99e,2026-11-20,16:00,30,Yarexi De La Rosa,8492556481,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-d266fd1a-e5d8-4d7a-b26a-62fea47ffb36,2026-11-20,16:00,30,Marianny Polanco,8094090404,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,Acompañante-Jalousie Pijuan
+import-6deefa0d-06e7-4a16-a2f8-890f70926b1f,2026-11-20,16:30,30,Fatima Reyes,9295769935,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-749c5924-7218-430e-8462-a35eeabe69d8,2026-11-20,16:30,30,Jalousie Pijuan,829-527-8075,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,Acompañante-Marianny Polanco
+import-b80e4bd8-568a-48fe-83e9-2aefad047e10,2026-11-20,17:00,30,Saris Emely Paredes,8097082115,,,,Cuerpo completo - pago,Auxiliar de Ventas,,0,
+import-d0bb8863-2e07-4fcb-9459-da74e616ef80,2026-11-20,17:00,30,Esthefany castillo,8094342295,,,,,Cabina 1,,0,
+import-1ec6f1c2-7bad-4ba4-a137-5141ed297f45,2026-11-20,17:30,30,Kimberlly Reinoso,8297922315,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-99c5581d-5f9f-4250-9b33-ba517e6635ed,2026-11-20,18:00,30,Maria Tejada,829-381-1088,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-7ae9967f-d928-4312-a78e-f4c7f6012bd5,2026-11-20,18:30,30,Andrea Jezabel Ramirez,8493592060,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-de07acda-fa6d-422d-b8e0-183142c755ed,2026-11-20,18:30,30,Yanelfi Guzman,,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,COMPRA DE NUEVO PAQUETE
+import-8f1f96d6-a20f-425e-a561-16242f6e7b9d,2026-11-21,10:00,30,Clara Gomez,+1 (829) 945-1832,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-95ef0310-4ff8-4533-9884-404dfa967729,2026-11-21,10:00,30,Samantha Valdez,8099032172,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,
+import-ab9ab7e9-7bdb-4c18-be90-5b1f2fdc500f,2026-11-21,10:30,30,Marillely Gomez,809-309-4950,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-fa99a235-07c1-448b-9220-c02016a4e419,2026-11-21,10:30,30,Katheen Ureña,809-883-1232,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,
+import-27ec3b1e-4a21-479c-b5b8-c11fb9239efc,2026-11-21,11:00,30,Aysha diaz,,,,,Cita de continuación (seguimiento),Cabina 1,Emilie Marie Lopez,0,
+import-b22855d2-e956-49bf-9126-817912e927e6,2026-11-21,11:00,30,Meredith Martinez,1 7543166332,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,
+import-58605d01-9325-4f4f-835d-edce63212a20,2026-11-21,11:30,30,Nicole Brador,8493503458,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,
+import-7d9d70c3-3a65-4927-9eb0-04950cd8186f,2026-11-21,11:30,30,Cristal Rivas Diaz,829-279-2120,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-08fe3efc-25d5-4682-991f-8ae0db4f67dd,2026-11-21,12:00,30,Dianela Gomez Medina,809-512-5319,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-b9793253-bddf-4299-9690-1638f9b47474,2026-11-21,12:00,30,Larimar Lucia Santos,829-210-1294,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,
+import-bf19a003-907c-4bdb-832b-4f47b303c65b,2026-11-21,12:30,30,Nicole Guerrero,,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-cb31be3d-8a46-4482-a768-7df4e5d87433,2026-11-21,12:30,30,Carolina Vargas,,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,
+import-8024b202-32d9-4d9a-90a2-b0758560c541,2026-11-21,13:00,30,Francheska Constanzo,809-953-8223,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,
+import-aabff19d-47a0-4d06-8838-f1157034ac6b,2026-11-21,13:00,30,Yafresi Pujols,829-898-9940,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-4d8762df-bd57-47c4-a0f9-d267b6de63cb,2026-11-21,13:30,30,Penelope Quiñonez,,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-5134b400-c905-4110-83ca-a49c97d0f6f4,2026-11-21,13:30,30,Marisel Berroa,8295463458,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,
+import-aece5360-64ef-42e6-9e97-6ae682f40773,2026-11-21,14:00,30,Ivette Maria Estevez,8296330542,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,
+import-e6e05416-02b9-40ca-a3d4-797d9a2058ee,2026-11-21,14:00,30,Noelia Beltré,,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-48a23cb8-4735-431e-b973-9f54097fa022,2026-11-21,14:30,30,Fiordaliza Regalado,,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-5cf987c4-eb80-456d-a1cd-6bf036fe87e1,2026-11-21,14:30,30,Idalina Bron,8098531488,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,
+import-50d6f54a-f9d6-48b4-8247-72985af730dc,2026-11-21,15:00,30,Wisaira Rodriguez,+1 (809) 602-7805,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,
+import-72f4c1b6-633f-418a-aa20-34822be1144c,2026-11-21,15:00,30,Josefina calvo,8497077338,,,,Cuerpo completo - pago,Cabina 1,,0,
+import-3439acc4-8d2f-4fbe-9e01-9072ba237308,2026-11-21,15:30,30,Victoria Villacorta,8494551632,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-7e0908dc-65f0-499d-946b-f928cd26c4e2,2026-11-21,15:30,30,Paola Leyba,8292623080,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,
+import-b66c17bc-7be9-4193-8355-848956b710d5,2026-11-21,16:00,30,María Fernanda Magallanes,829-750-3434,,,,Cita de continuación (seguimiento),Auxiliar de Ventas,,0,
+import-d28ad4b9-34ee-469a-878d-58ae1ae54117,2026-11-21,16:00,30,Angel Vidal,84945551632,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-309317e1-cad1-4fa2-a38c-a09e8498b43d,2026-11-21,16:30,30,Yolaine Franchelle Gomez,8295856698,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-ba981f23-cfb0-48ed-9185-45edbe433597,2026-11-21,16:30,30,Darianny Lorenzo,8293542959,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,
+import-58d0ac2f-3107-4228-8064-d3d0eb08aece,2026-11-21,17:00,30,María Fernanda Magallanes,829-750-3434,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-2eaa7f94-5146-4537-b02d-567e7eb57104,2026-11-21,17:30,30,Yessica Delgado,8097131459,,,,Paq. 12 sesiones - Cuerpo Completo,Auxiliar de Ventas,,0,
+import-e9476c51-26e3-4d17-a342-ad874968d085,2026-11-21,17:30,30,Rachel Sepulveda,+1 (829) 329‑3952,,,,Cita de continuación (seguimiento),Cabina 1,,0,
+import-0dbce3bf-e038-4ef8-be8a-464bbb545d7e,2026-11-21,18:00,30,Samuel Garcia Hurtado,8292937686,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,
+import-02e29d2f-8198-4a22-aa77-87775dba8521,2026-11-21,18:30,30,Pedro Mateo,8492120896,,,,Cita de continuación (seguimiento),Cabina 1,Loreinni Rosario Peña,0,

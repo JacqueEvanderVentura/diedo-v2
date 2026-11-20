@@ -1,0 +1,142 @@
+[
+    {
+        "id": "5068f18e-ec72-5d14-bc77-b9a3d0f8baa8",
+        "nombre": "Tss Charm",
+        "monto": 27783.81,
+        "categoria_id": "0d06147e-8f1b-591e-af7e-74bfb5c3e20f",
+        "categoria_nombre": "Tss Charm",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "active": true,
+        "dia_pago": 4
+    },
+    {
+        "id": "efab1c9b-b548-543a-9149-2473ed99aa2b",
+        "nombre": "Local Charm DN",
+        "monto": 44000.00,
+        "categoria_id": "f6d32c47-13b9-5b2a-915d-3d99bd649fca",
+        "categoria_nombre": "Pago local",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "active": true,
+        "dia_pago": 5
+    },
+    {
+        "id": "4ec9bd9d-03fa-5f3e-b5a2-33a30b6b40ab",
+        "nombre": "Infotep Charm",
+        "monto": 1265.00,
+        "categoria_id": "2a3effe9-59e2-5cbc-b077-6c45a1f7a984",
+        "categoria_nombre": "Infotep Charm",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "active": true,
+        "dia_pago": 10
+    },
+    {
+        "id": "3c139c0e-0a40-5298-8e51-2755a7327664",
+        "nombre": "Tc Santa Cruz ",
+        "monto": 7873.08,
+        "categoria_id": "621a2308-22d1-513e-a7fc-9de386bc6bc3",
+        "categoria_nombre": "Tc Santa Cruz Bravo",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "active": true,
+        "dia_pago": 13
+    },
+    {
+        "id": "c1512e2c-ba31-5e69-bd78-c650f8dabdc1",
+        "nombre": "Crediclick Flor",
+        "monto": 26000.00,
+        "categoria_id": "4a3b2492-5c29-5a8b-86a3-0ff91f437f8c",
+        "categoria_nombre": "Crediclick",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "active": true,
+        "dia_pago": 14
+    },
+    {
+        "id": "caa8d861-c1ca-53ab-9025-e0bef5d1b254",
+        "nombre": "Nomina Charm 1ra 15na ",
+        "monto": 160000.00,
+        "categoria_id": "663540e4-a236-5afe-a16d-184041a38274",
+        "categoria_nombre": "Salario de Empleados",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "active": true,
+        "dia_pago": 15
+    },
+    {
+        "id": "86ebbcd9-0b8a-50ae-9427-0beb6c6e3e24",
+        "nombre": "Ernesto Publicista",
+        "monto": 12000.00,
+        "categoria_id": "1c383aa5-df58-5c95-a8f7-a3b9da7bccbc",
+        "categoria_nombre": "Publicista ",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "active": true,
+        "dia_pago": 16
+    },
+    {
+        "id": "cc7aaa78-b9e7-5024-b10e-e866afef476a",
+        "nombre": "Luz local Charm",
+        "monto": 7613.48,
+        "categoria_id": "8c2740d3-a6b5-5f9d-a185-6b5c318535ba",
+        "categoria_nombre": "Factura eléctrica ",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "active": true,
+        "dia_pago": 17
+    },
+    {
+        "id": "6d4b2e36-0f10-5738-8cd0-996717cfd5f9",
+        "nombre": "Tc popular titanium",
+        "monto": 26000.00,
+        "categoria_id": "db2ac43f-6df8-5560-8bf3-eee66965bbdf",
+        "categoria_nombre": "Tc popular titanium ",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "active": true,
+        "dia_pago": 19
+    },
+    {
+        "id": "642b6530-0074-55bf-b968-8619344ee419",
+        "nombre": "Prestamo Crediclick Rosa",
+        "monto": 28532.00,
+        "categoria_id": "28a4f066-8a99-5a25-8827-5f5997330089",
+        "categoria_nombre": "Préstamo BHD Credicclick ",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "active": true,
+        "dia_pago": 25
+    },
+    {
+        "id": "836d6c26-f397-5d02-b5f5-65c6bf511df9",
+        "nombre": "Internet y telefono charm DN",
+        "monto": 1473.00,
+        "categoria_id": "5bc909dc-5254-52ff-bdea-bb879a8cbde3",
+        "categoria_nombre": "Internet y teléfono ",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "active": true,
+        "dia_pago": 29
+    },
+    {
+        "id": "92604e86-afcd-5da3-9d71-44383abfa6bd",
+        "nombre": "Multicredito Santa Cruz",
+        "monto": 3160.96,
+        "categoria_id": "d93260ea-be14-5fae-86d5-5b012faeba73",
+        "categoria_nombre": "Multicredito Santa Cruz",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "active": true,
+        "dia_pago": 30
+    },
+    {
+        "id": "9a6c981b-0f64-5ba9-898e-beb14d370156",
+        "nombre": "Nomina Charm 2da 15na",
+        "monto": 174500.00,
+        "categoria_id": "663540e4-a236-5afe-a16d-184041a38274",
+        "categoria_nombre": "Salario de Empleados",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "active": true,
+        "dia_pago": 30
+    },
+    {
+        "id": "c067358b-9cfa-51f1-93b4-e920f87648ae",
+        "nombre": "Contadora Yohanny",
+        "monto": 15000.00,
+        "categoria_id": "f29a301a-c39b-5a51-a652-7d59cc913c94",
+        "categoria_nombre": "Contabilidad ",
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "active": true,
+        "dia_pago": 30
+    }
+]

@@ -19,7 +19,7 @@ from app.services.errors import (
     InvalidOperationError,
     ResourceNotFoundError,
 )
-from app.services.pos import PosService, _PricedCatalogLine
+from app.services.pos import PosService, _PricedCatalogLine, _ResolvedCheckoutTender
 from sqlalchemy.exc import IntegrityError
 
 
@@ -1109,6 +1109,14 @@ def test_payment_reversal_and_sale_void_guards() -> None:
         def receivable_for_sale(self, *_args: object, **_kwargs: object) -> object | None:
             return self.receivable
 
+        def posted_payments_for_receivable(self, *_args: object, **_kwargs: object) -> tuple:
+            if self.receivable is None:
+                return ()
+            return getattr(self.receivable, "posted_payments", ())
+
+        def movements_for_sale(self, *_args: object, **_kwargs: object) -> tuple:
+            return ()
+
     base_sale = {
         "id": sale_id,
         "branch_id": uuid7(),
@@ -1146,8 +1154,55 @@ def test_payment_reversal_and_sale_void_guards() -> None:
             SaleRepository(
                 [None, None],
                 SimpleNamespace(**base_sale),
-                SimpleNamespace(paid_amount=Decimal("1"), approval_pending_amount=Decimal("0")),
+                SimpleNamespace(
+                    id=uuid7(),
+                    paid_amount=Decimal("1"),
+                    approval_pending_amount=Decimal("0"),
+                    posted_payments=(SimpleNamespace(status="posted"),),
+                ),
             )
+        )
+
+
+def test_tender_allocation_allows_partial_and_rejects_overage() -> None:
+    service = _service(SimpleNamespace())
+    cash = SimpleNamespace(settlement_policy="immediate")
+    partial = _ResolvedCheckoutTender(
+        position=1,
+        method=cash,
+        amount=Decimal("10.00"),
+        reference=None,
+    )
+    customer = SimpleNamespace(id=uuid7())
+    assert service._assert_tender_allocation(
+        resolved_tenders=(partial,),
+        priced_total=Decimal("30.00"),
+        customer=customer,
+    ) == Decimal("10.00")
+    with pytest.raises(InvalidOperationError, match="cliente registrado"):
+        service._assert_tender_allocation(
+            resolved_tenders=(partial,),
+            priced_total=Decimal("30.00"),
+            customer=None,
+        )
+    with pytest.raises(InvalidOperationError, match="superar el total"):
+        service._assert_tender_allocation(
+            resolved_tenders=(
+                _ResolvedCheckoutTender(
+                    position=1,
+                    method=cash,
+                    amount=Decimal("40.00"),
+                    reference=None,
+                ),
+            ),
+            priced_total=Decimal("30.00"),
+            customer=customer,
+        )
+    with pytest.raises(InvalidOperationError, match="al menos un pago"):
+        service._assert_tender_allocation(
+            resolved_tenders=(),
+            priced_total=Decimal("30.00"),
+            customer=customer,
         )
 
 

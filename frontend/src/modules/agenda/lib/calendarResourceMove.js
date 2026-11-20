@@ -1,6 +1,6 @@
 import { canBookResource, canEditResource } from '@/modules/configuracion/lib/agendaCabinas'
 import { normalizeAppointmentStatus } from '@/modules/agenda/lib/completion'
-import { normalizeAppointmentTime, timeRangesOverlap } from '@/modules/agenda/lib/selfBooking'
+import { fitsInSchedule, normalizeAppointmentTime, timeRangesOverlap } from '@/modules/agenda/lib/selfBooking'
 
 /** Mirrors backend `SHARED_RESOURCE_CAPACITY`: a cabin holds two simultaneous appointments. */
 export const SHARED_RESOURCE_CAPACITY = 2
@@ -110,6 +110,35 @@ export function employeeCapacityMessage(employeeName) {
 
 export function sharedEmployeeConfirmMessage({ employeeName }) {
   return `${employeeName || 'El especialista'} ya tiene una cita para este bloque. ¿Desea proceder igualmente?`
+}
+
+export function sharedEmployeeOutsideScheduleConfirmMessage({ employeeName } = {}) {
+  return `Este horario está fuera del horario designado para ${employeeName || 'este colaborador'}. ¿Seguro que deseas continuar?`
+}
+
+export function appointmentOutsideEmployeeSchedule({
+  employee,
+  date,
+  time,
+  duration = 30,
+}) {
+  if (!employee?.id || !date || !time) return false
+  return !fitsInSchedule({ employee, date, time, duration })
+}
+
+export function appointmentMoveConfirmMessage({
+  customerName,
+  fromTime,
+  fromResourceName,
+  toTime,
+  toResourceName,
+}) {
+  const who = (customerName || '').trim() || 'esta cita'
+  const origin = (fromResourceName || '').trim() || 'Sin cabina'
+  const destination = (toResourceName || '').trim() || 'Sin cabina'
+  const from = normalizeAppointmentTime(fromTime || '')
+  const to = normalizeAppointmentTime(toTime || '')
+  return `¿Mover ${who} de las ${from} en ${origin} a ${to} en ${destination}?`
 }
 
 /** @deprecated Prefer employeePeakOccupancy for staff double-booking. */

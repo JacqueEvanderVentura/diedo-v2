@@ -56,6 +56,7 @@ import {
   invoiceCollectionFromSalePolicy,
   invoiceCollectionStatusFromMethod,
   mergeInvoiceCollection,
+  quoteInvoiceTendersToApi,
   resolveQuoteInvoicePaymentMethod,
 } from '@/modules/crm/lib/quoteInvoice'
 import { buildLeadConvertRequest, buildLeadOfflineCustomer } from '@/modules/crm/lib/leadConversion'
@@ -1156,6 +1157,7 @@ export const useCrmStore = create(
         reference = null,
         proof = null,
         collectionMode,
+        tenders = null,
       } = {}) => {
         let lead = await get().ensureLead(leadId)
         if (!lead) throw new Error('Lead no encontrado.')
@@ -1194,6 +1196,7 @@ export const useCrmStore = create(
               collectionMode,
               reference,
               proof,
+              tenders,
             })).sale
           }
         } else {
@@ -1482,6 +1485,8 @@ export const useCrmStore = create(
         paymentMethod = 'efectivo',
         reference = null,
         proof = null,
+        tenders = null,
+        emitNcf = false,
       } = {}) => {
         const quote = get().quotes.find((item) => item.id === quoteId)
         if (!quote) throw new Error('Cotización no encontrada.')
@@ -1490,17 +1495,24 @@ export const useCrmStore = create(
         )
         if (isOnline()) {
           try {
-            const payment = resolveQuoteInvoicePaymentMethod(
-              useConfigStore.getState().paymentMethods,
-              { paymentMethodId: paymentMethod, semantic: paymentMethod }
-            )
+            const paymentMethods = useConfigStore.getState().paymentMethods
+            const splitTenders = Array.isArray(tenders) && tenders.length > 0 ? tenders : null
+            const payment = splitTenders
+              ? null
+              : resolveQuoteInvoicePaymentMethod(
+                paymentMethods,
+                { paymentMethodId: paymentMethod, semantic: paymentMethod }
+              )
             const response = await crmApi.invoiceQuote(
               quoteId,
               {
                 version: quote.version,
-                paymentMethodId: payment.methodId,
+                ...(splitTenders
+                  ? { tenders: quoteInvoiceTendersToApi(splitTenders, paymentMethods) }
+                  : { paymentMethodId: payment.methodId }),
                 collectionMode: collectionMode === 'receivable' ? 'receivable' : 'now',
                 reference,
+                emitNcf: Boolean(emitNcf),
               },
               `crm-quote-invoice-${quoteId}`
             )
@@ -1548,16 +1560,19 @@ export const useCrmStore = create(
                 /* no receivable for this sale */
               }
             }
-            const collectionStatus = invoiceCollectionStatusFromMethod(payment.method)
+            let collectionStatus = invoiceCollectionStatusFromMethod(payment?.method)
               || invoiceCollectionFromSalePolicy(sale)
               || 'collected'
+            if (resolvedReceivableId && collectionStatus === 'collected') {
+              collectionStatus = 'receivable'
+            }
             const needsReceivableTracking = collectionStatus !== 'collected'
             const updatedQuote = {
               ...quote,
               convertedSaleId: sale.id,
               invoiceNumber: sale.number,
               receivableId: resolvedReceivableId,
-              invoicePaymentMethod: payment.semantic,
+              invoicePaymentMethod: payment?.semantic || splitTenders?.[0]?.methodId || null,
               structuralStatus: 'converted',
               invoiceCollection: collectionStatus,
               version: (quote.version || 1) + 1,

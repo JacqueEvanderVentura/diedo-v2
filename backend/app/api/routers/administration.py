@@ -124,6 +124,8 @@ def _branch_response(branch: Branch) -> BranchResponse:
         public_cancel_min_lead_minutes=cast(
             PublicBookingLeadMinutes, branch.public_cancel_min_lead_minutes
         ),
+        fiscal_credit_ncf_prefix=branch.fiscal_credit_ncf_prefix,
+        fiscal_credit_ncf_next_sequence=branch.fiscal_credit_ncf_next_sequence,
         version=branch.version,
     )
 
@@ -345,6 +347,9 @@ def update_branch(
         exclude_none=True,
         by_alias=False,
     )
+    for field_name in ("fiscal_credit_ncf_prefix", "fiscal_credit_ncf_next_sequence"):
+        if field_name in payload.model_fields_set:
+            changes[field_name] = getattr(payload, field_name)
     if payload.details is not None:
         changes["details"] = payload.details.model_dump(
             exclude_unset=True,

@@ -1,0 +1,112 @@
+[
+    {
+        "id": "32d71a61-6a46-52ed-b33e-23524d006108",
+        "nombre": "Prestamo BHD Crediclick",
+        "monto_pendiente": 1141278.00,
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "liability_categorias": [
+            {
+                "category_id": "28a4f066-8a99-5a25-8827-5f5997330089"
+            }
+        ]
+    },
+    {
+        "id": "8bb8bc47-891c-5a82-9a66-e059df2dd351",
+        "nombre": "Prestamo BHD Crediclick",
+        "monto_pendiente": 770365.00,
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "liability_categorias": [
+            {
+                "category_id": "28a4f066-8a99-5a25-8827-5f5997330089"
+            }
+        ]
+    },
+    {
+        "id": "7e92770f-76e0-5249-8606-31e234e39931",
+        "nombre": "Crediclick Flor ",
+        "monto_pendiente": 676000.00,
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "liability_categorias": [
+            {
+                "category_id": "4a3b2492-5c29-5a8b-86a3-0ff91f437f8c"
+            }
+        ]
+    },
+    {
+        "id": "e67d4c24-a0fe-5282-a6de-4a5452b6aa30",
+        "nombre": "Multicredito Santa Cruz",
+        "monto_pendiente": 50397.96,
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "liability_categorias": [
+            {
+                "category_id": "d93260ea-be14-5fae-86d5-5b012faeba73"
+            }
+        ]
+    },
+    {
+        "id": "1f61eef7-ccd4-5ff8-9797-9a30e8d38adc",
+        "nombre": "Préstamo Banco Fihogar",
+        "monto_pendiente": 801394.56,
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "liability_categorias": [
+            {
+                "category_id": "a2c948e7-cf02-5fb9-b992-409afa99a1aa"
+            }
+        ]
+    },
+    {
+        "id": "f4c7efd9-fc67-5c3d-995c-308a4d90b5f2",
+        "nombre": "Tc Visa Mi País ",
+        "monto_pendiente": 64104.09,
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "liability_categorias": [
+            {
+                "category_id": "b9a8bf41-5cac-553e-bfbf-fc4280104816"
+            }
+        ]
+    },
+    {
+        "id": "4b652aea-2941-5a08-a333-9050bdf7a46a",
+        "nombre": "TC Bravo Santa Cruz ",
+        "monto_pendiente": 10355.58,
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "liability_categorias": [
+            {
+                "category_id": "621a2308-22d1-513e-a7fc-9de386bc6bc3"
+            }
+        ]
+    },
+    {
+        "id": "20a18caf-d713-55bf-a9ca-0167e266b069",
+        "nombre": "Tc BHD Visa Open ",
+        "monto_pendiente": 415268.26,
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "liability_categorias": [
+            {
+                "category_id": "05833494-e20b-56bc-a78e-ca674d574c4e"
+            }
+        ]
+    },
+    {
+        "id": "3f91529a-624a-5f4e-8c2c-394ad3e19a7f",
+        "nombre": "Prestamo Extracredito Popular",
+        "monto_pendiente": 928500.00,
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "liability_categorias": [
+            {
+                "category_id": "f0303ce1-3923-5d0a-99ff-0f4d07ea6207"
+            }
+        ]
+    },
+    {
+        "id": "1f25dcb7-6d32-580d-9414-45d2514238a9",
+        "nombre": "Tc Popular titanium Platinium",
+        "monto_pendiente": 235521.00,
+        "sucursal_id": "0b3aade5-86c9-52a5-84d1-619d417c427c",
+        "liability_categorias": [
+            {
+                "category_id": "db2ac43f-6df8-5560-8bf3-eee66965bbdf"
+            }
+        ]
+    }
+]

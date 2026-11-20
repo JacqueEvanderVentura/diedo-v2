@@ -38,10 +38,13 @@ import { canBookResource, canEditResource, sortResources } from '@/modules/confi
 import { boundsForDate } from '../lib/branchOpeningHours'
 import {
   appointmentBlocksConfirmedSlot,
+  appointmentMoveConfirmMessage,
+  appointmentOutsideEmployeeSchedule,
   explainAppointmentResourceMove,
   findEmployeeSharing,
   findResourceSharing,
   sharedEmployeeConfirmMessage,
+  sharedEmployeeOutsideScheduleConfirmMessage,
   sharedResourceWarning,
 } from '../lib/calendarResourceMove'
 import { normalizeAppointmentStatus } from '../lib/completion'
@@ -73,6 +76,8 @@ export default function CalendarioPage() {
   const [editing, setEditing] = useState(null)
   const [defaults, setDefaults] = useState({})
   const [importStackModal, setImportStackModal] = useState([])
+  const [pendingMoveConfirm, setPendingMoveConfirm] = useState(null)
+  const [employeeScheduleMoveConfirm, setEmployeeScheduleMoveConfirm] = useState(null)
   const [employeeMoveConfirm, setEmployeeMoveConfirm] = useState(null)
   const employees = useRrhhStore((s) => s.employees)
 
@@ -178,7 +183,12 @@ export default function CalendarioPage() {
     setModalOpen(true)
   }
 
-  const executeResourceMove = useCallback(async ({ appointment, targetResource, nextTime }) => {
+  const executeResourceMove = useCallback(async ({
+    appointment,
+    targetResource,
+    nextTime,
+    allowOutsideEmployeeSchedule = false,
+  }) => {
     const sharedWith = appointmentBlocksConfirmedSlot(appointment)
       ? findResourceSharing({
         appointments,
@@ -194,6 +204,7 @@ export default function CalendarioPage() {
         cabinaId: targetResource.id,
         resourceId: targetResource.id,
         time: nextTime,
+        ...(allowOutsideEmployeeSchedule ? { allowOutsideEmployeeSchedule: true } : {}),
       })
       if (sharedWith) {
         toast.warning(sharedResourceWarning({ resourceName: targetResource.name, occupant: sharedWith }))
@@ -233,6 +244,32 @@ export default function CalendarioPage() {
       toast.error(blocked)
       return
     }
+    setPendingMoveConfirm({
+      appointment,
+      targetResource,
+      sourceResource,
+      nextTime,
+    })
+  }, [appointments, branchResources, canManage])
+
+  const continueResourceMove = useCallback(async (pending, { allowOutsideEmployeeSchedule = false } = {}) => {
+    if (!pending?.appointment || !pending?.targetResource) return
+    const { appointment, targetResource, nextTime } = pending
+    const employee = employees.find((item) => item.id === appointment.employeeId)
+    if (
+      !allowOutsideEmployeeSchedule
+      && appointment.employeeId
+      && employee
+      && appointmentOutsideEmployeeSchedule({
+        employee,
+        date: appointment.date,
+        time: nextTime,
+        duration: appointment.duration,
+      })
+    ) {
+      setEmployeeScheduleMoveConfirm(pending)
+      return
+    }
     const employeeSharing = appointment.employeeId && appointmentBlocksConfirmedSlot(appointment)
       ? findEmployeeSharing({
         appointments,
@@ -244,12 +281,23 @@ export default function CalendarioPage() {
       })
       : null
     if (employeeSharing) {
-      const employeeName = employees.find((item) => item.id === appointment.employeeId)?.name
-      setEmployeeMoveConfirm({ appointment, targetResource, nextTime, employeeName })
+      const employeeName = employee?.name
+      setEmployeeMoveConfirm({
+        appointment,
+        targetResource,
+        nextTime,
+        employeeName,
+        allowOutsideEmployeeSchedule,
+      })
       return
     }
-    await executeResourceMove({ appointment, targetResource, nextTime })
-  }, [appointments, branchResources, canManage, employees, executeResourceMove])
+    await executeResourceMove({
+      appointment,
+      targetResource,
+      nextTime,
+      allowOutsideEmployeeSchedule,
+    })
+  }, [appointments, employees, executeResourceMove])
 
   const scheduleFromDay = (key) => {
     setCursor(key)
@@ -432,6 +480,48 @@ export default function CalendarioPage() {
         open={importStackModal.length > 0}
         onClose={() => setImportStackModal([])}
         appointments={importStackModal}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingMoveConfirm)}
+        onClose={() => setPendingMoveConfirm(null)}
+        onConfirm={async () => {
+          const pending = pendingMoveConfirm
+          setPendingMoveConfirm(null)
+          if (!pending) return
+          await continueResourceMove(pending)
+        }}
+        title="Mover cita"
+        description={pendingMoveConfirm
+          ? appointmentMoveConfirmMessage({
+            customerName: pendingMoveConfirm.appointment?.customerName,
+            fromTime: pendingMoveConfirm.appointment?.time,
+            fromResourceName: pendingMoveConfirm.sourceResource?.name,
+            toTime: pendingMoveConfirm.nextTime,
+            toResourceName: pendingMoveConfirm.targetResource?.name,
+          })
+          : ''}
+        confirmLabel="Mover"
+        tone="primary"
+        testId="calendar-move-confirm"
+      />
+
+      <ConfirmDialog
+        open={Boolean(employeeScheduleMoveConfirm)}
+        onClose={() => setEmployeeScheduleMoveConfirm(null)}
+        onConfirm={async () => {
+          const pending = employeeScheduleMoveConfirm
+          setEmployeeScheduleMoveConfirm(null)
+          if (!pending) return
+          await continueResourceMove(pending, { allowOutsideEmployeeSchedule: true })
+        }}
+        title="Horario fuera de jornada"
+        description={sharedEmployeeOutsideScheduleConfirmMessage({
+          employeeName: employees.find((item) => item.id === employeeScheduleMoveConfirm?.appointment?.employeeId)?.name,
+        })}
+        confirmLabel="Sí, continuar"
+        tone="primary"
+        testId="calendar-employee-schedule-override"
       />
 
       <ConfirmDialog

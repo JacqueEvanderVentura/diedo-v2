@@ -104,6 +104,22 @@ export function analyzeQuoteInvoicePaymentSetup(methods, { online = true } = {})
   return null
 }
 
+export function quoteInvoiceTendersToApi(tenders, methods) {
+  return (tenders || []).map((row) => {
+    const payment = paymentMethodApiReference(methods, row.methodId)
+    if (!payment.methodId) {
+      const err = new Error('Selecciona métodos de pago sincronizados con la API.')
+      err.code = 'not_synced'
+      throw err
+    }
+    return {
+      paymentMethodId: payment.methodId,
+      amount: Number(row.amount) || 0,
+      reference: row.reference?.trim() || null,
+    }
+  })
+}
+
 export function resolveQuoteInvoicePaymentMethod(methods, { paymentMethodId, semantic }) {
   const enabled = listCheckoutPaymentMethods(methods)
   let method = enabled.find((item) => item.id === paymentMethodId)

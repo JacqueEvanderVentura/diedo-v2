@@ -204,6 +204,7 @@ class CheckoutRequest(ApiModel):
     discount_value: Money | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
     lines: list[CheckoutLineRequest] = Field(min_length=1, max_length=100)
     notes: str | None = Field(default=None, max_length=1000)
+    emit_ncf: bool = False
 
     @field_validator("reference", "notes")
     @classmethod
@@ -581,6 +582,7 @@ class SaleTenderLineResponse(ApiModel):
 class SaleListItemResponse(ApiModel):
     id: UUID
     number: str
+    fiscal_ncf: str | None = None
     branch: PosBranchReferenceResponse
     register_id: UUID | None
     customer: PosCustomerReferenceResponse | None

@@ -18,7 +18,7 @@ from app.db.models import (
     UnitOfMeasure,
 )
 from app.db.session import get_engine, session_scope
-from app.schemas.crm import ImportActivityItem
+from app.schemas.crm import ImportActivityItem, InvoiceCrmQuoteRequest
 from app.services.authorization import PermissionGrant
 from app.services.crm import CrmService, _lead_instagram_url
 from app.services.crm_discovery import (
@@ -36,6 +36,7 @@ from app.services.errors import (
 )
 from app.services.local_bootstrap import bootstrap_local_foundation
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -43,6 +44,23 @@ from tests.customer_payloads import customer_create_payload, unique_lead_documen
 
 _PASSWORD = "crm-test-password-not-a-secret"
 _NOW = datetime(2026, 9, 1, 16, 0, tzinfo=UTC)
+
+
+def test_invoice_crm_quote_request_accepts_method_or_tenders() -> None:
+    method_id = uuid7()
+    InvoiceCrmQuoteRequest(version=1, payment_method_id=method_id)
+    InvoiceCrmQuoteRequest(
+        version=1,
+        tenders=[{"payment_method_id": method_id, "amount": Decimal("10.00")}],
+    )
+    with pytest.raises(ValidationError, match="paymentMethodId o tenders"):
+        InvoiceCrmQuoteRequest(version=1)
+    with pytest.raises(ValidationError, match="no ambos"):
+        InvoiceCrmQuoteRequest(
+            version=1,
+            payment_method_id=method_id,
+            tenders=[{"payment_method_id": method_id, "amount": Decimal("10.00")}],
+        )
 
 
 class _DiscoveryProvider:

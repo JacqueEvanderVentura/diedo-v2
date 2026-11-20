@@ -1,0 +1,62 @@
+[
+    {
+        "id": "cde49086-65ce-5e50-8fc6-b17c1256bbad",
+        "nombre": "internet y telefono",
+        "monto": 100.00,
+        "categoria_id": "5bc909dc-5254-52ff-bdea-bb879a8cbde3",
+        "categoria_nombre": "Internet y teléfono ",
+        "sucursal_id": "1973ca3c-2bb4-551e-b6ec-2ec594a9b7f6",
+        "active": true,
+        "dia_pago": 1
+    },
+    {
+        "id": "b8c62b55-5fbc-5afc-9a8f-98e760fc2565",
+        "nombre": "Propina",
+        "monto": 100.00,
+        "categoria_id": "ebb2a790-016a-5e29-ac10-8dc7a2949038",
+        "categoria_nombre": "Propina Starling Subervi",
+        "sucursal_id": "1973ca3c-2bb4-551e-b6ec-2ec594a9b7f6",
+        "active": true,
+        "dia_pago": 1
+    },
+    {
+        "id": "45808099-ef1f-5e04-9845-2ca185b66e6d",
+        "nombre": "Local Charm SDE",
+        "monto": 118767.00,
+        "categoria_id": "f6d32c47-13b9-5b2a-915d-3d99bd649fca",
+        "categoria_nombre": "Pago local",
+        "sucursal_id": "1973ca3c-2bb4-551e-b6ec-2ec594a9b7f6",
+        "active": true,
+        "dia_pago": 5
+    },
+    {
+        "id": "e45e962f-c9bb-56cf-a435-2c91975642c4",
+        "nombre": "Alquiler",
+        "monto": 60000.00,
+        "categoria_id": "8abfcfab-8ac7-5687-951a-b159b23e2bcf",
+        "categoria_nombre": "San",
+        "sucursal_id": "1973ca3c-2bb4-551e-b6ec-2ec594a9b7f6",
+        "active": true,
+        "dia_pago": 10
+    },
+    {
+        "id": "4c5353e5-08b6-5d01-80f3-d9f96bf1df68",
+        "nombre": "Nomina 1ra 15na SDE",
+        "monto": 17500.00,
+        "categoria_id": "663540e4-a236-5afe-a16d-184041a38274",
+        "categoria_nombre": "Salario de Empleados",
+        "sucursal_id": "1973ca3c-2bb4-551e-b6ec-2ec594a9b7f6",
+        "active": true,
+        "dia_pago": 15
+    },
+    {
+        "id": "db411fae-a71e-5946-94cf-74c3ab2e11b9",
+        "nombre": "Nomina 2da 15na SDE",
+        "monto": 17500.00,
+        "categoria_id": "663540e4-a236-5afe-a16d-184041a38274",
+        "categoria_nombre": "Salario de Empleados",
+        "sucursal_id": "1973ca3c-2bb4-551e-b6ec-2ec594a9b7f6",
+        "active": true,
+        "dia_pago": 30
+    }
+]

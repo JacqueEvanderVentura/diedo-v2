@@ -8,6 +8,8 @@ import { setTimeout as sleep } from 'node:timers/promises'
 const base = process.argv[2]
 assert.ok(base, 'Provide the deployment URL')
 
+const maxAttempts = 20
+
 function fetchSpaShell(path) {
   // Node fetch overwrites Sec-Fetch-Mode with cors. curl preserves the browser
   // navigation header, matching how Cloudflare serves the SPA shell.
@@ -66,13 +68,24 @@ try {
 } catch {
   // local smoke without a fresh build
 }
-const version = await fetch(`${base}/version.json`, { cache: 'no-store' })
-assert.equal(version.status, 200)
-assert.match(version.headers.get('cache-control'), /no-store/)
-const liveBuildId = JSON.parse(await version.text()).buildId
-assert.ok(typeof liveBuildId === 'string' && liveBuildId.length > 0)
-if (expectedBuildId) {
-  assert.equal(liveBuildId, expectedBuildId, 'Live version.json must match the frontend dist just deployed')
+let liveBuildId = null
+for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+  const version = await fetch(`${base}/version.json`, { cache: 'no-store' })
+  assert.equal(version.status, 200)
+  assert.match(version.headers.get('cache-control'), /no-store/)
+  liveBuildId = JSON.parse(await version.text()).buildId
+  assert.ok(typeof liveBuildId === 'string' && liveBuildId.length > 0)
+  if (!expectedBuildId || liveBuildId === expectedBuildId) {
+    break
+  }
+  if (attempt === maxAttempts) {
+    assert.equal(
+      liveBuildId,
+      expectedBuildId,
+      'Live version.json must match the frontend dist just deployed',
+    )
+  }
+  await sleep(3_000)
 }
 const page = await fetch(`${base}/`)
 assert.equal(page.status, 200)
@@ -84,7 +97,6 @@ const expectedAssets = expectedDistAssets()
 let rootHtml = ''
 let loginHtml = ''
 let verifiedAssets = []
-const maxAttempts = 20
 for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
   rootHtml = fetchSpaShell('/')
   loginHtml = fetchSpaShell('/login')

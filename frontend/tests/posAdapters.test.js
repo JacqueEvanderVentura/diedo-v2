@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   checkoutToApiPayload,
+  mapSaleFromApi,
   mapProof,
   mapReceivableFromApi,
   mapRegisterHistoryEntry,
@@ -164,6 +165,7 @@ describe('adaptadores de Terminal POS', () => {
       reference: 'TRF-01',
       customer: state.customer,
       items: [{ id: 'item-id', qty: 1, price: 100 }],
+      emitNcf: true,
     }, state)
 
     expect(checkout).toMatchObject({
@@ -174,6 +176,19 @@ describe('adaptadores de Terminal POS', () => {
       paymentMethodId: 'method-id',
       reference: 'TRF-01',
       lines: [{ itemId: 'item-id', quantity: 1, unitPrice: 100 }],
+      emitNcf: true,
+    })
+
+    expect(mapSaleFromApi({
+      id: 'sale-ncf',
+      number: 'VTA-00000040',
+      fiscalNcf: 'B0100000040',
+      total: '100.00',
+      paymentMethod: { code: 'cash' },
+    })).toMatchObject({
+      id: 'sale-ncf',
+      number: 'VTA-00000040',
+      fiscalNcf: 'B0100000040',
     })
 
     const proof = new File(['image'], 'proof.png', { type: 'image/png' })
@@ -320,6 +335,39 @@ describe('adaptadores de Terminal POS', () => {
       expect.objectContaining({ itemId: 'item-a', quantity: 2, unitCost: 10.25 }),
       expect.objectContaining({ itemId: 'item-b', quantity: 1, unitCost: 4.5 }),
     ])
+  })
+
+  it('resuelve el efectivo sincronizado cuando el alta rápida no envía método', () => {
+    const payload = movementToApiPayload({
+      concept: 'Ajuste de caja',
+      amount: 111,
+    }, {
+      paymentMethods: [
+        { id: 'tarjeta', apiId: 'card-id', code: 'card', enabled: true, affectsCash: false },
+        { id: 'efectivo', apiId: 'cash-id', code: 'cash', enabled: true, affectsCash: true },
+      ],
+    }, 'expense')
+
+    expect(payload).toMatchObject({
+      type: 'expense',
+      concept: 'Ajuste de caja',
+      amount: 111,
+      paymentMethodId: 'cash-id',
+    })
+  })
+
+  it('falla el alta rápida si no hay un método de efectivo sincronizado', () => {
+    expect(() => movementToApiPayload({
+      concept: 'Ajuste de caja',
+      amount: 111,
+    }, {
+      paymentMethods: [
+        { id: 'efectivo', name: 'Efectivo', enabled: true },
+        { id: 'tarjeta', apiId: 'card-id', code: 'card', enabled: true, affectsCash: false },
+      ],
+    }, 'expense')).toThrow(
+      'No hay un método de efectivo sincronizado para registrar el movimiento de caja.'
+    )
   })
 
   it('mapea el resumen de cierre con los nombres reales del backend', () => {

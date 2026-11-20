@@ -375,6 +375,7 @@ export function SimplifiedLeadActions({
     collectionMode,
     reference,
     proof,
+    tenders,
   } = {}) {
     setBusyClose(true)
     try {
@@ -385,6 +386,7 @@ export function SimplifiedLeadActions({
         collectionMode,
         reference,
         proof,
+        tenders,
         customerId: resolvedCustomerId,
       })
       if (sale) {

@@ -887,6 +887,19 @@ def invoice_quote(
             register_id=payload.register_id,
             payment_reference=payload.reference,
             idempotency_key=idempotency_key,
+            emit_ncf=payload.emit_ncf,
+            tenders=(
+                [
+                    {
+                        "payment_method_id": tender.payment_method_id,
+                        "amount": tender.amount,
+                        "reference": tender.reference,
+                    }
+                    for tender in payload.tenders
+                ]
+                if payload.tenders is not None
+                else None
+            ),
         ),
         database=database,
         workspace_id=sales_grant.workspace_id,

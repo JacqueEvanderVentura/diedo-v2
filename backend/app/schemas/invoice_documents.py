@@ -35,6 +35,7 @@ class InvoiceDocumentRequest(ApiModel):
     business_name: str = Field(default="", max_length=160)
     legal_name: str = Field(default="", max_length=160)
     business_rnc: str = Field(default="", max_length=32)
+    fiscal_ncf: str = Field(default="", max_length=23)
     business_address: str = Field(default="", max_length=500)
     business_phone: str = Field(default="", max_length=40)
     business_email: str | None = None

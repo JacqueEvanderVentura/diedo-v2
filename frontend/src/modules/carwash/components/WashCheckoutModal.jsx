@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { PaymentMethodPicker } from '@/modules/pos/components/PaymentMethodPicker'
 import { PaymentEvidenceFields } from '@/modules/pos/components/PaymentEvidenceFields'
+import { EmitNcfToggle } from '@/components/fiscal/EmitNcfToggle'
 import { posApi } from '@/services/posApi'
 import { carwashApi } from '../api'
 import { WashExtraProducts } from './WashExtraProducts'
@@ -26,6 +27,7 @@ export function WashCheckoutModal({ wash, writable, money, onClose, onSaved }) {
   const [completed, setCompleted] = useState(null)
   const [proofDone, setProofDone] = useState(false)
   const [extras, setExtras] = useState([])
+  const [emitNcf, setEmitNcf] = useState(false)
   const pending = useRef(false)
   const attempt = useRef(null)
   const mounted = useRef(true)
@@ -75,7 +77,7 @@ export function WashCheckoutModal({ wash, writable, money, onClose, onSaved }) {
     let result = completed
     try {
       if (!result) {
-        if (!attempt.current) attempt.current = { key: crypto.randomUUID(), payload: { ...JSON.parse(pricing), registerId: context.registerId, paymentMethodId: methodId, reference: reference.trim() || null } }
+        if (!attempt.current) attempt.current = { key: crypto.randomUUID(), payload: { ...JSON.parse(pricing), registerId: context.registerId, paymentMethodId: methodId, reference: reference.trim() || null, emitNcf } }
         result = await carwashApi.washAction(wash.id, 'complete', attempt.current.payload, attempt.current.key)
         if (!mounted.current) return
         setCompleted(result); setUncertain(false)
@@ -108,6 +110,12 @@ export function WashCheckoutModal({ wash, writable, money, onClose, onSaved }) {
             <PaymentEvidenceFields method={method} reference={reference} onReferenceChange={setReference} proof={proof} onProofChange={setProof} testIdPrefix="carwash-evidence" />
           </fieldset>
           <div className="space-y-2 rounded-xl bg-slate-50 p-4 text-sm" aria-live="polite">{previewReady ? <><p className="flex justify-between">Subtotal <span>{money(preview.subtotal)}</span></p><p className="flex justify-between">Descuento <span>−{money(preview.discountAmount)}</span></p><p className="flex justify-between">Impuestos <span>{money(preview.taxAmount)}</span></p><p className="flex justify-between border-t pt-2 text-base font-semibold">Total a facturar <span data-testid="carwash-checkout-total">{money(preview.total)}</span></p></> : <p>{previewError ? 'No se pudo calcular el total.' : 'Calculando total…'}</p>}</div>
+          <EmitNcfToggle
+            checked={emitNcf}
+            onChange={setEmitNcf}
+            disabled={frozen}
+            testId="carwash-emit-ncf-toggle"
+          />
           <p className="text-xs text-slate-500">Las comisiones se devengan al completar, incluso cuando el pago queda pendiente en CxC.</p>
         </>}
         {completed && <div className="space-y-3 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900"><p className="font-semibold">Factura {completed.saleNumber} · {money(completed.finalTotal)}</p><p>{completed.status === 'voided' ? 'Este lavado fue anulado después de facturarse. Se conserva la factura y su historial.' : completed.receivableId ? 'Cuenta por cobrar registrada. El pago está pendiente de confirmación.' : 'Venta registrada correctamente.'}</p><p>{completed.status === 'voided' ? 'Sus comisiones están anuladas.' : 'Las comisiones de ambos roles quedaron devengadas.'}</p>{proofDone && <p>Comprobante adjuntado.</p>}{error && <p>La venta ya está guardada. Reintentar solo enviará el comprobante.</p>}</div>}
