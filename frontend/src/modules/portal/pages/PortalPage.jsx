@@ -32,6 +32,7 @@ import {
   portalStatusLabel,
   portalStatusTone,
 } from '../lib/appointmentStats'
+import { loadPortalDashboard, portalLoadErrorMessage } from '../lib/loadPortalDashboard'
 import { cn } from '@/lib/utils'
 
 const STAT_TONES = {
@@ -83,22 +84,22 @@ export default function PortalPage() {
     }
     let active = true
     setLoading(true)
-    Promise.all([
-      publicBookingApi.getContext(branchId).catch(() => null),
-      publicPortalApi.me(branchId, session),
-      publicPortalApi.listAppointments(branchId, session),
-      publicPortalApi.listInvoices(branchId, session),
-      publicPortalApi.listReceivables(branchId, session),
-      publicPortalApi.listTasks(branchId, session),
-    ])
-      .then(([context, me, apts, invs, cxc, tasks]) => {
+    loadPortalDashboard({
+      branchId,
+      session,
+      bookingApi: publicBookingApi,
+      portalApi: publicPortalApi,
+    })
+      .then((dashboard) => {
         if (!active) return
-        setBranchName(context?.branch?.branchName || '')
-        setProfile(me)
-        setAppointments(apts.items || [])
-        setInvoices(invs.items || [])
-        setReceivables(cxc.items || [])
-        setPortalTasks(tasks.items || [])
+        setBranchName(dashboard.branchName)
+        setProfile(dashboard.profile)
+        setAppointments(dashboard.appointments)
+        setInvoices(dashboard.invoices)
+        setReceivables(dashboard.receivables)
+        setPortalTasks(dashboard.portalTasks)
+        const message = portalLoadErrorMessage(dashboard.failures)
+        if (message) toast.error(message)
       })
       .catch(() => {
         if (active) toast.error('No se pudo cargar tu portal. Intenta iniciar sesión de nuevo.')
