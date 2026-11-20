@@ -59,7 +59,9 @@ def test_pending_without_action_raises_conflict_with_details() -> None:
                                             "_upsert_customer",
                                             return_value=MagicMock(id=uuid7()),
                                         ):
-                                            with patch.object(service, "_assert_customer_slot_free"):
+                                            with patch.object(
+                                                service, "_assert_customer_slot_free"
+                                            ):
                                                 with patch.object(
                                                     service,
                                                     "_pending_branch_appointment",
