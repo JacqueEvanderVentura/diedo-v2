@@ -96,16 +96,19 @@ export function useGestionCitasList(filters) {
       refresh().catch(() => {})
     }
 
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') tick()
+    }
+
     const interval = window.setInterval(tick, POLL_INTERVAL_MS)
     window.addEventListener('focus', tick)
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') tick()
-    })
+    document.addEventListener('visibilitychange', onVisibilityChange)
 
     return () => {
       disposed = true
       window.clearInterval(interval)
       window.removeEventListener('focus', tick)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [canLoad, refresh])
 

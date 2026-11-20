@@ -1,8 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { SubscriptionAccessNotice } from './SubscriptionAccessNotice'
 import { useSessionStore } from '@/stores/sessionStore'
 import { isModuleAvailable, routeRequirement } from '@/services/moduleAvailability'
+
+export const AUTH_FOCUS_REFRESH_MS = 5 * 60 * 1000
 
 export function AuthGate() {
   const location = useLocation()
@@ -11,10 +13,15 @@ export function AuthGate() {
   const user = useSessionStore((s) => s.user)
   const bootstrap = useSessionStore((s) => s.bootstrap)
   const isAuthenticated = useSessionStore((s) => s.isAuthenticated())
+  const lastRefreshAtRef = useRef(Date.now())
 
   useEffect(() => {
     if (status !== 'online' || !user?.workspaceId) return
+    lastRefreshAtRef.current = Date.now()
     const refresh = () => {
+      const now = Date.now()
+      if (now - lastRefreshAtRef.current < AUTH_FOCUS_REFRESH_MS) return
+      lastRefreshAtRef.current = now
       useSessionStore.getState().refreshCurrentUser().catch(() => {})
     }
     window.addEventListener('focus', refresh)

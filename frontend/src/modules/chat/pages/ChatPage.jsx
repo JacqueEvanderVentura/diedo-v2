@@ -9,7 +9,7 @@ import { isUuid } from '@/lib/workspaceBranch'
 import { ChatConversationList } from '../components/ChatConversationList'
 import { ChatThreadPanel } from '../components/ChatThreadPanel'
 
-const POLL_MS = 12_000
+export const POLL_MS = 12_000
 
 export default function ChatPage() {
   const online = useSessionStore((s) => s.status === 'online')
@@ -82,10 +82,22 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!online) return undefined
-    const timer = window.setInterval(() => {
+
+    const tick = () => {
+      if (document.hidden) return
       setPollTick((value) => value + 1)
-    }, POLL_MS)
-    return () => window.clearInterval(timer)
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') tick()
+    }
+
+    const timer = window.setInterval(tick, POLL_MS)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [online])
 
   const handleSelectConversation = (id) => {
