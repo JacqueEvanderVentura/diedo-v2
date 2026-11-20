@@ -3,7 +3,8 @@
 import React from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { ProofImagePreview, isImageProof } from '@/modules/pos/components/ProofImagePreview'
+import { Modal, MODAL_LAYER_Z } from '@/components/ui/Modal'
+import { ImageLightbox, ProofImagePreview, isImageProof } from '@/modules/pos/components/ProofImagePreview'
 
 const toastMocks = vi.hoisted(() => ({
   success: vi.fn(),
@@ -33,6 +34,83 @@ describe('isImageProof', () => {
     expect(isImageProof({ contentType: 'image/png' }, null)).toBe(true)
     expect(isImageProof({ name: 'CnP_08092026_120451.png' }, new Blob(['x']))).toBe(true)
     expect(isImageProof({ name: 'recibo.pdf' }, new Blob(['x'], { type: 'application/pdf' }))).toBe(false)
+  })
+})
+
+describe('ImageLightbox', () => {
+  beforeEach(() => {
+    URL.createObjectURL = vi.fn(() => 'blob:proof-preview')
+    URL.revokeObjectURL = vi.fn()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  const pressEscape = () => {
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }),
+    )
+  }
+
+  it('usa la capa z-[140] para quedar sobre modales elevated y nested', () => {
+    render(React.createElement(ImageLightbox, {
+      open: true,
+      src: 'blob:lightbox-test',
+      alt: 'Comprobante',
+      onClose: vi.fn(),
+    }))
+
+    const layer = document.querySelector('[data-modal-layer="lightbox"]')
+    expect(layer).toBeTruthy()
+    expect(layer.className).toContain('z-[140]')
+    expect(MODAL_LAYER_Z.lightbox).toBe(140)
+  })
+
+  it('cierra con Escape cuando está abierto solo', () => {
+    const onCloseLightbox = vi.fn()
+    render(React.createElement(ImageLightbox, {
+      open: true,
+      src: 'blob:lightbox-test',
+      alt: 'Comprobante',
+      onClose: onCloseLightbox,
+    }))
+
+    pressEscape()
+    expect(onCloseLightbox).toHaveBeenCalledTimes(1)
+  })
+
+  it('cierra con Escape sin cerrar un modal elevated abierto debajo', async () => {
+    const onCloseModal = vi.fn()
+    const blob = new Blob(['fake-image'], { type: 'image/png' })
+    const loadProof = vi.fn().mockResolvedValue(blob)
+
+    render(
+      React.createElement(
+        Modal,
+        {
+          open: true,
+          elevated: true,
+          title: 'Detalle de venta',
+          testId: 'sale-detail-modal',
+          onClose: onCloseModal,
+        },
+        React.createElement(ProofImagePreview, {
+          proof: { name: 'comprobante.png', contentType: 'image/png' },
+          loadProof,
+          onDownload: vi.fn(),
+        }),
+      ),
+    )
+
+    await waitFor(() => expect(screen.getByTestId('proof-image-preview')).toBeTruthy())
+    fireEvent.click(screen.getByTestId('proof-preview-enlarge'))
+    expect(screen.getByTestId('proof-lightbox-image')).toBeTruthy()
+
+    pressEscape()
+    await waitFor(() => expect(screen.queryByTestId('proof-lightbox-image')).toBeNull())
+    expect(onCloseModal).not.toHaveBeenCalled()
+    expect(screen.getByTestId('sale-detail-modal')).toBeTruthy()
   })
 })
 

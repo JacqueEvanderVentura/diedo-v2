@@ -241,12 +241,6 @@
         {% endif %}
         <div><span>{{ tax_label }}</span><span>{{ tax_amt_fmt }}</span></div>
         <div class="grand"><span>Total</span><span>{{ total_fmt }}</span></div>
-        {% if show_paid %}
-        <div><span>Cobrado</span><span>{{ paid_amount_fmt }}</span></div>
-        {% endif %}
-        {% if show_balance %}
-        <div class="grand"><span>Saldo pendiente</span><span>{{ balance_fmt }}</span></div>
-        {% endif %}
       </div>
     </main>
 

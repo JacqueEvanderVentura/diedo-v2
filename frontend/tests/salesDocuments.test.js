@@ -101,6 +101,33 @@ describe('documentos de venta y cotización', () => {
     expect(html).toMatch(/720\.00/)
   })
 
+  it('no muestra Cobrado ni Saldo pendiente en factura aunque haya abono o CxC', () => {
+    const html = buildInvoiceHtml({
+      id: 'FAC-CXC',
+      issuedAt: 'hoy',
+      businessName: 'Charm',
+      branchName: 'DN',
+      region: '',
+      customerName: 'Cliente',
+      customerPhone: '',
+      paymentMethod: 'Transferencia',
+      paymentReference: '',
+      items: [{ name: 'Paq. 12 sesiones', qty: 1, price: 6500, listPrice: 13000 }],
+      subtotal: 6500,
+      discountAmt: 0,
+      discountPct: 0,
+      taxPct: 0,
+      taxAmt: 0,
+      total: 6500,
+      paidAmount: 1000,
+      balanceDue: 5500,
+    })
+
+    expect(html).toContain('Total')
+    expect(html).not.toContain('Saldo pendiente')
+    expect(html).not.toContain('Cobrado')
+  })
+
   it('genera cotización CRM con código COT y líneas en HTML/PDF', () => {
     const data = buildInvoiceDataFromQuote({
       id: 'qt-1',
