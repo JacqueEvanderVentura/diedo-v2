@@ -10,6 +10,7 @@ from app.services.auth import AuthPrincipal
 from app.services.authorization import PermissionGrant
 from app.services.customer_duplicates import (
     group_duplicate_customers,
+    name_group_auto_merge_eligible,
     pick_survivor,
     profile_field_updates,
 )
@@ -42,6 +43,8 @@ def test_group_duplicate_customers_orders_document_phone_email() -> None:
     phone = "8095551111"
     email = "ana@example.com"
     first = _customer(
+        display_name="Ana Uno",
+        normalized_name="ana uno",
         normalized_document_id=doc,
         document_id="001-1234567-8",
         normalized_phone=phone,
@@ -49,19 +52,52 @@ def test_group_duplicate_customers_orders_document_phone_email() -> None:
         created_at=datetime(2024, 1, 1, tzinfo=UTC),
     )
     second = _customer(
+        display_name="Ana Dos",
+        normalized_name="ana dos",
         normalized_document_id=doc,
         document_id="001-1234567-8",
         created_at=datetime(2024, 2, 1, tzinfo=UTC),
     )
-    third = _customer(normalized_phone=phone, phone=phone)
-    fourth = _customer(normalized_email=email, email=email)
-    fifth = _customer(normalized_email=email, email=email)
-    sixth = _customer(display_name="Solo")
-    groups = group_duplicate_customers([first, second, third, fourth, fifth, sixth])
-    assert [group.match_type for group in groups] == ["document", "phone", "email"]
+    third = _customer(
+        display_name="Ana Tel",
+        normalized_name="ana tel",
+        normalized_phone=phone,
+        phone=phone,
+    )
+    fourth = _customer(
+        display_name="Correo A",
+        normalized_name="correo a",
+        normalized_email=email,
+        email=email,
+    )
+    fifth = _customer(
+        display_name="Correo B",
+        normalized_name="correo b",
+        normalized_email=email,
+        email=email,
+    )
+    sixth = _customer(display_name="Solo", normalized_name="solo")
+    seventh = _customer(display_name="Solo Otro", normalized_name="solo", phone="8095559999")
+    groups = group_duplicate_customers([first, second, third, fourth, fifth, sixth, seventh])
+    assert [group.match_type for group in groups] == ["document", "phone", "email", "name"]
     assert {row.id for row in groups[0].customers} == {first.id, second.id}
     assert {row.id for row in groups[1].customers} == {first.id, third.id}
     assert {row.id for row in groups[2].customers} == {fourth.id, fifth.id}
+    assert {row.id for row in groups[3].customers} == {sixth.id, seventh.id}
+
+
+def test_group_duplicate_customers_skips_placeholder_names() -> None:
+    placeholder = _customer(
+        display_name="Cliente sin nombre",
+        normalized_name="cliente sin nombre",
+    )
+    same_placeholder = _customer(
+        display_name="Cliente sin nombre",
+        normalized_name="cliente sin nombre",
+        created_at=datetime(2024, 2, 1, tzinfo=UTC),
+    )
+    groups = group_duplicate_customers([placeholder, same_placeholder])
+    assert [group.match_type for group in groups] == []
 
 
 def test_pick_survivor_prefers_document_then_phone_then_email() -> None:
@@ -76,6 +112,27 @@ def test_pick_survivor_prefers_document_then_phone_then_email() -> None:
     assert pick_survivor([by_email, by_phone]).id == by_phone.id
     kept = pick_survivor([by_email, by_phone, by_doc], keep_customer_id=by_email.id)
     assert kept.id == by_email.id
+
+
+def test_profile_field_updates_merges_distinct_phones() -> None:
+    keeper = _customer(phone="8095551111", normalized_phone="8095551111")
+    source = _customer(phone="8095552222", normalized_phone="8095552222")
+    changes = profile_field_updates(keeper, [source])
+    assert changes["phone_2"] == "8095552222"
+    assert changes["normalized_phone_2"] == "8095552222"
+
+
+def test_name_group_auto_merge_rejects_conflicting_emails() -> None:
+    same_email = [
+        _customer(normalized_email="a@example.com", email="a@example.com"),
+        _customer(normalized_email="a@example.com", email="a@example.com"),
+    ]
+    assert name_group_auto_merge_eligible(same_email)
+    mixed = [
+        _customer(normalized_email="a@example.com", email="a@example.com"),
+        _customer(normalized_email="b@example.com", email="b@example.com"),
+    ]
+    assert not name_group_auto_merge_eligible(mixed)
 
 
 def test_profile_field_updates_fills_missing_identity_from_sources() -> None:
@@ -182,6 +239,7 @@ def test_merge_customers_success_assigns_branches_and_commits() -> None:
     repo.get_customers_by_ids.return_value = [first, second]
     branch_id = uuid4()
     repo.customer_active_branch_ids.return_value = {second.id: {branch_id}}
+    repo.customer_carwash_branch_ids.return_value = set()
     kept = MagicMock()
     repo.update_customer.return_value = kept
     result = service.merge_customers(
@@ -190,7 +248,9 @@ def test_merge_customers_success_assigns_branches_and_commits() -> None:
         customer_ids=[first.id, second.id],
         keep_customer_id=first.id,
     )
+    repo.customer_carwash_branch_ids.assert_called_once()
     repo.ensure_customer_branches.assert_called_once()
+    service._session.flush.assert_called()
     service._session.commit.assert_called_once()
     assert result["kept_customer_id"] == first.id
     assert result["archived_customer_ids"] == [second.id]
@@ -206,6 +266,7 @@ def test_merge_customers_maps_integrity_error() -> None:
     second = _customer(workspace_id=workspace_id)
     repo.get_customers_by_ids.return_value = [first, second]
     repo.customer_active_branch_ids.return_value = {}
+    repo.customer_carwash_branch_ids.return_value = set()
 
     def _update(*, customer, changes, **kwargs):
         del customer, kwargs
@@ -232,7 +293,7 @@ def test_auto_merge_skips_groups_already_reduced() -> None:
     phone_group = MagicMock(match_type="phone", customers=[first, second])
     leftover = MagicMock(match_type="email", customers=[first])
     service.list_duplicate_customers = MagicMock(  # type: ignore[method-assign]
-        side_effect=[[phone_group], [phone_group], [leftover]]
+        side_effect=[[phone_group], [phone_group], [leftover], []]
     )
     service.merge_customers = MagicMock(  # type: ignore[method-assign]
         return_value={

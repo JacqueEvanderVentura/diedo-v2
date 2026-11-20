@@ -58,6 +58,8 @@ class CustomerRecord:
     business_name: str | None
     email: str | None
     phone: str | None
+    phone_2: str | None
+    phone_3: str | None
     instagram_url: str | None
     acquisition_source: str | None
     document_type: str | None
@@ -180,13 +182,22 @@ class MasterDataRepository:
                     Customer.normalized_name.ilike(pattern),
                     Customer.normalized_email.ilike(pattern),
                     Customer.normalized_phone.ilike(pattern),
+                    Customer.normalized_phone_2.ilike(pattern),
+                    Customer.normalized_phone_3.ilike(pattern),
                     Customer.normalized_document_id.ilike(pattern),
                 )
             )
         if name:
             query = query.where(Customer.normalized_name.ilike(f"%{name}%"))
         if phone:
-            query = query.where(Customer.normalized_phone.ilike(f"%{phone}%"))
+            needle = f"%{phone}%"
+            query = query.where(
+                or_(
+                    Customer.normalized_phone.ilike(needle),
+                    Customer.normalized_phone_2.ilike(needle),
+                    Customer.normalized_phone_3.ilike(needle),
+                )
+            )
         if email:
             query = query.where(Customer.normalized_email.ilike(f"%{email}%"))
         if document_id:
@@ -324,7 +335,13 @@ class MasterDataRepository:
     ) -> list[Customer]:
         filters = []
         if normalized_phones:
-            filters.append(Customer.normalized_phone.in_(normalized_phones))
+            filters.append(
+                or_(
+                    Customer.normalized_phone.in_(normalized_phones),
+                    Customer.normalized_phone_2.in_(normalized_phones),
+                    Customer.normalized_phone_3.in_(normalized_phones),
+                )
+            )
         if normalized_emails:
             filters.append(Customer.normalized_email.in_(normalized_emails))
         if normalized_document_ids:
@@ -352,6 +369,21 @@ class MasterDataRepository:
         for customer in self._session.scalars(query):
             seen.setdefault(customer.id, customer)
         return list(seen.values())
+
+    def customer_carwash_branch_ids(
+        self, workspace_id: UUID, customer_ids: Sequence[UUID]
+    ) -> set[UUID]:
+        if not customer_ids:
+            return set()
+        rows = self._session.execute(
+            select(CarwashWash.branch_id)
+            .where(
+                CarwashWash.workspace_id == workspace_id,
+                CarwashWash.customer_id.in_(list(customer_ids)),
+            )
+            .distinct()
+        ).all()
+        return {cast(UUID, branch_id) for (branch_id,) in rows}
 
     def customer_active_branch_ids(
         self, workspace_id: UUID, customer_ids: Sequence[UUID]
@@ -474,6 +506,10 @@ class MasterDataRepository:
             "normalized_email",
             "phone",
             "normalized_phone",
+            "phone_2",
+            "normalized_phone_2",
+            "phone_3",
+            "normalized_phone_3",
             "instagram_url",
             "document_type",
             "document_id",
@@ -491,6 +527,8 @@ class MasterDataRepository:
         changed_fields.discard("normalized_name")
         changed_fields.discard("normalized_email")
         changed_fields.discard("normalized_phone")
+        changed_fields.discard("normalized_phone_2")
+        changed_fields.discard("normalized_phone_3")
         if branch_ids is not None:
             changed_fields.add("branchIds")
         self._add_audit(
@@ -1150,6 +1188,8 @@ class MasterDataRepository:
                 business_name=customer.business_name,
                 email=customer.email,
                 phone=customer.phone,
+                phone_2=customer.phone_2,
+                phone_3=customer.phone_3,
                 instagram_url=customer.instagram_url,
                 acquisition_source=customer.acquisition_source,
                 document_type=customer.document_type,

@@ -40,6 +40,16 @@ class Customer(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
             "normalized_document_id",
         ),
         Index(
+            "ix_customers_workspace_normalized_phone_2",
+            "workspace_id",
+            "normalized_phone_2",
+        ),
+        Index(
+            "ix_customers_workspace_normalized_phone_3",
+            "workspace_id",
+            "normalized_phone_3",
+        ),
+        Index(
             "uq_customers_workspace_document_active",
             "workspace_id",
             "normalized_document_id",
@@ -64,8 +74,12 @@ class Customer(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     email: Mapped[str | None] = mapped_column(String(254))
     normalized_email: Mapped[str | None] = mapped_column(String(254))
     phone: Mapped[str | None] = mapped_column(String(40))
+    phone_2: Mapped[str | None] = mapped_column(String(40))
+    phone_3: Mapped[str | None] = mapped_column(String(40))
     instagram_url: Mapped[str | None] = mapped_column(String(500))
     normalized_phone: Mapped[str | None] = mapped_column(String(24))
+    normalized_phone_2: Mapped[str | None] = mapped_column(String(24))
+    normalized_phone_3: Mapped[str | None] = mapped_column(String(24))
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="active", server_default=text("'active'")
     )

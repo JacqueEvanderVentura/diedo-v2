@@ -129,6 +129,8 @@ class CustomerResponse(ApiModel):
     business_name: str | None
     email: EmailStr | None
     phone: str | None
+    phone_2: str | None = None
+    phone_3: str | None = None
     instagram_url: str | None
     acquisition_source: AcquisitionSource | None = None
     document_type: CustomerDocumentType | None = None
@@ -223,6 +225,8 @@ class CreateCustomerRequest(ApiModel):
     business_name: str | None = Field(default=None, max_length=200)
     email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=40)
+    phone_2: str | None = Field(default=None, max_length=40)
+    phone_3: str | None = Field(default=None, max_length=40)
     instagram_url: HttpUrl | None = Field(default=None, max_length=500)
     acquisition_source: AcquisitionSource | None = None
     document_type: CustomerDocumentType
@@ -245,7 +249,7 @@ class CreateCustomerRequest(ApiModel):
     def strip_document_id(cls, value: str) -> str:
         return value.strip()
 
-    @field_validator("first_name", "last_name", "business_name", "phone")
+    @field_validator("first_name", "last_name", "business_name", "phone", "phone_2", "phone_3")
     @classmethod
     def normalize_optional_fields(cls, value: str | None) -> str | None:
         return normalize_optional_text(value)
@@ -283,6 +287,8 @@ class DuplicateCustomerSummary(ApiModel):
     display_name: str
     email: str | None
     phone: str | None
+    phone_2: str | None = None
+    phone_3: str | None = None
     document_type: CustomerDocumentType | None = None
     document_id: str | None = None
     status: MasterDataStatus
@@ -291,7 +297,7 @@ class DuplicateCustomerSummary(ApiModel):
 
 
 class DuplicateCustomerGroupResponse(ApiModel):
-    match_type: Literal["document", "phone", "email"]
+    match_type: Literal["document", "phone", "email", "name"]
     match_value: str
     customers: list[DuplicateCustomerSummary]
 
@@ -340,12 +346,19 @@ class UpdateCustomerRequest(ApiModel):
     business_name: str | None = Field(default=None, max_length=200)
     email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=40)
+    phone_2: str | None = Field(default=None, max_length=40)
+    phone_3: str | None = Field(default=None, max_length=40)
     instagram_url: HttpUrl | None = Field(default=None, max_length=500)
     acquisition_source: AcquisitionSource | None = None
     document_type: CustomerDocumentType | None = None
     document_id: str | None = Field(default=None, max_length=64)
     branch_ids: list[UUID] | None = Field(default=None, min_length=1, max_length=100)
     status: MasterDataStatus | None = None
+
+    @field_validator("phone", "phone_2", "phone_3")
+    @classmethod
+    def normalize_phone_fields(cls, value: str | None) -> str | None:
+        return normalize_optional_text(value)
 
     @field_validator("instagram_url")
     @classmethod
@@ -357,7 +370,7 @@ class UpdateCustomerRequest(ApiModel):
     def normalize_display_name(cls, value: str | None) -> str | None:
         return normalize_text(value) if value is not None else None
 
-    @field_validator("first_name", "last_name", "business_name", "phone")
+    @field_validator("first_name", "last_name", "business_name")
     @classmethod
     def normalize_optional_fields(cls, value: str | None) -> str | None:
         return normalize_optional_text(value)

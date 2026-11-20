@@ -45,6 +45,14 @@ describe('DuplicateCustomersModal', () => {
     render(<DuplicateCustomersModal open onClose={() => {}} />)
     expect(await screen.findByTestId('clientes-duplicates-modal')).toBeTruthy()
     expect(await screen.findByText('Ana Dos')).toBeTruthy()
+    autoMergeDuplicateCustomers.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve({ mergedGroups: 1, archivedCustomers: 1, items: [] }), 50)),
+    )
+    fireEvent.click(screen.getByTestId('clientes-duplicates-auto-merge'))
+    expect(screen.getByTestId('clientes-duplicates-auto-merge-spinner')).toBeTruthy()
+    await waitFor(() => {
+      expect(autoMergeDuplicateCustomers).toHaveBeenCalled()
+    })
     fireEvent.click(screen.getByTestId('clientes-duplicates-merge-0'))
     await waitFor(() => {
       expect(mergeDuplicateCustomers).toHaveBeenCalledWith({
@@ -52,9 +60,11 @@ describe('DuplicateCustomersModal', () => {
         keepCustomerId: 'a',
       })
     })
-    fireEvent.click(screen.getByTestId('clientes-duplicates-auto-merge'))
     await waitFor(() => {
-      expect(autoMergeDuplicateCustomers).toHaveBeenCalled()
+      expect(screen.queryByText('Ana Dos')).toBeNull()
+    })
+    await waitFor(() => {
+      expect(fetchDuplicateCustomers).toHaveBeenCalledTimes(2)
     })
   })
 
@@ -62,5 +72,24 @@ describe('DuplicateCustomersModal', () => {
     fetchDuplicateCustomers.mockResolvedValue({ groups: [], totalGroups: 0 })
     render(<DuplicateCustomersModal open onClose={() => {}} />)
     expect(await screen.findByText('Sin duplicados')).toBeTruthy()
+  })
+
+  it('avisa en grupos por nombre con teléfono o correo distinto', async () => {
+    fetchDuplicateCustomers.mockResolvedValue({
+      groups: [
+        {
+          matchType: 'name',
+          matchValue: 'María López',
+          customers: [
+            { id: 'x', displayName: 'María López', phone: '8091111111', email: 'a@example.com', documentId: null },
+            { id: 'y', displayName: 'María López', phone: '8092222222', email: 'a@example.com', documentId: null },
+          ],
+        },
+      ],
+      totalGroups: 1,
+    })
+    render(<DuplicateCustomersModal open onClose={() => {}} />)
+    expect(await screen.findByTestId('clientes-duplicates-homonym-warning-0')).toBeTruthy()
+    expect(screen.getByText(/no son personas diferentes/i)).toBeTruthy()
   })
 })

@@ -16,6 +16,8 @@ const emptyCustomerForm = () => ({
   name: '',
   company: '',
   phone: '',
+  phone2: '',
+  phone3: '',
   email: '',
   instagramUrl: '',
   notes: '',
@@ -46,6 +48,8 @@ export function createCustomerFormState(customer = null, defaults = null) {
     name: customer.name || customer.displayName || '',
     company: customer.company || customer.businessName || '',
     phone: customer.phone || '',
+    phone2: customer.phone2 || '',
+    phone3: customer.phone3 || '',
     email: customer.email || '',
     instagramUrl: customer.instagramUrl || '',
     notes: customer.notes || '',
@@ -96,6 +100,8 @@ export function CustomerFormModal({ open, onClose, customer, defaults = null, on
         ? form.company.trim() || form.name.trim()
         : null,
       phone: form.phone.trim() || null,
+      phone2: form.phone2.trim() || null,
+      phone3: form.phone3.trim() || null,
       email: form.email.trim() || null,
       instagramUrl: form.instagramUrl.trim() || null,
       notes: form.notes.trim() || '',
@@ -188,9 +194,19 @@ export function CustomerFormModal({ open, onClose, customer, defaults = null, on
             />
           </div>
         </div>
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-slate-600">Teléfono</label>
-          <Input value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="809-000-0000" data-testid="customer-field-phone" />
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Teléfono</label>
+            <Input value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="809-000-0000" data-testid="customer-field-phone" />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Teléfono 2</label>
+            <Input value={form.phone2} onChange={(e) => set('phone2', e.target.value)} placeholder="Opcional" data-testid="customer-field-phone-2" />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-600">Teléfono 3</label>
+            <Input value={form.phone3} onChange={(e) => set('phone3', e.target.value)} placeholder="Opcional" data-testid="customer-field-phone-3" />
+          </div>
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-600">Email <span className="text-slate-400">(opcional)</span></label>
