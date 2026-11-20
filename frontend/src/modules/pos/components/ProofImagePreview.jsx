@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { Copy, Download, Paperclip, Trash2, ZoomIn, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { MODAL_LAYER_Z, registerOpenModal, unregisterOpenModal } from '@/components/ui/Modal'
 import { modalBackdropTransition, modalPanelTransition } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
@@ -53,15 +54,13 @@ export function ImageLightbox({ open, src, alt, onClose }) {
 
   useEffect(() => {
     if (!open) return undefined
-    const onKey = (e) => {
-      if (e.key === 'Escape') onClose?.()
-    }
+    const entry = { onClose, rank: MODAL_LAYER_Z.lightbox }
+    registerOpenModal(entry)
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    document.addEventListener('keydown', onKey)
     return () => {
+      unregisterOpenModal(entry)
       document.body.style.overflow = prev
-      document.removeEventListener('keydown', onKey)
     }
   }, [open, onClose])
 
@@ -70,7 +69,10 @@ export function ImageLightbox({ open, src, alt, onClose }) {
   return createPortal(
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center p-3 sm:p-6">
+        <div
+          className="fixed inset-0 z-[140] flex items-center justify-center p-3 sm:p-6"
+          data-modal-layer="lightbox"
+        >
           <motion.div
             initial={modalBackdropTransition.initial}
             animate={modalBackdropTransition.animate}

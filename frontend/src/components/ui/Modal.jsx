@@ -9,6 +9,7 @@ export const MODAL_LAYER_Z = {
   default: 80,
   elevated: 100,
   nested: 120,
+  lightbox: 140,
 }
 
 export function modalLayerRank({ nested = false, elevated = false } = {}) {
@@ -37,7 +38,7 @@ function onEscapeKey(event) {
   top.onClose?.()
 }
 
-function registerOpenModal(entry) {
+export function registerOpenModal(entry) {
   openModals.push(entry)
   if (!escapeBound) {
     document.addEventListener('keydown', onEscapeKey, true)
@@ -45,7 +46,7 @@ function registerOpenModal(entry) {
   }
 }
 
-function unregisterOpenModal(entry) {
+export function unregisterOpenModal(entry) {
   const index = openModals.indexOf(entry)
   if (index >= 0) openModals.splice(index, 1)
   if (!openModals.length && escapeBound) {

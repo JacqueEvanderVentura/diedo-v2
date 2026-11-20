@@ -156,8 +156,6 @@ export function buildInvoiceHtml(data) {
     taxLabel,
     taxAmt,
     total,
-    paidAmount = 0,
-    balanceDue = null,
     kind = 'sale',
     validUntil = '',
   } = data
@@ -166,9 +164,6 @@ export function buildInvoiceHtml(data) {
   const isQuote = kind === 'quote'
   const docTitle = isExpense ? 'Gasto' : isQuote ? 'Cotización' : 'Factura'
   const totalColor = isExpense ? '#dc2626' : isQuote ? '#d97706' : '#2563eb'
-
-  const balance = balanceDue != null ? Number(balanceDue) : Math.max(0, Number(total) - Number(paidAmount))
-  const paid = Number(paidAmount) || 0
 
   const logoHtml = logoDataUrl
     ? `<img src="${logoDataUrl.replace(/"/g, '&quot;')}" alt="" class="brand-logo" />`
@@ -466,16 +461,6 @@ export function buildInvoiceHtml(data) {
       }
       <div><span>${escapeHtml(taxLabel || `ITBIS (${taxPct}%)`)}</span><span>${escapeHtml(formatDOP(taxAmt))}</span></div>
       <div class="grand"><span>Total</span><span>${escapeHtml(formatDOP(total))}</span></div>
-      ${
-        !isQuote && paid > 0
-          ? `<div><span>Cobrado</span><span>${escapeHtml(formatDOP(paid))}</span></div>`
-          : ''
-      }
-      ${
-        !isQuote && balance > 0.009
-          ? `<div class="grand"><span>Saldo pendiente</span><span>${escapeHtml(formatDOP(balance))}</span></div>`
-          : ''
-      }
     </div>
     </main>
 

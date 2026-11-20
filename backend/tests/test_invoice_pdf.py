@@ -196,6 +196,33 @@ def test_build_invoice_document_html_includes_billing_footer() -> None:
     assert '<s class="strike">' in html
 
 
+def test_build_invoice_document_html_omits_paid_and_balance_lines() -> None:
+    payload = InvoiceDocumentRequest(
+        id="FAC-CXC",
+        kind="sale",
+        issued_at="20 nov 2026",
+        business_name="Charm",
+        customer_name="Cliente",
+        payment_method="Transferencia",
+        items=[
+            InvoiceLineItemRequest(
+                name="Paq. 12 sesiones",
+                qty=Decimal("1"),
+                price=Decimal("6500"),
+            )
+        ],
+        subtotal=Decimal("6500"),
+        tax_amt=Decimal("0"),
+        total=Decimal("6500"),
+        paid_amount=Decimal("1000"),
+        balance_due=Decimal("5500"),
+    )
+    html = build_invoice_document_html(payload)
+    assert "Total" in html
+    assert "Saldo pendiente" not in html
+    assert "Cobrado" not in html
+
+
 def test_build_invoice_document_html_renders_section_rows() -> None:
     payload = InvoiceDocumentRequest(
         id="COT-SEC",

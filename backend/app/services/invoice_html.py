@@ -94,12 +94,6 @@ def build_invoice_document_html(data: InvoiceDocumentRequest) -> str:
     is_quote = data.kind == "quote"
     doc_title = "Gasto" if is_expense else "Cotización" if is_quote else "Factura"
     total_color = "#dc2626" if is_expense else "#d97706" if is_quote else "#2563eb"
-    balance = (
-        data.balance_due
-        if data.balance_due is not None
-        else max(Decimal("0"), data.total - data.paid_amount)
-    )
-    paid = data.paid_amount
     tax_label = (data.tax_label or "").strip() or f"ITBIS ({data.tax_pct}%)"
     line_rows: list[dict[str, Any]] = []
     for item in data.items:
@@ -156,10 +150,6 @@ def build_invoice_document_html(data: InvoiceDocumentRequest) -> str:
         tax_label=_escape(tax_label),
         tax_amt_fmt=_escape(format_dop(data.tax_amt)),
         total_fmt=_escape(format_dop(data.total)),
-        show_paid=not is_quote and paid > 0,
-        paid_amount_fmt=_escape(format_dop(paid)),
-        show_balance=not is_quote and balance > Decimal("0.009"),
-        balance_fmt=_escape(format_dop(balance)),
         business_phone=_escape(data.business_phone),
         business_email=_escape(data.business_email or ""),
         legal_lines=_legal_lines(data),
