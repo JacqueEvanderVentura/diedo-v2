@@ -55,8 +55,15 @@ def test_appointment_template_escapes_content_and_uses_public_origin(monkeypatch
     assert "https://example.workers.dev/agendar/perfil?" in content["text"]
     assert "45 minutos" in content["text"]
     assert "10:00 AM" in content["text"]
-    assert "Mi establecimiento" in content["text"]
-    assert "America/Santo_Domingo" in content["text"]
+    assert "Mi establecimiento | Norte" in content["text"]
+    assert "Establecimiento" not in content["text"]
+    assert "Zona horaria" not in content["text"]
+    assert "America/Santo_Domingo" not in content["text"]
+    assert content["subject"] == "Tu cita ha sido confirmada - Norte"
+    assert "—" not in content["subject"]
+    assert "Mi establecimiento" not in content["subject"]
+    sucursal_row = content["html"].split("Sucursal", 1)[1].split("</tr>", 1)[0]
+    assert "border-bottom" not in sucursal_row
     assert "haz clic aquí</a>." in content["html"]
     assert "'Google Sans', Roboto" in content["html"]
     assert "fonts.googleapis.com" in content["html"]
