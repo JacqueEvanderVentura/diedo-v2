@@ -163,14 +163,15 @@ def _html(value: object) -> str:
     return escape(str(value), quote=True)
 
 
-def _detail_row(label: str, value: object) -> str:
+def _detail_row(label: str, value: object, *, last: bool = False) -> str:
+    row_border = "" if last else f"border-bottom:1px solid {_BORDER};"
     return f"""
                     <tr>
-                      <td style="padding:12px 0;border-bottom:1px solid {_BORDER};
+                      <td style="padding:12px 0;{row_border}
                         color:{_TEXT_MUTED};font-size:13px;line-height:20px;">
                         {_html(label)}
                       </td>
-                      <td align="right" style="padding:12px 0;border-bottom:1px solid {_BORDER};
+                      <td align="right" style="padding:12px 0;{row_border}
                         color:{_TEXT};font-size:14px;font-weight:600;line-height:20px;">
                         {_html(value)}
                       </td>
@@ -193,7 +194,11 @@ def _render_html_email(
     workspace_name: str,
     branch_name: str,
 ) -> str:
-    detail_rows = "".join(_detail_row(label, value) for label, value in details)
+    last_index = len(details) - 1
+    detail_rows = "".join(
+        _detail_row(label, value, last=index == last_index)
+        for index, (label, value) in enumerate(details)
+    )
     logo_url = _brand_logo_url()
     footer_context = f"{workspace_name} · {branch_name}"
     return f"""<!doctype html>
@@ -382,11 +387,8 @@ def render_appointment_email(
         ("Fecha", date_label),
         ("Hora", time_label),
         ("Duración", f"{appointment.duration_minutes} minutos"),
-        ("Establecimiento", workspace_name),
         ("Sucursal", branch_name),
     ]
-    if timezone:
-        details.append(("Zona horaria", f"Hora del establecimiento ({timezone})"))
     action_url = context[template.action_url_key]
     text = _plain_text_email(
         customer_name=appointment.customer_name,
@@ -415,7 +417,7 @@ def render_appointment_email(
     )
     return {
         "to": to,
-        "subject": f"{template.subject} — {workspace_name}",
+        "subject": f"{template.subject} - {branch_name}",
         "html": html,
         "text": text,
     }
