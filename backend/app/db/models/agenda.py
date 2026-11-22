@@ -359,6 +359,92 @@ class Appointment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     )
 
 
+SLOT_HOLD_DURATION_MINUTES = 10
+
+
+class AppointmentSlotHold(UuidPrimaryKeyMixin, TimestampMixin, Base):
+    """Temporary public-booking hold before appointment confirmation."""
+
+    __tablename__ = "appointment_slot_holds"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "branch_id"],
+            ["branches.workspace_id", "branches.id"],
+            ondelete="RESTRICT",
+            name="fk_appointment_slot_holds_workspace_branch",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "branch_id", "resource_id"],
+            [
+                "appointment_resources.workspace_id",
+                "appointment_resources.branch_id",
+                "appointment_resources.id",
+            ],
+            ondelete="RESTRICT",
+            name="fk_appointment_slot_holds_resource",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "employee_id"],
+            ["employees.workspace_id", "employees.id"],
+            ondelete="RESTRICT",
+            name="fk_appointment_slot_holds_employee",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "service_id"],
+            ["items.workspace_id", "items.id"],
+            ondelete="RESTRICT",
+            name="fk_appointment_slot_holds_service",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "customer_id"],
+            ["customers.workspace_id", "customers.id"],
+            ondelete="RESTRICT",
+            name="fk_appointment_slot_holds_workspace_customer",
+        ),
+        UniqueConstraint("holder_token", name="uq_appointment_slot_holds_holder_token"),
+        CheckConstraint("ends_at > starts_at", name="time_order"),
+        CheckConstraint(
+            "char_length(holder_token) >= 8 AND char_length(holder_token) <= 64",
+            name="holder_token_length",
+        ),
+        Index(
+            "ix_appointment_slot_holds_branch_date",
+            "workspace_id",
+            "branch_id",
+            "scheduled_date",
+        ),
+        Index("ix_appointment_slot_holds_expires", "expires_at"),
+        Index(
+            "ix_appointment_slot_holds_resource_starts",
+            "workspace_id",
+            "branch_id",
+            "resource_id",
+            "starts_at",
+        ),
+    )
+
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
+    )
+    branch_id: Mapped[UUID] = mapped_column(nullable=False)
+    resource_id: Mapped[UUID] = mapped_column(nullable=False)
+    employee_id: Mapped[UUID | None] = mapped_column(nullable=True)
+    service_id: Mapped[UUID] = mapped_column(nullable=False)
+    scheduled_date: Mapped[date] = mapped_column(Date, nullable=False)
+    scheduled_time: Mapped[time] = mapped_column(Time(timezone=False), nullable=False)
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    holder_token: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    customer_id: Mapped[UUID | None] = mapped_column(nullable=True)
+    customer_display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    customer_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    customer_email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    service_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+
 class AppointmentEvent(UuidPrimaryKeyMixin, Base):
     """Append-only appointment history consumed by Gestión de citas."""
 

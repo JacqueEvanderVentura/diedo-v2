@@ -16,6 +16,7 @@ import { branchDateKey } from '@/modules/agenda/lib/notification'
 vi.mock('@/services/publicBookingApi', () => ({ publicBookingApi: {
   getContext: vi.fn(), getEntryContext: vi.fn(), identify: vi.fn(), listSlots: vi.fn(), book: vi.fn(), sendBookingLink: vi.fn(),
   getAppointment: vi.fn(), managementSlots: vi.fn(), cancelAppointment: vi.fn(), rescheduleAppointment: vi.fn(),
+  claimSlotHold: vi.fn(), releaseSlotHold: vi.fn(),
 } }))
 vi.mock('@/services/publicPortalApi', () => ({
   publicPortalApi: { register: vi.fn().mockResolvedValue({ customerId: 'cust-1' }) },
@@ -47,6 +48,11 @@ beforeEach(() => {
     workspaceBranches: [{ id: 'branch', name: 'Norte' }],
   })
   publicBookingApi.identify.mockResolvedValue({ isNew: true })
+  publicBookingApi.releaseSlotHold.mockResolvedValue(undefined)
+  publicBookingApi.claimSlotHold.mockResolvedValue({
+    time: '10:00',
+    expiresAt: '2099-01-01T00:00:00.000Z',
+  })
 })
 afterEach(cleanup)
 
@@ -93,6 +99,32 @@ it('shares by email without a phone and never opens WhatsApp automatically', asy
   expect(open).toHaveBeenCalledWith(expect.stringContaining('https://wa.me/18294220141?text='), '_blank', 'noopener,noreferrer')
   expect(publicBookingApi.sendBookingLink).toHaveBeenCalledTimes(1)
   open.mockRestore()
+})
+
+it('submits identity with Enter like clicking Ingresar', async () => {
+  let resolveIdentify
+  publicBookingApi.identify.mockImplementation(() => new Promise((resolve) => {
+    resolveIdentify = () => resolve({
+      isNew: false,
+      customerId: 'cust-1',
+      documentType: 'cedula',
+      documentId: '00112345678',
+      displayName: 'Cliente prueba',
+      email: 'client@example.com',
+      phone: '8294220141',
+    })
+  }))
+  render(<MemoryRouter initialEntries={['/agendar?branch=branch&intent=book']}><AgendarPage /></MemoryRouter>)
+  await screen.findByText('Elige tu sucursal')
+  fireEvent.click(screen.getByTestId('branch-confirm'))
+  await screen.findByText(/Ingresa tu documento/)
+  const documentInput = screen.getByTestId('self-doc-lookup')
+  fireEvent.change(documentInput, { target: { value: '00112345678' } })
+  fireEvent.submit(documentInput.closest('form'))
+  expect(screen.getByText('Verificando…')).toBeTruthy()
+  await act(async () => { resolveIdentify() })
+  await screen.findByTestId('self-service')
+  expect(publicBookingApi.identify).toHaveBeenCalled()
 })
 
 it('prefills the last service and specialist after identify', async () => {

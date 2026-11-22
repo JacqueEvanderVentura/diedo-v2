@@ -3,10 +3,17 @@ import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { CustomerPicker } from '@/components/customers/CustomerPicker'
+import { Select } from '@/components/ui/Select'
 import { useConfigStore } from '@/stores/configStore'
 import { usePosStore } from '@/stores/posStore'
-import { formatDOP } from '@/lib/format'
+import { formatDOP, formatNumber } from '@/lib/format'
 import { calculatePosTotals } from '@/modules/pos/lib/openAccount'
+
+function parseLocaleNumber(raw) {
+  const cleaned = String(raw ?? '').trim().replace(/,/g, '')
+  const n = Number(cleaned)
+  return Number.isFinite(n) ? Math.max(0, n) : 0
+}
 
 function saleToForm(sale) {
   const discountMode = sale.discountAmt > 0 ? 'amount' : 'percent'
@@ -26,6 +33,56 @@ function saleToForm(sale) {
   }
 }
 
+const DISCOUNT_MODE_OPTIONS = [
+  { value: 'percent', label: '%' },
+  { value: 'amount', label: 'RD$' },
+]
+
+function FormattedPriceInput({ value, onChange, testId, className }) {
+  const [focused, setFocused] = useState(false)
+  const [draft, setDraft] = useState('')
+
+  const bump = (delta) => {
+    const next = Math.max(0, (Number(value) || 0) + delta)
+    onChange(next)
+    if (focused) setDraft(String(next))
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={focused ? draft : formatNumber(value)}
+      onFocus={() => {
+        setFocused(true)
+        setDraft(String(value ?? ''))
+      }}
+      onBlur={() => {
+        const n = parseLocaleNumber(draft)
+        onChange(n)
+        setFocused(false)
+      }}
+      onChange={(event) => {
+        const next = event.target.value
+        setDraft(next)
+        onChange(parseLocaleNumber(next))
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'ArrowUp') {
+          event.preventDefault()
+          bump(1)
+        }
+        if (event.key === 'ArrowDown') {
+          event.preventDefault()
+          bump(-1)
+        }
+      }}
+      className={className}
+      data-testid={testId}
+    />
+  )
+}
+
 export function SaleEditModal({ open, onClose, sale, onSaved, nested = false }) {
   const paymentMethods = useConfigStore((s) => s.paymentMethods)
   const taxPct = useConfigStore((s) => s.settings?.taxPct ?? 18)
@@ -38,6 +95,20 @@ export function SaleEditModal({ open, onClose, sale, onSaved, nested = false }) 
   useEffect(() => {
     if (open && sale) setForm(saleToForm(sale))
   }, [open, sale])
+
+  const paymentMethodOptions = useMemo(() => {
+    const enabled = paymentMethods.filter((method) => method.enabled !== false)
+    const enabledIds = new Set(enabled.map((method) => method.id))
+    const current = paymentMethods.find((method) => method.id === form.method)
+    const list = [...enabled]
+    if (current && !enabledIds.has(current.id)) {
+      list.unshift(current)
+    }
+    return list.map((method) => ({
+      value: method.id,
+      label: method.name || method.label || method.id,
+    }))
+  }, [paymentMethods, form.method])
 
   const totals = useMemo(
     () => calculatePosTotals({
@@ -116,8 +187,8 @@ export function SaleEditModal({ open, onClose, sale, onSaved, nested = false }) 
                     <td className="px-4 py-3 text-center">
                       <input
                         type="number"
-                        min="0.001"
-                        step="0.001"
+                        min="0"
+                        step="1"
                         value={item.qty}
                         onChange={(event) => updateLine(index, { qty: Number(event.target.value) })}
                         className="w-20 rounded-lg border-0 bg-white px-2 py-1 text-center text-sm ring-1 ring-inset ring-slate-200"
@@ -125,14 +196,11 @@ export function SaleEditModal({ open, onClose, sale, onSaved, nested = false }) 
                       />
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
+                      <FormattedPriceInput
                         value={item.price}
-                        onChange={(event) => updateLine(index, { price: Number(event.target.value) })}
+                        onChange={(price) => updateLine(index, { price })}
                         className="w-28 rounded-lg border-0 bg-white px-2 py-1 text-right text-sm ring-1 ring-inset ring-slate-200"
-                        data-testid={`sale-edit-price-${index}`}
+                        testId={`sale-edit-price-${index}`}
                       />
                     </td>
                   </tr>
@@ -142,19 +210,15 @@ export function SaleEditModal({ open, onClose, sale, onSaved, nested = false }) 
           </table>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block text-sm">
+          <div className="block text-sm">
             <span className="mb-1 block font-medium text-slate-600">Forma de pago</span>
-            <select
+            <Select
               value={form.method}
-              onChange={(event) => setForm((current) => ({ ...current, method: event.target.value }))}
-              className="w-full rounded-xl border-0 bg-white px-3 py-2.5 text-sm ring-1 ring-inset ring-slate-200"
+              onChange={(method) => setForm((current) => ({ ...current, method }))}
+              options={paymentMethodOptions}
               data-testid="sale-edit-method"
-            >
-              {paymentMethods.map((method) => (
-                <option key={method.id} value={method.id}>{method.label}</option>
-              ))}
-            </select>
-          </label>
+            />
+          </div>
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-slate-600">Referencia</span>
             <input
@@ -169,27 +233,28 @@ export function SaleEditModal({ open, onClose, sale, onSaved, nested = false }) 
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-slate-600">Descuento</span>
             <div className="flex gap-2">
-              <select
+              <Select
                 value={form.discountMode}
-                onChange={(event) => setForm((current) => ({
+                onChange={(discountMode) => setForm((current) => ({
                   ...current,
-                  discountMode: event.target.value,
+                  discountMode,
                 }))}
-                className="rounded-xl border-0 bg-white px-3 py-2.5 text-sm ring-1 ring-inset ring-slate-200"
-              >
-                <option value="percent">%</option>
-                <option value="amount">RD$</option>
-              </select>
+                options={DISCOUNT_MODE_OPTIONS}
+                size="sm"
+                className="w-24 shrink-0"
+                data-testid="sale-edit-discount-mode"
+              />
               <input
                 type="number"
                 min="0"
-                step="0.01"
+                step="1"
                 value={form.discountValue}
                 onChange={(event) => setForm((current) => ({
                   ...current,
                   discountValue: Number(event.target.value),
                 }))}
                 className="min-w-0 flex-1 rounded-xl border-0 bg-white px-3 py-2.5 text-sm ring-1 ring-inset ring-slate-200"
+                data-testid="sale-edit-discount-value"
               />
             </div>
           </label>

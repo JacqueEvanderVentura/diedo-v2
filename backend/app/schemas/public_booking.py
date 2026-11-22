@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from datetime import time as TimeValue
 from decimal import Decimal
 from typing import Literal
@@ -118,11 +118,47 @@ class PublicIdentifyResponse(PublicCustomerProfileResponse):
     pending_appointment: PublicPendingAppointmentSummary | None = None
 
 
+class PublicHeldSlot(ApiModel):
+    time: str
+    expires_at: datetime
+    resource_id: UUID
+    employee_id: UUID | None = None
+
+
 class PublicSlotsResponse(ApiModel):
     date: date
     employee_id: UUID | None = None
     duration_minutes: int
     slots: list[str]
+    held_slots: list[PublicHeldSlot] = Field(default_factory=list)
+
+
+class PublicClaimSlotHoldRequest(ApiModel):
+    service_id: UUID
+    employee_id: UUID | None = None
+    date: date
+    time: TimeValue
+    document_type: CustomerDocumentType | None = None
+    document_id: str | None = Field(default=None, min_length=3, max_length=64)
+    customer_name: str | None = Field(default=None, max_length=200)
+    customer_phone: str | None = Field(default=None, max_length=40)
+    customer_email: str | None = Field(default=None, max_length=254)
+
+    @field_validator("time")
+    @classmethod
+    def local_time(cls, value: TimeValue) -> TimeValue:
+        if value.tzinfo is not None or value.second or value.microsecond:
+            raise ValueError("Selecciona una hora local en horas y minutos.")
+        return value
+
+
+class PublicSlotHoldResponse(ApiModel):
+    expires_at: datetime
+    date: date
+    time: str
+    resource_id: UUID
+    employee_id: UUID | None = None
+    duration_minutes: int
 
 
 class PublicBookAppointmentRequest(ApiModel):

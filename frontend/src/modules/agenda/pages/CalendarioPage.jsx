@@ -48,6 +48,10 @@ import {
   sharedResourceWarning,
 } from '../lib/calendarResourceMove'
 import { normalizeAppointmentStatus } from '../lib/completion'
+import { SlotHoldSnackbar } from '../components/booking/SlotHoldSnackbar'
+import { SlotHoldDetailModal } from '../components/booking/SlotHoldDetailModal'
+import { holdRemainingMs } from '../lib/slotHoldCountdown'
+import { sameAgendaRecordId } from '../lib/dayViewSlots'
 
 const VIEWS = [
   { id: 'day', label: 'Día' },
@@ -57,6 +61,7 @@ const VIEWS = [
 
 export default function CalendarioPage() {
   const appointments = useAgendaStore((s) => s.appointments)
+  const slotHolds = useAgendaStore((s) => s.slotHolds)
   const resources = useAgendaStore((s) => s.resources)
   const dataState = useAgendaStore((s) => s.dataState)
   const hydrateAppointments = useAgendaStore((s) => s.hydrateAppointments)
@@ -79,6 +84,14 @@ export default function CalendarioPage() {
   const [pendingMoveConfirm, setPendingMoveConfirm] = useState(null)
   const [employeeScheduleMoveConfirm, setEmployeeScheduleMoveConfirm] = useState(null)
   const [employeeMoveConfirm, setEmployeeMoveConfirm] = useState(null)
+  const [staffHoldSnackbar, setStaffHoldSnackbar] = useState(null)
+  const [selectedSlotHold, setSelectedSlotHold] = useState(null)
+  const [nowMs, setNowMs] = useState(() => Date.now())
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
   const employees = useRrhhStore((s) => s.employees)
 
   const appointmentQuery = useMemo(() => {
@@ -92,7 +105,7 @@ export default function CalendarioPage() {
     return { branchId, dateFrom: days[0].key, dateTo: days[days.length - 1].key }
   }, [branchId, cursor, view])
 
-  useAgendaPolling(appointmentQuery)
+  useAgendaPolling(appointmentQuery, { intervalMs: view === 'day' ? 5000 : 10000 })
 
   useEffect(() => {
     if (!branchId) return
@@ -114,6 +127,15 @@ export default function CalendarioPage() {
       resources.filter((resource) => resource.branchId === branchId && resource.active !== false),
     ),
     [branchId, resources],
+  )
+
+  const slotHoldsForView = useMemo(
+    () => slotHolds.filter((hold) => {
+      if (holdRemainingMs(hold.expiresAt, nowMs) <= 0) return false
+      if (hold.branchId && !sameAgendaRecordId(hold.branchId, branchId)) return false
+      return branchResources.some((resource) => sameAgendaRecordId(resource.id, hold.resourceId))
+    }),
+    [branchId, branchResources, nowMs, slotHolds],
   )
 
   const dayBounds = useMemo(
@@ -413,6 +435,32 @@ export default function CalendarioPage() {
         </div>
       </div>
 
+      {staffHoldSnackbar ? (
+        <SlotHoldSnackbar
+          variant={staffHoldSnackbar.variant || 'held'}
+          expiresAt={staffHoldSnackbar.expiresAt}
+          nowMs={nowMs}
+          onClose={() => setStaffHoldSnackbar(null)}
+        />
+      ) : null}
+
+      <SlotHoldDetailModal
+        open={Boolean(selectedSlotHold)}
+        hold={selectedSlotHold}
+        nowMs={nowMs}
+        resourceName={
+          selectedSlotHold
+            ? branchResources.find((r) => sameAgendaRecordId(r.id, selectedSlotHold.resourceId))?.name || ''
+            : ''
+        }
+        employeeName={
+          selectedSlotHold?.employeeId
+            ? employees.find((e) => sameAgendaRecordId(e.id, selectedSlotHold.employeeId))?.name || ''
+            : ''
+        }
+        onClose={() => setSelectedSlotHold(null)}
+      />
+
       <CalendarStatsBar stats={calendarStats} />
 
       <AnimatedTabPanel panelKey={view}>
@@ -428,10 +476,13 @@ export default function CalendarioPage() {
           <DayView
             dateKey={cursor}
             appointments={filtered}
+            slotHolds={slotHoldsForView}
+            nowMs={nowMs}
             resources={branchResources}
             startHour={dayBounds.startHour}
             endHour={dayBounds.endHour}
             onSlotClick={canManage ? openNew : undefined}
+            onHeldSlotClick={(hold) => setSelectedSlotHold(hold)}
             onAppointmentClick={openEdit}
             canDrag={canManage}
             canDragAppointment={canDragAppointment}

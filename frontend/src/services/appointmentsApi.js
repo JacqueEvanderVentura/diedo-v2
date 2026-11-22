@@ -37,7 +37,33 @@ async function listAllAppointments(params = {}) {
         )
       )
     : []
-  return [first, ...remaining].flatMap((page) => page.items || []).map(mapAppointmentFromApi)
+  const appointments = [first, ...remaining].flatMap((page) => page.items || []).map(mapAppointmentFromApi)
+  const heldRows = first.heldSlots || first.held_slots || []
+  const heldSlots = heldRows.map(mapSlotHoldFromApi)
+  return { appointments, heldSlots }
+}
+
+function readHeldSlotField(item, camelKey, snakeKey) {
+  return item?.[camelKey] ?? item?.[snakeKey]
+}
+
+export function mapSlotHoldFromApi(item) {
+  return {
+    id: item.id,
+    branchId: readHeldSlotField(item, 'branchId', 'branch_id'),
+    resourceId: readHeldSlotField(item, 'resourceId', 'resource_id'),
+    employeeId: readHeldSlotField(item, 'employeeId', 'employee_id') || null,
+    serviceId: readHeldSlotField(item, 'serviceId', 'service_id'),
+    serviceName: readHeldSlotField(item, 'serviceName', 'service_name') || '',
+    customerId: readHeldSlotField(item, 'customerId', 'customer_id') || null,
+    customerName: readHeldSlotField(item, 'customerName', 'customer_name') || '',
+    customerPhone: readHeldSlotField(item, 'customerPhone', 'customer_phone') || '',
+    customerEmail: readHeldSlotField(item, 'customerEmail', 'customer_email') || '',
+    date: item.date,
+    time: item.time,
+    durationMinutes: Number(readHeldSlotField(item, 'durationMinutes', 'duration_minutes')) || 30,
+    expiresAt: readHeldSlotField(item, 'expiresAt', 'expires_at'),
+  }
 }
 
 /** Una página de citas (gestión / listados paginados). */

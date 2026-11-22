@@ -208,12 +208,30 @@ class AppointmentResponse(ApiModel):
     notification: EmailNotificationResponse | None = None
 
 
+class AppointmentSlotHoldResponse(ApiModel):
+    id: UUID
+    branch_id: UUID
+    resource_id: UUID
+    employee_id: UUID | None = None
+    service_id: UUID
+    service_name: str | None = None
+    customer_id: UUID | None = None
+    customer_name: str | None = None
+    customer_phone: str | None = None
+    customer_email: str | None = None
+    date: DateValue
+    time: str
+    duration_minutes: int
+    expires_at: datetime
+
+
 class PaginatedAppointmentsResponse(ApiModel):
     items: list[AppointmentResponse]
     page: int
     page_size: int
     total_items: int
     total_pages: int
+    held_slots: list[AppointmentSlotHoldResponse] = Field(default_factory=list)
 
 
 class CreatedAppointmentsResponse(ApiModel):

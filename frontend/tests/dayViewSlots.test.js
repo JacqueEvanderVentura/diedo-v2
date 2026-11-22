@@ -11,7 +11,9 @@ import {
   calendarRowSpan,
   CALENDAR_ROW_PX,
   UNASSIGNED_RESOURCE_ID,
+  activeSlotHoldAtCell,
   bookableSlotLaneCount,
+  dayViewLaneCount,
   slotLaneCount,
 } from '@/modules/agenda/lib/dayViewSlots'
 
@@ -192,5 +194,23 @@ describe('dayViewSlots', () => {
     expect(bookableSlotLaneCount({ paintedLaneCount: 2, confirmedOccupancy: 1 })).toBe(2)
     expect(bookableSlotLaneCount({ paintedLaneCount: 2, confirmedOccupancy: 2 })).toBe(2)
     expect(bookableSlotLaneCount({ paintedLaneCount: 1, confirmedOccupancy: 1, canBook: false })).toBe(1)
+  })
+
+  it('reserves half the cabin for an active hold', () => {
+    const hold = {
+      date: DATE,
+      resourceId: CAB,
+      time: '09:00',
+      durationMinutes: 30,
+      expiresAt: '2099-01-01T12:00:00.000Z',
+    }
+    expect(activeSlotHoldAtCell([hold], DATE, CAB, '09:00', Date.now())?.time).toBe('09:00')
+    expect(activeSlotHoldAtCell([hold], DATE, CAB, '09:00', Date.parse('2100-01-01'))).toBeNull()
+    const lanes = dayViewLaneCount({
+      overlapping: [],
+      laneCountById: new Map(),
+      holdStartsHere: true,
+    })
+    expect(lanes).toEqual({ laneCount: 2, paintedLaneCount: 0 })
   })
 })

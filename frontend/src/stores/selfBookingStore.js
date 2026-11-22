@@ -174,7 +174,34 @@ export const useSelfBookingStore = create(
           params.documentId = documentId
         }
         const result = await publicBookingApi.listSlots(branchId, params)
-        return result.slots || []
+        return {
+          slots: result.slots || [],
+          heldSlots: result.heldSlots || [],
+        }
+      },
+
+      claimSlotHold: async ({
+        branchId,
+        serviceId,
+        employeeId,
+        date,
+        time,
+        documentType,
+        documentId,
+        customerName,
+        customerPhone,
+        customerEmail,
+      }) => {
+        const payload = { serviceId, date, time }
+        if (employeeId) payload.employeeId = employeeId
+        if (documentType && documentId) {
+          payload.documentType = documentType
+          payload.documentId = documentId
+        }
+        if (customerName?.trim()) payload.customerName = customerName.trim()
+        if (customerPhone?.trim()) payload.customerPhone = customerPhone.trim()
+        if (customerEmail?.trim()) payload.customerEmail = customerEmail.trim()
+        return publicBookingApi.claimSlotHold(branchId, payload)
       },
 
       sendBookingLinkEmail: ({ profile, branchId, branchName }) => {

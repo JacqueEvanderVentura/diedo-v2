@@ -31,6 +31,7 @@ import {
   isSlotAvailable,
 } from '../lib/selfBooking'
 import { useAvailabilityAppointments } from '../hooks/useAvailabilityAppointments'
+import { holdRemainingMs } from '@/modules/agenda/lib/slotHoldCountdown'
 import { formatDOP } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { isAppointmentConflict } from '@/services/adapters/appointments'
@@ -95,6 +96,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
   const resources = useAgendaStore((s) => s.resources)
   const resourceLoadingByBranch = useAgendaStore((s) => s.resourceLoadingByBranch)
   const hydrateResources = useAgendaStore((s) => s.hydrateResources)
+  const slotHolds = useAgendaStore((s) => s.slotHolds)
   const customers = useCustomersStore((s) => s.customers)
   const allProducts = useCatalogStore((s) => s.products)
   const branches = useConfigStore((s) => s.branches)
@@ -503,6 +505,20 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     [form, customers, selectedService, price, appointment]
   )
 
+  const heldSlotsForPicker = useMemo(() => {
+    if (!form.date || !form.branchId) return []
+    return slotHolds
+      .filter(
+        (hold) =>
+          hold.date === form.date
+          && hold.branchId === form.branchId
+          && holdRemainingMs(hold.expiresAt) > 0
+          && (!form.cabinaId || hold.resourceId === form.cabinaId)
+          && (!form.employeeId || !hold.employeeId || hold.employeeId === form.employeeId),
+      )
+      .map((hold) => ({ time: hold.time, expiresAt: hold.expiresAt }))
+  }, [form.branchId, form.cabinaId, form.date, form.employeeId, slotHolds])
+
   const timeSlotsForPicker = form.date ? availableSlots : null
 
   return (
@@ -542,6 +558,14 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
               value={form.time}
               onChange={(time) => set('time', time)}
               slots={timeSlotsForPicker}
+              heldSlots={heldSlotsForPicker}
+              onHeldSlotSelect={(_slot, entry) => {
+                toast.warning(
+                  entry?.expiresAt
+                    ? `Este espacio está siendo apartado en línea. Se liberará en ${Math.ceil(holdRemainingMs(entry.expiresAt) / 60000)} min si no confirman.`
+                    : 'Este espacio está siendo apartado en línea.',
+                )
+              }}
               emptyMessage={
                 form.employeeId
                   ? 'No hay cupos según el horario del empleado.'

@@ -9,6 +9,9 @@ export function TimePicker({
   value,
   onChange,
   slots = null,
+  heldSlots = [],
+  onHeldSlotSelect,
+  unavailableSlots = [],
   emptyMessage = 'No hay horarios disponibles.',
   className,
   testId = 'time-picker',
@@ -22,7 +25,22 @@ export function TimePicker({
   const rootRef = useRef(null)
   const triggerRef = useRef(null)
   const menuRef = useRef(null)
-  const options = useMemo(() => slots ?? timeSlots(8, 20, 30), [slots])
+  const options = useMemo(() => {
+    const base = slots ?? timeSlots(8, 20, 30)
+    const extraHeld = (heldSlots || [])
+      .map((entry) => entry.time)
+      .filter((time) => time && !base.includes(time))
+    if (!extraHeld.length) return base
+    return [...base, ...extraHeld].sort((a, b) => a.localeCompare(b))
+  }, [slots, heldSlots])
+  const heldByTime = useMemo(() => {
+    const map = new Map()
+    for (const entry of heldSlots || []) {
+      if (entry?.time) map.set(entry.time, entry)
+    }
+    return map
+  }, [heldSlots])
+  const unavailableSet = useMemo(() => new Set(unavailableSlots || []), [unavailableSlots])
 
   const selectedLabel = value ? formatTime12h(value) : null
 
@@ -145,19 +163,31 @@ export function TimePicker({
           <ul className="max-h-52 overflow-y-auto p-1.5 scrollbar-thin">
             {options.map((slot) => {
               const active = value === slot
+              const held = heldByTime.has(slot)
+              const blocked = unavailableSet.has(slot)
               return (
                 <li key={slot} role="presentation">
                   <button
                     type="button"
                     role="option"
+                    aria-disabled={blocked || undefined}
                     aria-selected={active}
                     data-testid={`${testId}-slot-${slot}`}
-                    onClick={() => pick(slot)}
+                    onClick={() => {
+                      if (blocked) return
+                      if (held && onHeldSlotSelect) {
+                        onHeldSlotSelect(slot, heldByTime.get(slot))
+                        return
+                      }
+                      pick(slot)
+                    }}
                     className={cn(
                       'flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors',
-                      active
+                      blocked && 'cursor-not-allowed opacity-50',
+                      held && !blocked && 'bg-orange-50 font-semibold text-orange-900 hover:bg-orange-100',
+                      !held && !blocked && active
                         ? 'bg-blue-50 font-semibold text-blue-700'
-                        : 'font-medium text-slate-700 hover:bg-slate-50',
+                        : !held && !blocked && 'font-medium text-slate-700 hover:bg-slate-50',
                     )}
                   >
                     <Check

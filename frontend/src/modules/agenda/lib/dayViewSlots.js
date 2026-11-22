@@ -1,4 +1,5 @@
 import { normalizeAppointmentTime, timeRangesOverlap } from '@/modules/agenda/lib/selfBooking'
+import { formatHoldCountdown, holdRemainingMs } from '@/modules/agenda/lib/slotHoldCountdown'
 import { normalizeAppointmentStatus } from '@/modules/agenda/lib/completion'
 export const CALENDAR_SLOT_MINUTES = 30
 export const CALENDAR_ROW_PX = 88
@@ -74,6 +75,55 @@ export function appointmentsOverlappingSlot(appointments, slot, slotMinutes = CA
     appointment.time,
     appointment.duration
   ))
+}
+
+export function sameAgendaRecordId(left, right) {
+  if (left == null || right == null) return false
+  return String(left).trim().toLowerCase() === String(right).trim().toLowerCase()
+}
+
+function holdMatchesCell(hold, dateKey, resourceId, slot) {
+  return (
+    hold.date === dateKey
+    && sameAgendaRecordId(hold.resourceId, resourceId)
+    && normalizeAppointmentTime(hold.time) === normalizeAppointmentTime(slot)
+  )
+}
+
+export function slotHoldsAtCell(slotHolds, dateKey, resourceId, slot) {
+  if (!slotHolds?.length) return null
+  return slotHolds.find((hold) => holdMatchesCell(hold, dateKey, resourceId, slot)) || null
+}
+
+/** Active hold at the start of a calendar cell (skips expired holds). */
+export function activeSlotHoldAtCell(slotHolds, dateKey, resourceId, slot, nowMs = Date.now()) {
+  const hold = slotHoldsAtCell(slotHolds, dateKey, resourceId, slot)
+  if (!hold || holdRemainingMs(hold.expiresAt, nowMs) <= 0) return null
+  return hold
+}
+
+export function holdOverlapsSlot(hold, slot, slotMinutes = CALENDAR_SLOT_MINUTES) {
+  if (!hold) return false
+  const duration = Number(hold.durationMinutes) || slotMinutes
+  return timeRangesOverlap(slot, slotMinutes, hold.time, duration)
+}
+
+export function holdLaneIndex({ paintedLaneCount, holdStartsHere }) {
+  if (!holdStartsHere) return -1
+  return Math.max(0, Number(paintedLaneCount) || 0)
+}
+
+export function dayViewLaneCount({ overlapping, laneCountById, holdStartsHere }) {
+  const paintedLaneCount = overlapping.length ? slotLaneCount(overlapping, laneCountById) : 0
+  let laneCount = Math.max(1, paintedLaneCount)
+  if (holdStartsHere) {
+    laneCount = Math.max(laneCount, paintedLaneCount + 1, 2)
+  }
+  return { laneCount, paintedLaneCount }
+}
+
+export function formatHoldCountdownLabel(expiresAt, nowMs = Date.now()) {
+  return formatHoldCountdown(expiresAt, nowMs)
 }
 
 export function appointmentStartsAtSlot(appointment, slot) {
