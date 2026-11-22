@@ -84,36 +84,10 @@ class PublicBookingService:
                 "workspace_name": workspace.name,
                 "workspace_branches": workspace_rows,
             }
-        rows = self._session.scalars(
-            select(Branch)
-            .where(
-                Branch.status == "active",
-                Branch.online_booking_selectable.is_(True),
-            )
-            .order_by(Branch.name)
-        ).all()
-        if not rows:
-            raise InvalidOperationError(
-                "No hay sucursales disponibles para agendar en línea.",
-                "branchId",
-            )
-        workspace_ids = {row.workspace_id for row in rows}
-        if len(workspace_ids) > 1:
-            raise InvalidOperationError(
-                "Indica una sucursal en el enlace para continuar.",
-                "branchId",
-            )
-        workspace_id = next(iter(workspace_ids))
-        branch_rows = [row for row in rows if row.workspace_id == workspace_id]
-        resolved_workspace = self._session.scalar(
-            select(Workspace).where(Workspace.id == workspace_id)
+        raise InvalidOperationError(
+            "Indica una sucursal en el enlace para continuar.",
+            "branchId",
         )
-        if resolved_workspace is None:
-            raise ResourceNotFoundError("El workspace no existe.", "branchId")
-        return {
-            "workspace_name": resolved_workspace.name,
-            "workspace_branches": [{"id": row.id, "name": row.name} for row in branch_rows],
-        }
 
     def get_context(self, branch_id: UUID) -> dict[str, Any]:
         branch, workspace = self._resolve_branch(branch_id)

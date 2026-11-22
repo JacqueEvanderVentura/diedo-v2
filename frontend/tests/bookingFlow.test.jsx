@@ -79,19 +79,38 @@ async function selectAppointment() {
   fireEvent.change(screen.getByTestId('self-specialist'), { target: { value: 'employee' } })
 }
 
+it('includes the active branch in the booking link URL', async () => {
+  publicBookingApi.getContext.mockResolvedValue({
+    branch: { branchId: 'branch-a', branchName: 'Norte', workspaceName: 'Mi establecimiento' },
+    services: [],
+    specialists: [],
+    workspaceBranches: [{ id: 'branch-a', name: 'Norte' }],
+  })
+  render(<MemoryRouter><BookingLinkModal open onClose={() => {}} branchId="branch-a" branchName="Norte" /></MemoryRouter>)
+  await waitFor(() => expect(publicBookingApi.getContext).toHaveBeenCalledWith('branch-a'))
+  expect(publicBookingApi.getEntryContext).not.toHaveBeenCalled()
+  expect(screen.getByDisplayValue(/branch=branch-a/)).toBeTruthy()
+})
+
 it('shares by email without a phone and never opens WhatsApp automatically', async () => {
   const open = vi.spyOn(window, 'open').mockImplementation(() => null)
   publicBookingApi.sendBookingLink.mockResolvedValue({ status: 'disabled', message: 'Correo desactivado.' })
-  publicBookingApi.getEntryContext.mockResolvedValue({
-    workspaceName: 'Mi establecimiento',
+  publicBookingApi.getContext.mockResolvedValue({
+    branch: { branchId: 'branch', branchName: 'Norte', workspaceName: 'Mi establecimiento' },
+    services: [],
+    specialists: [],
     workspaceBranches: [{ id: 'branch', name: 'Norte' }],
   })
-  render(<MemoryRouter><BookingLinkModal open onClose={() => {}} /></MemoryRouter>)
+  render(<MemoryRouter><BookingLinkModal open onClose={() => {}} branchId="branch" branchName="Norte" /></MemoryRouter>)
   fireEvent.change(screen.getByTestId('booking-link-name'), { target: { value: 'Cliente prueba' } })
   fireEvent.change(screen.getByTestId('booking-link-email'), { target: { value: 'client@example.com' } })
   fireEvent.click(screen.getByTestId('booking-link-send-email'))
   await screen.findByText('Correo desactivado.')
-  expect(publicBookingApi.sendBookingLink).toHaveBeenCalledWith({ name: 'Cliente prueba', email: 'client@example.com' }, expect.any(String))
+  expect(publicBookingApi.sendBookingLink).toHaveBeenCalledWith({
+    name: 'Cliente prueba',
+    email: 'client@example.com',
+    branchId: 'branch',
+  }, expect.any(String))
   expect(open).not.toHaveBeenCalled()
   expect(screen.getByTestId('booking-link-phone').value).toBe('')
   fireEvent.change(screen.getByTestId('booking-link-phone'), { target: { value: '8294220141' } })

@@ -131,7 +131,6 @@ export default function AgendarPage() {
   const [workspaceBranches, setWorkspaceBranches] = useState([])
   const [workspaceName, setWorkspaceName] = useState('')
   const [contextError, setContextError] = useState('')
-  const [entryLoading, setEntryLoading] = useState(false)
   const hasSavedSession = Boolean(
     requestedBranchId && recallPublicSession()?.documentId && recallPublicSession()?.branchId === requestedBranchId
   )
@@ -215,44 +214,10 @@ export default function AgendarPage() {
 
   useEffect(() => {
     if (isDemo || branchId) return
-    let active = true
-    setEntryLoading(true)
-    setContextError('')
     setWorkspaceBranches([])
     setWorkspaceName('')
-    publicBookingApi.getEntryContext()
-      .then((context) => {
-        if (!active) return
-        setWorkspaceName(context.workspaceName || '')
-        setWorkspaceBranches(
-          (context.workspaceBranches || []).map((item) => ({
-            id: item.id,
-            name: item.name,
-          }))
-        )
-      })
-      .catch(() => {
-        if (active) {
-          setContextError('No se pudo cargar las sucursales. Intenta nuevamente más tarde.')
-        }
-      })
-      .finally(() => {
-        if (active) setEntryLoading(false)
-      })
-    return () => { active = false }
+    setContextError('Indica una sucursal en el enlace para continuar.')
   }, [branchId, isDemo])
-
-  useEffect(() => {
-    if (isDemo || branchId || entryLoading) return
-    const firstBranch = workspaceBranches[0]
-    if (!firstBranch?.id) return
-    setParams((current) => {
-      const next = new URLSearchParams(current)
-      if (next.get('branch') === firstBranch.id) return current
-      next.set('branch', firstBranch.id)
-      return next
-    })
-  }, [branchId, entryLoading, isDemo, setParams, workspaceBranches])
 
   useEffect(() => {
     if (isDemo || !branchId) return
@@ -808,7 +773,6 @@ export default function AgendarPage() {
   }
 
   const awaitingBranchContext = !isDemo && Boolean(branchId) && !branch && !contextError
-  const awaitingEntryContext = !isDemo && !branchId && entryLoading
   const showBranchGate = phase === 'branch' || (!branchId && !isDemo)
 
   if (!isDemo && contextError && (branchId || !workspaceBranches.length)) {
@@ -826,16 +790,6 @@ export default function AgendarPage() {
       <PublicShell>
         <p role="status" className="mx-auto max-w-lg text-center text-slate-600">
           Cargando sucursal…
-        </p>
-      </PublicShell>
-    )
-  }
-
-  if (awaitingEntryContext) {
-    return (
-      <PublicShell>
-        <p role="status" className="mx-auto max-w-lg text-center text-slate-600">
-          Cargando sucursales…
         </p>
       </PublicShell>
     )

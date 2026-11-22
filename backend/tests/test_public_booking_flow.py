@@ -1198,6 +1198,15 @@ def test_booking_entry_context_lists_selectable_branches(client, booking_setup):
     assert any(item["id"] == branch for item in branches)
 
 
+@pytest.mark.integration
+def test_booking_entry_context_requires_branch_id(client, booking_setup):
+    _, _me, branch, _employee, _service = booking_setup
+    missing = client.get("/api/v1/public/booking/context")
+    assert missing.status_code == 400, missing.text
+    scoped = client.get("/api/v1/public/booking/context", params={"branchId": branch})
+    assert scoped.status_code == 200, scoped.text
+
+
 _BACKOFFICE_KEY = "test-backoffice-key-with-at-least-32-characters"
 
 
