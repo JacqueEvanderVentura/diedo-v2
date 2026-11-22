@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Building2, Mail, MapPin, Pencil, Phone, Plus, Search, Store, Trash2, User } from 'lucide-react'
+import { Building2, Link2, Mail, MapPin, Pencil, Phone, Plus, Search, Store, Trash2, User } from 'lucide-react'
+import { FEATURES } from '@/config/features'
+import { buildBookingUrl } from '@/modules/agenda/lib/selfBooking'
 import { administrationGateway } from '@/services/administrationApi'
 import {
   branchAssignmentToApi,
@@ -251,6 +253,16 @@ export default function SucursalesPage({ embedded = false, visibleBlockIds }) {
     toast.success(successMessage)
   }
 
+  const copyBookingLink = async (branch) => {
+    const url = buildBookingUrl(branch.id)
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success('Enlace de agendación copiado')
+    } catch {
+      toast.error('No se pudo copiar el enlace')
+    }
+  }
+
   const toggle = async (branch) => {
     if (!online) {
       toast.error('La API no está disponible.')
@@ -337,6 +349,17 @@ export default function SucursalesPage({ embedded = false, visibleBlockIds }) {
                 </div>
               </div>
               <div className="flex shrink-0 gap-1">
+                {FEATURES.selfBooking && branch.active && (
+                  <button
+                    type="button"
+                    data-testid={`sucursal-booking-link-${branch.id}`}
+                    aria-label="Copiar enlace de agendación"
+                    onClick={() => copyBookingLink(branch)}
+                    className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                  >
+                    <Link2 className="h-4 w-4" />
+                  </button>
+                )}
                 <button type="button" aria-label={branch.active ? 'Desactivar sucursal' : 'Activar sucursal'} disabled={online && (!canManageBranch || state.status !== 'ready')} onClick={() => toggle(branch)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-40"><Store className="h-4 w-4" /></button>
                 <button type="button" data-testid={`sucursal-edit-${branch.id}`} aria-label="Ver o editar sucursal" onClick={() => openBranch(branch)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><Pencil className="h-4 w-4" /></button>
                 <button type="button" aria-label="Archivar sucursal" disabled={online && (!canManageBranch || state.status !== 'ready')} onClick={() => archive(branch)} className="rounded-lg p-2 text-red-500 hover:bg-red-50 disabled:opacity-40"><Trash2 className="h-4 w-4" /></button>

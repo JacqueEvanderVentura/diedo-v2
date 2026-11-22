@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import AgendarPage from '@/modules/agenda/pages/AgendarPage'
 import { useConfigStore } from '@/stores/configStore'
@@ -46,39 +46,9 @@ it('does not book against a local fallback branch when the shared link is invali
   expect(publicBookingApi.getContext).toHaveBeenCalledWith('missing')
 })
 
-it('loads branch picker from entry context when no branch was provided', async () => {
-  publicBookingApi.getEntryContext.mockResolvedValue({
-    workspaceName: 'Helios Spa',
-    workspaceBranches: [{ id: 'entry-branch', name: 'Sucursal centro' }],
-  })
-  publicBookingApi.getContext.mockResolvedValue({
-    branch: { branchId: 'entry-branch', branchName: 'Sucursal centro', timezone: 'America/Santo_Domingo' },
-    services: [],
-    specialists: [],
-    workspaceBranches: [{ id: 'entry-branch', name: 'Sucursal centro' }],
-  })
+it('shows an error when no branch was provided', async () => {
   openLink('/agendar')
-  expect(await screen.findByText('Elige tu sucursal')).toBeTruthy()
-  expect(screen.getByTestId('branch-option-entry-branch').textContent).toContain('Sucursal centro')
-  expect(publicBookingApi.getEntryContext).toHaveBeenCalled()
-  await waitFor(() => expect(publicBookingApi.getContext).toHaveBeenCalledWith('entry-branch'))
-  expect(screen.getByTestId('branch-option-entry-branch').className).toContain('bg-slate-900')
-})
-
-it('continues from branch step without clicking the only branch when it is preselected', async () => {
-  publicBookingApi.getEntryContext.mockResolvedValue({
-    workspaceName: 'Helios Spa',
-    workspaceBranches: [{ id: 'entry-branch', name: 'Sucursal centro' }],
-  })
-  publicBookingApi.getContext.mockResolvedValue({
-    branch: { branchId: 'entry-branch', branchName: 'Sucursal centro', timezone: 'America/Santo_Domingo' },
-    services: [],
-    specialists: [],
-    workspaceBranches: [{ id: 'entry-branch', name: 'Sucursal centro' }],
-  })
-  openLink('/agendar')
-  await screen.findByText('Elige tu sucursal')
-  await waitFor(() => expect(publicBookingApi.getContext).toHaveBeenCalledWith('entry-branch'))
-  fireEvent.click(screen.getByTestId('branch-confirm'))
-  expect(await screen.findByText(/Ingresa tu documento/)).toBeTruthy()
+  expect((await screen.findByRole('alert')).textContent).toContain('Indica una sucursal')
+  expect(publicBookingApi.getEntryContext).not.toHaveBeenCalled()
+  expect(publicBookingApi.getContext).not.toHaveBeenCalled()
 })
