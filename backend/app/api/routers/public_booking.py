@@ -18,11 +18,14 @@ from app.schemas.public_booking import (
     PublicBookingContextResponse,
     PublicBookingEntryContextResponse,
     PublicCancelAppointmentRequest,
+    PublicClaimSlotHoldRequest,
     PublicCustomerProfileResponse,
+    PublicHeldSlot,
     PublicIdentifyRequest,
     PublicIdentifyResponse,
     PublicProfileUpdateRequest,
     PublicRescheduleAppointmentRequest,
+    PublicSlotHoldResponse,
     PublicSlotsResponse,
 )
 from app.services.appointment_reminders import AppointmentReminderService
@@ -152,21 +155,62 @@ def list_slots(
     document_id: Annotated[
         str | None, Query(alias="documentId", min_length=3, max_length=64)
     ] = None,
+    slot_hold_token: Annotated[
+        str | None, Header(alias="X-Slot-Hold-Token", min_length=8, max_length=64)
+    ] = None,
 ) -> PublicSlotsResponse:
-    slots, duration_minutes = PublicBookingService(database).list_slots(
+    slots, duration_minutes, held_slots = PublicBookingService(database).list_slots(
         branch_id,
         scheduled_date=scheduled_date,
         employee_id=employee_id,
         service_id=service_id,
         document_type=document_type,
         document_id=document_id,
+        holder_token=slot_hold_token,
     )
     return PublicSlotsResponse(
         date=scheduled_date,
         employee_id=employee_id,
         duration_minutes=duration_minutes,
         slots=slots,
+        held_slots=[PublicHeldSlot.model_validate(item) for item in held_slots],
     )
+
+
+@router.post(
+    "/branches/{branch_id}/slot-holds",
+    status_code=status.HTTP_201_CREATED,
+    summary="Reservar temporalmente un horario",
+    responses={**_SECURITY, 409: {"model": ErrorResponse}},
+)
+def claim_slot_hold(
+    branch_id: UUID,
+    payload: PublicClaimSlotHoldRequest,
+    database: DatabaseSession,
+    slot_hold_token: Annotated[str, Header(alias="X-Slot-Hold-Token", min_length=8, max_length=64)],
+) -> PublicSlotHoldResponse:
+    result = PublicBookingService(database).claim_slot_hold(
+        branch_id,
+        payload.model_dump(by_alias=False),
+        holder_token=slot_hold_token,
+    )
+    return PublicSlotHoldResponse.model_validate(result)
+
+
+@router.delete(
+    "/branches/{branch_id}/slot-holds",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Liberar la reserva temporal del navegador",
+    responses=_SECURITY,
+)
+def release_slot_hold(
+    branch_id: UUID,
+    database: DatabaseSession,
+    slot_hold_token: Annotated[str, Header(alias="X-Slot-Hold-Token", min_length=8, max_length=64)],
+) -> Response:
+    del branch_id
+    PublicBookingService(database).release_slot_hold(holder_token=slot_hold_token)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(
@@ -182,6 +226,9 @@ def book_appointment(
     idempotency_key: Annotated[
         str | None, Header(alias="Idempotency-Key", min_length=8, max_length=128)
     ] = None,
+    slot_hold_token: Annotated[
+        str | None, Header(alias="X-Slot-Hold-Token", min_length=8, max_length=64)
+    ] = None,
 ) -> PublicBookAppointmentResponse:
     key = idempotency_key or (
         f"public-booking:{branch_id}:{payload.document_id}:{payload.date}:{payload.time}"
@@ -190,6 +237,7 @@ def book_appointment(
         branch_id,
         payload.model_dump(by_alias=False),
         idempotency_key=key,
+        holder_token=slot_hold_token,
     )
     return PublicBookAppointmentResponse(
         appointment=PublicAppointmentSummary.model_validate(summary)

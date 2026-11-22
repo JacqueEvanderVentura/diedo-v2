@@ -6,6 +6,7 @@ from app.db.models.agenda import (
     AppointmentEvent,
     AppointmentResource,
     AppointmentResourceAcl,
+    AppointmentSlotHold,
     BranchOpeningHour,
 )
 from app.db.models.audit import AuditEntry
@@ -129,6 +130,7 @@ __all__ = [
     "AppointmentEvent",
     "AppointmentResource",
     "AppointmentResourceAcl",
+    "AppointmentSlotHold",
     "BranchOpeningHour",
     "AuthSession",
     "AuthSessionElevation",

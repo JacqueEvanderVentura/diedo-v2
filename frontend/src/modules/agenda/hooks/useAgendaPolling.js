@@ -2,9 +2,9 @@ import { useEffect, useMemo } from 'react'
 import { useAgendaStore } from '@/stores/agendaStore'
 import { useSessionStore } from '@/stores/sessionStore'
 
-const POLL_INTERVAL_MS = 10000
+const DEFAULT_POLL_INTERVAL_MS = 10000
 
-export function useAgendaPolling(params = {}) {
+export function useAgendaPolling(params = {}, { intervalMs = DEFAULT_POLL_INTERVAL_MS } = {}) {
   const hydrateAppointments = useAgendaStore((state) => state.hydrateAppointments)
   const sessionStatus = useSessionStore((state) => state.status)
   const queryKey = JSON.stringify(params)
@@ -28,7 +28,7 @@ export function useAgendaPolling(params = {}) {
     }
 
     refresh()
-    const interval = window.setInterval(refresh, POLL_INTERVAL_MS)
+    const interval = window.setInterval(refresh, intervalMs)
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', onVisibilityChange)
 
@@ -38,6 +38,6 @@ export function useAgendaPolling(params = {}) {
       window.removeEventListener('focus', refresh)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-  }, [hydrateAppointments, query, sessionStatus])
+  }, [hydrateAppointments, intervalMs, query, sessionStatus])
 }
 

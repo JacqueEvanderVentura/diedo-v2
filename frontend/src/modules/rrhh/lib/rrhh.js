@@ -5,6 +5,14 @@ export function fullName(emp) {
   return `${emp.firstName || ''} ${emp.lastName || ''}`.trim()
 }
 
+/** Splits a display name for quick-create flows (e.g. agenda staff). */
+export function splitPersonName(value) {
+  const parts = String(value || '').trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return { firstName: '', lastName: '' }
+  if (parts.length === 1) return { firstName: parts[0], lastName: parts[0] }
+  return { firstName: parts[0], lastName: parts.slice(1).join(' ') }
+}
+
 export function initials(emp) {
   const n = fullName(emp)
   const parts = n.split(/\s+/).filter(Boolean)

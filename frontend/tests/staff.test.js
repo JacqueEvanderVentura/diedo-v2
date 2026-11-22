@@ -3,6 +3,7 @@ import {
   isSelectableAsSpecialist,
   staffOptionsForBranch,
 } from '@/modules/rrhh/lib/staff'
+import { splitPersonName } from '@/modules/rrhh/lib/rrhh'
 
 const branchId = 'branch-1'
 
@@ -39,5 +40,16 @@ describe('especialistas de agenda', () => {
       { bookableOnly: true },
     )
     expect(options).toEqual([])
+  })
+})
+
+describe('splitPersonName', () => {
+  it('splits first and remaining tokens', () => {
+    expect(splitPersonName('Peppe Sd')).toEqual({ firstName: 'Peppe', lastName: 'Sd' })
+    expect(splitPersonName('Ana María López')).toEqual({ firstName: 'Ana', lastName: 'María López' })
+  })
+
+  it('duplicates a single token for API lastName', () => {
+    expect(splitPersonName('Peppe')).toEqual({ firstName: 'Peppe', lastName: 'Peppe' })
   })
 })

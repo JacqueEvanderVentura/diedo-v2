@@ -16,7 +16,13 @@ import { formatDOP } from '@/lib/format'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { BranchMultiSelect } from '@/components/ui/BranchMultiSelect'
+import { DatePeriodFilter } from '@/components/ui/DatePeriodFilter'
 import { CRM_BRANCH_FILTER_CLASS, matchesBranches } from '@/lib/branches'
+import {
+  defaultQuotesDateFilter,
+  QUOTES_DATE_PERIODS,
+  quotesUpdatedRange,
+} from '../lib/quotesListQuery'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SaleDetailModal } from '../components/SaleDetailModal'
 import {
@@ -71,16 +77,23 @@ export default function VentasPage() {
   const [method, setMethod] = useState('all')
   const [origin, setOrigin] = useState('all')
   const [branchIds, setBranchIds] = useState([])
+  const [dateFilter, setDateFilter] = useState(defaultQuotesDateFilter)
   const [selected, setSelected] = useState(null)
 
   const branchMap = useMemo(() => Object.fromEntries(branches.map((b) => [b.id, b.name])), [branches])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
+    const range = quotesUpdatedRange(dateFilter)
     return sales
       .filter((s) => method === 'all' || s.method === method)
       .filter((s) => origin === 'all' || saleOriginKey(s) === origin)
       .filter((s) => matchesBranches(s, branchIds, (row) => (row.branchId ? [row.branchId] : [])))
+      .filter((s) => {
+        if (!range) return true
+        const created = new Date(s.createdAt)
+        return created >= range.start && created <= range.end
+      })
       .filter((s) => {
         if (!q) return true
         const ref = saleDisplayReference(s).toLowerCase()
@@ -90,7 +103,7 @@ export default function VentasPage() {
           || (s.soldBy || '').toLowerCase().includes(q)
         )
       })
-  }, [sales, query, method, origin, branchIds])
+  }, [sales, query, method, origin, branchIds, dateFilter])
 
   const { rows: displayRows, sortKey, sortDir, toggleSort } = useSortedRows(filtered, {
     defaultSort: { key: 'date', dir: 'desc' },
@@ -116,8 +129,8 @@ export default function VentasPage() {
         <Chip label="Monto válido" value={formatDOP(stats.total)} tone="brand" />
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
+      <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
+        <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             value={query}
@@ -127,13 +140,23 @@ export default function VentasPage() {
             className="w-full rounded-xl border-0 bg-white py-3 pl-10 pr-4 text-sm text-slate-700 ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600"
           />
         </div>
-        <BranchMultiSelect
-          branches={branches}
-          branchIds={branchIds}
-          onChange={setBranchIds}
-          className={CRM_BRANCH_FILTER_CLASS}
-          testId="ventas-filter-branch"
-        />
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+          <DatePeriodFilter
+            period={dateFilter.period}
+            dateFrom={dateFilter.dateFrom}
+            dateTo={dateFilter.dateTo}
+            onChange={setDateFilter}
+            periods={QUOTES_DATE_PERIODS}
+            testId="ventas-date-filter"
+          />
+          <BranchMultiSelect
+            branches={branches}
+            branchIds={branchIds}
+            onChange={setBranchIds}
+            className={CRM_BRANCH_FILTER_CLASS}
+            testId="ventas-filter-branch"
+          />
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">

@@ -8,6 +8,7 @@ import {
   mapAppointmentFromApi,
   mapAppointmentResourceFromApi,
 } from '@/services/adapters/appointments'
+import { mapSlotHoldFromApi } from '@/services/appointmentsApi'
 import { getAppointmentReceivablePolicy } from '@/modules/agenda/lib/receivablePermissions'
 
 describe('adaptadores de Agenda', () => {
@@ -56,6 +57,30 @@ describe('adaptadores de Agenda', () => {
       status: 'active',
       version: 2,
     })).toMatchObject({ id: 'resource-1', branchId: 'branch-1', active: true, version: 2 })
+  })
+
+  it('mapea apartados del listado de citas con alias snake_case', () => {
+    expect(mapSlotHoldFromApi({
+      id: 'hold-1',
+      branch_id: 'branch-east',
+      resource_id: 'cab-1',
+      employee_id: 'emp-1',
+      service_id: 'svc-1',
+      date: '2026-11-24',
+      time: '08:00',
+      duration_minutes: 30,
+      expires_at: '2026-11-24T12:00:00.000Z',
+      customer_name: 'Ana Ruiz',
+      service_name: 'Depilación',
+    })).toMatchObject({
+      branchId: 'branch-east',
+      resourceId: 'cab-1',
+      employeeId: 'emp-1',
+      serviceId: 'svc-1',
+      time: '08:00',
+      customerName: 'Ana Ruiz',
+      serviceName: 'Depilación',
+    })
   })
 
   it('atribuye auto-agendado al nombre del cliente en creado por', () => {

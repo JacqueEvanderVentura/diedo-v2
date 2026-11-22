@@ -26,6 +26,7 @@ from app.schemas.agenda import (
     AppointmentResourceResponse,
     AppointmentResourcesResponse,
     AppointmentResponse,
+    AppointmentSlotHoldResponse,
     AppointmentSortField,
     AppointmentStatus,
     BranchOpeningHourItem,
@@ -427,7 +428,8 @@ def list_appointments(
     sort_direction: Annotated[SortDirection, Query(alias="sortDirection")] = "asc",
 ) -> PaginatedAppointmentsResponse:
     response.headers["Cache-Control"] = "no-store"
-    result = AgendaService(database).list_appointments(
+    service = AgendaService(database)
+    result = service.list_appointments(
         grant=grant,
         principal=principal,
         bypass_resource_acl=False,
@@ -443,12 +445,37 @@ def list_appointments(
         sort_by=sort_by,
         sort_direction=sort_direction,
     )
+    holds = service.list_calendar_slot_holds(
+        grant=grant,
+        branch_id=branch_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
     return PaginatedAppointmentsResponse(
         items=[_appointment_response(item) for item in result.items],
         page=page,
         page_size=page_size,
         total_items=result.total_items,
         total_pages=ceil(result.total_items / page_size) if result.total_items else 0,
+        held_slots=[
+            AppointmentSlotHoldResponse(
+                id=hold.id,
+                branch_id=hold.branch_id,
+                resource_id=hold.resource_id,
+                employee_id=hold.employee_id,
+                service_id=hold.service_id,
+                service_name=hold.service_name,
+                customer_id=hold.customer_id,
+                customer_name=hold.customer_display_name,
+                customer_phone=hold.customer_phone,
+                customer_email=hold.customer_email,
+                date=hold.scheduled_date,
+                time=hold.scheduled_time.strftime("%H:%M"),
+                duration_minutes=hold.duration_minutes,
+                expires_at=hold.expires_at,
+            )
+            for hold in holds
+        ],
     )
 
 

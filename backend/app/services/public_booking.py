@@ -24,7 +24,7 @@ from app.db.models import (
     Workspace,
     WorkspaceMembership,
 )
-from app.db.models.agenda import ACTIVE_APPOINTMENT_STATUSES
+from app.db.models.agenda import ACTIVE_APPOINTMENT_STATUSES, AppointmentSlotHold
 from app.db.models.email_notifications import EmailNotification
 from app.repositories.agenda import AgendaRepository
 from app.repositories.master_data import MasterDataRepository
@@ -53,6 +53,7 @@ from app.services.email_notifications import deliver_email, enqueue_email, notif
 from app.services.errors import ConflictError, InvalidOperationError, ResourceNotFoundError
 from app.services.mailer import render_appointment_email
 from app.services.master_data import normalize_name
+from app.services.slot_holds import hold_expires_at, serialize_held_slots
 
 PUBLIC_BOOKING_SLOT_CAPACITY = 1
 
@@ -187,7 +188,8 @@ class PublicBookingService:
         service_id: UUID,
         document_type: str | None = None,
         document_id: str | None = None,
-    ) -> tuple[list[str], int]:
+        holder_token: str | None = None,
+    ) -> tuple[list[str], int, list[dict[str, Any]]]:
         branch, _workspace = self._resolve_branch(branch_id)
         _principal, grant = self._system_access(branch.workspace_id)
         service = self._require_service(grant, branch.id, service_id)
@@ -197,13 +199,20 @@ class PublicBookingService:
                 branch,
                 scheduled_date=scheduled_date,
                 duration_minutes=duration_minutes,
+                holder_token=holder_token,
             )
         else:
-            spare = self._specialist_spare_capacity(branch, scheduled_date, duration_minutes)
+            spare = self._specialist_spare_capacity(
+                branch, scheduled_date, duration_minutes, holder_token=holder_token
+            )
             slots = sorted(
                 key
                 for key in self._slot_resources(
-                    branch_id, scheduled_date, employee_id, duration_minutes
+                    branch_id,
+                    scheduled_date,
+                    employee_id,
+                    duration_minutes,
+                    holder_token=holder_token,
                 )
                 if spare.get(key, 0) >= 1
             )
@@ -216,7 +225,18 @@ class PublicBookingService:
                 branch.workspace_id, document_type, document_id
             ),
         )
-        return slots, duration_minutes
+        own = self._agenda.slot_hold_by_token(holder_token) if holder_token else None
+        if own is not None and own.scheduled_date == scheduled_date:
+            own_key = own.scheduled_time.strftime("%H:%M")
+            if own_key not in slots:
+                slots = sorted({*slots, own_key})
+        held_slots = self._held_slots_for_listing(
+            branch,
+            scheduled_date,
+            employee_id=employee_id,
+            holder_token=holder_token,
+        )
+        return slots, duration_minutes, held_slots
 
     def _active_resources(self, branch: Branch) -> list[Any]:
         return [
@@ -238,6 +258,8 @@ class PublicBookingService:
         overlapping: list[Appointment],
         starts_at: datetime,
         ends_at: datetime,
+        *,
+        holds: tuple[AppointmentSlotHold, ...] = (),
     ) -> list[UUID]:
         free: list[UUID] = []
         for resource in resources:
@@ -246,9 +268,64 @@ class PublicBookingService:
                 for appointment in overlapping
                 if appointment.resource_id == resource.id
             ]
+            windows.extend(
+                (hold.starts_at, hold.ends_at) for hold in holds if hold.resource_id == resource.id
+            )
             if peak_occupancy(starts_at, ends_at, windows) <= PUBLIC_BOOKING_SLOT_CAPACITY:
                 free.append(resource.id)
         return free
+
+    def _day_slot_holds(
+        self,
+        branch: Branch,
+        scheduled_date: date,
+        *,
+        holder_token: str | None = None,
+        for_occupancy: bool = True,
+    ) -> tuple[AppointmentSlotHold, ...]:
+        now = utc_now()
+        self._agenda.purge_expired_slot_holds(now=now)
+        holds = self._agenda.list_active_slot_holds(
+            workspace_id=branch.workspace_id,
+            branch_id=branch.id,
+            scheduled_date=scheduled_date,
+            now=now,
+        )
+        if not for_occupancy or holder_token is None:
+            return holds
+        return tuple(row for row in holds if row.holder_token != holder_token)
+
+    def _holds_for_slot_window(
+        self,
+        holds: tuple[AppointmentSlotHold, ...],
+        start: datetime,
+        end: datetime,
+    ) -> tuple[AppointmentSlotHold, ...]:
+        return tuple(hold for hold in holds if hold.starts_at < end and hold.ends_at > start)
+
+    def _held_slots_for_listing(
+        self,
+        branch: Branch,
+        scheduled_date: date,
+        *,
+        employee_id: UUID | None,
+        holder_token: str | None,
+    ) -> list[dict[str, Any]]:
+        now = utc_now()
+        holds = self._agenda.list_active_slot_holds(
+            workspace_id=branch.workspace_id,
+            branch_id=branch.id,
+            scheduled_date=scheduled_date,
+            now=now,
+            exclude_holder_token=holder_token,
+        )
+        if employee_id is not None:
+            holds = tuple(
+                hold
+                for hold in holds
+                if hold.employee_id is None or hold.employee_id == employee_id
+            )
+        return serialize_held_slots(holds)
 
     def _customer_id_for_document(
         self,
@@ -264,6 +341,27 @@ class PublicBookingService:
             return None
         customer = self._master_data.customer_by_document(workspace_id, normalized)
         return None if customer is None else customer.id
+
+    def _hold_customer_snapshot(
+        self,
+        workspace_id: UUID,
+        payload: dict[str, Any],
+    ) -> tuple[UUID | None, str | None, str | None, str | None]:
+        raw_name = str(payload.get("customer_name") or "").strip() or None
+        raw_phone = str(payload.get("customer_phone") or "").strip() or None
+        raw_email = str(payload.get("customer_email") or "").strip() or None
+        document_type = payload.get("document_type")
+        document_id = payload.get("document_id")
+        customer_id = self._customer_id_for_document(workspace_id, document_type, document_id)
+        if customer_id is None:
+            return None, raw_name, raw_phone, raw_email
+        customer = self._master_data.get_customer(workspace_id, customer_id, None)
+        if customer is None:
+            return customer_id, raw_name, raw_phone, raw_email
+        display_name = raw_name or customer.display_name
+        phone = raw_phone or customer.phone
+        email = raw_email or customer.email
+        return customer_id, display_name, phone, email
 
     def _pending_branch_appointment(
         self, workspace_id: UUID, branch_id: UUID, customer_id: UUID
@@ -411,6 +509,7 @@ class PublicBookingService:
         scheduled_date: date,
         duration_minutes: int,
         exclude_appointment_id: UUID | None = None,
+        holder_token: str | None = None,
     ) -> list[str]:
         return sorted(
             self._unassigned_slot_resources(
@@ -418,6 +517,7 @@ class PublicBookingService:
                 scheduled_date=scheduled_date,
                 duration_minutes=duration_minutes,
                 exclude_appointment_id=exclude_appointment_id,
+                holder_token=holder_token,
             )
         )
 
@@ -428,18 +528,21 @@ class PublicBookingService:
         scheduled_date: date,
         duration_minutes: int,
         exclude_appointment_id: UUID | None = None,
+        holder_token: str | None = None,
     ) -> dict[str, list[UUID]]:
         spare = self._specialist_spare_capacity(
             branch,
             scheduled_date,
             duration_minutes,
             exclude_appointment_id=exclude_appointment_id,
+            holder_token=holder_token,
         )
         free_resources = self._resource_only_slots(
             branch,
             scheduled_date,
             duration_minutes,
             exclude_appointment_id=exclude_appointment_id,
+            holder_token=holder_token,
         )
         return {
             key: free for key, free in free_resources.items() if free and spare.get(key, 0) >= 1
@@ -451,6 +554,7 @@ class PublicBookingService:
         scheduled_date: date,
         duration_minutes: int,
         exclude_appointment_id: UUID | None = None,
+        holder_token: str | None = None,
     ) -> dict[str, int]:
         """Free specialists per slot minus overlapping online bookings still awaiting one."""
         counts: dict[str, int] = {}
@@ -461,6 +565,7 @@ class PublicBookingService:
                 specialist["id"],
                 duration_minutes,
                 exclude_appointment_id=exclude_appointment_id,
+                holder_token=holder_token,
             ):
                 counts[key] = counts.get(key, 0) + 1
         if not counts:
@@ -482,6 +587,10 @@ class PublicBookingService:
                 Appointment.ends_at > day_start,
             )
         ).all()
+        day_holds = self._day_slot_holds(
+            branch, scheduled_date, holder_token=holder_token, for_occupancy=True
+        )
+        unassigned_holds = tuple(hold for hold in day_holds if hold.employee_id is None)
         spare: dict[str, int] = {}
         for key, count in counts.items():
             start = datetime.combine(
@@ -495,6 +604,9 @@ class PublicBookingService:
                 and appointment.starts_at < end
                 and appointment.ends_at > start
             )
+            overlapping += sum(
+                1 for hold in unassigned_holds if hold.starts_at < end and hold.ends_at > start
+            )
             spare[key] = count - overlapping
         return spare
 
@@ -504,6 +616,7 @@ class PublicBookingService:
         scheduled_date: date,
         duration: int,
         exclude_appointment_id: UUID | None = None,
+        holder_token: str | None = None,
     ) -> dict[str, list[UUID]]:
         resources = self._active_resources(branch)
         if not resources:
@@ -537,6 +650,9 @@ class PublicBookingService:
                 Appointment.ends_at > day_start,
             )
         ).all()
+        day_holds = self._day_slot_holds(
+            branch, scheduled_date, holder_token=holder_token, for_occupancy=True
+        )
         available: dict[str, list[UUID]] = {}
         for slot in candidates:
             if branch_schedule and not fits_schedule(
@@ -557,7 +673,8 @@ class PublicBookingService:
                 and appointment.starts_at < end
                 and appointment.ends_at > start
             ]
-            free = self._free_resource_ids(resources, overlapping, start, end)
+            slot_holds = self._holds_for_slot_window(day_holds, start, end)
+            free = self._free_resource_ids(resources, overlapping, start, end, holds=slot_holds)
             if free:
                 available[slot] = free
         return available
@@ -569,6 +686,7 @@ class PublicBookingService:
         employee_id: UUID,
         duration: int,
         exclude_appointment_id: UUID | None = None,
+        holder_token: str | None = None,
     ) -> dict[str, list[UUID]]:
         branch, _ = self._resolve_branch(branch_id)
         employee = self._require_specialist(branch.workspace_id, branch.id, employee_id)
@@ -600,6 +718,9 @@ class PublicBookingService:
         ).all()
         now = utc_now()
         booking_lead = branch.public_booking_min_lead_minutes
+        day_holds = self._day_slot_holds(
+            branch, scheduled_date, holder_token=holder_token, for_occupancy=True
+        )
         result: dict[str, list[UUID]] = {}
         for offset in (-1, 0, 1):
             schedule_date = scheduled_date + timedelta(days=offset)
@@ -637,12 +758,184 @@ class PublicBookingService:
                     for a in conflicts
                     if a.id != exclude_appointment_id and a.starts_at < end and a.ends_at > start
                 ]
+                slot_holds = self._holds_for_slot_window(day_holds, start, end)
                 if any(a.employee_id == employee_id for a in overlapping):
                     continue
-                free = self._free_resource_ids(resources, overlapping, start, end)
+                if any(hold.employee_id == employee_id for hold in slot_holds):
+                    continue
+                free = self._free_resource_ids(resources, overlapping, start, end, holds=slot_holds)
                 if free:
                     result[branch_start.strftime("%H:%M")] = free
         return result
+
+    def _resolve_booking_slot(
+        self,
+        branch: Branch,
+        *,
+        scheduled_date: date,
+        scheduled_time: time,
+        duration: int,
+        payload_employee_id: UUID | None,
+        holder_token: str | None = None,
+    ) -> tuple[UUID | None, UUID, datetime]:
+        time_key = scheduled_time.strftime("%H:%M")
+        branch_zone = ZoneInfo(branch.timezone)
+        slot_start = datetime.combine(scheduled_date, scheduled_time, branch_zone).astimezone(UTC)
+        employee_id: UUID | None
+        if payload_employee_id is None:
+            employee_id = None
+            free = self._unassigned_slot_resources(
+                branch,
+                scheduled_date=scheduled_date,
+                duration_minutes=duration,
+                holder_token=holder_token,
+            ).get(time_key, [])
+        else:
+            employee_id = self._require_specialist(
+                branch.workspace_id, branch.id, payload_employee_id
+            ).id
+            spare = self._specialist_spare_capacity(
+                branch, scheduled_date, duration, holder_token=holder_token
+            )
+            free = (
+                self._slot_resources(
+                    branch.id,
+                    scheduled_date,
+                    employee_id,
+                    duration,
+                    holder_token=holder_token,
+                ).get(time_key, [])
+                if spare.get(time_key, 0) >= 1
+                else []
+            )
+        if not free:
+            conflicting = self._agenda.overlapping_slot_holds(
+                workspace_id=branch.workspace_id,
+                branch_id=branch.id,
+                starts_at=slot_start,
+                ends_at=slot_start + timedelta(minutes=duration),
+                now=utc_now(),
+                exclude_holder_token=holder_token,
+            )
+            if conflicting:
+                hold = conflicting[0]
+                raise ConflictError(
+                    "Este espacio está siendo apartado para otra persona.",
+                    "time",
+                    details={
+                        "held": True,
+                        "expiresAt": hold.expires_at.isoformat(),
+                    },
+                )
+            raise ConflictError("Ese horario ya no está disponible. Elige otro cupo.", "time")
+        return employee_id, free[0], slot_start
+
+    def claim_slot_hold(
+        self,
+        branch_id: UUID,
+        payload: dict[str, Any],
+        *,
+        holder_token: str,
+    ) -> dict[str, Any]:
+        if len(holder_token.strip()) < 8:
+            raise InvalidOperationError(
+                "El token de reserva temporal no es válido.", "X-Slot-Hold-Token"
+            )
+        branch, _workspace = self._resolve_branch(branch_id)
+        _principal, grant = self._system_access(branch.workspace_id)
+        service = self._require_service(grant, branch.id, cast(UUID, payload["service_id"]))
+        scheduled_date = cast(date, payload["date"])
+        scheduled_time = cast(time, payload["time"])
+        duration = int(service["duration_minutes"])
+        time_key = scheduled_time.strftime("%H:%M")
+        branch_zone = ZoneInfo(branch.timezone)
+        slot_start = datetime.combine(scheduled_date, scheduled_time, branch_zone).astimezone(UTC)
+        if not slot_meets_booking_lead(
+            slot_start, utc_now(), branch.public_booking_min_lead_minutes
+        ):
+            raise ConflictError(
+                booking_lead_conflict_message(branch.public_booking_min_lead_minutes),
+                "time",
+            )
+        self._lock(f"slot-hold-claim:{branch.id}:{scheduled_date}:{time_key}")
+        self._lock(f"booking-branch:{branch.id}")
+        payload_employee_id = cast(UUID | None, payload.get("employee_id"))
+        if payload_employee_id is not None:
+            self._lock(f"booking-employee:{payload_employee_id}")
+        now = utc_now()
+        self._agenda.purge_expired_slot_holds(now=now)
+        self._agenda.delete_slot_hold_by_token(holder_token)
+        employee_id, resource_id, slot_start = self._resolve_booking_slot(
+            branch,
+            scheduled_date=scheduled_date,
+            scheduled_time=scheduled_time,
+            duration=duration,
+            payload_employee_id=payload_employee_id,
+            holder_token=holder_token,
+        )
+        slot_end = slot_start + timedelta(minutes=duration)
+        blocking = self._agenda.overlapping_slot_holds(
+            workspace_id=branch.workspace_id,
+            branch_id=branch.id,
+            starts_at=slot_start,
+            ends_at=slot_end,
+            now=now,
+            exclude_holder_token=holder_token,
+        )
+        if blocking:
+            hold = blocking[0]
+            raise ConflictError(
+                "Este espacio está siendo apartado para otra persona.",
+                "time",
+                details={
+                    "held": True,
+                    "expiresAt": hold.expires_at.isoformat(),
+                },
+            )
+        expires_at = hold_expires_at(now)
+        customer_id, customer_name, customer_phone, customer_email = self._hold_customer_snapshot(
+            branch.workspace_id,
+            payload,
+        )
+        hold = AppointmentSlotHold(
+            workspace_id=branch.workspace_id,
+            branch_id=branch.id,
+            resource_id=resource_id,
+            employee_id=employee_id,
+            service_id=service["id"],
+            scheduled_date=scheduled_date,
+            scheduled_time=scheduled_time,
+            timezone=branch.timezone,
+            starts_at=slot_start,
+            ends_at=slot_end,
+            duration_minutes=duration,
+            holder_token=holder_token,
+            expires_at=expires_at,
+            customer_id=customer_id,
+            customer_display_name=customer_name,
+            customer_phone=customer_phone,
+            customer_email=customer_email,
+            service_name=str(service.get("name") or "").strip() or None,
+        )
+        self._agenda.add_slot_hold(hold)
+        self._session.commit()
+        return {
+            "expires_at": expires_at,
+            "date": scheduled_date,
+            "time": time_key,
+            "resource_id": resource_id,
+            "employee_id": employee_id,
+            "duration_minutes": duration,
+        }
+
+    def release_slot_hold(self, *, holder_token: str) -> None:
+        if len(holder_token.strip()) < 8:
+            raise InvalidOperationError(
+                "El token de reserva temporal no es válido.", "X-Slot-Hold-Token"
+            )
+        self._agenda.purge_expired_slot_holds(now=utc_now())
+        self._agenda.delete_slot_hold_by_token(holder_token)
+        self._session.commit()
 
     def book(
         self,
@@ -650,6 +943,7 @@ class PublicBookingService:
         payload: dict[str, Any],
         *,
         idempotency_key: str,
+        holder_token: str | None = None,
     ) -> dict[str, Any]:
         branch, workspace = self._resolve_branch(branch_id)
         principal, grant = self._system_access(branch.workspace_id)
@@ -671,7 +965,6 @@ class PublicBookingService:
         scheduled_date = cast(date, payload["date"])
         scheduled_time = cast(time, payload["time"])
         duration = int(service["duration_minutes"])
-        time_key = scheduled_time.strftime("%H:%M")
         branch_zone = ZoneInfo(branch.timezone)
         slot_start = datetime.combine(scheduled_date, scheduled_time, branch_zone).astimezone(UTC)
         if not slot_meets_booking_lead(
@@ -683,28 +976,39 @@ class PublicBookingService:
             )
         payload_employee_id = cast(UUID | None, payload.get("employee_id"))
         self._lock(f"booking-branch:{branch.id}")
-        employee_id: UUID | None
-        if payload_employee_id is None:
-            employee_id = None
-            free = self._unassigned_slot_resources(
-                branch, scheduled_date=scheduled_date, duration_minutes=duration
-            ).get(time_key, [])
-        else:
-            employee_id = self._require_specialist(
-                branch.workspace_id, branch.id, payload_employee_id
-            ).id
-            spare = self._specialist_spare_capacity(branch, scheduled_date, duration)
-            free = (
-                self._slot_resources(branch.id, scheduled_date, employee_id, duration).get(
-                    time_key, []
+        if payload_employee_id is not None:
+            self._lock(f"booking-employee:{payload_employee_id}")
+        self._agenda.purge_expired_slot_holds(now=utc_now())
+        active_hold = (
+            self._agenda.slot_hold_by_token(holder_token)
+            if holder_token and len(holder_token.strip()) >= 8
+            else None
+        )
+        if active_hold is not None and active_hold.expires_at <= utc_now():
+            active_hold = None
+        if active_hold is not None:
+            if (
+                active_hold.scheduled_date != scheduled_date
+                or active_hold.scheduled_time != scheduled_time
+                or active_hold.branch_id != branch.id
+                or active_hold.service_id != service["id"]
+                or active_hold.employee_id != payload_employee_id
+            ):
+                raise ConflictError(
+                    "Tu reserva temporal ya no coincide con este horario.",
+                    "time",
                 )
-                if spare.get(time_key, 0) >= 1
-                else []
+            employee_id = active_hold.employee_id
+            resource_id = active_hold.resource_id
+        else:
+            employee_id, resource_id, slot_start = self._resolve_booking_slot(
+                branch,
+                scheduled_date=scheduled_date,
+                scheduled_time=scheduled_time,
+                duration=duration,
+                payload_employee_id=payload_employee_id,
+                holder_token=holder_token,
             )
-            self._lock(f"booking-employee:{employee_id}")
-        if not free:
-            raise ConflictError("Ese horario ya no está disponible. Elige otro cupo.", "time")
-        resource_id = free[0]
         normalized = self._normalized_document(
             str(payload["document_type"]), str(payload["document_id"])
         )
@@ -762,6 +1066,9 @@ class PublicBookingService:
             "recurrence": "none",
             "repeat_count": 1,
         }
+        hold_token_for_slot_check = (
+            holder_token.strip() if holder_token and len(holder_token.strip()) >= 8 else None
+        )
         records = AgendaService(self._session).create_appointments(
             principal=principal,
             grant=grant,
@@ -770,6 +1077,7 @@ class PublicBookingService:
             commit=False,
             enforce_resource_acl=False,
             resource_capacity=PUBLIC_BOOKING_SLOT_CAPACITY,
+            exclude_holder_token=hold_token_for_slot_check,
         )
         record = records[0]
         appointment = record.appointment
@@ -777,6 +1085,8 @@ class PublicBookingService:
         notification = self._enqueue_appointment(
             appointment, branch, workspace, "appointment.confirmed"
         )
+        if holder_token and len(holder_token.strip()) >= 8:
+            self._agenda.delete_slot_hold_by_token(holder_token)
         self._session.commit()
         return self._finish_notification(appointment, notification)
 

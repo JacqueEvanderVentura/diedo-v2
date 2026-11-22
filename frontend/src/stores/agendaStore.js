@@ -183,6 +183,7 @@ function mutationScope(appointment) {
 
 export const useAgendaStore = create((set, get) => ({
   appointments: [],
+  slotHolds: [],
   resources: [],
   dataState: appointmentsGateway.getState(),
   hydrating: false,
@@ -197,12 +198,16 @@ export const useAgendaStore = create((set, get) => ({
       set({ hydrating: true })
       try {
         const result = await appointmentsGateway.read('appointments', params)
-        const appointments = result.data.map((appointment) => ({
+        const payload = result.data
+        const appointmentRows = Array.isArray(payload) ? payload : payload.appointments || []
+        const appointments = appointmentRows.map((appointment) => ({
           ...appointment,
           history: appointment.history?.length ? appointment.history : backfillHistory(appointment),
         }))
+        const slotHolds = Array.isArray(payload) ? [] : payload.heldSlots || []
         set((state) => ({
           appointments: mergeScopedAppointments(state.appointments, appointments, params),
+          slotHolds: params.branchId || params.dateFrom ? slotHolds : state.slotHolds,
           dataState: appointmentsGateway.getState(),
         }))
         syncAllAgendaReceivables(appointments)

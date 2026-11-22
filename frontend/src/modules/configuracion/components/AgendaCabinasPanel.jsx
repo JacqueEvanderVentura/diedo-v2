@@ -25,6 +25,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { TimePicker } from '@/components/ui/TimePicker'
 import { formatTime12h } from '@/lib/format'
+import { fullName, initials as employeeInitials, splitPersonName } from '@/modules/rrhh/lib/rrhh'
 import { cn } from '@/lib/utils'
 import { WEEKDAY_KEYS, WEEKDAY_LABELS } from '@/modules/rrhh/lib/schedule'
 import {
@@ -52,15 +53,6 @@ const TABS = [
   { id: 'acl', label: 'Permisos de Usuarios' },
   { id: 'staff', label: 'Personal de Agenda' },
 ]
-
-function initials(name) {
-  return String(name || '?')
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() || '')
-    .join('')
-}
 
 function roleLabel(user) {
   const name = user.role?.name || user.roleAssignments?.[0]?.roleName || ''
@@ -373,22 +365,32 @@ export default function AgendaCabinasPanel({ embedded = false, visibleBlockIds }
   }
 
   const saveStaff = async () => {
-    if (!staffModal?.name?.trim()) {
+    const trimmedName = staffModal?.name?.trim()
+    if (!trimmedName) {
       toast.error('El nombre es obligatorio.')
       return
     }
+    const { firstName, lastName } = splitPersonName(trimmedName)
+    if (!firstName || !lastName) {
+      toast.error('Ingresa un nombre válido.')
+      return
+    }
+    const position = staffModal.position?.trim() || 'Especialista'
     try {
       if (staffModal.id) {
         await updateEmployee(staffModal.id, {
-          name: staffModal.name.trim(),
-          position: staffModal.position?.trim() || 'Especialista',
+          firstName,
+          lastName,
+          position,
         })
       } else {
         await addEmployee({
-          name: staffModal.name.trim(),
-          position: staffModal.position?.trim() || 'Especialista',
+          firstName,
+          lastName,
+          position,
           branchIds: [activeBranchId],
           selectableAsSpecialist: true,
+          hireDate: new Date().toISOString().slice(0, 10),
         })
       }
       setStaffModal(null)
@@ -690,14 +692,14 @@ export default function AgendaCabinasPanel({ embedded = false, visibleBlockIds }
             {branchEmployees.map((employee) => (
               <Card key={employee.id} className="flex items-center gap-3 p-4">
                 <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-50 font-semibold text-blue-700">
-                  {initials(employee.name)}
+                  {employeeInitials(employee)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold text-slate-900">{employee.name}</p>
+                  <p className="truncate font-semibold text-slate-900">{fullName(employee)}</p>
                   <p className="truncate text-sm text-slate-500">{employee.position || 'Especialista'}</p>
                 </div>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => setStaffModal({ id: employee.id, name: employee.name, position: employee.position })}>
+                  <Button variant="ghost" size="sm" onClick={() => setStaffModal({ id: employee.id, name: fullName(employee), position: employee.position })}>
                     <Pencil className="h-4 w-4" />
                   </Button>
                   <Button variant="ghost" size="sm" className="text-rose-600" onClick={() => archiveStaff(employee)}>

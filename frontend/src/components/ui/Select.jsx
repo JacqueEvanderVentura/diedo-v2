@@ -182,7 +182,7 @@ export function Select({
                   bottom: menuStyle.bottom,
                   left: menuStyle.left,
                   width: menuStyle.width,
-                  zIndex: 100,
+                  zIndex: 130,
                 }}
                 className={cn(
                   'max-h-60 overflow-y-auto rounded-xl border border-slate-100 bg-white p-1.5 shadow-xl scrollbar-thin',

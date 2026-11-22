@@ -103,6 +103,32 @@ describe('fase 3 de Agenda', () => {
     expect(screen.getByTestId('calendar-time-08:00').className).toContain('sticky')
   })
 
+  it('muestra un apartado en línea en la mitad de la cabina con cuenta regresiva', () => {
+    render(
+      <DayView
+        dateKey="2026-09-22"
+        appointments={[]}
+        slotHolds={[{
+          branchId: 'branch-1',
+          resourceId: 'resource-1',
+          date: '2026-09-22',
+          time: '08:00',
+          durationMinutes: 30,
+          expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        }]}
+        nowMs={Date.now()}
+        resources={[{ id: 'resource-1', name: 'Cabina 1', access: 'use' }]}
+        startHour={8}
+        endHour={9}
+      />,
+    )
+
+    const hold = screen.getByTestId('calendar-held-slot-resource-1-08:00')
+    expect(hold.textContent).toContain('Apartado')
+    expect(hold.className).toContain('bg-amber-50')
+    expect(hold.parentElement?.children).toHaveLength(2)
+  })
+
   it('no reserva un carril vacío cuando solo hay una cita en la cabina', () => {
     render(
       <DayView

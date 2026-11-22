@@ -14,6 +14,7 @@ from app.db.models import (
     AppointmentEvent,
     AppointmentResource,
     AppointmentResourceAcl,
+    AppointmentSlotHold,
     AuditEntry,
     Branch,
     BranchOpeningHour,
@@ -798,3 +799,88 @@ class AgendaRepository:
             )
             for row in rows
         )
+
+    def purge_expired_slot_holds(self, *, now: datetime) -> int:
+        rows = self._session.scalars(
+            select(AppointmentSlotHold).where(AppointmentSlotHold.expires_at <= now)
+        ).all()
+        for row in rows:
+            self._session.delete(row)
+        if rows:
+            self._session.flush()
+        return len(rows)
+
+    def slot_hold_by_token(self, holder_token: str) -> AppointmentSlotHold | None:
+        return self._session.scalar(
+            select(AppointmentSlotHold).where(AppointmentSlotHold.holder_token == holder_token)
+        )
+
+    def delete_slot_hold_by_token(self, holder_token: str) -> None:
+        row = self.slot_hold_by_token(holder_token)
+        if row is not None:
+            self._session.delete(row)
+            self._session.flush()
+
+    def add_slot_hold(self, hold: AppointmentSlotHold) -> AppointmentSlotHold:
+        self._session.add(hold)
+        self._session.flush()
+        return hold
+
+    def list_active_slot_holds(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID | None,
+        scheduled_date: date | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        now: datetime,
+        exclude_holder_token: str | None = None,
+    ) -> tuple[AppointmentSlotHold, ...]:
+        statement = select(AppointmentSlotHold).where(
+            AppointmentSlotHold.workspace_id == workspace_id,
+            AppointmentSlotHold.expires_at > now,
+        )
+        if branch_id is not None:
+            statement = statement.where(AppointmentSlotHold.branch_id == branch_id)
+        if scheduled_date is not None:
+            statement = statement.where(AppointmentSlotHold.scheduled_date == scheduled_date)
+        if date_from is not None:
+            statement = statement.where(AppointmentSlotHold.scheduled_date >= date_from)
+        if date_to is not None:
+            statement = statement.where(AppointmentSlotHold.scheduled_date <= date_to)
+        if exclude_holder_token is not None:
+            statement = statement.where(AppointmentSlotHold.holder_token != exclude_holder_token)
+        return tuple(self._session.scalars(statement.order_by(AppointmentSlotHold.starts_at)))
+
+    def overlapping_slot_holds(
+        self,
+        *,
+        workspace_id: UUID,
+        branch_id: UUID,
+        starts_at: datetime,
+        ends_at: datetime,
+        now: datetime,
+        exclude_holder_token: str | None = None,
+        employee_id: UUID | None = None,
+        resource_id: UUID | None = None,
+    ) -> tuple[AppointmentSlotHold, ...]:
+        statement = select(AppointmentSlotHold).where(
+            AppointmentSlotHold.workspace_id == workspace_id,
+            AppointmentSlotHold.branch_id == branch_id,
+            AppointmentSlotHold.expires_at > now,
+            AppointmentSlotHold.starts_at < ends_at,
+            AppointmentSlotHold.ends_at > starts_at,
+        )
+        if exclude_holder_token is not None:
+            statement = statement.where(AppointmentSlotHold.holder_token != exclude_holder_token)
+        if employee_id is not None:
+            statement = statement.where(
+                or_(
+                    AppointmentSlotHold.employee_id == employee_id,
+                    AppointmentSlotHold.employee_id.is_(None),
+                )
+            )
+        if resource_id is not None:
+            statement = statement.where(AppointmentSlotHold.resource_id == resource_id)
+        return tuple(self._session.scalars(statement))

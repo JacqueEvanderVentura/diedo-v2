@@ -2,6 +2,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 
+const now = new Date()
+const inCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 15, 12, 0, 0).toISOString()
+const outsideCurrentMonth = new Date(now.getFullYear(), now.getMonth() - 2, 15, 12, 0, 0).toISOString()
+
 vi.mock('@/stores/crmStore', () => ({
   useCrmStore: (selector) => selector({ uiMode: 'standard', sales: [] }),
 }))
@@ -14,7 +18,7 @@ vi.mock('@/stores/posStore', () => ({
         number: 'VTA-1',
         method: 'efectivo',
         total: 500,
-        createdAt: '2026-10-01T12:00:00.000Z',
+        createdAt: inCurrentMonth,
         branchId: 'b1',
         customer: { name: 'Cliente A' },
         soldBy: 'Franchesko',
@@ -25,7 +29,7 @@ vi.mock('@/stores/posStore', () => ({
         number: 'VTA-2',
         method: 'tarjeta',
         total: 800,
-        createdAt: '2026-10-02T12:00:00.000Z',
+        createdAt: outsideCurrentMonth,
         branchId: 'b1',
         customer: { name: 'Cliente B' },
         soldBy: 'Otro Usuario',
@@ -58,10 +62,25 @@ describe('VentasPage soldBy', () => {
     const table = screen.getByTestId('ventas-table')
     expect(within(table).getByText('Creado por')).toBeTruthy()
     expect(within(table).getByText('Franchesko')).toBeTruthy()
-    expect(within(table).getByText('Otro Usuario')).toBeTruthy()
+    expect(screen.queryByTestId('ventas-row-sale-2')).toBeNull()
 
     fireEvent.change(screen.getByTestId('ventas-search'), { target: { value: 'Franchesko' } })
     expect(screen.getByTestId('ventas-row-sale-1')).toBeTruthy()
     expect(screen.queryByTestId('ventas-row-sale-2')).toBeNull()
+  })
+})
+
+describe('VentasPage date filter', () => {
+  it('con Este mes solo muestra ventas del período actual', () => {
+    render(<VentasPage />)
+    expect(screen.getByTestId('ventas-row-sale-1')).toBeTruthy()
+    expect(screen.queryByTestId('ventas-row-sale-2')).toBeNull()
+  })
+
+  it('con Todo el historial muestra todas las ventas', () => {
+    render(<VentasPage />)
+    fireEvent.click(screen.getByTestId('ventas-date-filter-all'))
+    expect(screen.getByTestId('ventas-row-sale-1')).toBeTruthy()
+    expect(screen.getByTestId('ventas-row-sale-2')).toBeTruthy()
   })
 })

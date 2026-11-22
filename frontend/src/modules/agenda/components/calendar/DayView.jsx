@@ -5,16 +5,18 @@ import { importStackSiblings } from '../../lib/importStacked'
 import { AppointmentChip } from './AppointmentChip'
 import {
   activeAppointmentsForResource,
+  activeSlotHoldAtCell,
   appointmentsForResource,
   assignAppointmentLanes,
   appointmentStartsAtSlot,
   appointmentsOverlappingSlot,
-  bookableSlotLaneCount,
   calendarBlockHeight,
   calendarResourcesWithUnassigned,
   CALENDAR_ROW_PX,
   CALENDAR_SLOT_MINUTES,
-  slotLaneCount,
+  dayViewLaneCount,
+  formatHoldCountdownLabel,
+  holdLaneIndex,
 } from '../../lib/dayViewSlots'
 import { useCalendarResourceDrag } from '../../hooks/useCalendarResourceDrag'
 import { cn } from '@/lib/utils'
@@ -26,8 +28,11 @@ const SLOT_CELL_MIN_PX = CALENDAR_ROW_PX
 export function DayView({
   dateKey,
   appointments,
+  slotHolds = [],
+  nowMs = Date.now(),
   resources = [],
   onSlotClick,
+  onHeldSlotClick,
   onAppointmentClick,
   onResourceMove,
   onViewImportStack,
@@ -137,14 +142,16 @@ export function DayView({
                     }
                     const overlapping = appointmentsOverlappingSlot(displayAppointments, slot)
                     const blockingOverlap = appointmentsOverlappingSlot(blockingAppointments, slot)
-                    const confirmedOccupancy = blockingOverlap.filter(appointmentBlocksConfirmedSlot).length
-                    const laneCount = bookableSlotLaneCount({
-                      paintedLaneCount: slotLaneCount(overlapping, laneCountById),
-                      confirmedOccupancy,
-                      canBook,
+                    const activeHold = activeSlotHoldAtCell(slotHolds, dateKey, c.id, slot, nowMs)
+                    const holdStartsHere = Boolean(activeHold)
+                    const { laneCount, paintedLaneCount } = dayViewLaneCount({
+                      overlapping,
+                      laneCountById,
+                      holdStartsHere,
                     })
+                    const holdLane = holdLaneIndex({ paintedLaneCount, holdStartsHere })
                     const busy = blockingOverlap.length > 0
-                    const showLanes = overlapping.length > 0
+                    const showLanes = overlapping.length > 0 || holdStartsHere
                     const dropActive = hoverTarget?.resourceId === c.id && hoverTarget?.slot === slot
 
                     return (
@@ -155,7 +162,8 @@ export function DayView({
                         data-calendar-slot={slot}
                         className={cn(
                           'relative overflow-visible border-b border-l border-slate-100 p-1',
-                          (busy || showLanes) && 'bg-blue-50/25',
+                          (busy || overlapping.length > 0) && !holdStartsHere && 'bg-blue-50/25',
+                          holdStartsHere && 'bg-amber-50/30',
                           dropActive && 'bg-blue-50/80 ring-2 ring-inset ring-blue-200'
                         )}
                         style={{ minHeight: SLOT_CELL_MIN_PX }}
@@ -166,6 +174,23 @@ export function DayView({
                             style={{ minHeight: SLOT_CELL_MIN_PX - 8 }}
                           >
                             {Array.from({ length: laneCount }, (_, laneIndex) => {
+                              if (holdStartsHere && laneIndex === holdLane) {
+                                return (
+                                  <button
+                                    key={`hold-${laneIndex}`}
+                                    type="button"
+                                    onClick={() => onHeldSlotClick?.(activeHold)}
+                                    className="flex min-w-0 flex-1 flex-col items-center justify-center rounded-lg bg-amber-50 px-1 text-center text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                                    style={{ minHeight: SLOT_CELL_MIN_PX - 8 }}
+                                    data-testid={`calendar-held-slot-${c.id}-${slot}`}
+                                  >
+                                    <span>Apartado</span>
+                                    <span className="tabular-nums text-red-600">
+                                      {formatHoldCountdownLabel(activeHold.expiresAt, nowMs)}
+                                    </span>
+                                  </button>
+                                )
+                              }
                               const laneAppointment = overlapping.find(
                                 (apt) => assignment.get(apt.id) === laneIndex
                               )

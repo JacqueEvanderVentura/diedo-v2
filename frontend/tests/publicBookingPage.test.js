@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import AgendarPage from '@/modules/agenda/pages/AgendarPage'
 import { useConfigStore } from '@/stores/configStore'
@@ -51,9 +51,34 @@ it('loads branch picker from entry context when no branch was provided', async (
     workspaceName: 'Helios Spa',
     workspaceBranches: [{ id: 'entry-branch', name: 'Sucursal centro' }],
   })
+  publicBookingApi.getContext.mockResolvedValue({
+    branch: { branchId: 'entry-branch', branchName: 'Sucursal centro', timezone: 'America/Santo_Domingo' },
+    services: [],
+    specialists: [],
+    workspaceBranches: [{ id: 'entry-branch', name: 'Sucursal centro' }],
+  })
   openLink('/agendar')
   expect(await screen.findByText('Elige tu sucursal')).toBeTruthy()
   expect(screen.getByTestId('branch-option-entry-branch').textContent).toContain('Sucursal centro')
   expect(publicBookingApi.getEntryContext).toHaveBeenCalled()
-  expect(publicBookingApi.getContext).not.toHaveBeenCalled()
+  await waitFor(() => expect(publicBookingApi.getContext).toHaveBeenCalledWith('entry-branch'))
+  expect(screen.getByTestId('branch-option-entry-branch').className).toContain('bg-slate-900')
+})
+
+it('continues from branch step without clicking the only branch when it is preselected', async () => {
+  publicBookingApi.getEntryContext.mockResolvedValue({
+    workspaceName: 'Helios Spa',
+    workspaceBranches: [{ id: 'entry-branch', name: 'Sucursal centro' }],
+  })
+  publicBookingApi.getContext.mockResolvedValue({
+    branch: { branchId: 'entry-branch', branchName: 'Sucursal centro', timezone: 'America/Santo_Domingo' },
+    services: [],
+    specialists: [],
+    workspaceBranches: [{ id: 'entry-branch', name: 'Sucursal centro' }],
+  })
+  openLink('/agendar')
+  await screen.findByText('Elige tu sucursal')
+  await waitFor(() => expect(publicBookingApi.getContext).toHaveBeenCalledWith('entry-branch'))
+  fireEvent.click(screen.getByTestId('branch-confirm'))
+  expect(await screen.findByText(/Ingresa tu documento/)).toBeTruthy()
 })

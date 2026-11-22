@@ -325,6 +325,30 @@ class AgendaService:
             allowed_resource_ids=allowed_resource_ids,
         )
 
+    def list_calendar_slot_holds(
+        self,
+        *,
+        grant: PermissionGrant,
+        branch_id: UUID | None,
+        date_from: date | None,
+        date_to: date | None,
+    ) -> tuple[Any, ...]:
+        from app.services.booking_policy import utc_now
+
+        if branch_id is not None:
+            self._require_branch_access(grant, branch_id)
+        if date_from is None or date_to is None:
+            return ()
+        now = utc_now()
+        self._repository.purge_expired_slot_holds(now=now)
+        return self._repository.list_active_slot_holds(
+            workspace_id=grant.workspace_id,
+            branch_id=branch_id,
+            date_from=date_from,
+            date_to=date_to,
+            now=now,
+        )
+
     def create_appointment_resource(
         self,
         *,
@@ -522,6 +546,7 @@ class AgendaService:
         notify: bool = True,
         allow_long_notes: bool = False,
         skip_slot_check: bool = False,
+        exclude_holder_token: str | None = None,
     ) -> tuple[AppointmentRecord, ...]:
         branch_id = cast(UUID, values["branch_id"])
         notes_limit = (
@@ -642,6 +667,7 @@ class AgendaService:
                         starts_at=starts_at,
                         ends_at=ends_at,
                         resource_capacity=1 if staff_any_available else resource_capacity,
+                        exclude_holder_token=exclude_holder_token,
                     )
 
                 status = cast(str, values["status"])
@@ -2264,7 +2290,10 @@ class AgendaService:
         ends_at: datetime,
         resource_capacity: int,
         exclude_appointment_id: UUID | None = None,
+        exclude_holder_token: str | None = None,
     ) -> None:
+        from app.services.booking_policy import utc_now
+
         # Row locks serialize specialist and cabin bookings; capacity is enforced in application.
         resource = (
             self._repository.lock_resource(workspace_id, branch_id, resource_id)
@@ -2326,6 +2355,23 @@ class AgendaService:
                 exclude_appointment_id=exclude_appointment_id,
             )
             if conflict is not None:
+                raise self._slot_conflict()
+        now = utc_now()
+        self._repository.purge_expired_slot_holds(now=now)
+        holds = self._repository.overlapping_slot_holds(
+            workspace_id=workspace_id,
+            branch_id=branch_id,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            now=now,
+            exclude_holder_token=exclude_holder_token,
+        )
+        for hold in holds:
+            if resource_id is not None and hold.resource_id == resource_id:
+                raise self._slot_conflict()
+            if employee_id is not None and hold.employee_id == employee_id:
+                raise self._slot_conflict()
+            if resource_id is None and employee_id is None:
                 raise self._slot_conflict()
 
     @staticmethod

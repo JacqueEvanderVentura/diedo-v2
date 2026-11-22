@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { MapPin, Calendar, CheckCircle2, ChevronRight, ChevronLeft } from 'lucide-react'
+import { MapPin, Calendar, CheckCircle2, ChevronRight, ChevronLeft, Loader2 } from 'lucide-react'
 import { HeliosIcon } from '@/components/brand/HeliosIcon'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -38,6 +38,9 @@ import { cn } from '@/lib/utils'
 import { durationLabel } from '@/data/agenda'
 import { branchDateKey, emailResultMessage, managementUrl } from '../lib/notification'
 import { applyBranchBookingDefaults, fetchLastVisitBookingDefaults } from '../lib/customerBookingDefaults'
+import { SlotHoldBanner } from '../components/booking/SlotHoldBanner'
+import { SlotHoldSnackbar } from '../components/booking/SlotHoldSnackbar'
+import { holdRemainingMs } from '../lib/slotHoldCountdown'
 
 const STEPS = ['Identificación', 'Datos', 'Cita', 'Confirmación']
 
@@ -120,6 +123,7 @@ export default function AgendarPage() {
   const lookupByDocument = useSelfBookingStore((s) => s.lookupByDocument)
   const identifyRemote = useSelfBookingStore((s) => s.identifyRemote)
   const fetchRemoteSlots = useSelfBookingStore((s) => s.fetchRemoteSlots)
+  const claimSlotHold = useSelfBookingStore((s) => s.claimSlotHold)
   const upsertProfile = useSelfBookingStore((s) => s.upsertProfile)
   const bookAppointment = useSelfBookingStore((s) => s.bookAppointment)
 
@@ -147,6 +151,8 @@ export default function AgendarPage() {
   const [savedAppointment, setSavedAppointment] = useState(null)
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
+  const [identityLoading, setIdentityLoading] = useState(false)
+  const identityLoadingRef = useRef(false)
   const attemptRef = useRef(null)
   const restoredSessionDefaultsRef = useRef(false)
   const hydrateProfileFromSessionRef = useRef(
@@ -164,6 +170,11 @@ export default function AgendarPage() {
   const [remoteServices, setRemoteServices] = useState(null)
   const [remoteSpecialists, setRemoteSpecialists] = useState(null)
   const [remoteSlots, setRemoteSlots] = useState(null)
+  const [remoteHeldSlots, setRemoteHeldSlots] = useState([])
+  const [activeHold, setActiveHold] = useState(null)
+  const [holdSnackbar, setHoldSnackbar] = useState(null)
+  const [blockedHeldTimes, setBlockedHeldTimes] = useState([])
+  const [nowMs, setNowMs] = useState(() => Date.now())
   const [pendingBranchAppointment, setPendingBranchAppointment] = useState(null)
   const [pendingChoiceOpen, setPendingChoiceOpen] = useState(false)
 
@@ -230,6 +241,18 @@ export default function AgendarPage() {
       })
     return () => { active = false }
   }, [branchId, isDemo])
+
+  useEffect(() => {
+    if (isDemo || branchId || entryLoading) return
+    const firstBranch = workspaceBranches[0]
+    if (!firstBranch?.id) return
+    setParams((current) => {
+      const next = new URLSearchParams(current)
+      if (next.get('branch') === firstBranch.id) return current
+      next.set('branch', firstBranch.id)
+      return next
+    })
+  }, [branchId, entryLoading, isDemo, setParams, workspaceBranches])
 
   useEffect(() => {
     if (isDemo || !branchId) return
@@ -306,15 +329,135 @@ export default function AgendarPage() {
       documentType: form.docType,
       documentId: normalizeDocumentId(form.documentId, form.docType),
     })
-      .then((slots) => { if (active) setRemoteSlots(slots) })
+      .then((result) => {
+        if (!active) return
+        setRemoteSlots(result.slots)
+        setRemoteHeldSlots(result.heldSlots || [])
+      })
       .catch((error) => { if (active) setSlotError(error.message || 'No se pudieron consultar los horarios.') })
       .finally(() => { if (active) setSlotLoading(false) })
     return () => { active = false }
   }, [branch?.id, fetchRemoteSlots, form.date, form.docType, form.documentId, form.employeeId, form.serviceId, isDemo, slotRevision])
 
+  const refreshSlotsQuiet = useCallback(async () => {
+    if (isDemo || !branch?.id || !form.date || !form.serviceId) return
+    try {
+      const result = await fetchRemoteSlots({
+        branchId: branch.id,
+        date: form.date,
+        employeeId: form.employeeId,
+        serviceId: form.serviceId,
+        documentType: form.docType,
+        documentId: normalizeDocumentId(form.documentId, form.docType),
+      })
+      const watched = form.time
+      const wasHeld = remoteHeldSlots.some((row) => row.time === watched)
+      setRemoteSlots(result.slots)
+      setRemoteHeldSlots(result.heldSlots || [])
+      const stillHeld = (result.heldSlots || []).some((row) => row.time === watched)
+      const stillFree = (result.slots || []).includes(watched)
+      if (watched && wasHeld && !stillHeld && !stillFree) {
+        setBlockedHeldTimes((current) => (current.includes(watched) ? current : [...current, watched]))
+        setHoldSnackbar({ variant: 'formalized' })
+        setForm((current) => ({ ...current, time: '' }))
+      }
+    } catch {
+      // Ignore polling errors; the user already has manual retry controls.
+    }
+  }, [
+    branch?.id,
+    fetchRemoteSlots,
+    form.date,
+    form.docType,
+    form.documentId,
+    form.employeeId,
+    form.serviceId,
+    form.time,
+    isDemo,
+    remoteHeldSlots,
+  ])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined
+    if (phase !== 'booking' || (step !== 2 && step !== 3) || isDemo) return undefined
+    if (document.visibilityState !== 'visible') return undefined
+    const timer = window.setInterval(refreshSlotsQuiet, 20000)
+    return () => window.clearInterval(timer)
+  }, [isDemo, phase, refreshSlotsQuiet, step])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    if (!activeHold?.expiresAt) return
+    if (holdRemainingMs(activeHold.expiresAt, nowMs) <= 0) {
+      setActiveHold(null)
+      setSlotRevision((value) => value + 1)
+    }
+  }, [activeHold, nowMs])
+
+  useEffect(() => {
+    if (activeHold?.time && activeHold.time === form.time) {
+      setHoldSnackbar(null)
+    }
+  }, [activeHold, form.time])
+
+  const releaseHold = useCallback(() => {
+    if (!branch?.id || isDemo) return
+    publicBookingApi.releaseSlotHold(branch.id).catch(() => {})
+    setActiveHold(null)
+  }, [branch?.id, isDemo])
+
+  const selectTime = useCallback(async (time) => {
+    setHoldSnackbar(null)
+    setForm((current) => ({ ...current, time }))
+    if (isDemo || !branch?.id || !form.serviceId) return
+    try {
+      const hold = await claimSlotHold({
+        branchId: branch.id,
+        serviceId: form.serviceId,
+        employeeId: form.employeeId || undefined,
+        date: form.date,
+        time,
+        documentType: form.docType,
+        documentId: normalizeDocumentId(form.documentId, form.docType),
+        customerName: form.name,
+        customerPhone: form.phone,
+        customerEmail: form.email,
+      })
+      setActiveHold({ time: hold.time, expiresAt: hold.expiresAt })
+    } catch (error) {
+      setForm((current) => ({ ...current, time: '' }))
+      if (error.status === 409 && error.data?.details?.held) {
+        setHoldSnackbar({ variant: 'held', expiresAt: error.data.details.expiresAt })
+        return
+      }
+      toast.error(error.message || 'No se pudo reservar el horario')
+      setSlotRevision((value) => value + 1)
+    }
+  }, [
+    branch?.id,
+    claimSlotHold,
+    form.date,
+    form.docType,
+    form.documentId,
+    form.employeeId,
+    form.name,
+    form.phone,
+    form.email,
+    form.serviceId,
+    isDemo,
+  ])
+
   const set = (k, v) => {
     const changesAvailability = ['serviceId', 'employeeId', 'date'].includes(k)
-    if (changesAvailability) setRemoteSlots(null)
+    if (changesAvailability) {
+      setRemoteSlots(null)
+      setRemoteHeldSlots([])
+      releaseHold()
+    }
     setForm((f) => ({ ...f, [k]: v, ...(changesAvailability ? { time: '' } : {}) }))
   }
 
@@ -422,6 +565,7 @@ export default function AgendarPage() {
   }
 
   const lookupDoc = async () => {
+    if (identityLoadingRef.current) return
     const key = normalizeDocumentId(lookup, lookupDocType)
     if (lookupDocType === 'cedula' && key.length !== 11) {
       return toast.error('Ingresa una cédula válida (11 dígitos)')
@@ -429,42 +573,48 @@ export default function AgendarPage() {
     if (lookupDocType === 'pasaporte' && key.length < 5) {
       return toast.error('Ingresa un documento válido')
     }
+    identityLoadingRef.current = true
+    setIdentityLoading(true)
     let found
     try {
       found = isDemo
         ? lookupByDocument(key, lookupDocType)
         : await identifyRemote(branch?.id || branchId, lookupDocType, key)
-    } catch (error) {
-      return toast.error(error.message || 'No se pudo consultar el documento. Intenta nuevamente.')
-    }
-    if (found) {
-      if (isDemo) {
-        const defaults = await fetchLastVisitBookingDefaults(found.customerId)
-        found = {
-          ...found,
-          lastServiceId: defaults.serviceId,
-          lastEmployeeId: defaults.employeeId,
-          pendingAppointment: demoPendingBranchAppointment(appointments, {
-            customerId: found.customerId,
-            branchId: branch?.id || branchId,
-          }),
+      if (found) {
+        if (isDemo) {
+          const defaults = await fetchLastVisitBookingDefaults(found.customerId)
+          found = {
+            ...found,
+            lastServiceId: defaults.serviceId,
+            lastEmployeeId: defaults.employeeId,
+            pendingAppointment: demoPendingBranchAppointment(appointments, {
+              customerId: found.customerId,
+              branchId: branch?.id || branchId,
+            }),
+          }
         }
+        applyProfileToForm(found, lookupDocType)
+        toast.success(`Bienvenido de nuevo, ${found.name}`)
+        finishAuth({ ...found, docType: found.docType || lookupDocType }, intentBook)
+        return
       }
-      applyProfileToForm(found, lookupDocType)
-      toast.success(`Bienvenido de nuevo, ${found.name}`)
-      finishAuth({ ...found, docType: found.docType || lookupDocType }, intentBook)
-      return
+      setForm((f) => ({
+        ...f,
+        docType: lookupDocType,
+        documentId: formatDocumentInput(key, lookupDocType),
+      }))
+      setShowRegister(true)
+      toast.message('No encontramos tu documento — completa el registro')
+    } catch (error) {
+      toast.error(error.message || 'No se pudo consultar el documento. Intenta nuevamente.')
+    } finally {
+      identityLoadingRef.current = false
+      setIdentityLoading(false)
     }
-    setForm((f) => ({
-      ...f,
-      docType: lookupDocType,
-      documentId: formatDocumentInput(key, lookupDocType),
-    }))
-    setShowRegister(true)
-    toast.message('No encontramos tu documento — completa el registro')
   }
 
   const saveProfile = async () => {
+    if (identityLoadingRef.current) return
     if (!form.name.trim()) return toast.error('Ingresa tu nombre')
     if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return toast.error('Ingresa un correo válido')
     const docKey = normalizeDocumentId(form.documentId, form.docType)
@@ -475,8 +625,10 @@ export default function AgendarPage() {
     if (form.wantsInvoice && !form.email.trim()) return toast.error('El email es requerido para factura')
     if (form.wantsContact && !form.phone.trim()) return toast.error('El teléfono es requerido para contacto')
     const profile = { ...form, documentId: docKey }
-    if (!isDemo) {
-      try {
+    identityLoadingRef.current = true
+    setIdentityLoading(true)
+    try {
+      if (!isDemo) {
         await publicPortalApi.register(branch?.id || branchId, {
           documentType: profile.docType,
           documentId: docKey,
@@ -488,13 +640,16 @@ export default function AgendarPage() {
           wantsContact: profile.wantsContact,
           observaciones: profile.observaciones.trim() || null,
         })
-      } catch (error) {
-        return toast.error(error.message || 'No se pudo completar el registro')
       }
+      upsertProfile(profile)
+      toast.success('Registro completado')
+      finishAuth({ ...profile, docType: profile.docType }, intentBook)
+    } catch (error) {
+      toast.error(error.message || 'No se pudo completar el registro')
+    } finally {
+      identityLoadingRef.current = false
+      setIdentityLoading(false)
     }
-    upsertProfile(profile)
-    toast.success('Registro completado')
-    finishAuth({ ...profile, docType: profile.docType }, intentBook)
   }
 
   const confirmBranch = () => {
@@ -530,6 +685,13 @@ export default function AgendarPage() {
     return slots
   }, [slotLoading, slots, timeAvailabilityPending])
 
+  const heldSlotsForPicker = useMemo(() => {
+    if (!remoteHeldSlots?.length) return []
+    const ownTime = activeHold?.time
+    if (!ownTime) return remoteHeldSlots
+    return remoteHeldSlots.filter((entry) => entry.time !== ownTime)
+  }, [activeHold?.time, remoteHeldSlots])
+
   const assignedSpecialistName = useMemo(() => {
     const employeeId = savedAppointment?.employeeId
     if (!employeeId) return ''
@@ -537,12 +699,18 @@ export default function AgendarPage() {
     return match?.name || ''
   }, [bookableStaff, savedAppointment?.employeeId])
 
+  const slotAllowedForBooking = (time) => {
+    if (isDemo || !time) return true
+    if (activeHold?.time === time) return true
+    return Boolean(remoteSlots?.includes(time))
+  }
+
   const continueToConfirm = () => {
     const profileError = validateBookingProfile(form)
     if (profileError) return toast.error(profileError)
     if (!form.serviceId) return toast.error('Selecciona un servicio')
     if (!form.time) return toast.error('Selecciona una hora')
-    if (!isDemo && (slotLoading || !remoteSlots?.includes(form.time))) {
+    if (!isDemo && (slotLoading || !slotAllowedForBooking(form.time))) {
       return toast.error('Ese horario ya no está disponible. Elige otro cupo.')
     }
     setStep(3)
@@ -565,7 +733,7 @@ export default function AgendarPage() {
       })
       : slots.includes(form.time)
     if (isDemo && !stillAvailable) return toast.error('Ese horario ya no está disponible. Elige otro cupo.')
-    if (!isDemo && (slotLoading || !remoteSlots?.includes(form.time))) {
+    if (!isDemo && (slotLoading || !slotAllowedForBooking(form.time))) {
       return toast.error('Ese horario ya no está disponible. Elige otro cupo.')
     }
     const docKey = normalizeDocumentId(form.documentId, form.docType)
@@ -586,6 +754,7 @@ export default function AgendarPage() {
         pendingAppointmentAction,
       })
       setSavedAppointment(appointment)
+      setActiveHold(null)
       setPendingBranchAppointment(null)
       rememberDocument(profile.documentId)
       setDone(true)
@@ -740,7 +909,16 @@ export default function AgendarPage() {
 
         {phase === 'identity' && (
           <section className="space-y-4">
-            <div className="space-y-4 rounded-2xl border border-slate-100 bg-white p-6 shadow-soft">
+            <form
+              className="space-y-4 rounded-2xl border border-slate-100 bg-white p-6 shadow-soft"
+              aria-busy={identityLoading}
+              onSubmit={(event) => {
+                event.preventDefault()
+                if (identityLoading) return
+                if (showRegister) saveProfile()
+                else lookupDoc()
+              }}
+            >
               <h2 className="font-heading text-xl font-bold text-slate-900">
                 {showRegister ? 'Completa tu registro' : 'Ingresa tu documento'}
               </h2>
@@ -748,6 +926,7 @@ export default function AgendarPage() {
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-500">Tipo de documento *</label>
                   <Select
+                    disabled={identityLoading}
                     value={showRegister ? form.docType : lookupDocType}
                     onChange={(v) => {
                       if (showRegister) {
@@ -765,6 +944,7 @@ export default function AgendarPage() {
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-500">Documento *</label>
                   <Input
+                    disabled={identityLoading}
                     value={showRegister ? form.documentId : lookup}
                     onChange={(e) => {
                       const value = formatDocumentInput(e.target.value, showRegister ? form.docType : lookupDocType)
@@ -781,7 +961,7 @@ export default function AgendarPage() {
                 <>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-slate-500">Nombre *</label>
-                    <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ej: Juan Pérez" data-testid="self-name" />
+                    <Input disabled={identityLoading} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ej: Juan Pérez" data-testid="self-name" />
                   </div>
                   <OptionalPreferenceCards
                     wantsInvoice={form.wantsInvoice}
@@ -809,8 +989,17 @@ export default function AgendarPage() {
                       placeholder="Comentarios para el comercio"
                     />
                   </div>
-                  <Button className="w-full" onClick={saveProfile} data-testid="self-save-profile">
-                    Crear cuenta <ChevronRight className="h-4 w-4" />
+                  <Button type="submit" className="w-full" disabled={identityLoading} data-testid="self-save-profile">
+                    {identityLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                        Creando cuenta…
+                      </>
+                    ) : (
+                      <>
+                        Crear cuenta <ChevronRight className="h-4 w-4" />
+                      </>
+                    )}
                   </Button>
                 </>
               )}
@@ -821,7 +1010,8 @@ export default function AgendarPage() {
                     ¿Primera vez?{' '}
                     <button
                       type="button"
-                      className="font-semibold text-blue-600"
+                      disabled={identityLoading}
+                      className="font-semibold text-blue-600 disabled:opacity-50"
                       onClick={() => {
                         setForm((f) => ({
                           ...f,
@@ -834,16 +1024,23 @@ export default function AgendarPage() {
                       Regístrate aquí
                     </button>
                   </p>
-                  <Button className="w-full" onClick={lookupDoc} data-testid="self-login-search">
-                    Ingresar
+                  <Button type="submit" className="w-full" disabled={identityLoading} data-testid="self-login-search">
+                    {identityLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                        Verificando…
+                      </>
+                    ) : (
+                      'Ingresar'
+                    )}
                   </Button>
                 </>
               )}
 
-              <Button variant="secondary" className="w-full" onClick={openBranchPicker} data-testid="self-change-branch">
+              <Button type="button" variant="secondary" className="w-full" disabled={identityLoading} onClick={openBranchPicker} data-testid="self-change-branch">
                 <ChevronLeft className="h-4 w-4" /> Cambiar sucursal
               </Button>
-            </div>
+            </form>
           </section>
         )}
 
@@ -894,6 +1091,17 @@ export default function AgendarPage() {
                 />
               </div>
             </div>
+            {holdSnackbar ? (
+              <SlotHoldSnackbar
+                variant={holdSnackbar.variant}
+                expiresAt={holdSnackbar.expiresAt}
+                nowMs={nowMs}
+                onClose={() => setHoldSnackbar(null)}
+              />
+            ) : null}
+            {activeHold && activeHold.time === form.time ? (
+              <SlotHoldBanner expiresAt={activeHold.expiresAt} nowMs={nowMs} />
+            ) : null}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-600">Fecha</label>
@@ -917,9 +1125,18 @@ export default function AgendarPage() {
                 ) : (
                   <TimePicker
                     value={form.time}
-                    onChange={(time) => set('time', time)}
+                    onChange={selectTime}
+                    onHeldSlotSelect={(slot, entry) => {
+                      if (activeHold?.time === slot) {
+                        setHoldSnackbar(null)
+                        return
+                      }
+                      setHoldSnackbar({ variant: 'held', expiresAt: entry?.expiresAt })
+                    }}
                     pending={timeAvailabilityPending}
                     slots={timeSlotsForPicker}
+                    heldSlots={heldSlotsForPicker}
+                    unavailableSlots={blockedHeldTimes}
                     emptyMessage={
                       slotLoading
                         ? 'Consultando horarios…'
@@ -944,6 +1161,9 @@ export default function AgendarPage() {
         {phase === 'booking' && step === 3 && service && (
           <section className="space-y-4 rounded-2xl border border-slate-100 bg-white p-6 shadow-soft">
             <h2 className="font-heading text-xl font-bold text-slate-900">Confirmar</h2>
+            {activeHold && activeHold.time === form.time ? (
+              <SlotHoldBanner expiresAt={activeHold.expiresAt} nowMs={nowMs} />
+            ) : null}
             <div className="space-y-2 rounded-xl bg-slate-50 p-4 text-sm">
               <p><span className="text-slate-400">Cliente:</span> <strong>{form.name}</strong></p>
               <p><span className="text-slate-400">Documento:</span> {formatDocumentDisplay(form.documentId, form.docType)}</p>
@@ -962,7 +1182,7 @@ export default function AgendarPage() {
                   : 'Pendiente de asignación por el equipo'}
               </p>
             </div>
-            <Button className="w-full" onClick={confirm} disabled={saving || (!isDemo && (slotLoading || !remoteSlots?.includes(form.time)))} data-testid="self-confirm">
+            <Button className="w-full" onClick={confirm} disabled={saving || (!isDemo && (slotLoading || !slotAllowedForBooking(form.time)))} data-testid="self-confirm">
               {saving ? 'Guardando cita…' : 'Confirmar cita'}
             </Button>
             <button type="button" disabled={saving} data-testid="self-change-time" onClick={() => setStep(2)} className="w-full text-sm text-slate-500 hover:text-slate-700 disabled:opacity-50">

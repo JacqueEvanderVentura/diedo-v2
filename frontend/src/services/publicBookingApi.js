@@ -1,7 +1,9 @@
 import { apiClient } from '@/services/apiClient'
+import { slotHoldHeaders } from '@/modules/agenda/lib/slotHoldToken'
 
 const base = (branchId) => `/api/v1/public/booking/branches/${branchId}`
-const publicGet = (path, options = {}) => apiClient.get(path, options.params, { auth: false })
+const publicGet = (path, options = {}) =>
+  apiClient.get(path, options.params, { auth: false, headers: options.headers })
 const publicPost = (path, payload, options = {}) => apiClient.post(path, payload, { ...options, auth: false })
 
 export const publicBookingApi = {
@@ -20,11 +22,21 @@ export const publicBookingApi = {
     if (!query.employeeId) delete query.employeeId
     if (!query.documentId) delete query.documentId
     if (!query.documentType) delete query.documentType
-    return publicGet(`${base(branchId)}/slots`, { params: query })
+    return publicGet(`${base(branchId)}/slots`, {
+      params: query,
+      headers: slotHoldHeaders(),
+    })
   },
+  claimSlotHold: (branchId, payload) =>
+    publicPost(`${base(branchId)}/slot-holds`, payload, { headers: slotHoldHeaders() }),
+  releaseSlotHold: (branchId) =>
+    apiClient.delete(`${base(branchId)}/slot-holds`, undefined, { auth: false, headers: slotHoldHeaders() }),
   book: (branchId, payload, idempotencyKey) =>
     publicPost(`${base(branchId)}/appointments`, payload, {
-      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+      headers: {
+        ...slotHoldHeaders(),
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+      },
     }),
   getProfile: (branchId, params) => publicGet(`${base(branchId)}/me`, { params }),
   updateProfile: (branchId, payload) => apiClient.patch(`${base(branchId)}/profile`, payload, { auth: false }),
