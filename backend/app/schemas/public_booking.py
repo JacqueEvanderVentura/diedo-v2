@@ -176,6 +176,7 @@ class PublicBookAppointmentRequest(ApiModel):
     date: date
     time: TimeValue
     pending_appointment_action: PublicPendingAppointmentAction | None = None
+    client_notes: str | None = Field(default=None, max_length=1000)
 
     @field_validator("display_name")
     @classmethod
@@ -199,6 +200,14 @@ class PublicBookAppointmentRequest(ApiModel):
         prepare_customer_document_fields(self.document_type, self.document_id)
         return self
 
+    @field_validator("client_notes")
+    @classmethod
+    def normalize_client_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        trimmed = " ".join(value.split())
+        return trimmed or None
+
 
 class PublicAppointmentSummary(ApiModel):
     id: UUID
@@ -211,6 +220,7 @@ class PublicAppointmentSummary(ApiModel):
     duration_minutes: int
     service_name: str
     status: str
+    client_notes: str | None = None
     management_token: str
     notification: EmailNotificationResponse | None = None
 

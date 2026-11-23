@@ -314,6 +314,7 @@ class Appointment(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base):
     )
     deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(String(2000))
+    client_notes: Mapped[str | None] = mapped_column(String(2000))
     pending_payment: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )

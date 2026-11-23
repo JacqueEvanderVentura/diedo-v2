@@ -4,7 +4,6 @@ import { AlertTriangle, LoaderCircle, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { useIncidenciasStore } from '@/stores/incidenciasStore'
-import { useNotificationsStore } from '@/stores/notificationsStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useActivosStore } from '@/stores/activosStore'
 import { useFinanzasStore } from '@/stores/finanzasStore'
@@ -12,8 +11,6 @@ import { ActivoHistoryModal } from '@/modules/activos/components/ActivoHistoryMo
 import { useSessionStore } from '@/stores/sessionStore'
 import { useRrhhStore } from '@/stores/rrhhStore'
 import { usersApi } from '@/services/usersApi'
-import { extractMentionedUserIds, plainMessagePreview } from '@/lib/mentions'
-import { currentSessionActor } from '@/lib/sessionActor'
 import { IncidenciaStats } from '../components/IncidenciaStats'
 import { IncidenciaList } from '../components/IncidenciaList'
 import { IncidenciaDetail } from '../components/IncidenciaDetail'
@@ -31,7 +28,6 @@ export default function IncidenciasPage() {
   const hydrateFromApi = useIncidenciasStore((s) => s.hydrateFromApi)
   const hydrating = useIncidenciasStore((s) => s.hydrating)
   const error = useIncidenciasStore((s) => s.error)
-  const addMentionNotifications = useNotificationsStore((s) => s.addMentionNotifications)
 
   const [searchParams] = useSearchParams()
 
@@ -124,22 +120,10 @@ export default function IncidenciasPage() {
 
   const handleComment = async (id, author, message) => {
     await addComment(id, author, message, { isOnline })
-    const item = incidencias.find((i) => i.id === id)
-    if (!item) return
-    const userIds = extractMentionedUserIds(message)
-    if (!userIds.length) return
-    addMentionNotifications({
-      authorId: currentSessionActor().id,
-      authorName: author,
-      userIds,
-      incidenciaId: id,
-      incidenciaCode: item.code,
-      messagePreview: plainMessagePreview(message),
-    })
-    const names = userIds
-      .map((uid) => users.find((u) => u.id === uid)?.name)
-      .filter(Boolean)
-    if (names.length) toast.success(`Notificación enviada a ${names.join(', ')}`)
+    const userIds = message.match(/@\[([^\]]+)\]\(user:([^)]+)\)/g)
+    if (userIds?.length) {
+      toast.success('Comentario publicado. Los usuarios mencionados recibirán una notificación.')
+    }
   }
 
   const handleCreate = (data) => addIncidencia(data, { isOnline })

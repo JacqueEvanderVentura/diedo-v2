@@ -55,6 +55,7 @@ from app.services.errors import (
     InvalidOperationError,
     ResourceNotFoundError,
 )
+from app.services.user_notifications import UserNotificationService
 
 _LABOR_CONTRACT = "labor_contract"
 _EMPLOYEE_DOCUMENT_TYPES = frozenset({"cedula", "pasaporte"})
@@ -841,6 +842,7 @@ class MasterDataService:
         prepared = self._prepare_employee_values(grant.workspace_id, changes)
         if prepared.get("status", employee.status) == "archived":
             prepared["platform_user_id"] = None
+        previous_platform_user_id = employee.platform_user_id
         self._validate_employee_uniques(grant.workspace_id, prepared, exclude_id=employee_id)
         try:
             record = self._repository.update_employee(
@@ -851,7 +853,26 @@ class MasterDataService:
                 actor_platform_user_id=principal.platform_user_id,
                 request_id=get_request_id(),
             )
+            notify = UserNotificationService(self._session)
+            new_platform_user_id = record.platform_user_id
+            if (
+                previous_platform_user_id is not None
+                and previous_platform_user_id != new_platform_user_id
+            ):
+                membership_id = notify.membership_for_platform_user(
+                    grant.workspace_id, previous_platform_user_id
+                )
+                if membership_id is not None:
+                    employee_name = f"{record.first_name} {record.last_name}"
+                    notify.notify_employee_unlinked(
+                        workspace_id=grant.workspace_id,
+                        employee_name=employee_name.strip(),
+                        membership_id=membership_id,
+                        employee_id=employee_id,
+                        previous_platform_user_id=previous_platform_user_id,
+                    )
             self._session.commit()
+            notify.deliver_pending_emails()
             return record
         except IntegrityError as exc:
             self._session.rollback()

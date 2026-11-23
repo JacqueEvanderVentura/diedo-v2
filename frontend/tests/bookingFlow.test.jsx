@@ -40,6 +40,10 @@ beforeEach(() => {
   clearPublicSession()
   useSessionStore.setState({ status: 'online', user: null })
   useSelfBookingStore.setState({ profiles: [] })
+  publicBookingApi.getEntryContext.mockResolvedValue({
+    workspaceName: 'Mi establecimiento',
+    workspaceBranches: [{ id: 'branch', name: 'Norte' }],
+  })
   publicBookingApi.getContext.mockResolvedValue({
     branch: { branchId: 'branch', branchName: 'Norte', timezone: 'America/Santo_Domingo' },
     services: [{ id: 'service', name: 'Facial', price: '1250', durationMinutes: 30 }],

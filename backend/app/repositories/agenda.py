@@ -801,14 +801,9 @@ class AgendaRepository:
         )
 
     def purge_expired_slot_holds(self, *, now: datetime) -> int:
-        rows = self._session.scalars(
-            select(AppointmentSlotHold).where(AppointmentSlotHold.expires_at <= now)
-        ).all()
-        for row in rows:
-            self._session.delete(row)
-        if rows:
-            self._session.flush()
-        return len(rows)
+        from app.services.slot_hold_expiry import purge_expired_slot_holds
+
+        return purge_expired_slot_holds(self._session, now=now)
 
     def slot_hold_by_token(self, holder_token: str) -> AppointmentSlotHold | None:
         return self._session.scalar(

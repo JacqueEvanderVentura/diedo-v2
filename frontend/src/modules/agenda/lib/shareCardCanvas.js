@@ -1,6 +1,6 @@
 import { formatDOP, formatTime12h } from '@/lib/format'
 import { formatLongDate, endTime } from './calendar'
-import { fmtAuditWhen } from './audit'
+import { appointmentWasEdited, fmtAuditWhen } from './audit'
 
 const W = 380
 const SCALE = 2
@@ -78,6 +78,7 @@ function computeLayout(model, ctx) {
 }
 
 export function buildShareCardModel(appointment, { staffName, statusLabel, proximo, showAudit = false }) {
+  const includeEditAudit = showAudit && appointmentWasEdited(appointment)
   return {
     customerName: appointment?.customerName || 'Cliente',
     customerPhone: appointment?.customerPhone || '',
@@ -91,9 +92,9 @@ export function buildShareCardModel(appointment, { staffName, statusLabel, proxi
     statusLabel: proximo ? 'Próximo' : statusLabel,
     proximo: !!proximo,
     createdBy: showAudit ? appointment?.createdBy : undefined,
-    updatedBy: showAudit ? appointment?.updatedBy : undefined,
+    updatedBy: includeEditAudit ? appointment?.updatedBy : undefined,
     createdAt: showAudit ? appointment?.createdAt : undefined,
-    updatedAt: showAudit ? appointment?.updatedAt : undefined,
+    updatedAt: includeEditAudit ? appointment?.updatedAt : undefined,
     showAudit,
   }
 }

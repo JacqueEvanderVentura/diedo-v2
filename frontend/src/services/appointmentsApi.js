@@ -15,7 +15,15 @@ const idempotencyOptions = () => ({
   headers: { 'Idempotency-Key': crypto.randomUUID() },
 })
 
+function hasAppointmentListScope(params = {}) {
+  if (params.customerId) return true
+  return Boolean(params.dateFrom && params.dateTo)
+}
+
 async function listAllAppointments(params = {}) {
+  if (!hasAppointmentListScope(params)) {
+    return { appointments: [], heldSlots: [] }
+  }
   const requestParams = {
     ...params,
     status: params.status ? appointmentStatusToApi(params.status) : undefined,
@@ -168,3 +176,5 @@ export const appointmentsGateway = createModuleGateway({
   module: 'appointments',
   apiRepository: appointmentsApi,
 })
+
+export { hasAppointmentListScope }

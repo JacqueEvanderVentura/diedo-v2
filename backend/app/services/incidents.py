@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.request_context import get_request_id
+from app.db.models.incidents import Incident
 from app.repositories.incidents import (
     IncidentAttachmentContentRecord,
     IncidentPage,
@@ -27,6 +28,7 @@ from app.services.errors import (
     InvalidOperationError,
     ResourceNotFoundError,
 )
+from app.services.user_notifications import UserNotificationService
 
 _IMAGE_SIGNATURES: dict[str, tuple[bytes, ...]] = {
     "image/jpeg": (b"\xff\xd8\xff",),
@@ -189,7 +191,22 @@ class IncidentService:
                 request_fingerprint=fingerprint,
                 request_id=get_request_id(),
             )
+            incident_row = self._session.get(Incident, incident_id)
+            notify = UserNotificationService(self._session)
+            if incident_row is not None:
+                notify.notify_incident_interveners(
+                    workspace_id=grant.workspace_id,
+                    incident_id=incident_id,
+                    incident_code=incident_row.code,
+                    title=incident_row.title,
+                    priority=incident_row.priority,
+                    participant_ids=participant_ids,
+                    actor_membership_id=principal.membership_id,
+                    reporter_name=principal.display_name,
+                )
             self._session.commit()
+            if incident_row is not None:
+                notify.deliver_pending_emails()
             return self.get_incident(grant, incident_id)
         except IntegrityError as exc:
             self._session.rollback()
@@ -248,7 +265,7 @@ class IncidentService:
         incident = self._locked_visible_incident(grant, incident_id)
         self._require_version(incident.version, expected_version)
         try:
-            self._repository.add_comment(
+            activity_id = self._repository.add_comment(
                 incident=incident,
                 message=message,
                 actor_membership_id=principal.membership_id,
@@ -256,7 +273,18 @@ class IncidentService:
                 actor_name=principal.display_name,
                 request_id=get_request_id(),
             )
+            notify = UserNotificationService(self._session)
+            notify.notify_incident_mentions(
+                workspace_id=grant.workspace_id,
+                incident_id=incident.id,
+                incident_code=incident.code,
+                activity_id=activity_id,
+                message=message,
+                author_membership_id=principal.membership_id,
+                author_name=principal.display_name,
+            )
             self._session.commit()
+            notify.deliver_pending_emails()
             return self.get_incident(grant, incident.id)
         except IntegrityError as exc:
             self._session.rollback()

@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 
 from app.config import settings
 from app.db.models import Appointment
+from app.db.models.agenda import AppointmentSlotHold
 from app.services.email import EmailServiceError, send_email
 
 logger = logging.getLogger(__name__)
@@ -115,6 +116,19 @@ _TEMPLATES: dict[str, AppointmentEmailTemplate] = {
         action_label="Gestionar cita",
         action_url_key="manage_url",
     ),
+    "slot_hold.abandoned": AppointmentEmailTemplate(
+        subject="¿Deseas continuar tu cita?",
+        headline="Tu espacio quedó libre",
+        intro=(
+            "Vimos que intentaste agendar {service_name} el {date_label} a las {time_label}, "
+            "pero el cupo se liberó porque aún no confirmaste la cita."
+        ),
+        status_label="Pendiente",
+        status_bg="#fef3c7",
+        status_color="#b45309",
+        action_label="Continuar agendando",
+        action_url_key="resume_url",
+    ),
 }
 
 
@@ -140,6 +154,19 @@ def _booking_link_url(branch_id: object | None = None) -> str:
     if branch_id is None:
         return f"{base}/agendar"
     return f"{base}/agendar?{urlencode({'branch': str(branch_id)})}"
+
+
+def resume_booking_url(hold: AppointmentSlotHold) -> str:
+    base = settings.public_app_url.rstrip("/")
+    params: dict[str, str] = {
+        "branch": str(hold.branch_id),
+        "service": str(hold.service_id),
+        "date": hold.scheduled_date.isoformat(),
+        "time": hold.scheduled_time.strftime("%H:%M"),
+    }
+    if hold.employee_id is not None:
+        params["employee"] = str(hold.employee_id)
+    return f"{base}/agendar?{urlencode(params)}"
 
 
 def _brand_logo_url() -> str:
@@ -411,6 +438,64 @@ def render_appointment_email(
         action_label=template.action_label,
         action_url=action_url,
         detail_heading="Detalles de la cita",
+        details=details,
+        workspace_name=workspace_name,
+        branch_name=branch_name,
+    )
+    return {
+        "to": to,
+        "subject": f"{template.subject} - {branch_name}",
+        "html": html,
+        "text": text,
+    }
+
+
+def render_slot_hold_abandoned_email(
+    *,
+    to: str,
+    customer_name: str,
+    service_name: str,
+    branch_name: str,
+    workspace_name: str,
+    hold: AppointmentSlotHold,
+) -> dict[str, str]:
+    template = _TEMPLATES["slot_hold.abandoned"]
+    date_label = _format_date_es(hold.scheduled_date)
+    time_label = _format_time_12h(hold.scheduled_time)
+    intro = template.intro.format(
+        service_name=service_name,
+        date_label=date_label,
+        time_label=time_label,
+    )
+    action_url = resume_booking_url(hold)
+    details: list[tuple[str, object]] = [
+        ("Servicio", service_name),
+        ("Fecha", date_label),
+        ("Hora", time_label),
+        ("Sucursal", branch_name),
+        ("Establecimiento", workspace_name),
+    ]
+    text = _plain_text_email(
+        customer_name=customer_name,
+        intro=intro,
+        action_label=template.action_label,
+        action_url=action_url,
+        detail_heading="Detalles del horario",
+        details=details,
+        workspace_name=workspace_name,
+        branch_name=branch_name,
+    )
+    html = _render_html_email(
+        preheader=intro,
+        headline=template.headline,
+        intro=intro,
+        customer_name=customer_name,
+        status_label=template.status_label,
+        status_bg=template.status_bg,
+        status_color=template.status_color,
+        action_label=template.action_label,
+        action_url=action_url,
+        detail_heading="Detalles del horario",
         details=details,
         workspace_name=workspace_name,
         branch_name=branch_name,

@@ -1,7 +1,7 @@
 import { forwardRef } from 'react'
 import { Calendar, Clock, User } from 'lucide-react'
 import { formatDOP } from '@/lib/format'
-import { fmtAuditWhen } from '../lib/audit'
+import { appointmentWasEdited, fmtAuditWhen } from '../lib/audit'
 import { useStaffName } from '@/modules/rrhh/lib/staff'
 import { statusMeta } from '@/stores/agendaStore'
 import { formatLongDate, endTime, formatTime12h } from '../lib/calendar'
@@ -19,6 +19,7 @@ export const AppointmentShareCard = forwardRef(function AppointmentShareCard(
   const st = statusMeta(appointment.status)
   const specialist = staffName(appointment.employeeId)
   const initials = (appointment.customerName || 'C').slice(0, 1).toUpperCase()
+  const showLastEdit = appointmentWasEdited(appointment)
 
   return (
     <div
@@ -84,7 +85,7 @@ export const AppointmentShareCard = forwardRef(function AppointmentShareCard(
           </div>
         </div>
 
-        {showAudit && (appointment.createdBy || appointment.updatedBy) && (
+        {showAudit && (appointment.createdBy || showLastEdit) && (
           <div className="border-t border-slate-100 pt-3 text-[11px] leading-relaxed text-slate-400">
             {appointment.createdBy && (
               <p>
@@ -92,7 +93,7 @@ export const AppointmentShareCard = forwardRef(function AppointmentShareCard(
                 {appointment.createdAt ? ` · ${fmtAuditWhen(appointment.createdAt)}` : ''}
               </p>
             )}
-            {appointment.updatedBy && (
+            {showLastEdit && appointment.updatedBy && (
               <p>
                 Última modificación por: <span className="font-medium text-slate-600">{appointment.updatedBy}</span>
                 {appointment.updatedAt ? ` · ${fmtAuditWhen(appointment.updatedAt)}` : ''}

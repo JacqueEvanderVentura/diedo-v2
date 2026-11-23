@@ -263,6 +263,7 @@ export function createBranchToApi(form, { code, timezone }) {
     name: form.name.trim(),
     timezone,
     details: branchDetailsForCreate(form, creatingEntity),
+    onlineBookingSelectable: Boolean(form.onlineBookingSelectable),
   }
 }
 

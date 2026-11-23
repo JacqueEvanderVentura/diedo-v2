@@ -5,7 +5,7 @@ import { useConfigStore } from '@/stores/configStore'
 import { useRrhhStore } from '@/stores/rrhhStore'
 import { statusMeta } from '@/stores/agendaStore'
 import { formatTime12h } from '@/lib/format'
-import { actionLabel, fmtAuditWhen, sourceLabel } from '@/modules/agenda/lib/audit'
+import { actionLabel, appointmentWasEdited, fmtAuditWhen, sourceLabel } from '@/modules/agenda/lib/audit'
 import { cn } from '@/lib/utils'
 
 function resolveEmployeeName(id, employees) {
@@ -24,6 +24,7 @@ export function AppointmentAuditModal({ open, onClose, appointment }) {
   const branchName = branches.find((b) => b.id === appointment.branchId)?.name || '—'
   const employeeName = resolveEmployeeName(appointment.employeeId, employees)
   const history = [...(appointment.history || [])].sort((a, b) => new Date(b.at) - new Date(a.at))
+  const edited = appointmentWasEdited(appointment)
 
   return (
     <Modal
@@ -62,8 +63,14 @@ export function AppointmentAuditModal({ open, onClose, appointment }) {
           </div>
           <div>
             <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">Última edición</dt>
-            <dd className="mt-1 text-sm font-medium text-slate-800">{appointment.updatedBy || '—'}</dd>
-            <dd className="text-xs text-slate-500">{fmtAuditWhen(appointment.updatedAt)}</dd>
+            {edited ? (
+              <>
+                <dd className="mt-1 text-sm font-medium text-slate-800">{appointment.updatedBy || '—'}</dd>
+                <dd className="text-xs text-slate-500">{fmtAuditWhen(appointment.updatedAt)}</dd>
+              </>
+            ) : (
+              <dd className="mt-1 text-sm font-medium text-slate-500">Sin ediciones</dd>
+            )}
           </div>
           <div>
             <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">Origen</dt>

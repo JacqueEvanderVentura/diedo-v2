@@ -3,6 +3,7 @@ import { todayKey } from '@/stores/agendaStore'
 const CLOSED_STATUSES = new Set(['cancelada', 'cumplida', 'noshow'])
 
 export const APPOINTMENT_NOTES_MAX_LENGTH = 60
+export const APPOINTMENT_CLIENT_NOTES_MAX_LENGTH = 1000
 export const APPOINTMENT_CARD_NOTE_MAX_LENGTH = 40
 
 export function normalizeAppointmentNote(note) {

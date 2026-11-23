@@ -24,6 +24,7 @@ from app.api.routers import (
     lookups,
     master_data,
     meta_webhooks,
+    notifications,
     permissions,
     portal_tasks,
     pos,
@@ -67,6 +68,7 @@ api_router.include_router(pos.router)
 api_router.include_router(purchasing.router)
 api_router.include_router(reports.router)
 api_router.include_router(users.router)
+api_router.include_router(notifications.router)
 api_router.include_router(lookups.router)
 api_router.include_router(permissions.roles_router)
 api_router.include_router(permissions.permissions_router)

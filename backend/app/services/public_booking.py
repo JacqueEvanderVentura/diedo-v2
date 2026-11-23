@@ -54,6 +54,7 @@ from app.services.errors import ConflictError, InvalidOperationError, ResourceNo
 from app.services.mailer import render_appointment_email
 from app.services.master_data import normalize_name
 from app.services.slot_holds import hold_expires_at, serialize_held_slots
+from app.services.user_notifications import deliver_pending_in_app_emails
 
 PUBLIC_BOOKING_SLOT_CAPACITY = 1
 
@@ -73,7 +74,7 @@ class PublicBookingService:
 
     def get_entry_context(self, branch_id: UUID | None = None) -> dict[str, Any]:
         if branch_id is not None:
-            branch, workspace = self._resolve_branch(branch_id)
+            branch, workspace = self._resolve_active_branch(branch_id)
             workspace_rows = self._list_workspace_branches(branch.workspace_id)
             if not workspace_rows:
                 raise InvalidOperationError(
@@ -1039,6 +1040,7 @@ class PublicBookingService:
             "reminder_sent": False,
             "recurrence": "none",
             "repeat_count": 1,
+            "client_notes": payload.get("client_notes"),
         }
         hold_token_for_slot_check = (
             holder_token.strip() if holder_token and len(holder_token.strip()) >= 8 else None
@@ -1062,6 +1064,7 @@ class PublicBookingService:
         if holder_token and len(holder_token.strip()) >= 8:
             self._agenda.delete_slot_hold_by_token(holder_token)
         self._session.commit()
+        deliver_pending_in_app_emails(self._session)
         return self._finish_notification(appointment, notification)
 
     def _enqueue_appointment(
@@ -1385,22 +1388,26 @@ class PublicBookingService:
         principal, grant = self._system_access(branch.workspace_id)
         return appointment, branch, workspace, principal, grant
 
-    def _resolve_branch(self, branch_id: UUID) -> tuple[Branch, Workspace]:
+    def _resolve_active_branch(self, branch_id: UUID) -> tuple[Branch, Workspace]:
         branch = self._session.scalar(
             select(Branch).where(Branch.id == branch_id, Branch.status == "active")
         )
         if branch is None:
             raise ResourceNotFoundError("La sucursal no existe.", "branchId")
-        if not branch.online_booking_selectable:
-            raise InvalidOperationError(
-                "Esta sucursal no está disponible para agendar en línea.",
-                "branchId",
-            )
         workspace = self._session.scalar(
             select(Workspace).where(Workspace.id == branch.workspace_id)
         )
         if workspace is None:
             raise ResourceNotFoundError("El workspace no existe.", "branchId")
+        return branch, workspace
+
+    def _resolve_branch(self, branch_id: UUID) -> tuple[Branch, Workspace]:
+        branch, workspace = self._resolve_active_branch(branch_id)
+        if not branch.online_booking_selectable:
+            raise InvalidOperationError(
+                "Esta sucursal no está disponible para agendar en línea.",
+                "branchId",
+            )
         return branch, workspace
 
     def _system_access(self, workspace_id: UUID) -> tuple[AuthPrincipal, PermissionGrant]:
@@ -1681,6 +1688,7 @@ class PublicBookingService:
             "duration_minutes": appointment.duration_minutes,
             "service_name": appointment.service_name,
             "status": appointment.status,
+            "client_notes": appointment.client_notes,
             "management_token": token,
         }
 

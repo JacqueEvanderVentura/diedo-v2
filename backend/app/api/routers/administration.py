@@ -330,6 +330,7 @@ def create_branch(
         name=payload.name,
         timezone=payload.timezone,
         details=payload.details,
+        online_booking_selectable=payload.online_booking_selectable,
     )
     return _branch_response(branch)
 

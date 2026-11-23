@@ -304,6 +304,7 @@ class CreateBranchRequest(ApiModel):
     name: str = Field(min_length=2, max_length=160)
     timezone: str = Field(min_length=3, max_length=64)
     details: BranchDetails = Field(default_factory=BranchDetails)
+    online_booking_selectable: bool = False
 
     @field_validator("code")
     @classmethod

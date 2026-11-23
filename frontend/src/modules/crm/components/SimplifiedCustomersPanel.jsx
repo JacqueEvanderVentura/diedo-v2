@@ -5,7 +5,6 @@ import { useCustomersStore } from '@/stores/customersStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { useCrmStore } from '@/stores/crmStore'
-import { useAgendaStore } from '@/stores/agendaStore'
 import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
 import { customersVisibleToSession } from '@/lib/customerScope'
 import { matchesBranches } from '@/lib/branches'
@@ -69,7 +68,6 @@ export function SimplifiedCustomersPanel() {
 
   useEffect(() => {
     useCrmStore.getState().hydrateSection('customers').catch(() => {})
-    useAgendaStore.getState().hydrateAppointments({ params: {} }).catch(() => {})
   }, [])
 
   useEffect(() => {

@@ -132,6 +132,16 @@ describe('adaptadores de Agenda', () => {
       recurrence: 'weekly',
       repeatCount: 4,
     })
+    expect(
+      appointmentToApiPayload({
+        ...form,
+        notes: '  Interna  ',
+        clientNotes: '  Llego temprano  ',
+      }),
+    ).toMatchObject({
+      notes: 'Interna',
+      clientNotes: 'Llego temprano',
+    })
     expect(appointmentPatchToApiPayload(form, 7)).toMatchObject({ version: 7, status: 'confirmed' })
 
     const conflict = Object.assign(new Error('El horario ya está ocupado.'), {

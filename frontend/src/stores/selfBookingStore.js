@@ -88,9 +88,11 @@ export const useSelfBookingStore = create(
         date,
         time,
         employeeId,
+        clientNotes = '',
         idempotencyKey,
         pendingAppointmentAction = null,
       }) => {
+        const trimmedClientNotes = String(clientNotes || '').trim()
         const payload = {
           customerId: profile.customerId || null,
           documentType: profile.docType || 'cedula',
@@ -104,6 +106,7 @@ export const useSelfBookingStore = create(
           serviceId: service.id,
           date,
           time,
+          clientNotes: trimmedClientNotes || null,
         }
         if (employeeId) payload.employeeId = employeeId
         if (pendingAppointmentAction) payload.pendingAppointmentAction = pendingAppointmentAction

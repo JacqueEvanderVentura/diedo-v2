@@ -1,62 +1,69 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
-import { ephemeralJsonStorage } from '@/services/storagePolicy'
+import {
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from '@/services/notificationsApi'
 
-const genId = () => `ntf-${Date.now().toString(36)}-${Math.floor(Math.random() * 10000)}`
-const now = () => new Date().toISOString()
+export const useNotificationsStore = create((set, get) => ({
+  items: [],
+  page: 1,
+  pageSize: 10,
+  total: 0,
+  unreadCount: 0,
+  loading: false,
+  error: null,
+  lastFetchedAt: null,
 
-export const useNotificationsStore = create(
-  persist(
-    (set, get) => ({
-      notifications: [],
-
-      addMentionNotifications: ({ authorId, authorName, userIds, incidenciaId, incidenciaCode, messagePreview }) => {
-        const unique = [...new Set(userIds)].filter((id) => id && id !== authorId)
-        if (!unique.length) return
-
-        const items = unique.map((userId) => ({
-          id: genId(),
-          userId,
-          type: 'mention',
-          title: `${authorName} te mencionó`,
-          body: `${incidenciaCode}: ${messagePreview}`,
-          read: false,
-          createdAt: now(),
-          link: { path: '/incidencias', incidenciaId },
-        }))
-
-        set((s) => ({ notifications: [...items, ...s.notifications] }))
-      },
-
-      markRead: (id) =>
-        set((s) => ({
-          notifications: s.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)),
-        })),
-
-      markAllRead: (userId) =>
-        set((s) => ({
-          notifications: s.notifications.map((n) =>
-            n.userId === userId ? { ...n, read: true } : n
-          ),
-        })),
-
-      getForUser: (userId) =>
-        get()
-          .notifications.filter((n) => n.userId === userId)
-          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
-
-      getUnreadCount: (userId) =>
-        get().notifications.filter((n) => n.userId === userId && !n.read).length,
-    }),
-    {
-      name: 'diedo-notifications',
-      storage: ephemeralJsonStorage,
-      version: 2,
-      merge: (persisted, current) => {
-        const state = { ...current, ...(persisted || {}) }
-        if (!Array.isArray(state.notifications)) state.notifications = []
-        return state
-      },
+  fetch: async ({ page = 1, pageSize = 10 } = {}) => {
+    set({ loading: true, error: null })
+    try {
+      const data = await listNotifications({ page, pageSize })
+      set({
+        items: data.items || [],
+        page: data.page ?? page,
+        pageSize: data.pageSize ?? pageSize,
+        total: data.total ?? 0,
+        unreadCount: data.unreadCount ?? 0,
+        loading: false,
+        lastFetchedAt: Date.now(),
+      })
+      return data
+    } catch (error) {
+      set({
+        loading: false,
+        error: error?.message || 'No se pudieron cargar las notificaciones.',
+      })
+      throw error
     }
-  )
-)
+  },
+
+  markRead: async (id) => {
+    await markNotificationRead(id)
+    set((state) => ({
+      items: state.items.map((item) => (item.id === id ? { ...item, read: true } : item)),
+      unreadCount: Math.max(
+        0,
+        state.unreadCount - (state.items.find((item) => item.id === id && !item.read) ? 1 : 0)
+      ),
+    }))
+  },
+
+  markAllRead: async () => {
+    const result = await markAllNotificationsRead()
+    set((state) => ({
+      items: state.items.map((item) => ({ ...item, read: true })),
+      unreadCount: 0,
+    }))
+    return result?.updated ?? 0
+  },
+
+  refreshUnreadBadge: async () => {
+    const { pageSize, page } = get()
+    try {
+      await get().fetch({ page, pageSize })
+    } catch {
+      // badge refresh is best-effort
+    }
+  },
+}))

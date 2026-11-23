@@ -137,6 +137,38 @@ def test_booking_link_email_uses_invitation_layout_without_appointment_details(m
     assert "Servicio" not in content["text"]
 
 
+def test_abandoned_slot_hold_email_includes_resume_query(monkeypatch):
+    from datetime import date, time
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(settings, "public_app_url", "https://example.workers.dev")
+    branch_id = uuid7()
+    service_id = uuid7()
+    employee_id = uuid7()
+    hold = SimpleNamespace(
+        branch_id=branch_id,
+        service_id=service_id,
+        employee_id=employee_id,
+        scheduled_date=date(2026, 6, 15),
+        scheduled_time=time(10, 30),
+    )
+    content = mailer.render_slot_hold_abandoned_email(
+        to="client@example.com",
+        customer_name="Ana",
+        service_name="Corte",
+        branch_name="Norte",
+        workspace_name="Mi establecimiento",
+        hold=hold,
+    )
+    resume = mailer.resume_booking_url(hold)
+    assert "Continuar agendando" in content["html"]
+    assert resume in content["text"]
+    assert f"service={service_id}" in resume
+    assert f"employee={employee_id}" in resume
+    assert "date=2026-06-15" in resume
+    assert "time=10%3A30" in resume or "time=10:30" in resume
+
+
 def test_booking_link_email_without_branch_uses_generic_agendar_url(monkeypatch):
     monkeypatch.setattr(settings, "public_app_url", "https://example.workers.dev")
     content = mailer.render_booking_link_email(

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Appointment, Branch, Customer, Workspace
 from app.db.models.email_notifications import EmailNotification
+from app.repositories.agenda import AgendaRepository
 from app.services.booking_tokens import issue_appointment_management_token
 from app.services.email_notifications import deliver_email, enqueue_email
 from app.services.mailer import render_appointment_email
@@ -49,6 +50,7 @@ class AppointmentReminderService:
         now: datetime | None = None,
     ) -> ReminderSummary:
         current = now or datetime.now(UTC)
+        AgendaRepository(self._session).purge_expired_slot_holds(now=current)
         created = self._enqueue_due(
             workspace_id=workspace_id,
             recipient_email=recipient_email,
