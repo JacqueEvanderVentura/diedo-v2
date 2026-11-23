@@ -70,6 +70,7 @@ class ChatChannelAccountResponse(ApiModel):
     channel: ChatChannel
     provider_account_id: str
     display_name: str
+    meta_business_name: str = ""
     connection_status: ChatConnectionStatus
     assigned_branch_ids: list[UUID]
     version: int
@@ -96,6 +97,7 @@ class ChatOauthCandidateResponse(ApiModel):
     provider_account_id: str
     display_name: str
     phone_number: str = ""
+    business_name: str = ""
 
 
 class ChatOauthPendingResponse(ApiModel):

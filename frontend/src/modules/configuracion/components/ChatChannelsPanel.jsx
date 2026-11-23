@@ -12,41 +12,34 @@ import {
   openOauthPopupPlaceholder,
   readOauthReturn,
 } from '@/modules/chat/lib/oauthPopup'
+import { chatChannelsCopy, useAppReviewEnglish } from '@/modules/chat/lib/appReviewLocale'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { cn } from '@/lib/utils'
 
-const CHANNEL_META = {
-  instagram: {
-    label: 'Instagram',
-    icon: Instagram,
-    description: 'Mensajes directos de cuentas profesionales (Graph Messaging).',
-  },
-  whatsapp: {
-    label: 'WhatsApp',
-    icon: MessageCircle,
-    description: 'WhatsApp Cloud API. El permiso se pide en Facebook Business, no en WhatsApp.',
-  },
+const CHANNEL_ICONS = {
+  instagram: Instagram,
+  whatsapp: MessageCircle,
 }
 
-function statusBadge(status) {
+function statusBadge(status, copy) {
   if (status === 'connected') {
     return (
       <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
-        Conectado
+        {copy.connected}
       </span>
     )
   }
   if (status === 'error') {
     return (
       <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-600">
-        Error
+        {copy.error}
       </span>
     )
   }
   return (
     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-      No conectado
+      {copy.disconnected}
     </span>
   )
 }
@@ -56,6 +49,8 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
   const online = useSessionStore((s) => s.status === 'online')
   const canManage = useSessionStore((s) => s.hasPermission('workspace.update'))
   const [searchParams, setSearchParams] = useSearchParams()
+  const reviewEn = useAppReviewEnglish()
+  const copy = useMemo(() => chatChannelsCopy(reviewEn), [reviewEn])
 
   const [accounts, setAccounts] = useState([])
   const [loading, setLoading] = useState(false)
@@ -235,7 +230,7 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
         window.location.assign(authorizationUrl)
         return
       }
-      toast.message('Completa el permiso de Meta en la ventana nueva. Esta pantalla se actualizará sola.')
+      toast.message(copy.popupHint)
       startOauthPoll(channel)
     } catch (error) {
       popup?.close?.()
@@ -310,22 +305,23 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
 
   return (
     <div className={embedded ? '' : 'space-y-6'} data-testid="chat-channels-panel">
-      <p className="text-sm text-slate-600">
-        Conecta Instagram o WhatsApp Cloud y asígnalos a sucursales. Escribes y recibes en WhatsApp
-        (app Business o el número Cloud), no en Messenger. Facebook Login solo se usa una vez para
-        autorizar Cloud API; los tokens quedan en el servidor.
-      </p>
+      {copy.appReviewBanner ? (
+        <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-900">
+          {copy.appReviewBanner}
+        </p>
+      ) : null}
+      <p className="text-sm text-slate-600">{copy.intro}</p>
 
       {!canManage && online && (
         <p className="text-sm text-amber-700">
-          Se requiere el permiso <span className="font-medium">workspace.update</span> para conectar cuentas.
+          {copy.permissionHint}
         </p>
       )}
 
       {loading && (
         <p className="flex items-center gap-2 text-sm text-slate-500">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Cargando cuentas…
+          {copy.loading}
         </p>
       )}
 
@@ -338,8 +334,8 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
             return !mentionsChannel && visibleBlockIds.includes('branches')
           })
           .map((channel) => {
-          const meta = CHANNEL_META[channel]
-          const Icon = meta.icon
+          const channelCopy = copy[channel]
+          const Icon = CHANNEL_ICONS[channel]
           const channelAccounts = accountsByChannel[channel] || []
           const hasConnected = channelAccounts.some((a) => a.connectionStatus === 'connected')
 
@@ -356,10 +352,10 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-semibold text-slate-800">{meta.label}</p>
-                    {statusBadge(hasConnected ? 'connected' : 'disconnected')}
+                    <p className="font-semibold text-slate-800">{channelCopy.label}</p>
+                    {statusBadge(hasConnected ? 'connected' : 'disconnected', copy)}
                   </div>
-                  <p className="mt-1 text-sm text-slate-500">{meta.description}</p>
+                  <p className="mt-1 text-sm text-slate-500">{channelCopy.description}</p>
 
                   {channelAccounts.length > 0 && (
                     <ul className="mt-3 space-y-2">
@@ -369,13 +365,18 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
                           className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2"
                         >
                           <div>
+                            {account.metaBusinessName ? (
+                              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                                {copy.portfolioLabel}: {account.metaBusinessName}
+                              </p>
+                            ) : null}
                             <p className="text-sm font-medium text-slate-800">
                               {account.displayName || account.providerAccountId}
                             </p>
                             <p className="text-xs text-slate-500">
                               {account.assignedBranchIds?.length
-                                ? `${account.assignedBranchIds.length} sucursal(es)`
-                                : 'Sin sucursales asignadas'}
+                                ? copy.branchCount(account.assignedBranchIds.length)
+                                : copy.noBranches}
                             </p>
                           </div>
                           {canManage && online && account.connectionStatus === 'connected' && (
@@ -386,7 +387,7 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
                                 size="sm"
                                 onClick={() => openBranchModal(account)}
                               >
-                                Sucursales
+                                {copy.branches}
                               </Button>
                               <Button
                                 type="button"
@@ -394,7 +395,7 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
                                 size="sm"
                                 onClick={() => handleDisconnect(account)}
                               >
-                                Desconectar
+                                {copy.disconnect}
                               </Button>
                             </div>
                           )}
@@ -413,10 +414,10 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
                     {connectingChannel === channel ? (
                       <>
                         <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                        Abriendo Meta…
+                        {copy.connecting}
                       </>
                     ) : (
-                      'Conectar'
+                      copy.connect
                     )}
                   </Button>
                 )}
@@ -429,17 +430,16 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
       <Modal
         open={Boolean(branchModalAccount)}
         onClose={() => !savingBranches && setBranchModalAccount(null)}
-        title="Asignar sucursales"
+        title={copy.assignBranchesTitle}
       >
         {branchModalAccount && (
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              Elige qué sucursales verán los mensajes de{' '}
-              <span className="font-medium">{branchModalAccount.displayName}</span>.
+              {copy.assignBranchesBody(branchModalAccount.displayName)}
             </p>
             <ul className="max-h-64 space-y-2 overflow-y-auto">
               {branches.length === 0 ? (
-                <li className="text-sm text-slate-400">No hay sucursales cargadas.</li>
+                <li className="text-sm text-slate-400">{copy.noBranchesLoaded}</li>
               ) : (
                 branches.map((branch) => {
                   const checked = selectedBranchIds.includes(branch.id)
@@ -466,10 +466,10 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
             </ul>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" onClick={() => setBranchModalAccount(null)}>
-                Cancelar
+                {copy.cancel}
               </Button>
               <Button type="button" onClick={saveBranches} disabled={savingBranches}>
-                Guardar
+                {copy.save}
               </Button>
             </div>
           </div>
@@ -482,13 +482,14 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
           if (selectingAccountId) return
           setOauthSelect(null)
         }}
-        title="Elige la cuenta Meta"
+        title={copy.oauthSelectTitle}
       >
         {oauthSelect && (
           <div className="space-y-3">
             <p className="text-sm text-slate-600">
-              Meta devolvió varias cuentas para{' '}
-              <span className="font-medium">{CHANNEL_META[oauthSelect.channel]?.label}</span>.
+              {typeof copy.oauthSelectIntro === 'function'
+                ? copy.oauthSelectIntro(copy[oauthSelect.channel]?.label)
+                : copy.oauthSelectIntro}
             </p>
             <ul className="space-y-2">
               {oauthSelect.candidates.map((candidate) => {
@@ -508,14 +509,19 @@ export default function ChatChannelsPanel({ embedded, visibleBlockIds }) {
                       <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-blue-600" aria-hidden />
                     ) : null}
                     <span className="min-w-0">
+                    {candidate.businessName ? (
+                      <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                        {copy.portfolioLabel}: {candidate.businessName}
+                      </span>
+                    ) : null}
                     <span className="font-medium text-slate-800">{candidate.displayName}</span>
                     {candidate.phoneNumber ? (
                       <span className="mt-0.5 block text-sm text-slate-700">
-                        Tel. {candidate.phoneNumber}
+                        {copy.phoneLabel} {candidate.phoneNumber}
                       </span>
                     ) : null}
                     <span className="mt-0.5 block text-xs text-slate-500">
-                      ID {candidate.providerAccountId}
+                      {copy.idLabel} {candidate.providerAccountId}
                     </span>
                     </span>
                   </button>

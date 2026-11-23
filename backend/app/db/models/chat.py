@@ -56,6 +56,7 @@ class ChatChannelAccount(UuidPrimaryKeyMixin, TimestampMixin, VersionMixin, Base
     channel: Mapped[str] = mapped_column(String(16), nullable=False)
     provider_account_id: Mapped[str] = mapped_column(String(128), nullable=False)
     display_name: Mapped[str] = mapped_column(String(160), server_default="", nullable=False)
+    meta_business_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     access_token_ciphertext: Mapped[str | None] = mapped_column(Text, nullable=True)
     token_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

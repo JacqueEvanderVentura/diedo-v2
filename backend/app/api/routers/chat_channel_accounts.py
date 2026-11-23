@@ -54,6 +54,7 @@ def _account_response(
         channel=cast(ChatChannel, account.channel),
         provider_account_id=account.provider_account_id,
         display_name=account.display_name,
+        meta_business_name=account.meta_business_name or "",
         connection_status=cast(ChatConnectionStatus, account.connection_status),
         assigned_branch_ids=service.assigned_branch_ids(grant, account.id),
         version=account.version,
@@ -100,6 +101,7 @@ def update_channel_account_branches(
         channel=cast(ChatChannel, account.channel),
         provider_account_id=account.provider_account_id,
         display_name=account.display_name,
+        meta_business_name=account.meta_business_name or "",
         connection_status=cast(ChatConnectionStatus, account.connection_status),
         assigned_branch_ids=branch_ids,
         version=account.version,
@@ -161,6 +163,7 @@ def pending_channel_oauth(
                 provider_account_id=candidate.provider_account_id,
                 display_name=candidate.display_name,
                 phone_number=candidate.phone_number,
+                business_name=candidate.business_name,
             )
             for candidate in candidates
         ],

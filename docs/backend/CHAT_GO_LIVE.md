@@ -86,9 +86,40 @@ Request only what the product uses. HELIOS v1 is **text DMs** in a workspace inb
 | `instagram_business_manage_messages` | Instagram Login: send/receive DMs |
 | `whatsapp_business_management` | Discover WABA / phone numbers |
 | `whatsapp_business_messaging` | Send/receive WhatsApp Cloud text |
-| `business_management` | List businesses that own WABAs |
+| `business_management` | `GET /me/businesses` to list the admin’s Business portfolios and WhatsApp numbers during Connect |
 
-Screencast for reviewers:
+### Re-submit only `business_management` (Oct 2026 rejection)
+
+Meta approved IG/WA messaging permissions but rejected **`business_management`** with policy **1.6**: the screencast did not show the full permitted use case (Facebook Login, granting the permission, and listing the Business portfolio). The use case itself is allowed.
+
+Helios uses a **user access token** from Facebook Login (Business admin), not a system user token. After login, the backend calls Graph `GET /me/businesses` and the admin **must pick** the phone in Helios (WhatsApp never auto-connects on a single number).
+
+**Reviewer URL (English UI):** `https://app.helios360erp.com/configuracion?open=chat-canales&lang=en`
+
+**Paste into the permission description (English):**
+
+```text
+Helios 360 ERP is branch-based business software. We use business_management only when an administrator connects WhatsApp in Settings → Chat channels.
+
+The administrator completes Facebook Login as admin of their Meta Business. Helios calls GET /me/businesses to read which Business portfolios they manage and which WhatsApp Business accounts and phone numbers belong to those portfolios. The UI shows the portfolio name and phone number; the user selects the number for their workspace. We do not manage ads, claim ad accounts, or use this data for marketing or analytics.
+
+Authentication is a normal user access token from Facebook Login (visible in the screencast), not a server-only system user token.
+```
+
+**Screencast script (`business_management` only):**
+
+1. Sign in to Helios as workspace admin (credentials in Web reviewer instructions).
+2. Open **Settings → Chat channels** at `…&lang=en` (banner: App Review mode).
+3. Click **Connect** on WhatsApp (same tab — full Facebook Login must stay on screen).
+4. Complete Facebook Login and grant **business_management** / Business Manager access (**Allow**).
+5. Back in Helios: modal explains `business_management`; pick the row showing **Business portfolio** name + phone (e.g. Somnus Systems, +1 829-742-6018).
+6. Assign a branch; connected card shows portfolio + number.
+
+Optional 15 s: `/chat` inbound + reply (WhatsApp messaging already approved; not a substitute for steps 3–5).
+
+Do **not** re-submit already-approved permissions unless Meta asks.
+
+Screencast for other permissions (IG / WA messaging):
 
 1. Admin opens Configuración → Canales → Conectar Instagram/WhatsApp.
 2. Completes Facebook Login (no token shown in the browser).

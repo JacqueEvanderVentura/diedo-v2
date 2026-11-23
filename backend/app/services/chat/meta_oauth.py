@@ -47,6 +47,7 @@ class OauthCandidate:
     display_name: str
     phone_number: str = ""
     waba_id: str = ""
+    business_name: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,12 +179,13 @@ class MetaOauthService:
                 "display_name": c.display_name,
                 "phone_number": c.phone_number,
                 "waba_id": c.waba_id,
+                "business_name": c.business_name,
             }
             for c in candidates
         ]
         state.tokens_json = json.dumps(tokens)
 
-        if len(candidates) == 1:
+        if len(candidates) == 1 and channel != "whatsapp":
             candidate = candidates[0]
             token = tokens[candidate.provider_account_id]
             account = self._upsert_connected_account(
@@ -192,6 +194,7 @@ class MetaOauthService:
                 provider_account_id=candidate.provider_account_id,
                 display_name=candidate.display_name,
                 access_token=token,
+                meta_business_name=candidate.business_name or None,
             )
             ChatChannelAccountService(self._session).ensure_default_branch_assignments(account)
             self._subscribe_channel_webhooks(
@@ -234,6 +237,7 @@ class MetaOauthService:
         )
         display_name = str((candidate or {}).get("display_name") or provider_account_id)
         waba_id = str((candidate or {}).get("waba_id") or "")
+        business_name = str((candidate or {}).get("business_name") or "")
 
         channel = _as_channel(state.channel)
         account = self._upsert_connected_account(
@@ -242,6 +246,7 @@ class MetaOauthService:
             provider_account_id=provider_account_id,
             display_name=display_name,
             access_token=token,
+            meta_business_name=business_name or None,
         )
         ChatChannelAccountService(self._session).ensure_default_branch_assignments(account)
         self._subscribe_channel_webhooks(
@@ -278,6 +283,7 @@ class MetaOauthService:
                 display_name=str(item.get("display_name") or item["provider_account_id"]),
                 phone_number=str(item.get("phone_number") or ""),
                 waba_id=str(item.get("waba_id") or ""),
+                business_name=str(item.get("business_name") or ""),
             )
             for item in state.candidates_json
         ]
@@ -290,6 +296,7 @@ class MetaOauthService:
         provider_account_id: str,
         display_name: str,
         access_token: str,
+        meta_business_name: str | None = None,
     ) -> ChatChannelAccount:
         account = self._session.scalar(
             select(ChatChannelAccount).where(
@@ -310,6 +317,8 @@ class MetaOauthService:
         account.access_token_ciphertext = access_token
         account.connection_status = "connected"
         account.token_expires_at = None
+        if meta_business_name is not None:
+            account.meta_business_name = meta_business_name
         self._session.flush()
         return account
 
@@ -651,6 +660,7 @@ class MetaOauthService:
             business_id = str(business.get("id") or "")
             if not business_id:
                 continue
+            business_name = str(business.get("name") or "").strip()
             for edge in (
                 "owned_whatsapp_business_accounts",
                 "client_whatsapp_business_accounts",
@@ -663,6 +673,7 @@ class MetaOauthService:
                 more, more_tokens = self._collect_whatsapp_from_wabas(
                     wabas.get("data") or [],
                     access_token,
+                    business_name=business_name,
                 )
                 candidates.extend(more)
                 tokens.update(more_tokens)
@@ -753,18 +764,27 @@ class MetaOauthService:
         candidates: list[OauthCandidate] = []
         tokens: dict[str, str] = {}
         for business in payload.get("data") or []:
+            business_name = str(business.get("name") or "").strip()
             for edge in (
                 "owned_whatsapp_business_accounts",
                 "client_whatsapp_business_accounts",
             ):
                 wabas = (business.get(edge) or {}).get("data") or []
-                more, more_tokens = self._collect_whatsapp_from_wabas(wabas, access_token)
+                more, more_tokens = self._collect_whatsapp_from_wabas(
+                    wabas,
+                    access_token,
+                    business_name=business_name,
+                )
                 candidates.extend(more)
                 tokens.update(more_tokens)
         return candidates, tokens
 
     def _collect_whatsapp_from_wabas(
-        self, wabas: list[Any], access_token: str
+        self,
+        wabas: list[Any],
+        access_token: str,
+        *,
+        business_name: str = "",
     ) -> tuple[list[OauthCandidate], dict[str, str]]:
         candidates: list[OauthCandidate] = []
         tokens: dict[str, str] = {}
@@ -800,6 +820,7 @@ class MetaOauthService:
                         display_name=label,
                         phone_number=phone_number,
                         waba_id=str(waba.get("id") or ""),
+                        business_name=business_name,
                     )
                 )
                 tokens[phone_id] = access_token
