@@ -193,7 +193,7 @@ def _oauth_state_id_from_start(
 
 
 @pytest.mark.integration
-def test_oauth_callback_auto_connects_single_whatsapp_account(
+def test_oauth_callback_prompts_whatsapp_selection_for_single_number(
     client: TestClient,
     meta_oauth_settings,
     monkeypatch: pytest.MonkeyPatch,
@@ -212,6 +212,8 @@ def test_oauth_callback_auto_connects_single_whatsapp_account(
             "me/businesses": {
                 "data": [
                     {
+                        "id": "biz-somnus",
+                        "name": "Somnus Systems",
                         "owned_whatsapp_business_accounts": {
                             "data": [
                                 {
@@ -228,7 +230,7 @@ def test_oauth_callback_auto_connects_single_whatsapp_account(
                                     },
                                 }
                             ]
-                        }
+                        },
                     }
                 ]
             },
@@ -247,7 +249,39 @@ def test_oauth_callback_auto_connects_single_whatsapp_account(
         follow_redirects=False,
     )
     assert callback.status_code == 302
-    assert "chatOauth=connected" in callback.headers["location"]
+    location = callback.headers["location"]
+    assert "chatOauth=select" in location
+    assert f"chatOauthState={state_id}" in location
+
+    with session_scope() as session:
+        account = session.scalar(
+            select(ChatChannelAccount).where(
+                ChatChannelAccount.workspace_id == workspace_id,
+                ChatChannelAccount.provider_account_id == "15550001111",
+            )
+        )
+        assert account is None
+
+    pending = client.get(
+        "/api/v1/chat/channel-accounts/oauth/pending",
+        headers=headers,
+        params={"oauthStateId": str(state_id)},
+    )
+    assert pending.status_code == 200
+    body = pending.json()
+    assert body["candidates"][0]["businessName"] == "Somnus Systems"
+    assert body["candidates"][0]["phoneNumber"] == "+1 555 000 1111"
+
+    complete = client.post(
+        "/api/v1/chat/channel-accounts/oauth/complete",
+        headers=headers,
+        json={
+            "oauthStateId": str(state_id),
+            "providerAccountId": "15550001111",
+        },
+    )
+    assert complete.status_code == 200
+    assert complete.json()["metaBusinessName"] == "Somnus Systems"
 
     with session_scope() as session:
         account = session.scalar(
@@ -257,17 +291,11 @@ def test_oauth_callback_auto_connects_single_whatsapp_account(
             )
         )
         assert account is not None
-        assert account.provider_account_id == "15550001111"
         assert account.connection_status == "connected"
-        assert account.access_token_ciphertext == "long-token"
+        assert account.meta_business_name == "Somnus Systems"
         assert any(
             method == "POST" and "waba-demo-1/subscribed_apps" in url
             for method, url in fake_http.calls
-        )
-        assert any(
-            isinstance(body, dict)
-            and str(body.get("override_callback_uri") or "").endswith("/api/v1/webhooks/meta")
-            for body in fake_http.json_bodies
         )
 
 
@@ -330,7 +358,7 @@ def test_oauth_callback_returns_to_request_origin(
     assert callback.status_code == 302
     location = callback.headers["location"]
     assert location.startswith("https://app.helios360erp.com/configuracion")
-    assert "chatOauth=connected" in location
+    assert "chatOauth=select" in location
 
 
 @pytest.mark.integration
@@ -589,8 +617,9 @@ def test_discover_whatsapp_falls_back_to_waba_edges(meta_oauth_settings) -> None
             state_id=state_id, code="oauth-code", error=None
         )
         assert channel == "whatsapp"
-        assert auto is True
+        assert auto is False
         assert candidates[0].provider_account_id == "15550999"
+        assert candidates[0].business_name == "Helios Biz"
         session.commit()
 
 

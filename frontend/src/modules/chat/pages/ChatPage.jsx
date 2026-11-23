@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { chatInboxCopy, useAppReviewEnglish } from '../lib/appReviewLocale'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, RefreshCw, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -15,6 +16,11 @@ export default function ChatPage() {
   const online = useSessionStore((s) => s.status === 'online')
   const canSend = useSessionStore((s) => s.hasPermission('chat.send'))
   const { activeBranchId, setActiveBranch, selectOptions } = useActiveBranchScope()
+  const reviewEn = useAppReviewEnglish()
+  const copy = useMemo(() => chatInboxCopy(reviewEn), [reviewEn])
+  const channelsPath = reviewEn
+    ? '/configuracion?open=chat-canales&lang=en'
+    : '/configuracion?open=chat-canales'
 
   const [conversations, setConversations] = useState([])
   const [selectedId, setSelectedId] = useState(null)
@@ -64,12 +70,12 @@ export default function ChatPage() {
         setMobileShowThread(false)
       }
     } catch (err) {
-      setError(err?.message || 'No se pudieron cargar las conversaciones.')
+      setError(err?.message || copy.loadError)
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [online, activeBranchId, channelFilter, searchDebounced])
+  }, [online, activeBranchId, channelFilter, searchDebounced, copy.loadError])
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearchDebounced(search), 300)
@@ -109,11 +115,13 @@ export default function ChatPage() {
 
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-4 p-6 sm:p-8" data-testid="chat-inbox-page">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-slate-500">
-          Bandeja unificada por sucursal. Las cuentas compartidas muestran los mismos hilos en cada
-          sucursal asignada.
+      {copy.appReviewBanner ? (
+        <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-900">
+          {copy.appReviewBanner}
         </p>
+      ) : null}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-slate-500">{copy.headerSubtitle}</p>
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"
@@ -123,12 +131,12 @@ export default function ChatPage() {
             disabled={loading || !online}
           >
             <RefreshCw className={loading || refreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
-            Actualizar
+            {copy.refresh}
           </Button>
-          <Link to="/configuracion?open=chat-canales">
+          <Link to={channelsPath}>
             <Button type="button" variant="secondary" size="sm">
               <Settings className="h-4 w-4" />
-              Canales
+              {copy.channels}
             </Button>
           </Link>
         </div>
@@ -136,13 +144,13 @@ export default function ChatPage() {
 
       {!online && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Inicia sesión en línea para ver el inbox de chat.
+          {copy.offline}
         </div>
       )}
 
       {!activeBranchId && online && (
         <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-          No hay sucursal activa. Elige una sucursal en el selector del ERP.
+          {copy.noActiveBranch}
         </div>
       )}
 
@@ -153,7 +161,7 @@ export default function ChatPage() {
             {error}
           </span>
           <Button size="sm" variant="secondary" onClick={refreshAll}>
-            Reintentar
+            {copy.retry}
           </Button>
         </div>
       )}
@@ -174,6 +182,7 @@ export default function ChatPage() {
             branchId={activeBranchId}
             onBranchChange={setActiveBranch}
             loading={loading}
+            copy={copy}
           />
         </div>
         <div
@@ -186,6 +195,8 @@ export default function ChatPage() {
             onBack={() => setMobileShowThread(false)}
             pollTick={pollTick}
             onSent={refreshAll}
+            copy={copy}
+            channelsPath={channelsPath}
           />
         </div>
       </div>

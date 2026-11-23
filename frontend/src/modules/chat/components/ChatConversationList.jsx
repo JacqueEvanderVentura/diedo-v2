@@ -6,11 +6,13 @@ import { WhatsAppIcon } from '@/components/brand/WhatsAppIcon'
 import { cn } from '@/lib/utils'
 import { conversationSubtitle, conversationTitle, formatChatTimestamp } from '../lib/format'
 
-const CHANNEL_FILTERS = [
-  { value: '', label: 'Todos los canales' },
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'instagram', label: 'Instagram' },
-]
+function channelFilters(copy) {
+  return [
+    { value: '', label: copy.allChannels },
+    { value: 'whatsapp', label: copy.channelWhatsapp },
+    { value: 'instagram', label: copy.channelInstagram },
+  ]
+}
 
 function ChannelIcon({ channel, className }) {
   if (channel === 'whatsapp') {
@@ -31,7 +33,19 @@ export function ChatConversationList({
   branchId,
   onBranchChange,
   loading,
+  copy,
 }) {
+  const labels = copy || {
+    allChannels: 'Todos los canales',
+    channelWhatsapp: 'WhatsApp',
+    channelInstagram: 'Instagram',
+    searchPlaceholder: 'Buscar conversación…',
+    loadingThreads: 'Cargando hilos…',
+    emptyListTitle: 'Sin conversaciones',
+    emptyListDesc:
+      'No hay mensajes para esta sucursal y filtro. Conecta canales en Configuración o espera mensajes entrantes.',
+  }
+  const filters = channelFilters(labels)
   return (
     <div
       className="flex h-[min(72vh,720px)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft"
@@ -50,7 +64,7 @@ export function ChatConversationList({
         <Select
           value={channelFilter}
           onChange={onChannelFilterChange}
-          options={CHANNEL_FILTERS}
+          options={filters}
           size="sm"
           data-testid="chat-channel-filter"
         />
@@ -58,18 +72,18 @@ export function ChatConversationList({
           icon={Search}
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="Buscar conversación…"
+          placeholder={labels.searchPlaceholder}
           data-testid="chat-search"
         />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {loading && items.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-slate-400">Cargando hilos…</p>
+          <p className="px-4 py-8 text-center text-sm text-slate-400">{labels.loadingThreads}</p>
         ) : items.length === 0 ? (
           <EmptyState
-            title="Sin conversaciones"
-            description="No hay mensajes para esta sucursal y filtro. Conecta canales en Configuración o espera mensajes entrantes."
+            title={labels.emptyListTitle}
+            description={labels.emptyListDesc}
             className="py-10"
           />
         ) : (

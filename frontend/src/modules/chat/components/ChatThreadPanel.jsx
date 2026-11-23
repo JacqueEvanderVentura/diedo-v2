@@ -45,7 +45,25 @@ export function ChatThreadPanel({
   showBack,
   pollTick = 0,
   onSent,
+  copy,
+  channelsPath = '/configuracion?open=chat-canales',
 }) {
+  const labels = copy || {
+    selectConversationTitle: 'Selecciona una conversación',
+    selectConversationDesc: 'Elige un hilo a la izquierda para ver el historial y responder.',
+    loadingMessages: 'Cargando mensajes…',
+    emptyThreadTitle: 'Sin mensajes',
+    emptyThreadDesc: 'Aún no hay mensajes en este hilo.',
+    windowOpen: 'Ventana de 24 h abierta',
+    windowClosed:
+      'Fuera de ventana de 24 h. En WhatsApp haría falta plantilla (próximamente).',
+    sendPlaceholder: 'Escribe un mensaje…',
+    sendPlaceholderClosed: 'No puedes responder fuera de la ventana de 24 h',
+    noSendPermissionPrefix: 'Necesitas el permiso',
+    noSendPermissionSuffix: 'para responder.',
+    channelsLink: 'Revisa la conexión de canales',
+    channelsLinkSuffix: 'si esperabas poder responder.',
+  }
   const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
@@ -119,8 +137,8 @@ export function ChatThreadPanel({
         data-testid="chat-thread-empty"
       >
         <EmptyState
-          title="Selecciona una conversación"
-          description="Elige un hilo a la izquierda para ver el historial y responder."
+          title={labels.selectConversationTitle}
+          description={labels.selectConversationDesc}
         />
       </div>
     )
@@ -159,9 +177,7 @@ export function ChatThreadPanel({
         >
           <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
-            {windowOpen
-              ? 'Ventana de 24 h abierta'
-              : 'Fuera de ventana de 24 h. En WhatsApp haría falta plantilla (próximamente).'}
+            {windowOpen ? labels.windowOpen : labels.windowClosed}
           </span>
         </div>
       </header>
@@ -170,10 +186,14 @@ export function ChatThreadPanel({
         {loading ? (
           <p className="flex items-center justify-center gap-2 py-12 text-sm text-slate-400">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Cargando mensajes…
+            {labels.loadingMessages}
           </p>
         ) : messages.length === 0 ? (
-          <EmptyState title="Sin mensajes" description="Aún no hay mensajes en este hilo." className="py-8" />
+          <EmptyState
+            title={labels.emptyThreadTitle}
+            description={labels.emptyThreadDesc}
+            className="py-8"
+          />
         ) : (
           messages.map((message) => {
             const outbound = message.direction === 'outbound'
@@ -210,7 +230,8 @@ export function ChatThreadPanel({
       <footer className="border-t border-slate-100 p-4">
         {!canSend ? (
           <p className="text-center text-xs text-slate-400">
-            Necesitas el permiso <span className="font-medium">chat.send</span> para responder.
+            {labels.noSendPermissionPrefix}{' '}
+            <span className="font-medium">chat.send</span> {labels.noSendPermissionSuffix}
           </p>
         ) : (
           <div className="flex gap-2">
@@ -226,7 +247,7 @@ export function ChatThreadPanel({
               disabled={!windowOpen || sending}
               rows={2}
               placeholder={
-                windowOpen ? 'Escribe un mensaje…' : 'No puedes responder fuera de la ventana de 24 h'
+                windowOpen ? labels.sendPlaceholder : labels.sendPlaceholderClosed
               }
               className="min-h-[2.75rem] flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50 disabled:text-slate-400"
               data-testid="chat-composer-input"
@@ -243,10 +264,10 @@ export function ChatThreadPanel({
         )}
         {!windowOpen && canSend && (
           <p className="mt-2 text-center text-xs text-slate-500">
-            <Link to="/configuracion?open=chat-canales" className="text-blue-600 hover:underline">
-              Revisa la conexión de canales
+            <Link to={channelsPath} className="text-blue-600 hover:underline">
+              {labels.channelsLink}
             </Link>{' '}
-            si esperabas poder responder.
+            {labels.channelsLinkSuffix}
           </p>
         )}
       </footer>
