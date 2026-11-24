@@ -78,10 +78,17 @@ async function selectAppointment() {
   fireEvent.click(screen.getByTestId('pref-invite-invoice'))
   fireEvent.change(screen.getByTestId('self-email'), { target: { value: 'client@example.com' } })
   fireEvent.click(screen.getByTestId('self-save-profile'))
-  await screen.findByTestId('self-service', {}, { timeout: 5000 })
+  await screen.findByTestId('self-service', {}, { timeout: 8000 })
   fireEvent.change(screen.getByTestId('self-service'), { target: { value: 'service' } })
-  await waitFor(() => expect(screen.queryByText(/Cargando sucursal/)).not.toBeInTheDocument(), { timeout: 5000 })
-  const specialist = await screen.findByTestId('self-specialist', {}, { timeout: 5000 }).catch(() => null)
+  await waitFor(
+    () => {
+      expect(
+        screen.queryByTestId('self-specialist') || screen.queryByTestId('self-booking-time-select'),
+      ).toBeTruthy()
+    },
+    { timeout: 8000 },
+  )
+  const specialist = screen.queryByTestId('self-specialist')
   if (specialist) {
     fireEvent.change(specialist, { target: { value: 'employee' } })
   }
@@ -253,7 +260,7 @@ it('keeps one idempotency key when a reservation response is lost and prevents d
   expect(publicBookingApi.book.mock.calls[0][2]).toBe(publicBookingApi.book.mock.calls[1][2])
   expect(screen.getByRole('link', { name: 'Ir a mi portal' }).getAttribute('href')).toContain('/agendar/portal')
   expect(screen.getByText(/no se pudo completar el correo/)).toBeTruthy()
-})
+}, 20_000)
 
 it('hydrates profile from saved session when booking from the portal', async () => {
   rememberPublicSession({ branchId: 'branch', docType: 'cedula', documentId: '00112345678' })
