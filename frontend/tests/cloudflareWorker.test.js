@@ -4,6 +4,26 @@ import { deploymentConfig } from '../scripts/prepare-deploy.mjs'
 
 const origin = 'https://diedo-frontend-production.helios360erp.workers.dev'
 const env = { API_ORIGIN: 'https://api-production-b1fb.up.railway.app' }
+const bookingBranchId = '01a11c3b-fc71-77fc-bac8-727f47a2e001'
+const sampleIndexHtml = `<!doctype html><html><head>
+<title>Helios 360</title>
+<meta
+  name="description"
+  content="Helios 360 — Plataforma de gestión empresarial."
+/>
+<meta property="og:site_name" content="Helios 360" />
+<meta property="og:title" content="Helios 360" />
+<meta
+  property="og:description"
+  content="Punto de venta, agenda, inventario."
+/>
+<meta property="og:image" content="/helios-360-full.png" />
+<meta property="og:image:alt" content="Helios 360 — logo" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Helios 360" />
+<meta name="twitter:description" content="Punto de venta, agenda." />
+<meta name="twitter:image" content="/helios-360-full.png" />
+</head><body></body></html>`
 afterEach(() => vi.unstubAllGlobals())
 
 describe('Cloudflare Railway proxy', () => {
@@ -111,6 +131,57 @@ describe('Cloudflare Railway proxy', () => {
     expect(response.status).toBe(502)
     expect(response.headers.get('Cache-Control')).toBe('no-store')
     expect(await response.text()).not.toContain('private upstream details')
+  })
+
+  it('serves /agendar to crawlers without Sec-Fetch-Mode navigate', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
+    const assets = { fetch: vi.fn(async () => new Response(sampleIndexHtml, { headers: { 'Content-Type': 'text/html' } })) }
+    const page = await worker.fetch(new Request(`${origin}/agendar?branch=${bookingBranchId}`), { ...env, ASSETS: assets })
+    expect(page.status).toBe(200)
+    const html = await page.text()
+    expect(html).toContain('<title>Agenda tu cita con nosotros!</title>')
+    expect(html).toContain(`property="og:image" content="${origin}/helios-360-full.png"`)
+  })
+
+  it('personalizes agendar metadata when public booking context resolves workspaceName', async () => {
+    const fetchMock = vi.fn(async input => {
+      const url = typeof input === 'string' ? input : input.url
+      expect(url).toBe(`${env.API_ORIGIN}/api/v1/public/booking/context?branchId=${bookingBranchId}`)
+      return new Response(JSON.stringify({ workspaceName: 'Charm' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const assets = { fetch: vi.fn(async () => new Response(sampleIndexHtml)) }
+    const page = await worker.fetch(new Request(`${origin}/agendar?branch=${bookingBranchId}`), { ...env, ASSETS: assets })
+    const html = await page.text()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(html).toContain('<title>Agenda tu cita con Charm!</title>')
+    expect(html).toContain('property="og:title" content="Agenda tu cita con Charm!"')
+    expect(html).toContain(`property="og:image" content="${origin}/helios-360-full.png"`)
+  })
+
+  it('uses generic agendar metadata when branch is missing', async () => {
+    const fetch = vi.fn()
+    vi.stubGlobal('fetch', fetch)
+    const assets = { fetch: vi.fn(async () => new Response(sampleIndexHtml)) }
+    const page = await worker.fetch(new Request(`${origin}/agendar`), { ...env, ASSETS: assets })
+    expect(await page.text()).toContain('Agenda tu cita con nosotros!')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('rewrites agendar metadata for normal browser navigation', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
+    const assets = { fetch: vi.fn(async () => new Response(sampleIndexHtml)) }
+    const page = await worker.fetch(new Request(`${origin}/agendar`, { headers: { 'Sec-Fetch-Mode': 'navigate' } }), { ...env, ASSETS: assets })
+    expect(await page.text()).toContain('Agenda tu cita con nosotros!')
+  })
+
+  it('keeps /login as 404 for crawlers', async () => {
+    vi.stubGlobal('fetch', vi.fn())
+    const page = await worker.fetch(new Request(`${origin}/login`), { ...env, ASSETS: { fetch: vi.fn() } })
+    expect(page.status).toBe(404)
   })
 })
 
