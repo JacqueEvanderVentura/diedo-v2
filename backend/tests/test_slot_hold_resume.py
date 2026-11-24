@@ -16,12 +16,11 @@ from tests.test_slot_hold_abandoned import _claim_with_customer, _expire_hold, _
 pytest_plugins = ("tests.test_public_booking_flow",)
 
 
-def _notification_id_for_hold(hold_id) -> UUID:
+def _notification_id_for_hold(hold_id, membership_id: UUID) -> UUID:
+    event_key = f"slot_hold.abandoned/{hold_id}/{membership_id}"
     with session_scope() as session:
         notification_id = session.scalar(
-            select(UserNotification.id).where(
-                UserNotification.event_key.like(f"slot_hold.abandoned/{hold_id}/%")
-            )
+            select(UserNotification.id).where(UserNotification.event_key == event_key)
         )
         assert notification_id is not None
         return notification_id
@@ -76,15 +75,16 @@ def _query(url: str) -> dict[str, list[str]]:
 
 @pytest.mark.integration
 def test_abandoned_booking_keeps_date_and_time_when_slot_is_still_free(client, booking_setup):
-    headers, *_ = booking_setup
+    headers, me, *_ = booking_setup
+    membership_id = UUID(me["membershipId"])
     branch, employee, service, body, _token, hold_id, pick = _claim_with_customer(
         client, booking_setup
     )
     _expire_hold(hold_id)
     _purge_holds()
 
-    notification_id = _notification_id_for_hold(hold_id)
-    listed = client.get("/api/v1/notifications?page=1&pageSize=5", headers=headers)
+    notification_id = _notification_id_for_hold(hold_id, membership_id)
+    listed = client.get("/api/v1/notifications?page=1&pageSize=10", headers=headers)
     assert listed.status_code == 200, listed.text
     item = next(row for row in listed.json()["items"] if row["id"] == str(notification_id))
     snapshot = item["link"]["slotHoldResume"]
@@ -106,7 +106,8 @@ def test_abandoned_booking_keeps_date_and_time_when_slot_is_still_free(client, b
 
 @pytest.mark.integration
 def test_abandoned_booking_drops_time_when_slot_was_taken(client, booking_setup):
-    headers, *_ = booking_setup
+    headers, me, *_ = booking_setup
+    membership_id = UUID(me["membershipId"])
     branch, _employee, service, body, _token, hold_id, pick = _claim_with_customer(
         client, booking_setup
     )
@@ -121,7 +122,7 @@ def test_abandoned_booking_drops_time_when_slot_was_taken(client, booking_setup)
     )
     assert booked.status_code == 201, booked.text
 
-    response = _resume(client, headers, _notification_id_for_hold(hold_id))
+    response = _resume(client, headers, _notification_id_for_hold(hold_id, membership_id))
     assert response.status_code == 200, response.text
     data = response.json()
     assert data["scheduledDate"] == body["date"]
