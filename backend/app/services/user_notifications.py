@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 MENTION_TOKEN_RE = re.compile(r"@\[([^\]]+)\]\((user|emp):([^)]+)\)")
 MAX_PER_MEMBERSHIP = 50
+SLOT_HOLD_ABANDONED_EVENT = "slot_hold.abandoned"
 _INCIDENT_HIGH_PRIORITIES = frozenset({"alta", "critica"})
 
 
@@ -209,6 +210,7 @@ class UserNotificationService:
         service_name: str,
         scheduled_label: str,
         employee_id: UUID | None,
+        resume_link: dict[str, Any] | None = None,
     ) -> None:
         recipients: set[UUID] = self._repository.active_membership_ids_for_roles(
             workspace_id, ("workspace_admin", "manager", "seller")
@@ -226,12 +228,16 @@ class UserNotificationService:
         payloads = tuple(
             NotificationPayload(
                 membership_id=mid,
-                event_type="slot_hold.abandoned",
+                event_type=SLOT_HOLD_ABANDONED_EVENT,
                 event_key=f"slot_hold.abandoned/{hold_id}/{mid}",
                 title="Agenda sin finalizar",
                 body=body,
                 priority="normal",
-                link={"path": "/agenda"},
+                link=(
+                    {"path": "/agenda", "slotHoldResume": resume_link}
+                    if resume_link is not None
+                    else {"path": "/agenda"}
+                ),
                 send_email=True,
             )
             for mid in recipients

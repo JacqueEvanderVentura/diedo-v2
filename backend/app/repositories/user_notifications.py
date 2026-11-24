@@ -114,6 +114,17 @@ class UserNotificationsRepository:
         ).all()
         return tuple(NotificationRecord(notification=row) for row in rows), total, unread
 
+    def get_for_membership(
+        self, workspace_id: UUID, membership_id: UUID, notification_id: UUID
+    ) -> UserNotification | None:
+        return self._session.scalar(
+            select(UserNotification).where(
+                UserNotification.workspace_id == workspace_id,
+                UserNotification.membership_id == membership_id,
+                UserNotification.id == notification_id,
+            )
+        )
+
     def mark_read(self, workspace_id: UUID, membership_id: UUID, notification_id: UUID) -> bool:
         row = self._session.scalar(
             select(UserNotification).where(

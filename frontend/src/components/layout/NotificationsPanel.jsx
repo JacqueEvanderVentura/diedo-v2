@@ -82,6 +82,11 @@ export function NotificationsPanel() {
     loadPage(nextPage)
   }
 
+  const openAllNotifications = () => {
+    setOpen(false)
+    navigate('/notificaciones')
+  }
+
   return (
     <>
       <button
@@ -133,6 +138,17 @@ export function NotificationsPanel() {
           onPageChange={handlePageChange}
           compact
         />
+
+        <div className="border-t border-slate-100 p-2">
+          <button
+            type="button"
+            onClick={openAllNotifications}
+            data-testid="notifications-view-all"
+            className="w-full rounded-xl px-3 py-2 text-center text-sm font-semibold text-blue-600 transition-colors hover:bg-slate-50 hover:text-blue-700"
+          >
+            Ver todas las notificaciones
+          </button>
+        </div>
       </DropdownPanel>
     </>
   )

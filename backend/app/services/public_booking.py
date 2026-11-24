@@ -213,6 +213,37 @@ class PublicBookingService:
         )
         return slots, duration_minutes, held_slots
 
+    def resume_booking_window(
+        self,
+        branch_id: UUID,
+        *,
+        scheduled_date: date,
+        scheduled_time: time,
+        employee_id: UUID | None,
+        service_id: UUID,
+    ) -> tuple[date | None, str | None]:
+        """Date/time still worth pre-filling when resuming an abandoned booking.
+
+        (None, None) when the day already passed or nothing is bookable that day;
+        (date, None) when the day is open but the original time is gone.
+        """
+        branch, _workspace = self._resolve_active_branch(branch_id)
+        if scheduled_date < datetime.now(ZoneInfo(branch.timezone)).date():
+            return None, None
+        try:
+            slots, _duration, _held = self.list_slots(
+                branch_id,
+                scheduled_date=scheduled_date,
+                employee_id=employee_id,
+                service_id=service_id,
+            )
+        except ResourceNotFoundError, InvalidOperationError:
+            return None, None
+        if not slots:
+            return None, None
+        key = scheduled_time.strftime("%H:%M")
+        return scheduled_date, (key if key in slots else None)
+
     def _active_resources(self, branch: Branch) -> list[Any]:
         return [
             resource

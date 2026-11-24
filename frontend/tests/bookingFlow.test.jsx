@@ -168,7 +168,8 @@ it('prefills the last service and specialist after identify', async () => {
   await screen.findByText(/Ingresa tu documento/)
   fireEvent.change(screen.getByTestId('self-doc-lookup'), { target: { value: '00112345678' } })
   fireEvent.click(screen.getByTestId('self-login-search'))
-  await screen.findByTestId('self-service')
+  // Branch context reloads when the phase switches to booking; allow extra time under full-suite load.
+  await screen.findByTestId('self-service', {}, { timeout: 5000 })
   expect(screen.getByTestId('self-service').value).toBe('service')
   expect(screen.getByTestId('self-specialist').value).toBe('employee')
 })

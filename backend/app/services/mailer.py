@@ -156,17 +156,34 @@ def _booking_link_url(branch_id: object | None = None) -> str:
     return f"{base}/agendar?{urlencode({'branch': str(branch_id)})}"
 
 
-def resume_booking_url(hold: AppointmentSlotHold) -> str:
+def build_resume_booking_url(
+    *,
+    branch_id: object,
+    service_id: object,
+    employee_id: object | None,
+    scheduled_date: date | None = None,
+    scheduled_time: str | None = None,
+) -> str:
+    """Public booking link that reopens with the service (plus date/time when valid) filled in."""
     base = settings.public_app_url.rstrip("/")
-    params: dict[str, str] = {
-        "branch": str(hold.branch_id),
-        "service": str(hold.service_id),
-        "date": hold.scheduled_date.isoformat(),
-        "time": hold.scheduled_time.strftime("%H:%M"),
-    }
-    if hold.employee_id is not None:
-        params["employee"] = str(hold.employee_id)
+    params: dict[str, str] = {"branch": str(branch_id), "service": str(service_id)}
+    if scheduled_date is not None:
+        params["date"] = scheduled_date.isoformat()
+        if scheduled_time:
+            params["time"] = scheduled_time
+    if employee_id is not None:
+        params["employee"] = str(employee_id)
     return f"{base}/agendar?{urlencode(params)}"
+
+
+def resume_booking_url(hold: AppointmentSlotHold) -> str:
+    return build_resume_booking_url(
+        branch_id=hold.branch_id,
+        service_id=hold.service_id,
+        employee_id=hold.employee_id,
+        scheduled_date=hold.scheduled_date,
+        scheduled_time=hold.scheduled_time.strftime("%H:%M"),
+    )
 
 
 def _brand_logo_url() -> str:

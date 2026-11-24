@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import Field, field_validator
@@ -8,11 +8,33 @@ from app.schemas.common import ApiModel
 MAX_NOTIFICATIONS_STORED = 50
 
 
+class SlotHoldResumeLink(ApiModel):
+    """Snapshot of an abandoned self-booking, kept on the notification (the hold itself expires)."""
+
+    branch_id: UUID
+    service_id: UUID
+    service_name: str | None = None
+    employee_id: UUID | None = None
+    customer_name: str | None = None
+    customer_phone: str | None = None
+    scheduled_date: date
+    scheduled_time: str
+
+
 class NotificationLink(ApiModel):
     path: str | None = None
     incident_id: UUID | None = None
     purchase_request_id: UUID | None = None
     appointment_id: UUID | None = None
+    slot_hold_resume: SlotHoldResumeLink | None = None
+
+
+class SlotHoldResumeResponse(ApiModel):
+    """Link to continue an abandoned booking; date/time are omitted once no longer bookable."""
+
+    resume_url: str
+    scheduled_date: date | None = None
+    scheduled_time: str | None = None
 
 
 class UserNotificationResponse(ApiModel):

@@ -1,6 +1,8 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ResumeBookingWhatsAppButton } from '@/components/notifications/ResumeBookingWhatsAppButton'
 import { formatLocaleDateTime12h } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { canSendResumeBookingWhatsApp } from '@/modules/agenda/lib/slotHoldWhatsApp'
 
 function fmtWhen(iso) {
   try {
@@ -35,23 +37,32 @@ export function NotificationList({
           <p className="px-3 py-8 text-center text-sm text-slate-400">{emptyMessage}</p>
         ) : (
           items.map((n) => (
-            <button
+            <div
               key={n.id}
-              type="button"
-              onClick={() => onOpen(n)}
-              data-testid={`notification-${n.id}`}
               className={cn(
-                'flex w-full flex-col gap-1 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-slate-50',
+                'rounded-xl transition-colors hover:bg-slate-50',
                 !n.read && 'bg-blue-50/60'
               )}
             >
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-sm font-semibold text-slate-800">{n.title}</p>
-                {!n.read && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-600" />}
-              </div>
-              <p className="text-xs leading-relaxed text-slate-500">{n.body}</p>
-              <p className="text-[10px] text-slate-400">{fmtWhen(n.createdAt)}</p>
-            </button>
+              <button
+                type="button"
+                onClick={() => onOpen(n)}
+                data-testid={`notification-${n.id}`}
+                className="flex w-full flex-col gap-1 rounded-xl px-3 py-2.5 text-left"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-semibold text-slate-800">{n.title}</p>
+                  {!n.read && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-600" />}
+                </div>
+                <p className="text-xs leading-relaxed text-slate-500">{n.body}</p>
+                <p className="text-[10px] text-slate-400">{fmtWhen(n.createdAt)}</p>
+              </button>
+              {canSendResumeBookingWhatsApp(n) && (
+                <div className="px-3 pb-2.5">
+                  <ResumeBookingWhatsAppButton notification={n} />
+                </div>
+              )}
+            </div>
           ))
         )}
       </div>

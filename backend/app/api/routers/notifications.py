@@ -11,8 +11,10 @@ from app.schemas.user_notifications import (
     MarkNotificationReadResponse,
     NotificationLink,
     PaginatedNotificationsResponse,
+    SlotHoldResumeResponse,
     UserNotificationResponse,
 )
+from app.services.slot_hold_resume import SlotHoldResumeService
 from app.services.user_notifications import UserNotificationService
 
 router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
@@ -60,6 +62,19 @@ def list_notifications(
         total=total,
         unread_count=unread,
     )
+
+
+@router.get(
+    "/{notification_id}/slot-hold-resume",
+    response_model=SlotHoldResumeResponse,
+    responses={**_SECURITY_RESPONSES, 404: {"model": ErrorResponse}},
+)
+def get_slot_hold_resume(
+    notification_id: UUID,
+    database: DatabaseSession,
+    principal: CurrentPrincipal,
+) -> SlotHoldResumeResponse:
+    return SlotHoldResumeService(database).resume_link(principal, notification_id)
 
 
 @router.post(

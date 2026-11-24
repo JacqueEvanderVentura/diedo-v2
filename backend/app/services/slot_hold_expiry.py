@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Appointment, Branch, Customer, Workspace
 from app.db.models.agenda import AppointmentSlotHold
+from app.schemas.user_notifications import SlotHoldResumeLink
 from app.services.email_notifications import deliver_email, enqueue_email
 from app.services.mailer import render_slot_hold_abandoned_email
 from app.services.user_notifications import UserNotificationService, deliver_pending_in_app_emails
@@ -104,6 +105,18 @@ def _process_expired_hold(session: Session, hold: AppointmentSlotHold) -> list[U
     service_name = (hold.service_name or "").strip() or "Servicio"
     scheduled_label = _scheduled_label(hold)
 
+    # The hold row is deleted right after this, so keep what staff needs to resume it.
+    resume_link = SlotHoldResumeLink(
+        branch_id=hold.branch_id,
+        service_id=hold.service_id,
+        service_name=hold.service_name,
+        employee_id=hold.employee_id,
+        customer_name=hold.customer_display_name,
+        customer_phone=(hold.customer_phone or "").strip() or None,
+        scheduled_date=hold.scheduled_date,
+        scheduled_time=hold.scheduled_time.strftime("%H:%M"),
+    ).model_dump(by_alias=True, mode="json")
+
     UserNotificationService(session).notify_slot_hold_abandoned(
         workspace_id=hold.workspace_id,
         hold_id=hold.id,
@@ -111,6 +124,7 @@ def _process_expired_hold(session: Session, hold: AppointmentSlotHold) -> list[U
         service_name=service_name,
         scheduled_label=scheduled_label,
         employee_id=hold.employee_id,
+        resume_link=resume_link,
     )
 
     recipient = _resolve_customer_email(session, hold)
