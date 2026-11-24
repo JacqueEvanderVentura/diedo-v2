@@ -37,13 +37,16 @@ export function AppointmentChip({
 }) {
   const staffName = useStaffName()
   const tone = aptTone(apt)
-  const fullNote = normalizeAppointmentNote(apt.notes)
+  const fullStaffNote = normalizeAppointmentNote(apt.notes)
+  const fullClientNote = normalizeAppointmentNote(apt.clientNotes)
   const cancelled = tone === 'cancelled'
   const awaitingSpecialist = !apt.employeeId && !cancelled
   const lookedUpName = apt.employeeId ? staffName(apt.employeeId) : ''
   const specialistName = apt.employeeName
     || (lookedUpName && lookedUpName !== '—' ? lookedUpName : 'Con especialista')
-  const showNote = showDayNote && Boolean(fullNote)
+  const showStaffNote = showDayNote && Boolean(fullStaffNote)
+  const showClientNote = showDayNote && Boolean(fullClientNote)
+  const showNote = showStaffNote || showClientNote
   const hasPendingAmount = apt.pendingPayment && apt.pendingAmount > 0
   const showFooter = showNote || !showDayNote || hasPendingAmount
   const showImportStack = importStackSiblings.length > 1
@@ -149,16 +152,32 @@ export function AppointmentChip({
           )}
         >
           {showNote ? (
-            <span
-              className={cn(
-                'line-clamp-2 min-w-0 flex-1 break-words font-bold',
-                compact ? 'text-[10px]' : 'text-[11px]'
-              )}
-              title={fullNote}
-              aria-label={`Nota: ${fullNote}`}
-            >
-              {appointmentCardNote(fullNote)}
-            </span>
+            <div className="min-w-0 flex-1 space-y-0.5">
+              {showStaffNote ? (
+                <span
+                  className={cn(
+                    'line-clamp-2 block break-words font-bold',
+                    compact ? 'text-[10px]' : 'text-[11px]'
+                  )}
+                  title={fullStaffNote}
+                  aria-label={`Observaciones del staff: ${fullStaffNote}`}
+                >
+                  {appointmentCardNote(fullStaffNote)}
+                </span>
+              ) : null}
+              {showClientNote ? (
+                <span
+                  className={cn(
+                    'line-clamp-2 block break-words font-medium text-slate-700',
+                    compact ? 'text-[10px]' : 'text-[11px]'
+                  )}
+                  title={fullClientNote}
+                  aria-label={`Observaciones del cliente: ${fullClientNote}`}
+                >
+                  Cliente: {appointmentCardNote(fullClientNote)}
+                </span>
+              ) : null}
+            </div>
           ) : !showDayNote ? (
             <span className={cn('min-w-0 truncate font-bold', compact ? 'text-[10px]' : 'text-[11px]')}>
               {formatTime12h(apt.time)}

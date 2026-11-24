@@ -128,6 +128,7 @@ export const PAGE_META = {
   '/inventarios': { title: 'Inventarios', subtitle: 'Control y gestión de productos, activos y movimientos.' },
   '/compras': { title: 'Gestión de Compras', subtitle: 'Proveedores, solicitudes y flujos de aprobación.' },
   '/incidencias': { title: 'Incidencias', subtitle: 'Gestión de reportes, seguimiento y resolución de incidencias.' },
+  '/notificaciones': { title: 'Mis notificaciones', subtitle: 'Historial de avisos de tu cuenta (hasta 50).' },
   '/chat': { title: 'Chat', subtitle: 'Mensajes de Instagram y WhatsApp por sucursal.' },
   '/agenda/calendario': { title: 'Agenda', subtitle: 'Calendario de citas por día, semana y mes.' },
   '/agenda/gestion': { title: 'Agenda', subtitle: 'Gestión de citas y estados.' },

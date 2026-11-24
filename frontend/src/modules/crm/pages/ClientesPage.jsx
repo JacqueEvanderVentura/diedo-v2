@@ -78,14 +78,7 @@ export default function ClientesPage() {
   const paymentMethods = useConfigStore((s) => s.paymentMethods)
   const appointments = useAgendaStore((s) => s.appointments)
   const agendaResources = useAgendaStore((s) => s.resources)
-  const hydrateAppointments = useAgendaStore((s) => s.hydrateAppointments)
   const sessionUser = useSessionStore((s) => s.user)
-
-  useEffect(() => {
-    if (useSessionStore.getState().hasPermission('appointment.read')) {
-      hydrateAppointments({ params: {} }).catch(() => {})
-    }
-  }, [hydrateAppointments])
   const scopedCustomers = useMemo(
     () => customersVisibleToSession(customers, sessionUser),
     [customers, sessionUser]

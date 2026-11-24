@@ -208,6 +208,7 @@ describe('administration adapters', () => {
       partners: [],
       legalEntityMode: 'existing',
       targetLegalEntityId: 'entity-main',
+      onlineBookingSelectable: false,
     }
     const existing = createBranchToApi(base, { code: 'ATOMIC', timezone: 'America/Santo_Domingo' })
     const created = createBranchToApi({
@@ -220,6 +221,7 @@ describe('administration adapters', () => {
     }, { code: 'ATOMIC-NEW', timezone: 'America/Santo_Domingo' })
 
     expect(existing.legalEntityAssignment).toEqual({ type: 'existing', legalEntityId: 'entity-main' })
+    expect(existing.onlineBookingSelectable).toBe(false)
     expect(existing).not.toHaveProperty('legalEntityId')
     expect(existing.details.independentBusiness).toBe(false)
     expect(created.legalEntityAssignment).toMatchObject({

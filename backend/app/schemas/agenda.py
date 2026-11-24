@@ -189,6 +189,7 @@ class AppointmentResponse(ApiModel):
     delay_responsibility: DelayResponsibility | None
     completion_note: str | None
     notes: str | None
+    client_notes: str | None = None
     pending_payment: bool
     pending_amount: Decimal
     first_time: bool
@@ -258,6 +259,11 @@ class CreateAppointmentRequest(ApiModel):
         max_length=60,
         description="Nota operativa de la cita, con un máximo de 60 caracteres.",
     )
+    client_notes: str | None = Field(
+        default=None,
+        max_length=1000,
+        description="Observaciones del cliente para esta cita.",
+    )
     pending_payment: bool = False
     pending_amount: Decimal = Field(default=Decimal("0"), ge=0, max_digits=14, decimal_places=2)
     first_time: bool = False
@@ -273,7 +279,7 @@ class CreateAppointmentRequest(ApiModel):
     def normalize_required_text(cls, value: str) -> str:
         return _normalize_required_text(value)
 
-    @field_validator("customer_phone", "notes")
+    @field_validator("customer_phone", "notes", "client_notes")
     @classmethod
     def normalize_optional_text(cls, value: str | None) -> str | None:
         return _normalize_optional_text(value)
@@ -328,6 +334,11 @@ class UpdateAppointmentRequest(ApiModel):
             "permite reenviar sin pérdida una nota histórica sin cambios."
         ),
     )
+    client_notes: str | None = Field(
+        default=None,
+        max_length=1000,
+        description="Observaciones del cliente para esta cita.",
+    )
     pending_payment: bool | None = None
     pending_amount: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
     first_time: bool | None = None
@@ -340,7 +351,7 @@ class UpdateAppointmentRequest(ApiModel):
     def normalize_required_text(cls, value: str | None) -> str | None:
         return _normalize_required_text(value) if value is not None else None
 
-    @field_validator("customer_phone", "notes", "completion_note")
+    @field_validator("customer_phone", "notes", "client_notes", "completion_note")
     @classmethod
     def normalize_optional_text(cls, value: str | None) -> str | None:
         return _normalize_optional_text(value)

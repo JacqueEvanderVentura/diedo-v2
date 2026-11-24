@@ -414,6 +414,30 @@ def test_schedule_timezone_leave_and_expired_email_retry(client, booking_setup, 
 
 
 @pytest.mark.integration
+def test_public_booking_persists_client_notes(client, booking_setup):
+    _, _, branch, employee, service = booking_setup
+    base = f"/api/v1/public/booking/branches/{branch}"
+    body = {
+        **payload_for(employee, service),
+        "clientNotes": "Necesito sillón cerca de la entrada",
+    }
+    booked = client.post(
+        f"{base}/appointments",
+        json=body,
+        headers={"Idempotency-Key": str(uuid7())},
+    )
+    assert booked.status_code == 201, booked.text
+    appointment = booked.json()["appointment"]
+    assert appointment["clientNotes"] == "Necesito sillón cerca de la entrada"
+    assert "notes" not in appointment
+    with get_session_factory()() as session:
+        stored = session.get(Appointment, UUID(appointment["id"]))
+        assert stored is not None
+        assert stored.client_notes == "Necesito sillón cerca de la entrada"
+        assert stored.notes is None
+
+
+@pytest.mark.integration
 def test_public_booking_any_available_specialist(client, booking_setup):
     headers, _, branch, employee, service = booking_setup
     base = f"/api/v1/public/booking/branches/{branch}"
@@ -1205,6 +1229,60 @@ def test_booking_entry_context_requires_branch_id(client, booking_setup):
     assert missing.status_code == 400, missing.text
     scoped = client.get("/api/v1/public/booking/context", params={"branchId": branch})
     assert scoped.status_code == 200, scoped.text
+
+
+@pytest.mark.integration
+def test_booking_entry_context_when_query_branch_not_selectable(client, booking_setup):
+    headers, me, branch, _employee, _service = booking_setup
+    listed = client.get("/api/v1/branches", headers=headers)
+    branch_row = next(row for row in listed.json() if row["id"] == branch)
+    disabled = client.patch(
+        f"/api/v1/branches/{branch}",
+        headers=headers,
+        json={"onlineBookingSelectable": False, "version": branch_row["version"]},
+    )
+    assert disabled.status_code == 200, disabled.text
+    another = next(item for item in me["visibleBranches"] if item["id"] != branch)
+    entry = client.get("/api/v1/public/booking/context", params={"branchId": branch})
+    assert entry.status_code == 200, entry.text
+    listed_ids = {item["id"] for item in entry.json().get("workspaceBranches") or []}
+    assert branch not in listed_ids
+    assert another["id"] in listed_ids
+    blocked = client.get(f"/api/v1/public/booking/branches/{branch}/context")
+    assert blocked.status_code == 400, blocked.text
+    restored = client.patch(
+        f"/api/v1/branches/{branch}",
+        headers=headers,
+        json={"onlineBookingSelectable": True, "version": disabled.json()["version"]},
+    )
+    assert restored.status_code == 200, restored.text
+
+
+@pytest.mark.integration
+def test_create_branch_persists_online_booking_selectable(client, booking_setup):
+    headers, _me, branch, _employee, _service = booking_setup
+    with get_session_factory()() as session:
+        primary = session.get(Branch, UUID(branch))
+        legal_entity_id = str(primary.legal_entity_id)
+    suffix = uuid7().hex[-8:]
+    created = client.post(
+        "/api/v1/branches",
+        headers=headers,
+        json={
+            "legalEntityId": legal_entity_id,
+            "code": f"PUB-{suffix}",
+            "name": f"Public booking branch {suffix}",
+            "timezone": "America/Santo_Domingo",
+            "onlineBookingSelectable": True,
+        },
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["onlineBookingSelectable"] is True
+    new_id = body["id"]
+    entry = client.get("/api/v1/public/booking/context", params={"branchId": new_id})
+    assert entry.status_code == 200, entry.text
+    assert any(item["id"] == new_id for item in entry.json().get("workspaceBranches") or [])
 
 
 _BACKOFFICE_KEY = "test-backoffice-key-with-at-least-32-characters"

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronDown, KeyRound, LogOut, Settings, User } from 'lucide-react'
+import { Bell, ChevronDown, KeyRound, LogOut, Settings, User } from 'lucide-react'
 import { toast } from 'sonner'
 import { DropdownPanel } from '@/components/ui/DropdownPanel'
 import { useConfigStore } from '@/stores/configStore'
@@ -98,6 +98,11 @@ export function UserProfileMenu() {
     navigate('/configuracion')
   }
 
+  const goNotifications = () => {
+    closeMenu()
+    navigate('/notificaciones')
+  }
+
   const logout = async () => {
     closeMenu()
     await logoutSession()
@@ -109,7 +114,8 @@ export function UserProfileMenu() {
     }
   }
 
-  const hasMenuItems = showProfile || showChangePassword || showConfig
+  const showNotifications = isOnline
+  const hasMenuItems = showProfile || showChangePassword || showConfig || showNotifications
 
   return (
     <>
@@ -157,6 +163,14 @@ export function UserProfileMenu() {
             )}
             {showConfig && (
               <MenuItem icon={Settings} label="Configuración" onClick={goConfig} testId="profile-menu-config" />
+            )}
+            {showNotifications && (
+              <MenuItem
+                icon={Bell}
+                label="Mis notificaciones"
+                onClick={goNotifications}
+                testId="profile-menu-notifications"
+              />
             )}
           </>
         )}

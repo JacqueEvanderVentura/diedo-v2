@@ -36,7 +36,7 @@ import { formatDOP } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { isAppointmentConflict } from '@/services/adapters/appointments'
 import { emailResultMessage } from '../lib/notification'
-import { APPOINTMENT_NOTES_MAX_LENGTH } from '../lib/appointments'
+import { APPOINTMENT_CLIENT_NOTES_MAX_LENGTH, APPOINTMENT_NOTES_MAX_LENGTH } from '../lib/appointments'
 import { useSessionStore } from '@/stores/sessionStore'
 import { servicesForBranch } from '../lib/serviceAvailability'
 import {
@@ -80,6 +80,7 @@ const empty = (date, customerId, slot = {}) => ({
   cabinaId: slot.cabinaId || '',
   status: 'confirmada',
   notes: '',
+  clientNotes: '',
   pendingPayment: false,
   pendingAmount: 0,
   firstTime: false,
@@ -120,6 +121,8 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
   const notesChanged = !editing || form.notes !== originalNotes
   const notesTooLong = notesLength > APPOINTMENT_NOTES_MAX_LENGTH
   const legacyNotes = editing && notesTooLong && !notesChanged
+  const clientNotesLength = Array.from(form.clientNotes || '').length
+  const clientNotesTooLong = clientNotesLength > APPOINTMENT_CLIENT_NOTES_MAX_LENGTH
   const servicesReady = sessionStatus === 'online' && catalogHydrated
   const services = useMemo(
     () => servicesForBranch(allProducts, form.branchId, { online: sessionStatus === 'online' }),
@@ -369,7 +372,10 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
     if (!form.date) return setErr('Selecciona una fecha.')
     if (!form.time) return setErr('Selecciona una hora.')
     if (notesTooLong && notesChanged) {
-      return setErr(`Las notas admiten un máximo de ${APPOINTMENT_NOTES_MAX_LENGTH} caracteres.`)
+      return setErr(`Las observaciones del staff admiten un máximo de ${APPOINTMENT_NOTES_MAX_LENGTH} caracteres.`)
+    }
+    if (clientNotesTooLong) {
+      return setErr(`Las observaciones del cliente admiten un máximo de ${APPOINTMENT_CLIENT_NOTES_MAX_LENGTH} caracteres.`)
     }
     const scheduleChanged = appointmentScheduleChanged(appointment, form)
     const outsideEmployeeSchedule = scheduleChanged
@@ -715,7 +721,31 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
 
         <div>
           <div className="mb-1.5 flex items-center justify-between gap-3">
-            <label className="block text-sm font-medium text-slate-600">Notas</label>
+            <label className="block text-sm font-medium text-slate-600">Observaciones del cliente (opcional)</label>
+            <span
+              className={cn(
+                'text-xs tabular-nums',
+                clientNotesTooLong ? 'font-semibold text-amber-600' : 'text-slate-400'
+              )}
+              data-testid="appointment-client-notes-count"
+            >
+              {clientNotesLength}/{APPOINTMENT_CLIENT_NOTES_MAX_LENGTH}
+            </span>
+          </div>
+          <textarea
+            value={form.clientNotes}
+            onChange={(e) => set('clientNotes', e.target.value)}
+            rows={3}
+            maxLength={APPOINTMENT_CLIENT_NOTES_MAX_LENGTH}
+            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+            placeholder="Comentarios del cliente para esta cita"
+            data-testid="appointment-field-client-notes"
+          />
+        </div>
+
+        <div>
+          <div className="mb-1.5 flex items-center justify-between gap-3">
+            <label className="block text-sm font-medium text-slate-600">Observaciones del staff (opcional)</label>
             <span
               className={cn(
                 'text-xs tabular-nums',
@@ -731,7 +761,7 @@ export function AppointmentFormModal({ open, onClose, appointment, defaultDate, 
             onChange={(e) => set('notes', e.target.value)}
             maxLength={legacyNotes ? undefined : APPOINTMENT_NOTES_MAX_LENGTH}
             aria-describedby={notesTooLong ? 'appointment-notes-help' : undefined}
-            placeholder="Notas adicionales"
+            placeholder="Nota operativa interna"
             data-testid="appointment-field-notes"
           />
           {legacyNotes && (

@@ -20,7 +20,8 @@ const FIELD_DEFS = [
     format: (v) => statusMeta(v).name,
   },
   { field: 'price', label: 'Precio', format: (v) => formatDOP(v) },
-  { field: 'notes', label: 'Notas' },
+  { field: 'notes', label: 'Observaciones del staff' },
+  { field: 'clientNotes', label: 'Observaciones del cliente' },
   { field: 'pendingPayment', label: 'Pendiente de pago', format: BOOL },
   { field: 'pendingAmount', label: 'Monto pendiente', format: (v) => formatDOP(v) },
   { field: 'completed', label: 'Completada', format: BOOL },
@@ -80,6 +81,22 @@ function appointmentCreatorLabel(appointment) {
     return appointment.customerName?.trim() || appointment.createdBy || 'Cliente'
   }
   return appointment.createdBy || 'Sistema'
+}
+
+export function appointmentWasEdited(appointment) {
+  if (!appointment) return false
+  const history = appointment.history
+  if (Array.isArray(history) && history.length > 0) {
+    return history.some((entry) => entry?.action && entry.action !== 'create')
+  }
+  const { createdAt, updatedAt } = appointment
+  if (!updatedAt) return false
+  if (!createdAt) return true
+  if (createdAt === updatedAt) return false
+  const created = Date.parse(createdAt)
+  const updated = Date.parse(updatedAt)
+  if (Number.isNaN(created) || Number.isNaN(updated)) return false
+  return updated > created
 }
 
 export function backfillHistory(appointment) {

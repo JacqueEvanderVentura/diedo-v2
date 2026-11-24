@@ -365,6 +365,7 @@ class AdministrationService:
         name: str,
         timezone: str,
         details: BranchDetails,
+        online_booking_selectable: bool = False,
     ) -> Branch:
         self._require_workspace_wide(grant)
         if (legal_entity_id is None) == (new_profile is None):
@@ -424,6 +425,7 @@ class AdministrationService:
             status="active",
             timezone=timezone,
             configuration=compatible_details.model_dump(mode="json"),
+            online_booking_selectable=online_booking_selectable,
         )
         try:
             created_identity: LegalEntityIdentity | None = None

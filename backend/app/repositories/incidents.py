@@ -350,18 +350,17 @@ class IncidentRepository:
         actor_platform_user_id: UUID,
         actor_name: str,
         request_id: str,
-    ) -> None:
+    ) -> UUID:
         self._touch(incident, actor_platform_user_id)
-        self._session.add(
-            IncidentActivity(
-                workspace_id=incident.workspace_id,
-                incident_id=incident.id,
-                activity_type="comment",
-                author_membership_id=actor_membership_id,
-                author_name=actor_name,
-                message=message,
-            )
+        activity = IncidentActivity(
+            workspace_id=incident.workspace_id,
+            incident_id=incident.id,
+            activity_type="comment",
+            author_membership_id=actor_membership_id,
+            author_name=actor_name,
+            message=message,
         )
+        self._session.add(activity)
         self.add_audit(
             workspace_id=incident.workspace_id,
             actor_platform_user_id=actor_platform_user_id,
@@ -372,6 +371,7 @@ class IncidentRepository:
             details={"version": incident.version},
         )
         self._session.flush()
+        return activity.id
 
     def add_attachments(
         self,

@@ -302,6 +302,9 @@ def test_agenda_service_schedule_recurrence_and_money_rules() -> None:
     with pytest.raises(InvalidOperationError) as notes:
         AgendaService._validate_notes("x" * 61)
     assert notes.value.parameter == "notes"
+    with pytest.raises(InvalidOperationError) as client_notes:
+        AgendaService._validate_client_notes("x" * 1001)
+    assert client_notes.value.parameter == "clientNotes"
     with pytest.raises(InvalidOperationError) as invalid_zone:
         AgendaService._schedule_window(
             scheduled_date=date(2026, 6, 1),
@@ -414,6 +417,52 @@ def test_appointment_notes_enforce_new_limit_and_preserve_legacy_values(
     )
     assert rejected_update.status_code == 400, rejected_update.text
     assert rejected_update.json()["parameter"] == "notes"
+
+
+@pytest.mark.integration
+def test_appointment_client_notes_create_and_update(client: TestClient) -> None:
+    owner_headers, context = _bootstrap_and_login(client)
+    branch_id = _hq_branch_id(context)
+    suffix = uuid7().hex[-10:]
+    resource = client.post(
+        "/api/v1/appointment-resources",
+        headers=owner_headers,
+        json={"branchId": branch_id, "name": f"Cabina client notes {suffix}"},
+    )
+    assert resource.status_code == 201, resource.text
+    resource_id = resource.json()["id"]
+    scheduled_date = date.today() + timedelta(days=81_000 + uuid7().int % 5_000)
+
+    created = client.post(
+        "/api/v1/appointments",
+        headers={**owner_headers, "Idempotency-Key": f"agenda-client-notes-{suffix}"},
+        json={
+            **_appointment_payload(
+                branch_id=branch_id,
+                resource_id=resource_id,
+                scheduled_date=scheduled_date,
+                scheduled_time="10:00",
+                customer_name=f"Cliente obs {suffix}",
+            ),
+            "notes": "Turno con enfoque en hombros",
+            "clientNotes": "Llego 10 min antes si hay parking",
+        },
+    )
+    assert created.status_code == 201, created.text
+    item = created.json()["items"][0]
+    assert item["clientNotes"] == "Llego 10 min antes si hay parking"
+    assert item["notes"] == "Turno con enfoque en hombros"
+
+    updated = client.patch(
+        f"/api/v1/appointments/{item['id']}",
+        headers=owner_headers,
+        json={
+            "version": item["version"],
+            "clientNotes": "Preferencia: silencio durante la sesión",
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["clientNotes"] == "Preferencia: silencio durante la sesión"
 
 
 def test_agenda_resource_and_hours_schemas_validate() -> None:

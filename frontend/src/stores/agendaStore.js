@@ -72,6 +72,7 @@ function stampAudit(action, previous = {}, source = 'staff', customerName) {
 function normalizeAppointment(data) {
   return {
     notes: data.notes || '',
+    clientNotes: data.clientNotes || '',
     cabinaId: data.cabinaId || data.resourceId || null,
     resourceId: data.resourceId || data.cabinaId || null,
     employeeId: data.employeeId || null,
@@ -148,6 +149,7 @@ function updateDemoAppointment(current, data) {
 
 function matchesScope(appointment, params = {}) {
   if (params.branchId && appointment.branchId !== params.branchId) return false
+  if (params.customerId && appointment.customerId !== params.customerId) return false
   if (params.dateFrom && appointment.date < params.dateFrom) return false
   if (params.dateTo && appointment.date > params.dateTo) return false
   if (params.employeeId && appointment.employeeId !== params.employeeId) return false
@@ -157,7 +159,9 @@ function matchesScope(appointment, params = {}) {
 
 function mergeScopedAppointments(current, incoming, params = {}) {
   const incomingIds = new Set(incoming.map((appointment) => appointment.id))
-  const hasScope = Boolean(params.branchId || params.dateFrom || params.dateTo || params.employeeId || params.status)
+  const hasScope = Boolean(
+    params.branchId || params.customerId || params.dateFrom || params.dateTo || params.employeeId || params.status,
+  )
   const retained = hasScope
     ? current.filter((appointment) => {
       if (incomingIds.has(appointment.id)) return false

@@ -1,4 +1,5 @@
 import { useCrmCapabilities } from '@/modules/crm/hooks/useCrmCapabilities'
+import { useSessionStore } from '@/stores/sessionStore'
 import { useEffect, useMemo, useState } from 'react'
 import { portalTasksApi } from '@/services/portalTasksApi'
 import { Link } from 'react-router-dom'
@@ -105,8 +106,10 @@ export function CustomerDetailPanel({
   const quotes = useCrmStore((s) => s.quotes)
   const activities = useCrmStore((s) => s.activities)
   const appointments = useAgendaStore((s) => s.appointments)
+  const hydrateAppointments = useAgendaStore((s) => s.hydrateAppointments)
   const agendaResources = useAgendaStore((s) => s.resources)
   const branches = useConfigStore((s) => s.branches)
+  const canReadAppointments = useSessionStore((s) => s.hasPermission('appointment.read'))
 
   const assignedBranchIds = customer?.branchIds?.length
     ? customer.branchIds
@@ -120,6 +123,11 @@ export function CustomerDetailPanel({
   const receivables = usePosStore((s) => s.receivables)
   const [customerPortalTasks, setCustomerPortalTasks] = useState([])
   const [portalTasksLoading, setPortalTasksLoading] = useState(false)
+
+  useEffect(() => {
+    if (!customer?.id || !canReadAppointments) return
+    hydrateAppointments({ force: true, params: { customerId: customer.id } }).catch(() => {})
+  }, [canReadAppointments, customer?.id, hydrateAppointments])
 
   useEffect(() => {
     if (!customer?.id) {

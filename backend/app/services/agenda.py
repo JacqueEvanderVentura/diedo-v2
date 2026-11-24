@@ -62,10 +62,12 @@ from app.services.errors import (
 from app.services.mailer import render_appointment_email
 from app.services.master_data import MasterDataService
 from app.services.pos import PosService
+from app.services.user_notifications import UserNotificationService
 
 _WEEKDAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 _APPOINTMENT_NOTES_MAX_LENGTH = 60
 _APPOINTMENT_NOTES_DB_MAX_LENGTH = 2000
+_APPOINTMENT_CLIENT_NOTES_MAX_LENGTH = 1000
 _IMPORT_DEFAULT_RESOURCE_NAME = "Cabina 1"
 _IMPORT_DEFAULT_RESOURCE_CODE = "cabina-1"
 _IMPORT_STACK_NOTE = (
@@ -156,7 +158,8 @@ _FIELD_META = {
     "delay_responsibility": ("delayResponsibility", "Responsable del retraso"),
     "completion_note": ("completionNote", "Nota de cumplimiento"),
     "price": ("price", "Precio"),
-    "notes": ("notes", "Notas"),
+    "notes": ("notes", "Observaciones del staff"),
+    "client_notes": ("clientNotes", "Observaciones del cliente"),
     "pending_payment": ("pendingPayment", "Pendiente de pago"),
     "pending_amount": ("pendingAmount", "Monto pendiente"),
     "first_time": ("firstTime", "Primera vez"),
@@ -553,6 +556,7 @@ class AgendaService:
             _APPOINTMENT_NOTES_DB_MAX_LENGTH if allow_long_notes else _APPOINTMENT_NOTES_MAX_LENGTH
         )
         self._validate_notes(values.get("notes"), max_length=notes_limit)
+        self._validate_client_notes(values.get("client_notes"))
         self._require_branch_access(grant, branch_id)
         branch = self._repository.branch(grant.workspace_id, branch_id)
         if branch is None:
@@ -618,6 +622,7 @@ class AgendaService:
         recurrence_group_id = uuid7() if len(scheduled_dates) > 1 else None
         appointments: list[Appointment] = []
         notifications: list[EmailNotification] = []
+        in_app_notify = UserNotificationService(self._session)
         workspace = self._session.scalar(
             select(Workspace).where(Workspace.id == grant.workspace_id)
         )
@@ -691,6 +696,7 @@ class AgendaService:
                     price=cast(Decimal, values["price"]),
                     status=status,
                     notes=cast(str | None, values.get("notes")),
+                    client_notes=cast(str | None, values.get("client_notes")),
                     pending_payment=(
                         False if is_cancelled else cast(bool, values["pending_payment"])
                     ),
@@ -712,6 +718,18 @@ class AgendaService:
                 )
                 self._repository.add_appointment(appointment)
                 self._session.flush()
+                if status == "confirmed":
+                    scheduled_time = cast(time, values["time"]).strftime("%H:%M")
+                    scheduled_label = f"{scheduled_date.isoformat()} {scheduled_time}"
+                    in_app_notify.notify_appointment_booked(
+                        workspace_id=grant.workspace_id,
+                        appointment_id=appointment.id,
+                        customer_name=appointment.customer_name,
+                        service_name=appointment.service_name,
+                        scheduled_label=scheduled_label,
+                        employee_id=occurrence_employee_id,
+                        actor_membership_id=principal.membership_id,
+                    )
                 if workspace is not None and status == "confirmed" and notify:
                     queued = self._enqueue_notification(
                         appointment, "appointment.confirmed", branch, workspace
@@ -789,6 +807,7 @@ class AgendaService:
 
         if commit:
             self._deliver_after_commit(notifications)
+            in_app_notify.deliver_pending_emails()
         records = self._repository.records_for_ids(
             grant.workspace_id, [appointment.id for appointment in appointments]
         )
@@ -818,6 +837,8 @@ class AgendaService:
             raise ConflictError("La cita cambió desde la última lectura.", "version")
         if "notes" in changes:
             self._validate_notes(changes["notes"], existing=appointment.notes)
+        if "client_notes" in changes:
+            self._validate_client_notes(changes["client_notes"], existing=appointment.client_notes)
 
         allow_outside_employee_schedule = bool(
             changes.pop("allow_outside_employee_schedule", False)
@@ -970,6 +991,7 @@ class AgendaService:
             "delay_responsibility": completion_fields["delay_responsibility"],
             "completion_note": completion_fields["completion_note"],
             "notes": changes.get("notes", appointment.notes),
+            "client_notes": changes.get("client_notes", appointment.client_notes),
             "pending_payment": final_money["pending_payment"],
             "pending_amount": final_money["pending_amount"],
             "first_time": changes.get("first_time", appointment.first_time),
@@ -1493,6 +1515,7 @@ class AgendaService:
             price=cast(Decimal, values["price"]),
             status=status,
             notes=cast(str | None, values.get("notes")),
+            client_notes=cast(str | None, values.get("client_notes")),
             pending_payment=cast(bool, values["pending_payment"]),
             pending_amount=cast(Decimal, values["pending_amount"]),
             first_time=cast(bool, values["first_time"]),
@@ -2169,6 +2192,21 @@ class AgendaService:
             )
 
     @staticmethod
+    def _validate_client_notes(
+        client_notes: Any,
+        *,
+        existing: str | None = None,
+        max_length: int = _APPOINTMENT_CLIENT_NOTES_MAX_LENGTH,
+    ) -> None:
+        if client_notes == existing:
+            return
+        if len(cast(str | None, client_notes) or "") > max_length:
+            raise InvalidOperationError(
+                "Las observaciones del cliente admiten un máximo de 1000 caracteres.",
+                "clientNotes",
+            )
+
+    @staticmethod
     def _resolve_completion_fields(
         *,
         appointment: Appointment,
@@ -2251,6 +2289,7 @@ class AgendaService:
             "completion_note": appointment.completion_note,
             "price": str(appointment.price),
             "notes": appointment.notes,
+            "client_notes": appointment.client_notes,
             "pending_payment": appointment.pending_payment,
             "pending_amount": str(appointment.pending_amount),
             "first_time": appointment.first_time,

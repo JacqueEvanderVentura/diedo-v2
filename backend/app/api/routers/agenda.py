@@ -174,6 +174,7 @@ def _appointment_response(record: AppointmentRecord) -> AppointmentResponse:
         delay_responsibility=cast(Any, appointment.delay_responsibility),
         completion_note=appointment.completion_note,
         notes=appointment.notes,
+        client_notes=appointment.client_notes,
         pending_payment=appointment.pending_payment,
         pending_amount=appointment.pending_amount,
         first_time=appointment.first_time,

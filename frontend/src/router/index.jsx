@@ -89,6 +89,7 @@ import PermisosPage from '@/modules/configuracion/pages/PermisosPage'
 import MetodosPagoPage from '@/modules/configuracion/pages/MetodosPagoPage'
 
 import IncidenciasPage from '@/modules/incidencias/pages/IncidenciasPage'
+import NotificationsPage from '@/modules/notifications/pages/NotificationsPage'
 import ChatPage from '@/modules/chat/pages/ChatPage'
 const CarwashPage = lazy(() => import('@/modules/carwash/pages/CarwashPage'))
 
@@ -163,6 +164,7 @@ export function AppRoutes() {
           <Route path="/compras/configuracion" element={<Navigate to="/compras?tab=configuracion" replace />} />
 
           <Route path="/incidencias" element={<IncidenciasPage />} />
+          <Route path="/notificaciones" element={<NotificationsPage />} />
           <Route
             path="/carwash"
             element={

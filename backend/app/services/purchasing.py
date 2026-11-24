@@ -34,6 +34,7 @@ from app.services.errors import (
 )
 from app.services.finance import FinanceService
 from app.services.inventory import InventoryService
+from app.services.user_notifications import UserNotificationService
 
 
 class PurchasingService:
@@ -342,7 +343,26 @@ class PurchasingService:
                 request_fingerprint=fingerprint,
                 request_id=get_request_id(),
             )
+            notify = UserNotificationService(self._session)
+            settings = self._repository.get_settings(grant.workspace_id)
+            if settings is not None and settings.settings.notify_on_request:
+                approver_ids: set[UUID] = set()
+                designated = settings.settings.approver_membership_id
+                if designated is not None:
+                    approver_ids.add(designated)
+                else:
+                    approver_ids = {row.membership_id for row in self.list_approvers(grant)}
+                notify.notify_purchase_request_created(
+                    workspace_id=grant.workspace_id,
+                    request_id=purchase_request_id,
+                    request_number=persistent_values["request_number"],
+                    requester_name=principal.display_name,
+                    priority=cast(str, persistent_values.get("priority", "normal")),
+                    approver_membership_ids=approver_ids,
+                    actor_membership_id=principal.membership_id,
+                )
             self._session.commit()
+            notify.deliver_pending_emails()
             return self.get_purchase_request(grant, purchase_request_id)
         except IntegrityError as exc:
             self._session.rollback()

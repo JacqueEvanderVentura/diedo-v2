@@ -122,6 +122,7 @@ from app.db.models.sales import (
     SaleTenderLine,
 )
 from app.db.models.subscription import SubscriptionPlan, WorkspaceSubscription
+from app.db.models.user_notifications import UserNotification
 
 __all__ = [
     "AccessScope",
@@ -228,6 +229,7 @@ __all__ = [
     "SupplierBranchAssignment",
     "SupplierCatalogItem",
     "Task",
+    "UserNotification",
     "Workspace",
     "WorkspaceMembership",
     "WorkspaceSubscription",

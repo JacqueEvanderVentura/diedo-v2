@@ -41,6 +41,7 @@ import { applyBranchBookingDefaults, fetchLastVisitBookingDefaults } from '../li
 import { SlotHoldBanner } from '../components/booking/SlotHoldBanner'
 import { SlotHoldSnackbar } from '../components/booking/SlotHoldSnackbar'
 import { holdRemainingMs } from '../lib/slotHoldCountdown'
+import { mergeResumeBookingIntoForm, readResumeBookingParams } from '../lib/resumeBookingParams'
 
 const STEPS = ['Identificación', 'Datos', 'Cita', 'Confirmación']
 
@@ -55,6 +56,7 @@ function initialBookingForm(intentBook, branchId) {
     wantsInvoice: false,
     wantsContact: false,
     observaciones: '',
+    clientNotes: '',
     serviceId: '',
     employeeId: '',
     date: todayKey(),
@@ -111,6 +113,8 @@ function validateBookingProfile(form) {
 export default function AgendarPage() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
+  const resumeBookingRef = useRef(readResumeBookingParams(params))
+  const resumeHoldClaimRef = useRef(false)
   const requestedBranchId = params.get('branch')
   const linkedCustomerId = params.get('customer')
   const intentBook = params.get('intent') === 'book'
@@ -131,6 +135,8 @@ export default function AgendarPage() {
   const [workspaceBranches, setWorkspaceBranches] = useState([])
   const [workspaceName, setWorkspaceName] = useState('')
   const [contextError, setContextError] = useState('')
+  const [entryLoading, setEntryLoading] = useState(false)
+  const [pickerBranchId, setPickerBranchId] = useState('')
   const hasSavedSession = Boolean(
     requestedBranchId && recallPublicSession()?.documentId && recallPublicSession()?.branchId === requestedBranchId
   )
@@ -220,13 +226,50 @@ export default function AgendarPage() {
   }, [branchId, isDemo])
 
   useEffect(() => {
-    if (isDemo || !branchId) return
+    if (isDemo || !requestedBranchId) return
+    let active = true
+    setEntryLoading(true)
+    setWorkspaceBranches([])
+    setWorkspaceName('')
+    setContextError('')
+    publicBookingApi.getEntryContext(requestedBranchId)
+      .then((entry) => {
+        if (!active) return
+        setWorkspaceName(entry.workspaceName || '')
+        const rows = (entry.workspaceBranches || []).map((item) => ({
+          id: item.id,
+          name: item.name,
+        }))
+        setWorkspaceBranches(rows)
+        const selectable = new Set(rows.map((row) => row.id))
+        const preferred = selectable.has(requestedBranchId)
+          ? requestedBranchId
+          : (selectable.has(branchId) ? branchId : rows[0]?.id || '')
+        setPickerBranchId(preferred)
+        if (!rows.length) {
+          setContextError('No hay sucursales disponibles para agendar en línea.')
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setContextError('No se pudo cargar la sucursal. Intenta nuevamente o solicita un nuevo enlace.')
+        }
+      })
+      .finally(() => {
+        if (active) setEntryLoading(false)
+      })
+    return () => { active = false }
+  }, [requestedBranchId, isDemo, branchId])
+
+  useEffect(() => {
+    if (isDemo || !branchId || phase === 'branch') return
+    const selectable = workspaceBranches.some((item) => item.id === branchId)
+    if (workspaceBranches.length > 0 && !selectable) return
     let active = true
     setRemoteBranch(null)
     setRemoteServices([])
     setRemoteSpecialists([])
     setRemoteSlots(null)
-    setWorkspaceBranches([])
     setContextError('')
     publicBookingApi.getContext(branchId)
       .then((context) => {
@@ -244,18 +287,12 @@ export default function AgendarPage() {
           }))
         )
         setRemoteSpecialists(context.specialists || [])
-        setWorkspaceBranches(
-          (context.workspaceBranches || []).map((item) => ({
-            id: item.id,
-            name: item.name,
-          }))
-        )
       })
       .catch(() => {
         if (active) setContextError('No se pudo cargar la sucursal. Intenta nuevamente o solicita un nuevo enlace.')
       })
     return () => { active = false }
-  }, [branchId, isDemo])
+  }, [branchId, isDemo, phase, workspaceBranches])
 
   useEffect(() => {
     if (!isDemo) return
@@ -416,6 +453,25 @@ export default function AgendarPage() {
     isDemo,
   ])
 
+  useEffect(() => {
+    const resume = resumeBookingRef.current
+    if (resumeHoldClaimRef.current) return
+    if (isDemo || phase !== 'booking' || step !== 2) return
+    if (!resume?.time || !branch?.id || !form.serviceId || !form.date) return
+    if (form.time !== resume.time) return
+    resumeHoldClaimRef.current = true
+    selectTime(resume.time)
+  }, [
+    branch?.id,
+    form.date,
+    form.serviceId,
+    form.time,
+    isDemo,
+    phase,
+    selectTime,
+    step,
+  ])
+
   const set = (k, v) => {
     const changesAvailability = ['serviceId', 'employeeId', 'date'].includes(k)
     if (changesAvailability) {
@@ -469,21 +525,24 @@ export default function AgendarPage() {
 
   const applyProfileToForm = (found, docType) => {
     setPendingBranchAppointment(found.pendingAppointment || null)
-    setForm((current) => applyBranchBookingDefaults({
-      ...current,
-      docType: found.docType || docType,
-      documentId: formatDocumentInput(found.documentId, found.docType || docType),
-      name: found.name,
-      email: found.email,
-      phone: found.phone,
-      address: found.address || '',
-      wantsInvoice: found.wantsInvoice,
-      wantsContact: found.wantsContact,
-      observaciones: found.observaciones || '',
-    }, {
-      serviceId: found.lastServiceId,
-      employeeId: found.lastEmployeeId,
-    }, { services, bookableStaff }))
+    setForm((current) => mergeResumeBookingIntoForm(
+      applyBranchBookingDefaults({
+        ...current,
+        docType: found.docType || docType,
+        documentId: formatDocumentInput(found.documentId, found.docType || docType),
+        name: found.name,
+        email: found.email,
+        phone: found.phone,
+        address: found.address || '',
+        wantsInvoice: found.wantsInvoice,
+        wantsContact: found.wantsContact,
+        observaciones: found.observaciones || '',
+      }, {
+        serviceId: found.lastServiceId,
+        employeeId: found.lastEmployeeId,
+      }, { services, bookableStaff }),
+      resumeBookingRef.current,
+    ))
   }
 
   useEffect(() => {
@@ -618,8 +677,17 @@ export default function AgendarPage() {
   }
 
   const confirmBranch = () => {
-    if (!branchId) return toast.error('Selecciona una sucursal')
+    const nextBranchId = pickerBranchId
+    if (!nextBranchId) return toast.error('Selecciona una sucursal')
+    if (!workspaceBranches.some((item) => item.id === nextBranchId)) {
+      return toast.error('Selecciona una sucursal válida')
+    }
     setExplicitBranchPick(false)
+    setParams((current) => {
+      const next = new URLSearchParams(current)
+      next.set('branch', nextBranchId)
+      return next
+    })
     setPhase('identity')
   }
 
@@ -627,15 +695,14 @@ export default function AgendarPage() {
     clearBookIntent()
     setShowRegister(false)
     setExplicitBranchPick(true)
+    if (branchId && workspaceBranches.some((item) => item.id === branchId)) {
+      setPickerBranchId(branchId)
+    }
     setPhase('branch')
   }
 
   const switchBranch = (nextBranchId) => {
-    setParams((current) => {
-      const next = new URLSearchParams(current)
-      next.set('branch', nextBranchId)
-      return next
-    })
+    setPickerBranchId(nextBranchId)
   }
 
   const timeAvailabilityPending = useMemo(() => {
@@ -715,6 +782,7 @@ export default function AgendarPage() {
         date: form.date,
         time: form.time,
         employeeId: form.employeeId,
+        clientNotes: form.clientNotes,
         idempotencyKey: attemptRef.current.key,
         pendingAppointmentAction,
       })
@@ -772,14 +840,26 @@ export default function AgendarPage() {
     setStep((current) => Math.max(0, current - 1))
   }
 
-  const awaitingBranchContext = !isDemo && Boolean(branchId) && !branch && !contextError
+  const awaitingBranchContext = !isDemo && Boolean(branchId) && phase !== 'branch' && !branch && !contextError
   const showBranchGate = phase === 'branch' || (!branchId && !isDemo)
+  const awaitingEntryContext = !isDemo && Boolean(requestedBranchId) && phase === 'branch' && entryLoading
+  const pickerBranchName = workspaceBranches.find((item) => item.id === pickerBranchId)?.name
 
-  if (!isDemo && contextError && (branchId || !workspaceBranches.length)) {
+  if (!isDemo && contextError && (phase !== 'branch' || !workspaceBranches.length)) {
     return (
       <PublicShell>
         <p role="alert" className="mx-auto max-w-lg text-center text-slate-600">
           {contextError}
+        </p>
+      </PublicShell>
+    )
+  }
+
+  if (!isDemo && phase === 'branch' && awaitingEntryContext) {
+    return (
+      <PublicShell branchName={pickerBranchName || workspaceName || undefined}>
+        <p role="status" className="mx-auto max-w-lg text-center text-slate-600">
+          Cargando sucursal…
         </p>
       </PublicShell>
     )
@@ -828,7 +908,7 @@ export default function AgendarPage() {
   }
 
   return (
-    <PublicShell branchName={branch?.name || workspaceName || undefined}>
+    <PublicShell branchName={branch?.name || pickerBranchName || workspaceName || undefined}>
       <div className="mx-auto max-w-lg">
         {phase === 'booking' && <Stepper current={Math.max(0, step - 2)} />}
 
@@ -836,26 +916,30 @@ export default function AgendarPage() {
           <section className="space-y-4 rounded-2xl border border-slate-100 bg-white p-6 shadow-soft">
             <h2 className="font-heading text-xl font-bold text-slate-900">Elige tu sucursal</h2>
             <p className="text-sm text-slate-500">Confirma dónde deseas atenderte. Puedes cambiarla si visitas otra ubicación del comercio.</p>
-            <ul className="space-y-2">
-              {(workspaceBranches.length ? workspaceBranches : [{ id: branchId, name: branch?.name || 'Sucursal' }]).map((item) => (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    onClick={() => switchBranch(item.id)}
-                    className={cn(
-                      'w-full rounded-xl border px-4 py-3 text-left text-sm font-semibold transition',
-                      item.id === branchId
-                        ? 'border-slate-900 bg-slate-900 text-white'
-                        : 'border-slate-200 text-slate-700 hover:border-slate-400'
-                    )}
-                    data-testid={`branch-option-${item.id}`}
-                  >
-                    {item.name}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <Button className="w-full" onClick={confirmBranch} data-testid="branch-confirm">
+            {!workspaceBranches.length ? (
+              <p className="text-sm text-slate-500">No hay sucursales disponibles para agendar en línea.</p>
+            ) : (
+              <ul className="space-y-2">
+                {workspaceBranches.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => switchBranch(item.id)}
+                      className={cn(
+                        'w-full rounded-xl border px-4 py-3 text-left text-sm font-semibold transition',
+                        item.id === pickerBranchId
+                          ? 'border-slate-900 bg-slate-900 text-white'
+                          : 'border-slate-200 text-slate-700 hover:border-slate-400'
+                      )}
+                      data-testid={`branch-option-${item.id}`}
+                    >
+                      {item.name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <Button className="w-full" onClick={confirmBranch} disabled={!pickerBranchId || !workspaceBranches.length} data-testid="branch-confirm">
               Continuar <ChevronRight className="h-4 w-4" />
             </Button>
           </section>
@@ -1135,6 +1219,19 @@ export default function AgendarPage() {
                   ? (bookableStaff.find((member) => member.id === form.employeeId)?.name || '—')
                   : 'Pendiente de asignación por el equipo'}
               </p>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Observaciones (opcional)</label>
+              <textarea
+                value={form.clientNotes}
+                onChange={(e) => set('clientNotes', e.target.value)}
+                rows={3}
+                maxLength={1000}
+                disabled={saving}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                placeholder="Comentarios para esta cita"
+                data-testid="self-booking-client-notes"
+              />
             </div>
             <Button className="w-full" onClick={confirm} disabled={saving || (!isDemo && (slotLoading || !slotAllowedForBooking(form.time)))} data-testid="self-confirm">
               {saving ? 'Guardando cita…' : 'Confirmar cita'}

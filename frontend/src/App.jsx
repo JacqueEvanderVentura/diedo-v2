@@ -6,7 +6,7 @@ import { useLenis } from './lib/useLenis'
 import { useSessionStore } from './stores/sessionStore'
 import { useCustomersStore } from './stores/customersStore'
 import { useRrhhStore } from './stores/rrhhStore'
-import { useAgendaStore } from './stores/agendaStore'
+import { todayKey, useAgendaStore } from './stores/agendaStore'
 import { useCatalogStore } from './stores/catalogStore'
 import { configFacade } from './services/configFacade'
 import { WorkspaceScopeSync } from '@/components/branch/WorkspaceScopeSync'
@@ -48,7 +48,17 @@ export default function App() {
       requests.push(hydrateEmployees({ force: true }), hydrateHrData({ force: true }))
     }
     if (session.hasModule('appointments')) {
-      requests.push(hydrateAppointments({ force: true }))
+      const today = todayKey()
+      const branches = configFacade.branches()
+      const branchId = branches.length === 1 ? branches[0]?.id : undefined
+      requests.push(hydrateAppointments({
+        force: true,
+        params: {
+          dateFrom: today,
+          dateTo: today,
+          ...(branchId ? { branchId } : {}),
+        },
+      }))
     }
     if (
       status === 'online'
