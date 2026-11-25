@@ -182,6 +182,13 @@ export default function AgendarPage() {
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [pendingBranchAppointment, setPendingBranchAppointment] = useState(null)
   const [pendingChoiceOpen, setPendingChoiceOpen] = useState(false)
+  const [dayStatuses, setDayStatuses] = useState({})
+  const [availabilityRange, setAvailabilityRange] = useState(null)
+  const handleAvailabilityRangeChange = useCallback((range) => {
+    setAvailabilityRange((current) => (
+      current?.from === range.from && current?.to === range.to ? current : range
+    ))
+  }, [])
 
   const localBookableStaff = useBranchBookableStaff(branch?.id || branchId)
   const services = useMemo(() => {
@@ -471,6 +478,32 @@ export default function AgendarPage() {
     selectTime,
     step,
   ])
+
+  useEffect(() => {
+    if (isDemo || !branch?.id || !form.serviceId || !availabilityRange?.from || !availabilityRange?.to) {
+      setDayStatuses({})
+      return
+    }
+    let active = true
+    publicBookingApi.listAvailability(branch.id, {
+      from: availabilityRange.from,
+      to: availabilityRange.to,
+      serviceId: form.serviceId,
+      employeeId: form.employeeId,
+    })
+      .then((result) => {
+        if (!active) return
+        const next = {}
+        for (const day of result.days || []) {
+          if (day?.date) next[day.date] = day.status
+        }
+        setDayStatuses(next)
+      })
+      .catch(() => {
+        if (active) setDayStatuses({})
+      })
+    return () => { active = false }
+  }, [availabilityRange, branch?.id, form.employeeId, form.serviceId, isDemo])
 
   const set = (k, v) => {
     const changesAvailability = ['serviceId', 'employeeId', 'date'].includes(k)
@@ -1151,6 +1184,8 @@ export default function AgendarPage() {
                   }}
                   minDate={branchDateKey(branch?.timezone)}
                   testId="self-booking-date"
+                  dayStatuses={form.serviceId ? dayStatuses : null}
+                  onVisibleRangeChange={handleAvailabilityRangeChange}
                 />
               </div>
               <div>

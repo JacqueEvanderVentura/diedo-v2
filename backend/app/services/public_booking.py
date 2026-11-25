@@ -4,7 +4,8 @@ import json
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from hashlib import sha256
-from typing import Any, cast
+from math import ceil
+from typing import Any, Literal, cast
 from uuid import UUID, uuid7
 from zoneinfo import ZoneInfo
 
@@ -57,6 +58,24 @@ from app.services.slot_holds import hold_expires_at, serialize_held_slots
 from app.services.user_notifications import deliver_pending_in_app_emails
 
 PUBLIC_BOOKING_SLOT_CAPACITY = 1
+PUBLIC_AVAILABILITY_MAX_DAYS = 42
+_LIMITED_REMAINING_RATIO = 0.25
+_LIMITED_REMAINING_FLOOR = 2
+
+DayAvailabilityStatus = Literal["empty", "open", "limited", "full", "closed"]
+
+
+def classify_day_availability(available_slots: int, total_slots: int) -> DayAvailabilityStatus:
+    if total_slots <= 0:
+        return "closed"
+    if available_slots <= 0:
+        return "full"
+    if available_slots >= total_slots:
+        return "empty"
+    limited_threshold = max(_LIMITED_REMAINING_FLOOR, ceil(total_slots * _LIMITED_REMAINING_RATIO))
+    if available_slots <= limited_threshold:
+        return "limited"
+    return "open"
 
 
 def _pending_appointment_conflict_details(pending: dict[str, Any]) -> dict[str, Any]:
@@ -169,28 +188,13 @@ class PublicBookingService:
         _principal, grant = self._system_access(branch.workspace_id)
         service = self._require_service(grant, branch.id, service_id)
         duration_minutes = int(service["duration_minutes"])
-        if employee_id is None:
-            slots = self._unassigned_slot_times(
-                branch,
-                scheduled_date=scheduled_date,
-                duration_minutes=duration_minutes,
-                holder_token=holder_token,
-            )
-        else:
-            spare = self._specialist_spare_capacity(
-                branch, scheduled_date, duration_minutes, holder_token=holder_token
-            )
-            slots = sorted(
-                key
-                for key in self._slot_resources(
-                    branch_id,
-                    scheduled_date,
-                    employee_id,
-                    duration_minutes,
-                    holder_token=holder_token,
-                )
-                if spare.get(key, 0) >= 1
-            )
+        slots = self._slot_times_for_day(
+            branch,
+            scheduled_date=scheduled_date,
+            employee_id=employee_id,
+            duration_minutes=duration_minutes,
+            holder_token=holder_token,
+        )
         slots = self._exclude_customer_busy_slots(
             branch,
             scheduled_date=scheduled_date,
@@ -243,6 +247,99 @@ class PublicBookingService:
             return None, None
         key = scheduled_time.strftime("%H:%M")
         return scheduled_date, (key if key in slots else None)
+
+    def list_availability(
+        self,
+        branch_id: UUID,
+        *,
+        date_from: date,
+        date_to: date,
+        service_id: UUID,
+        employee_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        if date_to < date_from:
+            raise InvalidOperationError("El rango de fechas no es válido.", "to")
+        span = (date_to - date_from).days + 1
+        if span > PUBLIC_AVAILABILITY_MAX_DAYS:
+            raise InvalidOperationError(
+                f"El rango no puede superar {PUBLIC_AVAILABILITY_MAX_DAYS} días.",
+                "to",
+            )
+        branch, _workspace = self._resolve_branch(branch_id)
+        _principal, grant = self._system_access(branch.workspace_id)
+        service = self._require_service(grant, branch.id, service_id)
+        duration_minutes = int(service["duration_minutes"])
+        days: list[dict[str, Any]] = []
+        cursor = date_from
+        while cursor <= date_to:
+            available = self._slot_times_for_day(
+                branch,
+                scheduled_date=cursor,
+                employee_id=employee_id,
+                duration_minutes=duration_minutes,
+            )
+            total = self._slot_times_for_day(
+                branch,
+                scheduled_date=cursor,
+                employee_id=employee_id,
+                duration_minutes=duration_minutes,
+                ignore_existing_appointments=True,
+            )
+            available_count = len(available)
+            total_count = len(total)
+            days.append(
+                {
+                    "date": cursor,
+                    "available_slots": available_count,
+                    "total_slots": total_count,
+                    "status": classify_day_availability(available_count, total_count),
+                }
+            )
+            cursor += timedelta(days=1)
+        return {
+            "from_date": date_from,
+            "to_date": date_to,
+            "employee_id": employee_id,
+            "days": days,
+        }
+
+    def _slot_times_for_day(
+        self,
+        branch: Branch,
+        *,
+        scheduled_date: date,
+        employee_id: UUID | None,
+        duration_minutes: int,
+        ignore_existing_appointments: bool = False,
+        holder_token: str | None = None,
+    ) -> list[str]:
+        if employee_id is None:
+            return self._unassigned_slot_times(
+                branch,
+                scheduled_date=scheduled_date,
+                duration_minutes=duration_minutes,
+                ignore_existing_appointments=ignore_existing_appointments,
+                holder_token=holder_token,
+            )
+        spare = self._specialist_spare_capacity(
+            branch,
+            scheduled_date,
+            duration_minutes,
+            ignore_existing_appointments=ignore_existing_appointments,
+            holder_token=holder_token,
+        )
+        return sorted(
+            key
+            for key in self._slot_resources(
+                branch.id,
+                scheduled_date,
+                employee_id,
+                duration_minutes,
+                ignore_existing_appointments=ignore_existing_appointments,
+                holder_token=holder_token,
+            )
+            if spare.get(key, 0) >= 1
+        )
 
     def _active_resources(self, branch: Branch) -> list[Any]:
         return [
@@ -516,6 +613,7 @@ class PublicBookingService:
         duration_minutes: int,
         exclude_appointment_id: UUID | None = None,
         holder_token: str | None = None,
+        ignore_existing_appointments: bool = False,
     ) -> list[str]:
         return sorted(
             self._unassigned_slot_resources(
@@ -524,6 +622,7 @@ class PublicBookingService:
                 duration_minutes=duration_minutes,
                 exclude_appointment_id=exclude_appointment_id,
                 holder_token=holder_token,
+                ignore_existing_appointments=ignore_existing_appointments,
             )
         )
 
@@ -535,6 +634,7 @@ class PublicBookingService:
         duration_minutes: int,
         exclude_appointment_id: UUID | None = None,
         holder_token: str | None = None,
+        ignore_existing_appointments: bool = False,
     ) -> dict[str, list[UUID]]:
         spare = self._specialist_spare_capacity(
             branch,
@@ -542,6 +642,7 @@ class PublicBookingService:
             duration_minutes,
             exclude_appointment_id=exclude_appointment_id,
             holder_token=holder_token,
+            ignore_existing_appointments=ignore_existing_appointments,
         )
         free_resources = self._resource_only_slots(
             branch,
@@ -549,6 +650,7 @@ class PublicBookingService:
             duration_minutes,
             exclude_appointment_id=exclude_appointment_id,
             holder_token=holder_token,
+            ignore_existing_appointments=ignore_existing_appointments,
         )
         return {
             key: free for key, free in free_resources.items() if free and spare.get(key, 0) >= 1
@@ -561,6 +663,7 @@ class PublicBookingService:
         duration_minutes: int,
         exclude_appointment_id: UUID | None = None,
         holder_token: str | None = None,
+        ignore_existing_appointments: bool = False,
     ) -> dict[str, int]:
         """Free specialists per slot minus overlapping online bookings still awaiting one."""
         counts: dict[str, int] = {}
@@ -572,31 +675,38 @@ class PublicBookingService:
                 duration_minutes,
                 exclude_appointment_id=exclude_appointment_id,
                 holder_token=holder_token,
+                ignore_existing_appointments=ignore_existing_appointments,
             ):
                 counts[key] = counts.get(key, 0) + 1
         if not counts:
             return {}
         branch_zone = ZoneInfo(branch.timezone)
-        day_start = datetime.combine(scheduled_date, time.min, branch_zone).astimezone(UTC)
-        day_end = datetime.combine(
-            scheduled_date + timedelta(days=1), time.min, branch_zone
-        ).astimezone(UTC)
-        unassigned = self._session.scalars(
-            select(Appointment).where(
-                Appointment.workspace_id == branch.workspace_id,
-                Appointment.branch_id == branch.id,
-                Appointment.record_status == "active",
-                Appointment.status == "confirmed",
-                Appointment.employee_id.is_(None),
-                Appointment.source == "self",
-                Appointment.starts_at < day_end + timedelta(minutes=duration_minutes),
-                Appointment.ends_at > day_start,
+        if ignore_existing_appointments:
+            unassigned: list[Appointment] = []
+            unassigned_holds: tuple[Any, ...] = ()
+        else:
+            day_start = datetime.combine(scheduled_date, time.min, branch_zone).astimezone(UTC)
+            day_end = datetime.combine(
+                scheduled_date + timedelta(days=1), time.min, branch_zone
+            ).astimezone(UTC)
+            unassigned = list(
+                self._session.scalars(
+                    select(Appointment).where(
+                        Appointment.workspace_id == branch.workspace_id,
+                        Appointment.branch_id == branch.id,
+                        Appointment.record_status == "active",
+                        Appointment.status == "confirmed",
+                        Appointment.employee_id.is_(None),
+                        Appointment.source == "self",
+                        Appointment.starts_at < day_end + timedelta(minutes=duration_minutes),
+                        Appointment.ends_at > day_start,
+                    )
+                ).all()
             )
-        ).all()
-        day_holds = self._day_slot_holds(
-            branch, scheduled_date, holder_token=holder_token, for_occupancy=True
-        )
-        unassigned_holds = tuple(hold for hold in day_holds if hold.employee_id is None)
+            day_holds = self._day_slot_holds(
+                branch, scheduled_date, holder_token=holder_token, for_occupancy=True
+            )
+            unassigned_holds = tuple(hold for hold in day_holds if hold.employee_id is None)
         spare: dict[str, int] = {}
         for key, count in counts.items():
             start = datetime.combine(
@@ -623,6 +733,7 @@ class PublicBookingService:
         duration: int,
         exclude_appointment_id: UUID | None = None,
         holder_token: str | None = None,
+        ignore_existing_appointments: bool = False,
     ) -> dict[str, list[UUID]]:
         resources = self._active_resources(branch)
         if not resources:
@@ -641,24 +752,30 @@ class PublicBookingService:
         now = utc_now()
         booking_lead = branch.public_booking_min_lead_minutes
         resource_ids = [resource.id for resource in resources]
-        day_start = datetime.combine(scheduled_date, time.min, branch_zone).astimezone(UTC)
-        day_end = datetime.combine(
-            scheduled_date + timedelta(days=1), time.min, branch_zone
-        ).astimezone(UTC)
-        conflicts = self._session.scalars(
-            select(Appointment).where(
-                Appointment.workspace_id == branch.workspace_id,
-                Appointment.branch_id == branch.id,
-                Appointment.record_status == "active",
-                Appointment.status == "confirmed",
-                Appointment.resource_id.in_(resource_ids),
-                Appointment.starts_at < day_end + timedelta(minutes=duration),
-                Appointment.ends_at > day_start,
+        if ignore_existing_appointments:
+            conflicts: list[Appointment] = []
+            day_holds: tuple[Any, ...] = ()
+        else:
+            day_start = datetime.combine(scheduled_date, time.min, branch_zone).astimezone(UTC)
+            day_end = datetime.combine(
+                scheduled_date + timedelta(days=1), time.min, branch_zone
+            ).astimezone(UTC)
+            conflicts = list(
+                self._session.scalars(
+                    select(Appointment).where(
+                        Appointment.workspace_id == branch.workspace_id,
+                        Appointment.branch_id == branch.id,
+                        Appointment.record_status == "active",
+                        Appointment.status == "confirmed",
+                        Appointment.resource_id.in_(resource_ids),
+                        Appointment.starts_at < day_end + timedelta(minutes=duration),
+                        Appointment.ends_at > day_start,
+                    )
+                ).all()
             )
-        ).all()
-        day_holds = self._day_slot_holds(
-            branch, scheduled_date, holder_token=holder_token, for_occupancy=True
-        )
+            day_holds = self._day_slot_holds(
+                branch, scheduled_date, holder_token=holder_token, for_occupancy=True
+            )
         available: dict[str, list[UUID]] = {}
         for slot in candidates:
             if branch_schedule and not fits_schedule(
@@ -693,6 +810,7 @@ class PublicBookingService:
         duration: int,
         exclude_appointment_id: UUID | None = None,
         holder_token: str | None = None,
+        ignore_existing_appointments: bool = False,
     ) -> dict[str, list[UUID]]:
         branch, _ = self._resolve_branch(branch_id)
         employee = self._require_specialist(branch.workspace_id, branch.id, employee_id)
@@ -705,28 +823,34 @@ class PublicBookingService:
         schedule = self._agenda.employee_schedule(branch.workspace_id, employee.id)
         branch_zone = ZoneInfo(branch.timezone)
         schedule_zone = ZoneInfo(schedule.timezone) if schedule else branch_zone
-        day_start = datetime.combine(scheduled_date, time.min, branch_zone).astimezone(UTC)
-        day_end = datetime.combine(
-            scheduled_date + timedelta(days=1), time.min, branch_zone
-        ).astimezone(UTC)
-        conflicts = self._session.scalars(
-            select(Appointment).where(
-                Appointment.workspace_id == branch.workspace_id,
-                Appointment.record_status == "active",
-                Appointment.status == "confirmed",
-                Appointment.starts_at < day_end + timedelta(minutes=duration),
-                Appointment.ends_at > day_start,
-                or_(
-                    Appointment.employee_id == employee_id,
-                    Appointment.resource_id.in_([resource.id for resource in resources]),
-                ),
+        if ignore_existing_appointments:
+            conflicts: list[Appointment] = []
+            day_holds: tuple[Any, ...] = ()
+        else:
+            day_start = datetime.combine(scheduled_date, time.min, branch_zone).astimezone(UTC)
+            day_end = datetime.combine(
+                scheduled_date + timedelta(days=1), time.min, branch_zone
+            ).astimezone(UTC)
+            conflicts = list(
+                self._session.scalars(
+                    select(Appointment).where(
+                        Appointment.workspace_id == branch.workspace_id,
+                        Appointment.record_status == "active",
+                        Appointment.status == "confirmed",
+                        Appointment.starts_at < day_end + timedelta(minutes=duration),
+                        Appointment.ends_at > day_start,
+                        or_(
+                            Appointment.employee_id == employee_id,
+                            Appointment.resource_id.in_([resource.id for resource in resources]),
+                        ),
+                    )
+                ).all()
             )
-        ).all()
+            day_holds = self._day_slot_holds(
+                branch, scheduled_date, holder_token=holder_token, for_occupancy=True
+            )
         now = utc_now()
         booking_lead = branch.public_booking_min_lead_minutes
-        day_holds = self._day_slot_holds(
-            branch, scheduled_date, holder_token=holder_token, for_occupancy=True
-        )
         result: dict[str, list[UUID]] = {}
         for offset in (-1, 0, 1):
             schedule_date = scheduled_date + timedelta(days=offset)

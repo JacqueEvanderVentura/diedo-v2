@@ -3,11 +3,26 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import {
   DAY_LABELS,
   addMonthsKey,
+  formatLongDate,
   formatMonthYear,
   monthGrid,
 } from '@/modules/agenda/lib/calendar'
 import { todayKey } from '@/stores/agendaStore'
 import { cn } from '@/lib/utils'
+
+const VISIBLE_STATUSES = ['empty', 'limited', 'full']
+
+const STATUS_MARK = {
+  empty: 'w-1.5 bg-emerald-400/60',
+  limited: 'w-3 bg-amber-400/80',
+  full: 'w-4 bg-rose-400/85',
+}
+
+const STATUS_PHRASE = {
+  empty: 'día libre',
+  limited: 'pocos cupos',
+  full: 'completo',
+}
 
 export function DateCalendar({
   value = null,
@@ -15,6 +30,8 @@ export function DateCalendar({
   minDate = null,
   className,
   testId = 'date-calendar',
+  dayStatuses = null,
+  onVisibleRangeChange,
 }) {
   const [cursor, setCursor] = useState(value || todayKey())
 
@@ -24,10 +41,21 @@ export function DateCalendar({
 
   const cells = useMemo(() => monthGrid(cursor), [cursor])
 
+  useEffect(() => {
+    if (!onVisibleRangeChange || !cells.length) return
+    onVisibleRangeChange({ from: cells[0].key, to: cells[cells.length - 1].key })
+  }, [cells, onVisibleRangeChange])
+
   const pickDate = (key) => {
     if (minDate && key < minDate) return
     onChange?.(key)
   }
+
+  const showLegend = cells.some(({ key, inMonth }) => {
+    if (!inMonth) return false
+    if (minDate && key < minDate) return false
+    return VISIBLE_STATUSES.includes(dayStatuses?.[key])
+  })
 
   return (
     <div className={cn('rounded-xl border border-slate-100 bg-white p-3', className)} data-testid={testId}>
@@ -66,6 +94,12 @@ export function DateCalendar({
           const disabled = minDate && key < minDate
           const selected = value === key
           const isToday = key === todayKey()
+          const status = !disabled && inMonth ? dayStatuses?.[key] : undefined
+          const showMark = VISIBLE_STATUSES.includes(status)
+          const statusPhrase = STATUS_PHRASE[status]
+          const ariaLabel = statusPhrase
+            ? `${formatLongDate(key)}, ${statusPhrase}`
+            : formatLongDate(key)
           return (
             <button
               key={key}
@@ -73,8 +107,10 @@ export function DateCalendar({
               disabled={disabled}
               onClick={() => pickDate(key)}
               data-testid={`${testId}-day-${key}`}
+              data-availability={showMark ? status : undefined}
+              aria-label={ariaLabel}
               className={cn(
-                'h-8 rounded-lg text-xs font-semibold transition-colors',
+                'relative h-8 rounded-lg text-xs font-semibold transition-colors',
                 !inMonth && 'text-slate-300',
                 inMonth && !selected && !disabled && 'text-slate-700 hover:bg-blue-50 hover:text-blue-700',
                 disabled && 'cursor-not-allowed text-slate-200',
@@ -83,10 +119,41 @@ export function DateCalendar({
               )}
             >
               {key.split('-')[2]}
+              {showMark ? (
+                <span
+                  aria-hidden
+                  data-testid={`${testId}-mark-${key}`}
+                  className={cn(
+                    'pointer-events-none absolute bottom-1 left-1/2 h-0.5 -translate-x-1/2 rounded-full',
+                    STATUS_MARK[status],
+                    selected && 'bg-white/80'
+                  )}
+                />
+              ) : null}
             </button>
           )
         })}
       </div>
+
+      {showLegend ? (
+        <ul
+          className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] text-slate-500"
+          data-testid={`${testId}-legend`}
+        >
+          <li className="flex items-center gap-1">
+            <span aria-hidden className="h-0.5 w-1.5 rounded-full bg-emerald-400/60" />
+            Libre
+          </li>
+          <li className="flex items-center gap-1">
+            <span aria-hidden className="h-0.5 w-3 rounded-full bg-amber-400/80" />
+            Pocos cupos
+          </li>
+          <li className="flex items-center gap-1">
+            <span aria-hidden className="h-0.5 w-4 rounded-full bg-rose-400/85" />
+            Completo
+          </li>
+        </ul>
+      ) : null}
     </div>
   )
 }

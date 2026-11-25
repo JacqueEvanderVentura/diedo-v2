@@ -161,6 +161,23 @@ class PublicSlotHoldResponse(ApiModel):
     duration_minutes: int
 
 
+PublicDayAvailabilityStatus = Literal["empty", "open", "limited", "full", "closed"]
+
+
+class PublicDayAvailability(ApiModel):
+    date: date
+    available_slots: int
+    total_slots: int
+    status: PublicDayAvailabilityStatus
+
+
+class PublicAvailabilityResponse(ApiModel):
+    from_date: date = Field(alias="from")
+    to_date: date = Field(alias="to")
+    employee_id: UUID | None = None
+    days: list[PublicDayAvailability]
+
+
 class PublicBookAppointmentRequest(ApiModel):
     customer_id: UUID | None = None
     document_type: CustomerDocumentType

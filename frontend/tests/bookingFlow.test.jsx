@@ -14,7 +14,7 @@ import { clearPublicSession, rememberPublicSession } from '@/modules/portal/lib/
 import { branchDateKey } from '@/modules/agenda/lib/notification'
 
 vi.mock('@/services/publicBookingApi', () => ({ publicBookingApi: {
-  getContext: vi.fn(), getEntryContext: vi.fn(), identify: vi.fn(), listSlots: vi.fn(), book: vi.fn(), sendBookingLink: vi.fn(),
+  getContext: vi.fn(), getEntryContext: vi.fn(), identify: vi.fn(), listSlots: vi.fn(), listAvailability: vi.fn(), book: vi.fn(), sendBookingLink: vi.fn(),
   getAppointment: vi.fn(), managementSlots: vi.fn(), cancelAppointment: vi.fn(), rescheduleAppointment: vi.fn(),
   claimSlotHold: vi.fn(), releaseSlotHold: vi.fn(),
 } }))
@@ -52,6 +52,7 @@ beforeEach(() => {
     workspaceBranches: [{ id: 'branch', name: 'Norte' }],
   })
   publicBookingApi.identify.mockResolvedValue({ isNew: true })
+  publicBookingApi.listAvailability.mockResolvedValue({ days: [] })
   publicBookingApi.releaseSlotHold.mockResolvedValue(undefined)
   publicBookingApi.claimSlotHold.mockResolvedValue({
     time: '10:00',
