@@ -7,12 +7,12 @@ import pytest
 from app.config import settings
 from app.db.models import Appointment, Branch, CustomerBranchAssignment, Employee
 from app.db.models.email_notifications import EmailNotification
-from app.db.session import get_session_factory
+from app.db.session import get_engine, get_session_factory
 from app.services import email_notifications
 from app.services.appointment_reminders import REMINDER_EVENT, AppointmentReminderService
 from app.services.email import EmailDeliveryResult, EmailTransportError
 from pydantic import SecretStr
-from sqlalchemy import delete, select
+from sqlalchemy import delete, event, select
 
 from tests.test_agenda import (
     _bootstrap_and_login,
@@ -1878,3 +1878,72 @@ def test_public_availability_reports_empty_open_and_closed_days(client, booking_
         json={"items": []},
     )
     assert cleared.status_code == 200, cleared.text
+
+
+@pytest.mark.integration
+def test_public_availability_matches_daily_slot_counts(client, booking_setup):
+    _, _, branch, employee, service = booking_setup
+    body = payload_for(employee, service)
+    start = date.fromisoformat(body["date"])
+    end = start + timedelta(days=6)
+    base = f"/api/v1/public/booking/branches/{branch}"
+    availability = client.get(
+        f"{base}/availability",
+        params={
+            "from": start.isoformat(),
+            "to": end.isoformat(),
+            "serviceId": service,
+            "employeeId": employee,
+        },
+    )
+    assert availability.status_code == 200, availability.text
+    by_date = {row["date"]: row for row in availability.json()["days"]}
+    cursor = start
+    while cursor <= end:
+        slots = client.get(
+            f"{base}/slots",
+            params={
+                "date": cursor.isoformat(),
+                "serviceId": service,
+                "employeeId": employee,
+            },
+        )
+        assert slots.status_code == 200, slots.text
+        assert by_date[cursor.isoformat()]["availableSlots"] == len(slots.json()["slots"])
+        cursor += timedelta(days=1)
+
+
+@pytest.mark.integration
+def test_public_availability_sql_does_not_scale_with_day_count(client, booking_setup):
+    _, _, branch, employee, service = booking_setup
+    body = payload_for(employee, service)
+    start = date.fromisoformat(body["date"])
+    base = f"/api/v1/public/booking/branches/{branch}"
+    engine = get_engine()
+
+    def count_statements(span_days: int) -> int:
+        statements: list[str] = []
+
+        def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+            statements.append(statement)
+
+        event.listen(engine, "before_cursor_execute", before_cursor_execute)
+        try:
+            result = client.get(
+                f"{base}/availability",
+                params={
+                    "from": start.isoformat(),
+                    "to": (start + timedelta(days=span_days - 1)).isoformat(),
+                    "serviceId": service,
+                    "employeeId": employee,
+                },
+            )
+        finally:
+            event.remove(engine, "before_cursor_execute", before_cursor_execute)
+        assert result.status_code == 200, result.text
+        return len(statements)
+
+    short = count_statements(2)
+    long = count_statements(14)
+    assert long < 80
+    assert long - short < 20
