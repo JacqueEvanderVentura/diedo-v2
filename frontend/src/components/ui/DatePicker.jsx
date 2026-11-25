@@ -11,6 +11,8 @@ export function DatePicker({
   className,
   testId = 'date-picker',
   placeholder = 'Seleccionar fecha',
+  dayStatuses = null,
+  onVisibleRangeChange,
 }) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef(null)
@@ -54,6 +56,8 @@ export function DatePicker({
             onChange={pickDate}
             minDate={minDate}
             testId={`${testId}-calendar`}
+            dayStatuses={dayStatuses}
+            onVisibleRangeChange={onVisibleRangeChange}
           />
         </div>
       )}

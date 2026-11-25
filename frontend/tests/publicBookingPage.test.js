@@ -9,7 +9,7 @@ import { useSessionStore } from '@/stores/sessionStore'
 import { publicBookingApi } from '@/services/publicBookingApi'
 
 vi.mock('@/services/publicBookingApi', () => ({
-  publicBookingApi: { getContext: vi.fn(), getEntryContext: vi.fn() },
+  publicBookingApi: { getContext: vi.fn(), getEntryContext: vi.fn(), listAvailability: vi.fn(), listSlots: vi.fn() },
 }))
 
 beforeEach(() => {

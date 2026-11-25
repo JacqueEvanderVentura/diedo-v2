@@ -13,6 +13,7 @@ from app.schemas.public_booking import (
     ManagedAppointmentResponse,
     PublicAppointmentsListResponse,
     PublicAppointmentSummary,
+    PublicAvailabilityResponse,
     PublicBookAppointmentRequest,
     PublicBookAppointmentResponse,
     PublicBookingContextResponse,
@@ -175,6 +176,29 @@ def list_slots(
         slots=slots,
         held_slots=[PublicHeldSlot.model_validate(item) for item in held_slots],
     )
+
+
+@router.get(
+    "/branches/{branch_id}/availability",
+    summary="Disponibilidad diaria para el calendario público",
+    responses=_SECURITY,
+)
+def list_availability(
+    branch_id: UUID,
+    database: DatabaseSession,
+    date_from: Annotated[date, Query(alias="from")],
+    date_to: Annotated[date, Query(alias="to")],
+    service_id: Annotated[UUID, Query(alias="serviceId")],
+    employee_id: Annotated[UUID | None, Query(alias="employeeId")] = None,
+) -> PublicAvailabilityResponse:
+    payload = PublicBookingService(database).list_availability(
+        branch_id,
+        date_from=date_from,
+        date_to=date_to,
+        service_id=service_id,
+        employee_id=employee_id,
+    )
+    return PublicAvailabilityResponse.model_validate(payload)
 
 
 @router.post(

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from hashlib import sha256
-from typing import Any, cast
+from math import ceil
+from typing import Any, Literal, cast
 from uuid import UUID, uuid7
 from zoneinfo import ZoneInfo
 
@@ -17,6 +19,8 @@ from app.db.models import (
     CustomerBranchAssignment,
     Employee,
     EmployeeBranchAssignment,
+    EmployeeSchedule,
+    HrLeaveRequest,
     InventoryItemProfile,
     Item,
     ItemBranchAssignment,
@@ -57,6 +61,37 @@ from app.services.slot_holds import hold_expires_at, serialize_held_slots
 from app.services.user_notifications import deliver_pending_in_app_emails
 
 PUBLIC_BOOKING_SLOT_CAPACITY = 1
+PUBLIC_AVAILABILITY_MAX_DAYS = 42
+_LIMITED_REMAINING_RATIO = 0.25
+_LIMITED_REMAINING_FLOOR = 2
+
+DayAvailabilityStatus = Literal["empty", "open", "limited", "full", "closed"]
+
+
+def classify_day_availability(available_slots: int, total_slots: int) -> DayAvailabilityStatus:
+    if total_slots <= 0:
+        return "closed"
+    if available_slots <= 0:
+        return "full"
+    if available_slots >= total_slots:
+        return "empty"
+    limited_threshold = max(_LIMITED_REMAINING_FLOOR, ceil(total_slots * _LIMITED_REMAINING_RATIO))
+    if available_slots <= limited_threshold:
+        return "limited"
+    return "open"
+
+
+@dataclass
+class _SlotPrefetch:
+    branch: Branch
+    resources: list[Any]
+    specialists: list[dict[str, Any]]
+    employees: dict[UUID, Employee]
+    branch_schedule: dict[str, list[dict[str, str]]] | None
+    employee_schedules: dict[UUID, EmployeeSchedule | None]
+    leave: set[tuple[UUID, date]]
+    appointments: list[Appointment]
+    holds: tuple[AppointmentSlotHold, ...]
 
 
 def _pending_appointment_conflict_details(pending: dict[str, Any]) -> dict[str, Any]:
@@ -71,6 +106,7 @@ class PublicBookingService:
         self._session = session
         self._agenda = AgendaRepository(session)
         self._master_data = MasterDataRepository(session)
+        self._slot_prefetch: _SlotPrefetch | None = None
 
     def get_entry_context(self, branch_id: UUID | None = None) -> dict[str, Any]:
         if branch_id is not None:
@@ -169,28 +205,13 @@ class PublicBookingService:
         _principal, grant = self._system_access(branch.workspace_id)
         service = self._require_service(grant, branch.id, service_id)
         duration_minutes = int(service["duration_minutes"])
-        if employee_id is None:
-            slots = self._unassigned_slot_times(
-                branch,
-                scheduled_date=scheduled_date,
-                duration_minutes=duration_minutes,
-                holder_token=holder_token,
-            )
-        else:
-            spare = self._specialist_spare_capacity(
-                branch, scheduled_date, duration_minutes, holder_token=holder_token
-            )
-            slots = sorted(
-                key
-                for key in self._slot_resources(
-                    branch_id,
-                    scheduled_date,
-                    employee_id,
-                    duration_minutes,
-                    holder_token=holder_token,
-                )
-                if spare.get(key, 0) >= 1
-            )
+        slots = self._slot_times_for_day(
+            branch,
+            scheduled_date=scheduled_date,
+            employee_id=employee_id,
+            duration_minutes=duration_minutes,
+            holder_token=holder_token,
+        )
         slots = self._exclude_customer_busy_slots(
             branch,
             scheduled_date=scheduled_date,
@@ -244,7 +265,223 @@ class PublicBookingService:
         key = scheduled_time.strftime("%H:%M")
         return scheduled_date, (key if key in slots else None)
 
+    def list_availability(
+        self,
+        branch_id: UUID,
+        *,
+        date_from: date,
+        date_to: date,
+        service_id: UUID,
+        employee_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        if date_to < date_from:
+            raise InvalidOperationError("El rango de fechas no es válido.", "to")
+        span = (date_to - date_from).days + 1
+        if span > PUBLIC_AVAILABILITY_MAX_DAYS:
+            raise InvalidOperationError(
+                f"El rango no puede superar {PUBLIC_AVAILABILITY_MAX_DAYS} días.",
+                "to",
+            )
+        branch, _workspace = self._resolve_branch(branch_id)
+        _principal, grant = self._system_access(branch.workspace_id)
+        service = self._require_service(grant, branch.id, service_id)
+        duration_minutes = int(service["duration_minutes"])
+        self._prime_slot_prefetch(
+            branch,
+            date_from=date_from,
+            date_to=date_to,
+            duration_minutes=duration_minutes,
+        )
+        try:
+            days: list[dict[str, Any]] = []
+            cursor = date_from
+            while cursor <= date_to:
+                available = self._slot_times_for_day(
+                    branch,
+                    scheduled_date=cursor,
+                    employee_id=employee_id,
+                    duration_minutes=duration_minutes,
+                )
+                total = self._slot_times_for_day(
+                    branch,
+                    scheduled_date=cursor,
+                    employee_id=employee_id,
+                    duration_minutes=duration_minutes,
+                    ignore_existing_appointments=True,
+                )
+                available_count = len(available)
+                total_count = len(total)
+                days.append(
+                    {
+                        "date": cursor,
+                        "available_slots": available_count,
+                        "total_slots": total_count,
+                        "status": classify_day_availability(available_count, total_count),
+                    }
+                )
+                cursor += timedelta(days=1)
+        finally:
+            self._slot_prefetch = None
+        return {
+            "from_date": date_from,
+            "to_date": date_to,
+            "employee_id": employee_id,
+            "days": days,
+        }
+
+    def _prefetch_for(self, branch: Branch) -> _SlotPrefetch | None:
+        cache = self._slot_prefetch
+        if cache is None or cache.branch.id != branch.id:
+            return None
+        return cache
+
+    def _prime_slot_prefetch(
+        self,
+        branch: Branch,
+        *,
+        date_from: date,
+        date_to: date,
+        duration_minutes: int,
+    ) -> None:
+        specialists = self._list_specialists(branch.workspace_id, branch.id)
+        specialist_ids = [item["id"] for item in specialists]
+        resources = self._active_resources(branch)
+        resource_ids = [resource.id for resource in resources]
+        employees: dict[UUID, Employee] = {}
+        if specialist_ids:
+            for employee in self._session.scalars(
+                select(Employee).where(
+                    Employee.workspace_id == branch.workspace_id,
+                    Employee.id.in_(specialist_ids),
+                )
+            ):
+                employees[employee.id] = employee
+        schedules: dict[UUID, EmployeeSchedule | None] = {
+            employee_id: None for employee_id in specialist_ids
+        }
+        if specialist_ids:
+            for row in self._session.scalars(
+                select(EmployeeSchedule).where(
+                    EmployeeSchedule.workspace_id == branch.workspace_id,
+                    EmployeeSchedule.employee_id.in_(specialist_ids),
+                )
+            ):
+                schedules[row.employee_id] = row
+        branch_schedule = AgendaService(self._session).branch_opening_schedule(
+            branch.workspace_id, branch.id
+        )
+        branch_zone = ZoneInfo(branch.timezone)
+        pad_from = date_from - timedelta(days=1)
+        pad_to = date_to + timedelta(days=1)
+        range_start = datetime.combine(pad_from, time.min, branch_zone).astimezone(UTC)
+        range_end = datetime.combine(pad_to + timedelta(days=1), time.min, branch_zone).astimezone(
+            UTC
+        )
+        occupancy: list[Any] = []
+        if specialist_ids:
+            occupancy.append(Appointment.employee_id.in_(specialist_ids))
+        if resource_ids:
+            occupancy.append(Appointment.resource_id.in_(resource_ids))
+        occupancy.append(
+            (Appointment.branch_id == branch.id)
+            & Appointment.employee_id.is_(None)
+            & (Appointment.source == "self")
+        )
+        appointments = list(
+            self._session.scalars(
+                select(Appointment).where(
+                    Appointment.workspace_id == branch.workspace_id,
+                    Appointment.record_status == "active",
+                    Appointment.status == "confirmed",
+                    Appointment.starts_at < range_end + timedelta(minutes=duration_minutes),
+                    Appointment.ends_at > range_start,
+                    or_(*occupancy),
+                )
+            ).all()
+        )
+        now = utc_now()
+        self._agenda.purge_expired_slot_holds(now=now)
+        holds = self._agenda.list_active_slot_holds(
+            workspace_id=branch.workspace_id,
+            branch_id=branch.id,
+            date_from=pad_from,
+            date_to=pad_to,
+            now=now,
+        )
+        leave: set[tuple[UUID, date]] = set()
+        if specialist_ids:
+            for employee_id, start_date, end_date in self._session.execute(
+                select(
+                    HrLeaveRequest.employee_id,
+                    HrLeaveRequest.start_date,
+                    HrLeaveRequest.end_date,
+                ).where(
+                    HrLeaveRequest.workspace_id == branch.workspace_id,
+                    HrLeaveRequest.employee_id.in_(specialist_ids),
+                    HrLeaveRequest.status == "aprobada",
+                    HrLeaveRequest.start_date <= pad_to,
+                    HrLeaveRequest.end_date >= pad_from,
+                )
+            ):
+                cursor = max(start_date, pad_from)
+                last = min(end_date, pad_to)
+                while cursor <= last:
+                    leave.add((employee_id, cursor))
+                    cursor += timedelta(days=1)
+        self._slot_prefetch = _SlotPrefetch(
+            branch=branch,
+            resources=resources,
+            specialists=specialists,
+            employees=employees,
+            branch_schedule=branch_schedule,
+            employee_schedules=schedules,
+            leave=leave,
+            appointments=appointments,
+            holds=holds,
+        )
+
+    def _slot_times_for_day(
+        self,
+        branch: Branch,
+        *,
+        scheduled_date: date,
+        employee_id: UUID | None,
+        duration_minutes: int,
+        ignore_existing_appointments: bool = False,
+        holder_token: str | None = None,
+    ) -> list[str]:
+        if employee_id is None:
+            return self._unassigned_slot_times(
+                branch,
+                scheduled_date=scheduled_date,
+                duration_minutes=duration_minutes,
+                ignore_existing_appointments=ignore_existing_appointments,
+                holder_token=holder_token,
+            )
+        spare = self._specialist_spare_capacity(
+            branch,
+            scheduled_date,
+            duration_minutes,
+            ignore_existing_appointments=ignore_existing_appointments,
+            holder_token=holder_token,
+        )
+        return sorted(
+            key
+            for key in self._slot_resources(
+                branch.id,
+                scheduled_date,
+                employee_id,
+                duration_minutes,
+                ignore_existing_appointments=ignore_existing_appointments,
+                holder_token=holder_token,
+            )
+            if spare.get(key, 0) >= 1
+        )
+
     def _active_resources(self, branch: Branch) -> list[Any]:
+        cache = self._prefetch_for(branch)
+        if cache is not None:
+            return cache.resources
         return [
             resource
             for resource in self._agenda.list_resources(
@@ -253,6 +490,20 @@ class PublicBookingService:
             )
             if resource.status == "active" and resource.online_booking_enabled
         ]
+
+    def _branch_day_window(self, branch: Branch, scheduled_date: date) -> tuple[datetime, datetime]:
+        branch_zone = ZoneInfo(branch.timezone)
+        day_start = datetime.combine(scheduled_date, time.min, branch_zone).astimezone(UTC)
+        day_end = datetime.combine(
+            scheduled_date + timedelta(days=1), time.min, branch_zone
+        ).astimezone(UTC)
+        return day_start, day_end
+
+    def _branch_opening_schedule(self, branch: Branch) -> dict[str, list[dict[str, str]]] | None:
+        cache = self._prefetch_for(branch)
+        if cache is not None:
+            return cache.branch_schedule
+        return AgendaService(self._session).branch_opening_schedule(branch.workspace_id, branch.id)
 
     def _lock(self, value: str) -> None:
         key = int.from_bytes(sha256(value.encode()).digest()[:8], "big", signed=True)
@@ -289,14 +540,18 @@ class PublicBookingService:
         holder_token: str | None = None,
         for_occupancy: bool = True,
     ) -> tuple[AppointmentSlotHold, ...]:
-        now = utc_now()
-        self._agenda.purge_expired_slot_holds(now=now)
-        holds = self._agenda.list_active_slot_holds(
-            workspace_id=branch.workspace_id,
-            branch_id=branch.id,
-            scheduled_date=scheduled_date,
-            now=now,
-        )
+        cache = self._prefetch_for(branch)
+        if cache is not None:
+            holds = tuple(hold for hold in cache.holds if hold.scheduled_date == scheduled_date)
+        else:
+            now = utc_now()
+            self._agenda.purge_expired_slot_holds(now=now)
+            holds = self._agenda.list_active_slot_holds(
+                workspace_id=branch.workspace_id,
+                branch_id=branch.id,
+                scheduled_date=scheduled_date,
+                now=now,
+            )
         if not for_occupancy or holder_token is None:
             return holds
         return tuple(row for row in holds if row.holder_token != holder_token)
@@ -516,6 +771,7 @@ class PublicBookingService:
         duration_minutes: int,
         exclude_appointment_id: UUID | None = None,
         holder_token: str | None = None,
+        ignore_existing_appointments: bool = False,
     ) -> list[str]:
         return sorted(
             self._unassigned_slot_resources(
@@ -524,6 +780,7 @@ class PublicBookingService:
                 duration_minutes=duration_minutes,
                 exclude_appointment_id=exclude_appointment_id,
                 holder_token=holder_token,
+                ignore_existing_appointments=ignore_existing_appointments,
             )
         )
 
@@ -535,6 +792,7 @@ class PublicBookingService:
         duration_minutes: int,
         exclude_appointment_id: UUID | None = None,
         holder_token: str | None = None,
+        ignore_existing_appointments: bool = False,
     ) -> dict[str, list[UUID]]:
         spare = self._specialist_spare_capacity(
             branch,
@@ -542,6 +800,7 @@ class PublicBookingService:
             duration_minutes,
             exclude_appointment_id=exclude_appointment_id,
             holder_token=holder_token,
+            ignore_existing_appointments=ignore_existing_appointments,
         )
         free_resources = self._resource_only_slots(
             branch,
@@ -549,6 +808,7 @@ class PublicBookingService:
             duration_minutes,
             exclude_appointment_id=exclude_appointment_id,
             holder_token=holder_token,
+            ignore_existing_appointments=ignore_existing_appointments,
         )
         return {
             key: free for key, free in free_resources.items() if free and spare.get(key, 0) >= 1
@@ -561,6 +821,7 @@ class PublicBookingService:
         duration_minutes: int,
         exclude_appointment_id: UUID | None = None,
         holder_token: str | None = None,
+        ignore_existing_appointments: bool = False,
     ) -> dict[str, int]:
         """Free specialists per slot minus overlapping online bookings still awaiting one."""
         counts: dict[str, int] = {}
@@ -572,31 +833,47 @@ class PublicBookingService:
                 duration_minutes,
                 exclude_appointment_id=exclude_appointment_id,
                 holder_token=holder_token,
+                ignore_existing_appointments=ignore_existing_appointments,
             ):
                 counts[key] = counts.get(key, 0) + 1
         if not counts:
             return {}
         branch_zone = ZoneInfo(branch.timezone)
-        day_start = datetime.combine(scheduled_date, time.min, branch_zone).astimezone(UTC)
-        day_end = datetime.combine(
-            scheduled_date + timedelta(days=1), time.min, branch_zone
-        ).astimezone(UTC)
-        unassigned = self._session.scalars(
-            select(Appointment).where(
-                Appointment.workspace_id == branch.workspace_id,
-                Appointment.branch_id == branch.id,
-                Appointment.record_status == "active",
-                Appointment.status == "confirmed",
-                Appointment.employee_id.is_(None),
-                Appointment.source == "self",
-                Appointment.starts_at < day_end + timedelta(minutes=duration_minutes),
-                Appointment.ends_at > day_start,
+        if ignore_existing_appointments:
+            unassigned: list[Appointment] = []
+            unassigned_holds: tuple[Any, ...] = ()
+        else:
+            day_start, day_end = self._branch_day_window(branch, scheduled_date)
+            cache = self._prefetch_for(branch)
+            if cache is not None:
+                unassigned = [
+                    appointment
+                    for appointment in cache.appointments
+                    if appointment.branch_id == branch.id
+                    and appointment.employee_id is None
+                    and appointment.source == "self"
+                    and appointment.starts_at < day_end + timedelta(minutes=duration_minutes)
+                    and appointment.ends_at > day_start
+                ]
+            else:
+                unassigned = list(
+                    self._session.scalars(
+                        select(Appointment).where(
+                            Appointment.workspace_id == branch.workspace_id,
+                            Appointment.branch_id == branch.id,
+                            Appointment.record_status == "active",
+                            Appointment.status == "confirmed",
+                            Appointment.employee_id.is_(None),
+                            Appointment.source == "self",
+                            Appointment.starts_at < day_end + timedelta(minutes=duration_minutes),
+                            Appointment.ends_at > day_start,
+                        )
+                    ).all()
+                )
+            day_holds = self._day_slot_holds(
+                branch, scheduled_date, holder_token=holder_token, for_occupancy=True
             )
-        ).all()
-        day_holds = self._day_slot_holds(
-            branch, scheduled_date, holder_token=holder_token, for_occupancy=True
-        )
-        unassigned_holds = tuple(hold for hold in day_holds if hold.employee_id is None)
+            unassigned_holds = tuple(hold for hold in day_holds if hold.employee_id is None)
         spare: dict[str, int] = {}
         for key, count in counts.items():
             start = datetime.combine(
@@ -623,13 +900,12 @@ class PublicBookingService:
         duration: int,
         exclude_appointment_id: UUID | None = None,
         holder_token: str | None = None,
+        ignore_existing_appointments: bool = False,
     ) -> dict[str, list[UUID]]:
         resources = self._active_resources(branch)
         if not resources:
             return {}
-        branch_schedule = AgendaService(self._session).branch_opening_schedule(
-            branch.workspace_id, branch.id
-        )
+        branch_schedule = self._branch_opening_schedule(branch)
         candidates = get_available_slots(
             scheduled_date=scheduled_date,
             duration_minutes=duration,
@@ -641,24 +917,39 @@ class PublicBookingService:
         now = utc_now()
         booking_lead = branch.public_booking_min_lead_minutes
         resource_ids = [resource.id for resource in resources]
-        day_start = datetime.combine(scheduled_date, time.min, branch_zone).astimezone(UTC)
-        day_end = datetime.combine(
-            scheduled_date + timedelta(days=1), time.min, branch_zone
-        ).astimezone(UTC)
-        conflicts = self._session.scalars(
-            select(Appointment).where(
-                Appointment.workspace_id == branch.workspace_id,
-                Appointment.branch_id == branch.id,
-                Appointment.record_status == "active",
-                Appointment.status == "confirmed",
-                Appointment.resource_id.in_(resource_ids),
-                Appointment.starts_at < day_end + timedelta(minutes=duration),
-                Appointment.ends_at > day_start,
+        if ignore_existing_appointments:
+            conflicts: list[Appointment] = []
+            day_holds: tuple[Any, ...] = ()
+        else:
+            day_start, day_end = self._branch_day_window(branch, scheduled_date)
+            cache = self._prefetch_for(branch)
+            resource_id_set = set(resource_ids)
+            if cache is not None:
+                conflicts = [
+                    appointment
+                    for appointment in cache.appointments
+                    if appointment.branch_id == branch.id
+                    and appointment.resource_id in resource_id_set
+                    and appointment.starts_at < day_end + timedelta(minutes=duration)
+                    and appointment.ends_at > day_start
+                ]
+            else:
+                conflicts = list(
+                    self._session.scalars(
+                        select(Appointment).where(
+                            Appointment.workspace_id == branch.workspace_id,
+                            Appointment.branch_id == branch.id,
+                            Appointment.record_status == "active",
+                            Appointment.status == "confirmed",
+                            Appointment.resource_id.in_(resource_ids),
+                            Appointment.starts_at < day_end + timedelta(minutes=duration),
+                            Appointment.ends_at > day_start,
+                        )
+                    ).all()
+                )
+            day_holds = self._day_slot_holds(
+                branch, scheduled_date, holder_token=holder_token, for_occupancy=True
             )
-        ).all()
-        day_holds = self._day_slot_holds(
-            branch, scheduled_date, holder_token=holder_token, for_occupancy=True
-        )
         available: dict[str, list[UUID]] = {}
         for slot in candidates:
             if branch_schedule and not fits_schedule(
@@ -693,46 +984,75 @@ class PublicBookingService:
         duration: int,
         exclude_appointment_id: UUID | None = None,
         holder_token: str | None = None,
+        ignore_existing_appointments: bool = False,
     ) -> dict[str, list[UUID]]:
-        branch, _ = self._resolve_branch(branch_id)
+        cache = self._slot_prefetch
+        if cache is not None and cache.branch.id != branch_id:
+            cache = None
+        if cache is not None:
+            branch = cache.branch
+        else:
+            branch, _ = self._resolve_branch(branch_id)
         employee = self._require_specialist(branch.workspace_id, branch.id, employee_id)
         resources = self._active_resources(branch)
         if not resources:
             return {}
-        branch_schedule = AgendaService(self._session).branch_opening_schedule(
-            branch.workspace_id, branch.id
-        )
-        schedule = self._agenda.employee_schedule(branch.workspace_id, employee.id)
+        branch_schedule = self._branch_opening_schedule(branch)
+        if cache is not None:
+            schedule = cache.employee_schedules.get(employee.id)
+        else:
+            schedule = self._agenda.employee_schedule(branch.workspace_id, employee.id)
         branch_zone = ZoneInfo(branch.timezone)
         schedule_zone = ZoneInfo(schedule.timezone) if schedule else branch_zone
-        day_start = datetime.combine(scheduled_date, time.min, branch_zone).astimezone(UTC)
-        day_end = datetime.combine(
-            scheduled_date + timedelta(days=1), time.min, branch_zone
-        ).astimezone(UTC)
-        conflicts = self._session.scalars(
-            select(Appointment).where(
-                Appointment.workspace_id == branch.workspace_id,
-                Appointment.record_status == "active",
-                Appointment.status == "confirmed",
-                Appointment.starts_at < day_end + timedelta(minutes=duration),
-                Appointment.ends_at > day_start,
-                or_(
-                    Appointment.employee_id == employee_id,
-                    Appointment.resource_id.in_([resource.id for resource in resources]),
-                ),
+        if ignore_existing_appointments:
+            conflicts: list[Appointment] = []
+            day_holds: tuple[Any, ...] = ()
+        else:
+            day_start, day_end = self._branch_day_window(branch, scheduled_date)
+            resource_id_set = {resource.id for resource in resources}
+            if cache is not None:
+                conflicts = [
+                    appointment
+                    for appointment in cache.appointments
+                    if appointment.starts_at < day_end + timedelta(minutes=duration)
+                    and appointment.ends_at > day_start
+                    and (
+                        appointment.employee_id == employee_id
+                        or appointment.resource_id in resource_id_set
+                    )
+                ]
+            else:
+                conflicts = list(
+                    self._session.scalars(
+                        select(Appointment).where(
+                            Appointment.workspace_id == branch.workspace_id,
+                            Appointment.record_status == "active",
+                            Appointment.status == "confirmed",
+                            Appointment.starts_at < day_end + timedelta(minutes=duration),
+                            Appointment.ends_at > day_start,
+                            or_(
+                                Appointment.employee_id == employee_id,
+                                Appointment.resource_id.in_(
+                                    [resource.id for resource in resources]
+                                ),
+                            ),
+                        )
+                    ).all()
+                )
+            day_holds = self._day_slot_holds(
+                branch, scheduled_date, holder_token=holder_token, for_occupancy=True
             )
-        ).all()
         now = utc_now()
         booking_lead = branch.public_booking_min_lead_minutes
-        day_holds = self._day_slot_holds(
-            branch, scheduled_date, holder_token=holder_token, for_occupancy=True
-        )
         result: dict[str, list[UUID]] = {}
         for offset in (-1, 0, 1):
             schedule_date = scheduled_date + timedelta(days=offset)
-            on_leave = self._agenda.employee_on_approved_leave(
-                branch.workspace_id, employee_id, schedule_date
-            )
+            if cache is not None:
+                on_leave = (employee_id, schedule_date) in cache.leave
+            else:
+                on_leave = self._agenda.employee_on_approved_leave(
+                    branch.workspace_id, employee_id, schedule_date
+                )
             candidates = get_available_slots(
                 scheduled_date=schedule_date,
                 duration_minutes=duration,
@@ -1667,6 +1987,13 @@ class PublicBookingService:
         raise ResourceNotFoundError("El servicio no está disponible.", "serviceId")
 
     def _list_specialists(self, workspace_id: UUID, branch_id: UUID) -> list[dict[str, Any]]:
+        cache = self._slot_prefetch
+        if (
+            cache is not None
+            and cache.branch.workspace_id == workspace_id
+            and cache.branch.id == branch_id
+        ):
+            return cache.specialists
         rows = self._session.execute(
             select(Employee.id, Employee.first_name, Employee.last_name)
             .join(
@@ -1694,6 +2021,16 @@ class PublicBookingService:
     def _require_specialist(
         self, workspace_id: UUID, branch_id: UUID, employee_id: UUID
     ) -> Employee:
+        cache = self._slot_prefetch
+        if (
+            cache is not None
+            and cache.branch.workspace_id == workspace_id
+            and cache.branch.id == branch_id
+        ):
+            employee = cache.employees.get(employee_id)
+            if employee is None:
+                raise ResourceNotFoundError("El especialista no está disponible.", "employeeId")
+            return employee
         allowed = {item["id"] for item in self._list_specialists(workspace_id, branch_id)}
         if employee_id not in allowed:
             raise ResourceNotFoundError("El especialista no está disponible.", "employeeId")

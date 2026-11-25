@@ -27,6 +27,11 @@ export const publicBookingApi = {
       headers: slotHoldHeaders(),
     })
   },
+  listAvailability: (branchId, params) => {
+    const query = { ...params }
+    if (!query.employeeId) delete query.employeeId
+    return publicGet(`${base(branchId)}/availability`, { params: query })
+  },
   claimSlotHold: (branchId, payload) =>
     publicPost(`${base(branchId)}/slot-holds`, payload, { headers: slotHoldHeaders() }),
   releaseSlotHold: (branchId) =>

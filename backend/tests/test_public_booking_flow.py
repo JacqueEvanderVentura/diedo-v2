@@ -7,12 +7,12 @@ import pytest
 from app.config import settings
 from app.db.models import Appointment, Branch, CustomerBranchAssignment, Employee
 from app.db.models.email_notifications import EmailNotification
-from app.db.session import get_session_factory
+from app.db.session import get_engine, get_session_factory
 from app.services import email_notifications
 from app.services.appointment_reminders import REMINDER_EVENT, AppointmentReminderService
 from app.services.email import EmailDeliveryResult, EmailTransportError
 from pydantic import SecretStr
-from sqlalchemy import delete, select
+from sqlalchemy import delete, event, select
 
 from tests.test_agenda import (
     _bootstrap_and_login,
@@ -1766,3 +1766,184 @@ def test_public_booking_rejects_same_customer_overlapping_slot(client, booking_s
     )
     assert moved.status_code == 409, moved.text
     assert "Ya tienes una cita en ese horario" in moved.json()["message"]
+
+
+@pytest.mark.integration
+def test_public_availability_reports_empty_open_and_closed_days(client, booking_setup):
+    headers, _, branch, employee, service = booking_setup
+    body = payload_for(employee, service)
+    booking_date = date.fromisoformat(body["date"])
+    closed_date = booking_date + timedelta(days=1)
+    booking_weekday = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")[booking_date.weekday()]
+    hours = client.put(
+        f"/api/v1/branches/{branch}/opening-hours",
+        headers=headers,
+        json={"items": [{"weekday": booking_weekday, "opensAt": "09:00", "closesAt": "17:00"}]},
+    )
+    assert hours.status_code == 200, hours.text
+    base = f"/api/v1/public/booking/branches/{branch}"
+    params = {
+        "from": booking_date.isoformat(),
+        "to": closed_date.isoformat(),
+        "serviceId": service,
+        "employeeId": employee,
+    }
+    empty = client.get(f"{base}/availability", params=params)
+    assert empty.status_code == 200, empty.text
+    payload = empty.json()
+    assert payload["from"] == booking_date.isoformat()
+    assert payload["to"] == closed_date.isoformat()
+    assert payload["employeeId"] == employee
+    by_date = {row["date"]: row for row in payload["days"]}
+    assert by_date[booking_date.isoformat()]["status"] == "empty"
+    assert (
+        by_date[booking_date.isoformat()]["availableSlots"]
+        == by_date[booking_date.isoformat()]["totalSlots"]
+    )
+    assert by_date[booking_date.isoformat()]["totalSlots"] > 0
+    assert by_date[closed_date.isoformat()]["status"] == "closed"
+    assert by_date[closed_date.isoformat()]["totalSlots"] == 0
+
+    booked = client.post(
+        f"{base}/appointments", json=body, headers={"Idempotency-Key": str(uuid7())}
+    )
+    assert booked.status_code == 201, booked.text
+    after = client.get(f"{base}/availability", params=params)
+    assert after.status_code == 200, after.text
+    occupied = next(row for row in after.json()["days"] if row["date"] == booking_date.isoformat())
+    assert occupied["availableSlots"] < occupied["totalSlots"]
+    assert occupied["status"] in {"open", "limited"}
+
+    any_specialist = client.get(
+        f"{base}/availability",
+        params={
+            "from": booking_date.isoformat(),
+            "to": booking_date.isoformat(),
+            "serviceId": service,
+        },
+    )
+    assert any_specialist.status_code == 200, any_specialist.text
+    assert any_specialist.json()["employeeId"] is None
+    assert len(any_specialist.json()["days"]) == 1
+
+    inverted = client.get(
+        f"{base}/availability",
+        params={
+            "from": closed_date.isoformat(),
+            "to": booking_date.isoformat(),
+            "serviceId": service,
+            "employeeId": employee,
+        },
+    )
+    assert inverted.status_code == 400, inverted.text
+    assert inverted.json()["parameter"] == "to"
+
+    too_long = client.get(
+        f"{base}/availability",
+        params={
+            "from": booking_date.isoformat(),
+            "to": (booking_date + timedelta(days=42)).isoformat(),
+            "serviceId": service,
+            "employeeId": employee,
+        },
+    )
+    assert too_long.status_code == 400, too_long.text
+    assert too_long.json()["parameter"] == "to"
+
+    missing_service = client.get(
+        f"{base}/availability",
+        params={
+            "from": booking_date.isoformat(),
+            "to": booking_date.isoformat(),
+            "serviceId": str(uuid7()),
+            "employeeId": employee,
+        },
+    )
+    assert missing_service.status_code == 404, missing_service.text
+
+    missing_branch = client.get(
+        f"/api/v1/public/booking/branches/{uuid7()}/availability",
+        params={
+            "from": booking_date.isoformat(),
+            "to": booking_date.isoformat(),
+            "serviceId": service,
+            "employeeId": employee,
+        },
+    )
+    assert missing_branch.status_code == 404, missing_branch.text
+
+    cleared = client.put(
+        f"/api/v1/branches/{branch}/opening-hours",
+        headers=headers,
+        json={"items": []},
+    )
+    assert cleared.status_code == 200, cleared.text
+
+
+@pytest.mark.integration
+def test_public_availability_matches_daily_slot_counts(client, booking_setup):
+    _, _, branch, employee, service = booking_setup
+    body = payload_for(employee, service)
+    start = date.fromisoformat(body["date"])
+    end = start + timedelta(days=6)
+    base = f"/api/v1/public/booking/branches/{branch}"
+    availability = client.get(
+        f"{base}/availability",
+        params={
+            "from": start.isoformat(),
+            "to": end.isoformat(),
+            "serviceId": service,
+            "employeeId": employee,
+        },
+    )
+    assert availability.status_code == 200, availability.text
+    by_date = {row["date"]: row for row in availability.json()["days"]}
+    cursor = start
+    while cursor <= end:
+        slots = client.get(
+            f"{base}/slots",
+            params={
+                "date": cursor.isoformat(),
+                "serviceId": service,
+                "employeeId": employee,
+            },
+        )
+        assert slots.status_code == 200, slots.text
+        assert by_date[cursor.isoformat()]["availableSlots"] == len(slots.json()["slots"])
+        cursor += timedelta(days=1)
+
+
+@pytest.mark.integration
+def test_public_availability_sql_does_not_scale_with_day_count(client, booking_setup):
+    _, _, branch, employee, service = booking_setup
+    body = payload_for(employee, service)
+    start = date.fromisoformat(body["date"])
+    base = f"/api/v1/public/booking/branches/{branch}"
+    engine = get_engine()
+
+    def count_statements(span_days: int) -> int:
+        statements: list[str] = []
+
+        def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+            statements.append(statement)
+
+        event.listen(engine, "before_cursor_execute", before_cursor_execute)
+        try:
+            result = client.get(
+                f"{base}/availability",
+                params={
+                    "from": start.isoformat(),
+                    "to": (start + timedelta(days=span_days - 1)).isoformat(),
+                    "serviceId": service,
+                    "employeeId": employee,
+                },
+            )
+        finally:
+            event.remove(engine, "before_cursor_execute", before_cursor_execute)
+        assert result.status_code == 200, result.text
+        return len(statements)
+
+    short = count_statements(2)
+    long = count_statements(14)
+    assert long < 80
+    assert long - short < 20
